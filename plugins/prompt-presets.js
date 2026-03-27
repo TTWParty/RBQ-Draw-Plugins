@@ -292,7 +292,16 @@
             showCheckboxDialog('选择要导出的预设', store.presets, (selectedIds) => {
                 const selected = store.presets.filter(p => selectedIds.includes(p.id));
                 if (!selected.length) return toastr.warning('未选择任何预设');
-                const data = JSON.stringify(selected, null, 2);
+                // Export in compatible format (positivePrompt / negativePrompt)
+                const exportData = selected.map((p, idx) => ({
+                    name: p.name,
+                    positivePrompt: p.positive || '',
+                    negativePrompt: p.negative || '',
+                    sequence: idx,
+                    referenceImage: null,
+                    thumbnail: null,
+                }));
+                const data = JSON.stringify(exportData, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -319,15 +328,17 @@
                 const text = await file.text();
                 const imported = JSON.parse(text);
                 if (!Array.isArray(imported)) throw new Error('格式错误：文件内容应为数组');
-                const candidates = imported.filter(item => item.name || item.positive || item.negative);
+                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt);
                 if (!candidates.length) throw new Error('文件中没有有效的预设');
 
-                // Normalize items for display
-                const displayItems = candidates.map(item => ({
+                // Normalize items - support both formats:
+                // Plugin native: { positive, negative }
+                // External compat: { positivePrompt, negativePrompt, sequence, referenceImage, thumbnail }
+                const displayItems = candidates.map((item, idx) => ({
                     id: item.id || uid(),
                     name: item.name || '未命名预设',
-                    positive: item.positive || '',
-                    negative: item.negative || '',
+                    positive: item.positive || item.positivePrompt || '',
+                    negative: item.negative || item.negativePrompt || '',
                 }));
 
                 showCheckboxDialog('选择要导入的预设 (' + file.name + ')', displayItems, (selectedIds) => {

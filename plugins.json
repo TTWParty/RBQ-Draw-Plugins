@@ -3,7 +3,7 @@
     "id": "rbq-core-hello",
     "name": "Hello World 测试扩展",
     "description": "这是世界上第一个 RBQ 生态子插件。它向你展示了如何拦截提词信息，修改 Payload，或使用 toastr 进行通知。",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "TTWP-09",
     "main": "plugins/example-hello.js"
   },
@@ -11,7 +11,7 @@
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
     "description": "保存常用的正面/负面提示词组合为预设，生图时自动拼接到主提示词的前面或后面。支持添加、编辑、删除、选择性导入导出。",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "TTWP-09",
     "main": "plugins/prompt-presets.js"
   }

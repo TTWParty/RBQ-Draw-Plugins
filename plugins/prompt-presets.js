@@ -206,6 +206,12 @@
             panel.appendChild(container);
         }
 
+        // CRITICAL: Stop change events from bubbling out of our plugin UI
+        // The host modal has a global 'change' listener that calls saveFromModal(),
+        // which would reset the NAI URL to official if triggered from here.
+        container.addEventListener('change', (e) => e.stopPropagation());
+        container.addEventListener('input', (e) => e.stopPropagation());
+
         const select = document.getElementById('rbq-pp-select');
         const posSelect = document.getElementById('rbq-pp-position');
         const editor = document.getElementById('rbq-pp-editor');

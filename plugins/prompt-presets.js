@@ -150,6 +150,9 @@
 
         dialog.append(header, selectAllRow, listDiv, btnRow);
         overlay.appendChild(dialog);
+        // CRITICAL: stop bubbling from dialog elements too
+        overlay.addEventListener('change', (e) => e.stopPropagation());
+        overlay.addEventListener('input', (e) => e.stopPropagation());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         document.body.appendChild(overlay);
     }

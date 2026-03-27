@@ -176,8 +176,8 @@
             <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
-                    <select id="rbq-pp-select" style="flex:1;"></select>
-                    <select id="rbq-pp-position" style="width:80px;">
+                    <select id="rbq-pp-select" data-action="plugin-ignore" style="flex:1;"></select>
+                    <select id="rbq-pp-position" data-action="plugin-ignore" style="width:80px;">
                         <option value="prepend">前置</option>
                         <option value="append">后置</option>
                     </select>
@@ -185,9 +185,9 @@
             </div>
             <div id="rbq-pp-editor" style="display:none; margin-top:8px;">
                 <div class="st-scene-trigger-modal-grid">
-                    <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" type="text" placeholder="例如: 高质量通用"></label>
-                    <label class="st-scene-trigger-field wide"><span>正面提示词</span><textarea id="rbq-pp-positive" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
-                    <label class="st-scene-trigger-field wide"><span>负面提示词</span><textarea id="rbq-pp-negative" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
+                    <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用"></label>
+                    <label class="st-scene-trigger-field wide"><span>正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
+                    <label class="st-scene-trigger-field wide"><span>负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
                 </div>
                 <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
                     <button id="rbq-pp-save" class="menu_button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>

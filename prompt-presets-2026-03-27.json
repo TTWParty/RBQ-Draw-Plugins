@@ -1,0 +1,26 @@
+[
+  {
+    "name": "默认",
+    "positivePrompt": "",
+    "negativePrompt": "",
+    "sequence": 0,
+    "referenceImage": null,
+    "thumbnail": null
+  },
+  {
+    "name": "1",
+    "positivePrompt": "black hair, red eyes, ponytail, long hair, black dress, strapless dress, jewelry, necklace, night, starry sky, balcony, railing, moonlight, soft lighting, depth of field, looking at viewer, cowboy shot",
+    "negativePrompt": "bad,shit",
+    "sequence": 1,
+    "referenceImage": null,
+    "thumbnail": null
+  },
+  {
+    "name": "2",
+    "positivePrompt": "1girl, solo, black hair, red eyes, ponytail, long hair, black dress, strapless dress, jewelry, necklace, night, starry sky, balcony, railing, moonlight, soft lighting, depth of field, looking at view",
+    "negativePrompt": "good,shabi,nigth",
+    "sequence": 2,
+    "referenceImage": null,
+    "thumbnail": null
+  }
+]

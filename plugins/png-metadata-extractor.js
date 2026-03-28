@@ -190,138 +190,146 @@
         }
     }
 
-    // --- UI Poller engine instead of nasty MutationObservers ---
+    // --- UI Poller engine ---
+
+    function injectToolbarButton(viewerSpec, dialog, imgSrc) {
+        let btn = dialog.querySelector('#rbq-nai-toolbar-btn');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'rbq-nai-toolbar-btn';
+            btn.className = viewerSpec.btnClass || '';
+            btn.title = "提取 NAI 参数";
+            btn.type = "button";
+            btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
+            
+            // Basic styles to match ST icons, with NAI pink tint
+            btn.style.cssText = 'cursor: pointer; color: #ffb3d9; display: inline-flex; justify-content: center; align-items: center; background: transparent; border: none; transition: filter 0.2s;';
+            btn.onmouseenter = () => btn.style.filter = 'brightness(1.5)';
+            btn.onmouseleave = () => btn.style.filter = 'none';
+            
+            if (viewerSpec.insertMode === 'custom-absolute') {
+                btn.style.position = 'absolute';
+                btn.style.top = '10px';
+                btn.style.left = '40px'; 
+                btn.style.padding = '10px';
+                btn.style.fontSize = '20px';
+                btn.style.zIndex = '999999';
+                dialog.appendChild(btn);
+            } else {
+                const toolbar = dialog.querySelector(viewerSpec.toolbarSelector);
+                if (toolbar) {
+                    // Match generic ST icon button scaling if not fancybox/lg
+                    if (viewerSpec.btnClass.includes('menu_button')) {
+                        btn.style.padding = '8px';
+                        btn.style.fontSize = '18px';
+                        btn.style.margin = '0 8px';
+                    }
+                    if (viewerSpec.insertMode === 'prepend') {
+                        toolbar.insertBefore(btn, toolbar.firstChild);
+                    } else {
+                        toolbar.appendChild(btn);
+                    }
+                }
+            }
+        }
+        
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            handleExtract(imgSrc);
+        };
+    }
 
     function scanAndInject() {
-        // 1. Chat Context
-        const chat = document.getElementById('chat');
-        if (chat) {
-            const rawImgs = chat.querySelectorAll('.mes_img');
-            for (let i = 0; i < rawImgs.length; i++) {
-                const img = rawImgs[i];
-                if (img.dataset.rbqNaiInjected) continue;
-                img.dataset.rbqNaiInjected = 'true';
-                
-                const btn = document.createElement('div');
-                btn.className = 'rbq-nai-extract-btn';
-                btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> NAI 解析参数';
-                
-                btn.style.cssText = `
-                    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-                    background: rgba(255, 105, 180, 0.15); color: #ffb3d9;
-                    padding: 8px 16px; margin: 4px 6px 8px 0;
-                    border-radius: 8px; font-size: 13px; font-weight: bold;
-                    cursor: pointer; border: 1px solid rgba(255, 105, 180, 0.3);
-                    transition: background 0.2s, transform 0.1s;
-                    user-select: none; -webkit-tap-highlight-color: transparent;
-                `;
-                
-                btn.onmouseenter = () => btn.style.background = 'rgba(255, 105, 180, 0.25)';
-                btn.onmouseleave = () => btn.style.background = 'rgba(255, 105, 180, 0.15)';
-                btn.onpointerdown = () => btn.style.transform = 'scale(0.97)';
-                btn.onpointerup = () => btn.style.transform = 'scale(1)';
-                
-                btn.onclick = (e) => {
-                    e.stopPropagation();
-                    handleExtract(img.src);
-                };
-                
-                let target = img;
-                if (img.parentElement && img.parentElement.tagName === 'A') {
-                    target = img.parentElement;
-                }
-                
-                const wrapper = document.createElement('div');
-                wrapper.style.display = 'block';
-                wrapper.appendChild(btn);
-                target.parentNode.insertBefore(wrapper, target.nextSibling);
+        const viewers = [
+            {
+                // Custom st-scene-trigger viewer (Image History Modal)
+                dialogId: 'st-scene-trigger-image-viewer',
+                imgSelector: '.st-scene-trigger-viewer-image',
+                toolbarSelector: '.st-scene-trigger-viewer-actions',
+                btnClass: 'menu_button', // Match existing ST buttons
+                insertMode: 'prepend' // Puts it to the left of the download button
+            },
+            {
+                // Fancybox 4 (Modern ST Default)
+                dialogSelector: '.fancybox__container',
+                imgSelector: '.fancybox__image',
+                toolbarSelector: '.fancybox__toolbar__items--right, .fancybox__toolbar',
+                btnClass: 'fancybox__button',
+                insertMode: 'prepend'
+            },
+            {
+                // Fancybox 3
+                dialogSelector: '.fancybox-container',
+                imgSelector: '.fancybox-image',
+                toolbarSelector: '.fancybox-toolbar',
+                btnClass: 'fancybox-button',
+                insertMode: 'prepend'
+            },
+            {
+                // LightGallery
+                dialogSelector: '.lg-container',
+                imgSelector: '.lg-current img.lg-object, .lg-current img.lg-image',
+                toolbarSelector: '.lg-toolbar',
+                btnClass: 'lg-icon',
+                insertMode: 'append'
+            },
+            {
+                // Classic ST Dialog Fallback
+                dialogId: 'zoom_dialog',
+                imgSelector: '#zoom_img',
+                toolbarSelector: '',
+                btnClass: 'menu_button',
+                insertMode: 'custom-absolute'
+            },
+            {
+                // Swipe Dialog Fallback
+                dialogId: 'swipe_zoom_dialog',
+                imgSelector: '#zoom_img',
+                toolbarSelector: '',
+                btnClass: 'menu_button',
+                insertMode: 'custom-absolute'
             }
+        ];
+
+        let viewerFound = false;
+
+        for (const spec of viewers) {
+            const dialog = spec.dialogId ? document.getElementById(spec.dialogId) : document.querySelector(spec.dialogSelector);
+            if (!dialog) continue;
+
+            const style = window.getComputedStyle(dialog);
+            const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && !dialog.classList.contains('lg-hide');
+            if (!isVisible) continue;
+
+            const activeImg = dialog.querySelector(spec.imgSelector);
+            if (!activeImg || !activeImg.src) continue;
+
+            viewerFound = true;
+            injectToolbarButton(spec, dialog, activeImg.src);
+            break; // Stop after finding the topmost active viewer
         }
         
-        // 2. Fullscreen Gallery
-        const dialog = document.getElementById('zoom_dialog') 
-                || document.getElementById('swipe_zoom_dialog') 
-                || document.getElementById('st-scene-trigger-image-viewer') // <-- St-scene-trigger bespoke viewer
-                || document.querySelector('.fancybox__container') 
-                || document.querySelector('.fancybox-container')
-                || document.querySelector('.lg-container') 
-                || document.querySelector('.pswp');
-                
-        let isVisible = false;
-        let activeImg = null;
+        // Clean up any remaining legacy capsule buttons if they stuck around
+        const legacyBtn = document.getElementById('rbq-nai-gallery-btn');
+        if (legacyBtn) legacyBtn.remove();
         
-        if (dialog) {
-            isVisible = window.getComputedStyle(dialog).display !== 'none' && window.getComputedStyle(dialog).visibility !== 'hidden' && !dialog.classList.contains('lg-hide');
-            if (isVisible) {
-                // Find visible image
-                activeImg = dialog.querySelector('.st-scene-trigger-viewer-image')
-                   || dialog.querySelector('#zoom_img') 
-                   || dialog.querySelector('.fancybox__image')
-                   || dialog.querySelector('.fancybox-image') 
-                   || dialog.querySelector('.lg-current img.lg-object') 
-                   || dialog.querySelector('.lg-current img.lg-image')
-                   || dialog.querySelector('img.pswp__img');
-                   
-                if (!activeImg) {
-                    const dialogImgs = dialog.querySelectorAll('img');
-                    activeImg = Array.from(dialogImgs).find(i => parseFloat(window.getComputedStyle(i).opacity) > 0);
-                }
-            }
-        } else {
-            // Highly robust fallback: any huge image on screen not in chat
-            const allImgs = document.querySelectorAll('img');
-            activeImg = Array.from(allImgs).find(i => i.clientWidth > window.innerWidth * 0.5 && !i.closest('#chat'));
-            if (activeImg) isVisible = true;
-        }
-        
-        const existingBtn = document.getElementById('rbq-nai-gallery-btn');
-        
-        if (isVisible && activeImg && activeImg.src) {
-            if (!existingBtn) {
-                const btn = document.createElement('div');
-                btn.id = 'rbq-nai-gallery-btn';
-                btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 提取 NAI 参数';
-                btn.style.cssText = `
-                    position: fixed;
-                    bottom: max(5%, 30px); left: 50%; transform: translateX(-50%);
-                    background: rgba(20, 20, 30, 0.95); color: #ffb3d9;
-                    padding: 14px 28px; border-radius: 30px;
-                    font-size: 16px; font-weight: bold; cursor: pointer; z-index: 2147483647;
-                    border: 1px solid rgba(255,105,180,0.6);
-                    display: flex; gap: 8px; align-items: center; justify-content: center;
-                    backdrop-filter: blur(8px);
-                    box-shadow: 0 8px 25px rgba(0,0,0,0.8);
-                    user-select: none; -webkit-tap-highlight-color: transparent;
-                    transition: transform 0.1s; pointer-events: auto;
-                `;
-                
-                btn.onpointerdown = () => btn.style.transform = 'translateX(-50%) scale(0.95)';
-                btn.onpointerup = () => btn.style.transform = 'translateX(-50%) scale(1)';
-                
-                document.body.appendChild(btn);
-                
-                btn.onclick = (e) => {
-                    e.stopPropagation();
-                    handleExtract(activeImg.src);
-                };
+        // Clean up chat inline buttons since the user doesn't want them
+        const chatBtns = document.querySelectorAll('.rbq-nai-extract-btn');
+        chatBtns.forEach(b => {
+            const wrapper = b.closest('div[style*="display: block"]');
+            if (wrapper && wrapper.children.length === 1) {
+                wrapper.remove();
             } else {
-                existingBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    handleExtract(activeImg.src);
-                };
-                if (existingBtn.style.display === 'none') {
-                    existingBtn.style.display = 'flex';
-                }
+                b.remove();
             }
-        } else {
-            if (existingBtn) existingBtn.style.display = 'none';
-        }
+        });
     }
 
     // Inject polling engine unconditionally
     setInterval(scanAndInject, 500);
     setTimeout(scanAndInject, 100); // Immediate trigger
     
-    console.info(`📋 ${PLUGIN_NAME} plugin loaded via Poller Engine.`);
+    console.info(`📋 ${PLUGIN_NAME} plugin loaded via Toolbar Poller.`);
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

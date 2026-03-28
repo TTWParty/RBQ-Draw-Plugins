@@ -198,6 +198,7 @@
                 <button id="rbq-pp-new" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-plus"></i> 新建</button>
                 <button id="rbq-pp-export" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-file-export"></i> 导出</button>
                 <button id="rbq-pp-import-btn" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-file-import"></i> 导入</button>
+                <button id="rbq-pp-batch-delete" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px; color:#ff4444;"><i class="fa-solid fa-trash-can"></i> 批量删除</button>
                 <input id="rbq-pp-import-file" type="file" accept=".json" hidden>
             </div>
         `;
@@ -368,6 +369,27 @@
                 toastr.error('导入失败: ' + err.message);
             }
             e.target.value = '';
+        });
+
+        // ── 批量删除 ──
+        document.getElementById('rbq-pp-batch-delete').addEventListener('click', () => {
+            const store = getStore();
+            if (!store.presets.length) return toastr.warning('没有任何预设可删除');
+            showCheckboxDialog('选择要删除的预设 (警告：操作不可逆)', store.presets, (selectedIds) => {
+                if (!selectedIds.length) return toastr.warning('未选择任何预设');
+                if (!window.confirm(`确定要永久删除这 ${selectedIds.length} 个预设吗？`)) return;
+                
+                // If active preset is getting deleted, clear activeId
+                if (selectedIds.includes(store.activeId)) {
+                    store.activeId = '';
+                }
+                
+                // Filter out the deleted ones
+                store.presets = store.presets.filter(p => !selectedIds.includes(p.id));
+                save();
+                renderSelect();
+                toastr.success(`已成功删除 ${selectedIds.length} 个预设`);
+            });
         });
 
         renderSelect();

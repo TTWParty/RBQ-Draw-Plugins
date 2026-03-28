@@ -194,6 +194,10 @@
                     <button id="rbq-pp-delete" class="menu_button" style="font-size:12px; padding:4px 12px; color:#ff4444;"><i class="fa-solid fa-trash"></i> 删除</button>
                 </div>
             </div>
+            <label class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center; flex-direction:row; cursor:pointer; min-height:auto; padding:8px 14px; margin-top:8px;">
+                <input type="checkbox" id="rbq-pp-show-floating" data-action="plugin-ignore" style="width:auto;">
+                <span style="font-size:13px; color:rgba(255,255,255,0.7);">在悬浮球菜单中显示快捷切换</span>
+            </label>
             <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
                 <button id="rbq-pp-new" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-plus"></i> 新建</button>
                 <button id="rbq-pp-export" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-file-export"></i> 导出</button>
@@ -218,13 +222,63 @@
 
         const select = document.getElementById('rbq-pp-select');
         const posSelect = document.getElementById('rbq-pp-position');
+        const floatingCheckbox = document.getElementById('rbq-pp-show-floating');
         const editor = document.getElementById('rbq-pp-editor');
         const nameInput = document.getElementById('rbq-pp-name');
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
 
+        function syncFloatingMenu() {
+            const store = getStore();
+            let pMenu = document.getElementById('rbq-pp-floating-wrap');
+            
+            if (store.showFloating) {
+                if (!pMenu) {
+                    pMenu = document.createElement('div');
+                    pMenu.id = 'rbq-pp-floating-wrap';
+                    pMenu.className = 'st-scene-trigger-floating-item';
+                    pMenu.style.cssText = 'padding:8px 10px; cursor:default;';
+                    pMenu.innerHTML = '<i class="fa-solid fa-bookmark" style="width:14px;"></i><select id="rbq-pp-floating-select" style="background:rgba(0,0,0,0.4);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;flex:1;outline:none;padding:2px 4px;font-size:12px;cursor:pointer;" data-action="plugin-ignore"></select>';
+                    
+                    const menu = document.getElementById('st-scene-trigger-floating-menu');
+                    const divider = menu?.querySelector('.st-scene-trigger-floating-divider');
+                    if (menu) {
+                        if (divider) menu.insertBefore(pMenu, divider);
+                        else menu.appendChild(pMenu);
+                    }
+                    
+                    const fSelect = document.getElementById('rbq-pp-floating-select');
+                    if (fSelect) {
+                        fSelect.addEventListener('change', (e) => {
+                            getStore().activeId = e.target.value;
+                            save();
+                            renderSelect();
+                        });
+                        fSelect.addEventListener('click', e => e.stopPropagation());
+                        pMenu.addEventListener('click', e => e.stopPropagation());
+                    }
+                }
+                
+                const fSelect = document.getElementById('rbq-pp-floating-select');
+                if (fSelect) {
+                    fSelect.innerHTML = '<option value="" style="color:#000">-- 不使用预设 --</option>';
+                    store.presets.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.textContent = p.name || p.id;
+                        opt.style.color = '#000';
+                        fSelect.appendChild(opt);
+                    });
+                    fSelect.value = store.activeId || '';
+                }
+            } else {
+                if (pMenu) pMenu.remove();
+            }
+        }
+
         function renderSelect() {
             const store = getStore();
+            floatingCheckbox.checked = !!store.showFloating;
             select.innerHTML = '<option value="">-- 不使用预设 --</option>';
             store.presets.forEach(p => {
                 const opt = document.createElement('option');
@@ -235,6 +289,7 @@
             select.value = store.activeId || '';
             posSelect.value = store.position || 'prepend';
             loadEditor();
+            syncFloatingMenu();
         }
 
         function loadEditor() {
@@ -253,11 +308,18 @@
             getStore().activeId = select.value;
             save();
             loadEditor();
+            syncFloatingMenu();
         });
 
         posSelect.addEventListener('change', () => {
             getStore().position = posSelect.value;
             save();
+        });
+
+        floatingCheckbox.addEventListener('change', () => {
+            getStore().showFloating = floatingCheckbox.checked;
+            save();
+            syncFloatingMenu();
         });
 
         document.getElementById('rbq-pp-new').addEventListener('click', () => {

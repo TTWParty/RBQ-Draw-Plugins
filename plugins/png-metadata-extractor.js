@@ -306,10 +306,40 @@
 
     function setupGalleryObserver() {
         const observer = new MutationObserver(() => {
-            const dialog = document.getElementById('zoom_dialog') || document.getElementById('swipe_zoom_dialog');
+            // Find common known viewer containers in modern ST or extensions
+            const dialog = document.getElementById('zoom_dialog') 
+                || document.getElementById('swipe_zoom_dialog') 
+                || document.querySelector('.fancybox-container') // Fancybox 3
+                || document.querySelector('.fancybox__container') // Fancybox 4
+                || document.querySelector('.lg-container') // LightGallery
+                || document.querySelector('.pswp'); // PhotoSwipe
+                
             let img = null;
-            if (dialog && dialog.style.display !== 'none') {
-                img = document.getElementById('zoom_img') || document.querySelector('.fancybox-image');
+            
+            // Check if dialog exists and is visible
+            const isVisible = dialog && 
+                window.getComputedStyle(dialog).display !== 'none' && 
+                !dialog.classList.contains('lg-hide') &&
+                dialog.style.opacity !== '0';
+                
+            if (isVisible) {
+                // Find the active/current image inside the viewer
+                // 1. #zoom_img (Old ST / Swipe)
+                // 2. .fancybox-image / .fancybox__image (Fancybox)
+                // 3. .lg-current .lg-image / .lg-current .lg-object (LightGallery)
+                // 4. Any direct visible image taking up mostly the screen
+                img = dialog.querySelector('#zoom_img') 
+                   || dialog.querySelector('.fancybox-image') 
+                   || dialog.querySelector('.fancybox__image')
+                   || dialog.querySelector('.lg-current img.lg-object') 
+                   || dialog.querySelector('.lg-current img.lg-image')
+                   || dialog.querySelector('img.pswp__img');
+                   
+                if (!img) {
+                    // Fallback to finding the largest image inside
+                     const imgs = Array.from(dialog.querySelectorAll('img'));
+                     img = imgs.find(i => i.clientWidth > window.innerWidth * 0.3);
+                }
             }
             
             if (img && img.src) {

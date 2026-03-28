@@ -241,6 +241,7 @@
         // 2. Fullscreen Gallery
         const dialog = document.getElementById('zoom_dialog') 
                 || document.getElementById('swipe_zoom_dialog') 
+                || document.getElementById('st-scene-trigger-image-viewer') // <-- St-scene-trigger bespoke viewer
                 || document.querySelector('.fancybox__container') 
                 || document.querySelector('.fancybox-container')
                 || document.querySelector('.lg-container') 
@@ -253,7 +254,8 @@
             isVisible = window.getComputedStyle(dialog).display !== 'none' && window.getComputedStyle(dialog).visibility !== 'hidden' && !dialog.classList.contains('lg-hide');
             if (isVisible) {
                 // Find visible image
-                activeImg = dialog.querySelector('#zoom_img') 
+                activeImg = dialog.querySelector('.st-scene-trigger-viewer-image')
+                   || dialog.querySelector('#zoom_img') 
                    || dialog.querySelector('.fancybox__image')
                    || dialog.querySelector('.fancybox-image') 
                    || dialog.querySelector('.lg-current img.lg-object') 

@@ -19,8 +19,8 @@
     "id": "rbq-png-metadata",
     "name": "NAI 图片信息提取器",
     "description": "在聊天和画廊直接剖析 NovelAI 原生图的内部隐藏数据。支持一键提取/复制提示词及生图参数。(仅支持 NAI 图像)",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "author": "TTWP-09",
-    "main": "plugins/png-metadata-extractor.js?v=1.0.4"
+    "main": "plugins/png-metadata-extractor.js?v=1.0.5"
   }
 ]

@@ -22,14 +22,6 @@
     "version": "1.0.6",
     "author": "TTWP-09",
     "main": "plugins/png-metadata-extractor.js?v=1.0.6"
-  },
-  {
-  "id": "rbq-exacg-mode",
-  "name": "Exacg 免费生图模式",
-  "description": "为 RBQ 扩展增加对 sd.exacg.cc 的原生支持，独立于主插件运行。",
-  "version": "1.0.0",
-  "author": "Antigravity",
-  "main": "plugins/exacg.js"
-}
+  }
 
 ]

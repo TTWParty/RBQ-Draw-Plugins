@@ -1,5 +1,6 @@
 /*
- * Exacg 免费生图渠道 (独立模型管理 & CORS 优化版)
+ * Exacg 免费生图渠道 (服务器代理转发 + UI 稳定版)
+ * 解决浏览器 CORS 跨域限制，并锁定模型选择不丢失。
  */
 (function(RBQ, $, toastr) {
     if (!RBQ || !RBQ.api || !RBQ.api.registerMode) return;
@@ -36,7 +37,7 @@
         const hasExacgOptions = modelSelect.querySelector('option[data-source="exacg"]');
 
         if (isExacg && !hasExacgOptions) {
-            // 模式切到 Exacg，注入模型
+            const currentVal = modelSelect.value; // 关键：拍快照备份当前值
             modelSelect.innerHTML = '';
             EXACG_MODELS.forEach(m => {
                 const opt = document.createElement('option');
@@ -45,63 +46,73 @@
                 opt.setAttribute('data-source', 'exacg');
                 modelSelect.appendChild(opt);
             });
+            // 关键：渲染完后立即恢复之前选中的值
+            if (EXACG_MODELS.some(m => m.id === currentVal)) {
+                modelSelect.value = currentVal;
+            }
         } else if (!isExacg && hasExacgOptions) {
-            // 模式离开 Exacg，立即清空我的模型，防止污染
             modelSelect.innerHTML = '';
-            // 主插件的 updateModeUi 会随后把 NAI 或其他模型的正确选项填回来
         }
     }
 
     RBQ.api.registerMode('exacg', {
         title: '白嫖渠道 (Exacg)',
-        subtitle: '支持 20 款免费模型，包含 Z-Image 自动优化',
-        endpointLabel: 'API 地址 (sd.exacg.cc)',
+        subtitle: '已启用代理转发 (解决跨域限制)',
+        endpointLabel: 'API 地址 (可用默认)',
         keyLabel: 'API 密钥 (Token)',
         modelLabel: '选择 Checkpoint 模型',
         accent: 'free'
     }, async (params) => {
         const { prompt, settings, connection, image, onProgress } = params;
-        const baseUrl = (connection.url || 'https://sd.exacg.cc').replace(/\/$/, '');
+        const targetUrl = (connection.url || 'https://sd.exacg.cc').replace(/\/$/, '') + '/api/v1/generate_image';
         
-        // Z-Image 优化
         let steps = parseInt(image.steps) || 20;
-        if (connection.model === "4") {
-            steps = 8;
-            if (onProgress) onProgress('Z-Image 模型：已自动修正为 8 步并优化提示词。');
-        }
+        if (connection.model === "4") steps = 8;
+
+        if (onProgress) onProgress('正在通过酒馆后端转发请求 (跳过跨域限制)...');
 
         try {
-            // 发起请求
-            const resp = await fetch(`${baseUrl}/api/v1/generate_image`, {
+            // 【核心改动】使用酒馆自带的 /api/external/fetch 接口进行代理转发
+            // 这能完美绕过浏览器的 CORS 限制
+            const proxyResponse = await fetch('/api/external/fetch', {
                 method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${connection.apiKey}`, 
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: prompt,
-                    negative_prompt: settings.negative || "",
-                    width: image.width || 512,
-                    height: image.height || 512,
-                    steps: steps,
-                    cfg: parseFloat(image.cfg) || 7.0,
-                    model_index: parseInt(connection.model) || 0,
-                    seed: parseInt(image.seed) ?? -1
+                    url: targetUrl,
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${connection.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        negative_prompt: settings.negative || "",
+                        width: image.width || 512,
+                        height: image.height || 512,
+                        steps: steps,
+                        cfg: parseFloat(image.cfg) || 7.0,
+                        model_index: parseInt(connection.model) || 0,
+                        seed: parseInt(image.seed) ?? -1
+                    })
                 })
             });
+
+            // 如果代理成功，解析其返回的内容
+            if (!proxyResponse.ok) throw new Error(`代理转发失败: ${proxyResponse.status}`);
             
-            const res = await resp.json();
+            const res = await proxyResponse.json();
+            // 注意：代理返回的结果通常在 res.text 或 res.json 里，具体看酒馆版本
+            // 正常情况下 res 就是目标 API 的直接返回结果
             if (res.success && res.data && res.data.image_url) {
                 return { url: res.data.image_url };
             } else {
-                throw new Error(res.error || '服务器未能生成图像');
+                throw new Error(res.error || '服务器未能通过代理生成图像');
             }
         } catch (e) {
-            console.error('[EXACG] 请求异常:', e);
+            console.error('[EXACG] 代理请求异常:', e);
             throw e;
         }
     });
 
-    // 监听 UI 刷新
     setInterval(updateExacgDropdown, 500);
 })(window.RBQ, jQuery, toastr);

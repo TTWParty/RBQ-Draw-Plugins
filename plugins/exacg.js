@@ -1,5 +1,6 @@
 /*
- * Exacg 渠道 (模型记忆 + CORS 代理 + UI 锁定版)
+ * Exacg 渠道 (安全令牌适配 + 后端代理转发版)
+ * 解决酒馆后端的 403 拦截问题。
  */
 (function(RBQ, $, toastr) {
     if (!RBQ || !RBQ.api || !RBQ.api.registerMode) return;
@@ -27,6 +28,11 @@
         { id: "19", name: "19 | Qwen Image Edit 2511" }
     ];
 
+    // 获取酒馆的安全令牌 (CSRF Token)
+    function getCsrfToken() {
+        return window.token || (document.cookie.match(/token=([^;]+)/) || [])[1] || "";
+    }
+
     function updateExacgDropdown() {
         const modeSelect = document.getElementById('st-scene-trigger-current-mode');
         const modelSelect = document.getElementById('st-scene-trigger-modal-model');
@@ -36,9 +42,7 @@
         const hasExacgOptions = modelSelect.querySelector('option[data-source="exacg"]');
 
         if (isExacg && !hasExacgOptions) {
-            // 在重绘前记住当前值（如果有）
             const savedValue = modelSelect.getAttribute('data-last-exacg-val') || modelSelect.value;
-            
             modelSelect.innerHTML = '';
             EXACG_MODELS.forEach(m => {
                 const opt = document.createElement('option');
@@ -47,20 +51,17 @@
                 opt.setAttribute('data-source', 'exacg');
                 modelSelect.appendChild(opt);
             });
-
-            // 精准恢复
             if (savedValue && EXACG_MODELS.some(m => m.id === savedValue)) {
                 modelSelect.value = savedValue;
             }
         } else if (isExacg && hasExacgOptions) {
-            // 实时备份当前选中的值，防止主插件意外刷新导致丢失
             modelSelect.setAttribute('data-last-exacg-val', modelSelect.value);
         }
     }
 
     RBQ.api.registerMode('exacg', {
         title: '白嫖渠道 (Exacg)',
-        subtitle: '已启用代理转发 (解决 CORS 跨域问题)',
+        subtitle: '已启用安全代理 (解决 403/CORS 问题)',
         endpointLabel: 'API 地址 (可用默认)',
         keyLabel: 'API 密钥 (Token)',
         modelLabel: '选择 Checkpoint 模型',
@@ -69,16 +70,20 @@
         const { prompt, settings, connection, image, onProgress } = params;
         const targetUrl = (connection.url || 'https://sd.exacg.cc').replace(/\/$/, '') + '/api/v1/generate_image';
         
+        // Z-Image 优化
         let steps = parseInt(image.steps) || 20;
         if (connection.model === "4") steps = 8;
 
-        if (onProgress) onProgress('正在通过酒馆后端转发请求...');
+        if (onProgress) onProgress('正在下发安全验证并转发请求...');
 
         try {
-            // 使用 /api/external/fetch 绕过浏览器的 CORS 限制
+            const csrfToken = getCsrfToken();
             const response = await fetch('/api/external/fetch', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken // 【关键】带上安全令牌
+                },
                 body: JSON.stringify({
                     url: targetUrl,
                     method: 'POST',
@@ -99,16 +104,17 @@
                 })
             });
 
-            if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
+            if (response.status === 403) throw new Error('酒馆后端拒绝访问 (403)，可能是 CSRF Token 失效，请刷新页面重试。');
+            if (!response.ok) throw new Error(`代理转发失败: ${response.status}`);
             
             const res = await response.json();
             if (res.success && res.data && res.data.image_url) {
                 return { url: res.data.image_url };
             } else {
-                throw new Error(res.error || '后端代理请求失败');
+                throw new Error(res.error || '后端未能通过安全转发生成图像');
             }
         } catch (e) {
-            console.error('[EXACG] 代理转发异常:', e);
+            console.error('[EXACG] 代理故障:', e);
             throw e;
         }
     });

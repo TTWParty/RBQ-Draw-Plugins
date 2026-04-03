@@ -1,114 +1,111 @@
 /**
- * RBQ-Draw Sub-Plugin: Exacg (Zero-Config Edition)
- * Version: 0.2.3
- * Author: Antigravity
- * Description: 提供 Exacg 渠道生图支持，内置跨域自动规避引擎。
+ * RBQ-Draw Sub-Plugin: Exacg (Pro / Fully-Modular)
+ * Version: 0.2.5
+ * Description: 完美适配官方文档，内置全量模型列表与“服务器级”穿透引擎。
  */
 
 (function() {
     const MODE_ID = 'exacg';
+    
+    // 完美匹配官方 0-17 模型列表
     const EXACG_MODELS = [
         { id: "0", name: "0 | Miaomiao Harem vPred Dogma 1.1" },
         { id: "1", name: "1 | MiaoMiao Pixel 像素 1.0" },
         { id: "2", name: "2 | NoobAIXL V1.1" },
         { id: "3", name: "3 | illustrious_pencil 融合" },
-        { id: "4", name: "4 | [自然语言] Z-Image (自动 8 步/无质量词)" },
+        { id: "4", name: "4 | [自然语言] Z-Image (8步/无质量词)" },
         { id: "5", name: "5 | [全新] RealSkin EPS 1.3" },
         { id: "6", name: "6 | [全新] Newbie exp 0.1" },
+        { id: "7", name: "7 | [全新] Newbie exp 0.1 (F2)" },
+        { id: "8", name: "8 | [全新] RealSkin vPred 1.1" },
+        { id: "9", name: "9 | [新服] RealSkin vPred 1.0" },
+        { id: "10", name: "10 | [全新] Wainsfw illustrious v16" },
+        { id: "11", name: "11 | [新服] Wainsfw illustrious v15" },
+        { id: "12", name: "12 | [新服] MiaoMiao Harem 1.75" },
+        { id: "13", name: "13 | [新服] MiaoMiao Harem 1.6G" },
+        { id: "14", name: "14 | Wainsfw Illustrious v13 (F1)" },
+        { id: "15", name: "15 | Wainsfw Illustrious v13 (F2)" },
+        { id: "16", name: "16 | Wainsfw Illustrious v11" },
         { id: "17", name: "17 | 真人模型 Nsfw-Real" }
     ];
 
     window.RBQ.api.registerMode(MODE_ID, {
         title: '生图渠道 (Exacg)',
-        subtitle: '已开启“零配置”跨域规避引擎',
-        endpointLabel: 'API 地址',
-        keyLabel: 'API 密钥 (Token)',
-        modelLabel: '选择 Checkpoint 模型',
+        subtitle: '已开启“服务器级”通信隧道',
         accent: 'free'
     }, async (params) => {
         const { prompt, settings, connection, image, onProgress } = params;
         
-        // 确保地址正确
         const baseUrl = (connection.url || 'https://sd.exacg.cc').replace(/\/$/, '');
         const targetUrl = `${baseUrl}/api/v1/generate_image`;
         
-        // Z-Image (ID: 4) 强制 8 步优化
-        let steps = parseInt(image.steps) || 20;
-        if (connection.model === "4") steps = 8;
-
+        // 参数适配
+        const isZImage = connection.model === "4";
         const payload = {
             prompt: prompt,
-            negative_prompt: settings.negative || "",
+            negative_prompt: isZImage ? "" : (settings.negative || ""),
             width: image.width || 512,
             height: image.height || 512,
-            steps: steps,
+            steps: isZImage ? 8 : (parseInt(image.steps) || 20),
             cfg: parseFloat(image.cfg) || 7.0,
             model_index: parseInt(connection.model) || 0,
             seed: parseInt(image.seed) ?? -1
         };
 
-        const fetchOptions = {
-            method: 'POST',
-            headers: {
+        // --- 核心：高级穿透引擎 ---
+        const executeRequest = async () => {
+            const headers = { 
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${connection.apiKey}`
-            },
-            body: JSON.stringify(payload)
-        };
+            };
 
-        // --- 核心：智能跨域规避引擎 ---
-        const doSmartFetch = async () => {
-            // 尝试 1: 直接请求 (针对开启了跨域插件或后端转发的用户)
+            // 策略 1: 专用高性能代理 (cors.bridged.cc)
+            // 这种代理最像真正的服务器，且对 Authorization 头支持友好
             try {
-                if (onProgress) onProgress('正在建立安全连接...');
-                const resp = await fetch(targetUrl, fetchOptions);
+                if (onProgress) onProgress('正在启动服务器级中转...');
+                const proxyUrl = `https://cors.bridged.cc/${targetUrl}`;
+                const resp = await fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
                 if (resp.ok) return await resp.json();
             } catch (e) {
-                console.warn('[Exacg] 直接请求被拦截，尝试加密隧道...');
+                console.warn('[Exacg] 隧道 A 繁忙，切换备用路径...');
             }
 
-            // 尝试 2: 公共代理隧道 (corsproxy.io) - 零配置核心
+            // 策略 2: 降级隧道 (corsproxy.io)
             try {
-                if (onProgress) onProgress('检测到网络限制，正在通过中转中...');
                 const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-                const resp = await fetch(proxyUrl, fetchOptions);
-                if (resp.ok) return await resp.json();
-            } catch (e) {
-                console.warn('[Exacg] 隧道 A 握手失败，尝试备份隧道...');
-            }
-
-            // 尝试 3: 备用负载均衡代理 (codetabs)
-            try {
-                const proxyUrl2 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
-                const resp = await fetch(proxyUrl2, fetchOptions);
+                const resp = await fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
                 if (resp.ok) return await resp.json();
             } catch (e) {}
 
-            throw new Error('生图请求失败：所有规避路径均被拦截。请确认密钥(Token)是否正确，或检查网络连接。');
+            throw new Error('生图请求无法连接：Exacg 官方接口拒绝了非同源请求，且代理隧道目前不可用。');
         };
 
-        // 执行请求并处理结果
-        const res = await doSmartFetch();
+        const res = await executeRequest();
         if (res.success && res.data && res.data.image_url) {
             return { url: res.data.image_url };
         } else {
-            throw new Error(res.error || 'Exacg 引擎返回了未知错误');
+            throw new Error(res.error || 'Exacg 渠道返回了错误信息，请检查密钥是否有效');
         }
     });
 
-    // --- UI 增强：模型下拉框注入 ---
-    function injectModels() {
+    // 自动刷新模型列表
+    function syncUi() {
         const modeSelect = document.getElementById('st-scene-trigger-current-mode');
         const modelSelect = document.getElementById('st-scene-trigger-modal-model');
         if (!modeSelect || !modelSelect || modeSelect.value !== MODE_ID) return;
-
-        // 检查是否已经注入过
         if (modelSelect.querySelector('option[data-source="exacg"]')) return;
 
-        console.info('[Exacg Plugin] Populating model list...');
+        console.info('[Exacg] Updating model metadata...');
         const currentVal = modelSelect.value;
         modelSelect.innerHTML = '';
-        
         EXACG_MODELS.forEach(m => {
             const opt = document.createElement('option');
             opt.value = m.id;
@@ -116,22 +113,7 @@
             opt.setAttribute('data-source', 'exacg');
             modelSelect.appendChild(opt);
         });
-
-        // 恢复之前的选择（如果有）
-        if (EXACG_MODELS.some(m => m.id === currentVal)) {
-            modelSelect.value = currentVal;
-        }
+        if (EXACG_MODELS.some(x => x.id === currentVal)) modelSelect.value = currentVal;
     }
-
-    // 监听 UI 更新
-    const observer = new MutationObserver(injectModels);
-    const configPanel = document.getElementById('st-scene-trigger-settings');
-    if (configPanel) {
-        observer.observe(configPanel, { childList: true, subtree: true });
-    }
-    
-    // 定期检查（防止某些动态加载导致丢失）
-    setInterval(injectModels, 1000);
-    
-    console.log('[RBQ Sub-Plugin] Exacg Mode Loaded.');
+    setInterval(syncUi, 1000);
 })();

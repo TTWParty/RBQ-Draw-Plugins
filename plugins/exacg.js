@@ -1,6 +1,6 @@
 /*
- * Exacg 渠道 (万能跨域代理版)
- * 使用公共 CORS Proxy 绕过浏览器限制，不依赖酒馆后端。
+ * Exacg 渠道 (自动令牌识别 + 后端转发重制版)
+ * 彻底解决 403 Forbidden 和 CORS 跨域报错。
  */
 (function(RBQ, $, toastr) {
     if (!RBQ || !RBQ.api || !RBQ.api.registerMode) return;
@@ -27,6 +27,13 @@
         { id: "18", name: "18 | Qwen Image Edit (需原图)" },
         { id: "19", name: "19 | Qwen Image Edit 2511" }
     ];
+
+    // 智能抓取酒馆当前的登录令牌
+    function getSillyTavernToken() {
+        return window.token || 
+               (document.cookie.match(/token=([^;]+)/) || [])[1] || 
+               (typeof jQuery !== 'undefined' ? jQuery('#csrf_token').val() : "");
+    }
 
     function updateExacgDropdown() {
         const modeSelect = document.getElementById('st-scene-trigger-current-mode');
@@ -56,8 +63,8 @@
 
     RBQ.api.registerMode('exacg', {
         title: '白嫖渠道 (Exacg)',
-        subtitle: '已启用万能代理 (绕过所有限制)',
-        endpointLabel: 'API 地址',
+        subtitle: '已启用后端安全转发 (403/CORS 已修复)',
+        endpointLabel: 'API 地址 (sd.exacg.cc)',
         keyLabel: 'API 密钥 (Token)',
         modelLabel: '选择 Checkpoint 模型',
         accent: 'free'
@@ -68,40 +75,49 @@
         let steps = parseInt(image.steps) || 20;
         if (connection.model === "4") steps = 8;
 
-        if (onProgress) onProgress('正在通过万能中转站绕过跨域限制...');
+        if (onProgress) onProgress('正在进行安全验证并请求后端转发...');
 
         try {
-            // 【核心改动】使用公共 CORS 代理
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+            const csrfToken = getSillyTavernToken();
             
-            const response = await fetch(proxyUrl, {
+            const response = await fetch('/api/external/fetch', {
                 method: 'POST',
                 headers: { 
-                    'Authorization': `Bearer ${connection.apiKey}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken // 关键：授权令牌
                 },
                 body: JSON.stringify({
-                    prompt: prompt,
-                    negative_prompt: settings.negative || "",
-                    width: image.width || 512,
-                    height: image.height || 512,
-                    steps: steps,
-                    cfg: parseFloat(image.cfg) || 7.0,
-                    model_index: parseInt(connection.model) || 0,
-                    seed: parseInt(image.seed) ?? -1
+                    url: targetUrl,
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${connection.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        negative_prompt: settings.negative || "",
+                        width: image.width || 512,
+                        height: image.height || 512,
+                        steps: steps,
+                        cfg: parseFloat(image.cfg) || 7.0,
+                        model_index: parseInt(connection.model) || 0,
+                        seed: parseInt(image.seed) ?? -1
+                    })
                 })
             });
 
-            if (!response.ok) throw new Error(`中转响应错误: ${response.status}`);
+            if (response.status === 403) throw new Error('后端安全校验失败 (403)，请刷新页面重试。');
+            if (response.status === 401) throw new Error('Exacg API 密钥无效 (401)。');
+            if (!response.ok) throw new Error(`后端转发故障 (HTTP ${response.status})`);
             
             const res = await response.json();
             if (res.success && res.data && res.data.image_url) {
                 return { url: res.data.image_url };
             } else {
-                throw new Error(res.error || '中转服务器未能获取图像');
+                throw new Error(res.error || '后端未能成功获取图像链接');
             }
         } catch (e) {
-            console.error('[EXACG] 中转请求异常:', e);
+            console.error('[EXACG] 转发故障:', e);
             throw e;
         }
     });

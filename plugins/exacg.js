@@ -1,6 +1,6 @@
 /*
- * Exacg 渠道 (安全令牌适配 + 后端代理转发版)
- * 解决酒馆后端的 403 拦截问题。
+ * Exacg 渠道 (万能跨域代理版)
+ * 使用公共 CORS Proxy 绕过浏览器限制，不依赖酒馆后端。
  */
 (function(RBQ, $, toastr) {
     if (!RBQ || !RBQ.api || !RBQ.api.registerMode) return;
@@ -27,11 +27,6 @@
         { id: "18", name: "18 | Qwen Image Edit (需原图)" },
         { id: "19", name: "19 | Qwen Image Edit 2511" }
     ];
-
-    // 获取酒馆的安全令牌 (CSRF Token)
-    function getCsrfToken() {
-        return window.token || (document.cookie.match(/token=([^;]+)/) || [])[1] || "";
-    }
 
     function updateExacgDropdown() {
         const modeSelect = document.getElementById('st-scene-trigger-current-mode');
@@ -61,8 +56,8 @@
 
     RBQ.api.registerMode('exacg', {
         title: '白嫖渠道 (Exacg)',
-        subtitle: '已启用安全代理 (解决 403/CORS 问题)',
-        endpointLabel: 'API 地址 (可用默认)',
+        subtitle: '已启用万能代理 (绕过所有限制)',
+        endpointLabel: 'API 地址',
         keyLabel: 'API 密钥 (Token)',
         modelLabel: '选择 Checkpoint 模型',
         accent: 'free'
@@ -70,51 +65,43 @@
         const { prompt, settings, connection, image, onProgress } = params;
         const targetUrl = (connection.url || 'https://sd.exacg.cc').replace(/\/$/, '') + '/api/v1/generate_image';
         
-        // Z-Image 优化
         let steps = parseInt(image.steps) || 20;
         if (connection.model === "4") steps = 8;
 
-        if (onProgress) onProgress('正在下发安全验证并转发请求...');
+        if (onProgress) onProgress('正在通过万能中转站绕过跨域限制...');
 
         try {
-            const csrfToken = getCsrfToken();
-            const response = await fetch('/api/external/fetch', {
+            // 【核心改动】使用公共 CORS 代理
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+            
+            const response = await fetch(proxyUrl, {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken // 【关键】带上安全令牌
+                    'Authorization': `Bearer ${connection.apiKey}`,
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    url: targetUrl,
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${connection.apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        prompt: prompt,
-                        negative_prompt: settings.negative || "",
-                        width: image.width || 512,
-                        height: image.height || 512,
-                        steps: steps,
-                        cfg: parseFloat(image.cfg) || 7.0,
-                        model_index: parseInt(connection.model) || 0,
-                        seed: parseInt(image.seed) ?? -1
-                    })
+                    prompt: prompt,
+                    negative_prompt: settings.negative || "",
+                    width: image.width || 512,
+                    height: image.height || 512,
+                    steps: steps,
+                    cfg: parseFloat(image.cfg) || 7.0,
+                    model_index: parseInt(connection.model) || 0,
+                    seed: parseInt(image.seed) ?? -1
                 })
             });
 
-            if (response.status === 403) throw new Error('酒馆后端拒绝访问 (403)，可能是 CSRF Token 失效，请刷新页面重试。');
-            if (!response.ok) throw new Error(`代理转发失败: ${response.status}`);
+            if (!response.ok) throw new Error(`中转响应错误: ${response.status}`);
             
             const res = await response.json();
             if (res.success && res.data && res.data.image_url) {
                 return { url: res.data.image_url };
             } else {
-                throw new Error(res.error || '后端未能通过安全转发生成图像');
+                throw new Error(res.error || '中转服务器未能获取图像');
             }
         } catch (e) {
-            console.error('[EXACG] 代理故障:', e);
+            console.error('[EXACG] 中转请求异常:', e);
             throw e;
         }
     });

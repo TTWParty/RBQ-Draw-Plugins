@@ -2,7 +2,7 @@
  * RBQ-Draw Sub-Plugin: Exacg (Resilient Edition)
  * Version: 0.2.7
  * Description: 补全 0-17 全量模型，换用稳定级跨域穿透引擎。
- */
+
 
 (function() {
     const MODE_ID = 'exacg';
@@ -124,3 +124,4 @@
     }
     setInterval(syncUi_v7, 1000);
 })();
+ */

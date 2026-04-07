@@ -30,7 +30,7 @@
         dialog.style.cssText = `
             background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); 
             border-radius: 12px; width: 94vw; max-width: 500px;
-            max-height: 85vh; color: #eee;
+            max-height: min(85vh, 85dvh); color: #eee;
             box-shadow: 0 16px 40px rgba(0,0,0,0.5);
             display: flex; flex-direction: column; overflow: hidden;
             animation: rbq-fade-in 0.2s ease-out;
@@ -51,11 +51,13 @@
             
             const btn = document.createElement('button');
             btn.className = 'menu_button';
-            btn.style.cssText = 'font-size:12px; padding:6px 12px; margin:0; display:flex; gap:6px; align-items:center; border-radius:6px; border:none; cursor:pointer; font-weight:bold; background:rgba(255,255,255,0.1); color:#fff; transition: background 0.2s;';
+            btn.style.cssText = 'font-size:12px; padding:8px 14px; margin:0; display:flex; gap:6px; align-items:center; border-radius:6px; border:none; cursor:pointer; font-weight:bold; background:rgba(255,255,255,0.1); color:#fff; transition: background 0.2s; min-height:32px;';
             btn.innerHTML = '<i class="fa-regular fa-copy"></i> 复制';
             
             btn.onmouseenter = () => btn.style.background = 'rgba(255,255,255,0.2)';
             btn.onmouseleave = () => btn.style.background = 'rgba(255,255,255,0.1)';
+            btn.addEventListener('touchstart', () => { btn.style.background = 'rgba(255,255,255,0.2)'; }, { passive: true });
+            btn.addEventListener('touchend', () => { btn.style.background = 'rgba(255,255,255,0.1)'; }, { passive: true });
             
             btn.onclick = () => {
                 navigator.clipboard.writeText(content).then(() => {
@@ -69,7 +71,7 @@
             header.append(titleSpan, btn);
             
             const bodyContent = document.createElement('div');
-            bodyContent.style.cssText = 'font-size:14px; word-break:break-all; white-space:pre-wrap; max-height: 150px; overflow-y:auto; padding-right:4px; line-height:1.5; font-family:var(--font-family, monospace); user-select:text;';
+            bodyContent.style.cssText = 'font-size:14px; overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; max-height: 150px; overflow-y:auto; padding-right:4px; line-height:1.5; font-family:var(--font-family, monospace); user-select:text; -webkit-user-select:text;';
             bodyContent.textContent = content;
             
             box.append(header, bodyContent);
@@ -77,7 +79,7 @@
         };
 
         const headerHTML = document.createElement('div');
-        headerHTML.style.cssText = 'padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; position:relative; background:rgba(30,30,46,0.95); z-index:2; flex-shrink:0;';
+        headerHTML.style.cssText = 'padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; position:relative; background:rgba(30,30,46,0.95); z-index:2; flex-shrink:0; gap:8px;';
         headerHTML.innerHTML = `
             <div style="font-weight:bold; font-size:16px; display:flex; align-items:center; gap:8px;">
                 <i class="fa-solid fa-photo-film" style="color:#ff99cc;"></i> NAI 数据提取结果
@@ -103,7 +105,7 @@
         fields.forEach(f => f && bodyDiv.appendChild(f));
 
         const grid = document.createElement('div');
-        grid.style.cssText = 'display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom: 12px;';
+        grid.style.cssText = 'display:grid; grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)); gap:10px; margin-bottom: 12px;';
         const smallFields = [
             createField('种子 (Seed)', meta.seed),
             createField('尺寸 (Size)', meta.size),
@@ -203,7 +205,7 @@
             btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
             
             // Basic styles to match ST icons, with NAI pink tint
-            btn.style.cssText = 'cursor: pointer; color: #ffb3d9; display: inline-flex; justify-content: center; align-items: center; background: transparent; border: none; transition: filter 0.2s;';
+            btn.style.cssText = 'cursor: pointer; color: #ffb3d9; display: inline-flex; justify-content: center; align-items: center; background: transparent; border: none; transition: filter 0.2s; min-width:40px; min-height:40px;';
             btn.onmouseenter = () => btn.style.filter = 'brightness(1.5)';
             btn.onmouseleave = () => btn.style.filter = 'none';
             

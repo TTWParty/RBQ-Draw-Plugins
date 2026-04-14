@@ -176,8 +176,8 @@
             <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
-                    <select id="rbq-pp-select" data-action="plugin-ignore" style="flex:1;"></select>
-                    <select id="rbq-pp-position" data-action="plugin-ignore" style="width:80px;">
+                    <select id="rbq-pp-select" class="text_pole" data-action="plugin-ignore" style="flex:1; padding: 6px; appearance: auto;"></select>
+                    <select id="rbq-pp-position" class="text_pole" data-action="plugin-ignore" style="width:80px; padding: 6px; appearance: auto;">
                         <option value="prepend">前置</option>
                         <option value="append">后置</option>
                     </select>
@@ -198,11 +198,11 @@
                 <input type="checkbox" id="rbq-pp-show-floating" data-action="plugin-ignore" style="width:auto;">
                 <span style="font-size:13px; color:rgba(255,255,255,0.7);">在悬浮球菜单中显示快捷切换</span>
             </label>
-            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
-                <button id="rbq-pp-new" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-plus"></i> 新建</button>
-                <button id="rbq-pp-export" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-file-export"></i> 导出</button>
-                <button id="rbq-pp-import-btn" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px;"><i class="fa-solid fa-file-import"></i> 导入</button>
-                <button id="rbq-pp-batch-delete" class="menu_button st-scene-trigger-icon-button" style="font-size:12px; padding:4px 10px; color:#ff4444;"><i class="fa-solid fa-trash-can"></i> 批量删除</button>
+            <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                <button id="rbq-pp-new" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-plus"></i> 新建</button>
+                <button id="rbq-pp-export" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-file-export"></i> 导出</button>
+                <button id="rbq-pp-import-btn" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-file-import"></i> 导入</button>
+                <button id="rbq-pp-batch-delete" class="menu_button" style="font-size:12px; padding:4px 10px; color:#ff4444; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-trash-can"></i> 批量删除</button>
                 <input id="rbq-pp-import-file" type="file" accept=".json" hidden>
             </div>
         `;

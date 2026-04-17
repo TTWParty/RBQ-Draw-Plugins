@@ -22,5 +22,13 @@
     "version": "1.0.7",
     "author": "TTWP-09",
     "main": "plugins/png-metadata-extractor.js?v=1.0.7"
+  },
+  {
+    "id": "rbq-multi-char",
+    "name": "NAI 多角色模式 (Multi-Char)",
+    "description": "适配摸鱼世界书的多角色文生图格式。自动解析 image###Scene:...;Char1:...|centers:C3;### 结构，映射到 NAI V4.5 原生多角色 API。",
+    "version": "1.0.0",
+    "author": "TTWP-09",
+    "main": "plugins/multi-char-composer.js"
   }
 ]

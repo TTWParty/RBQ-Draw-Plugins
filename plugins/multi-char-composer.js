@@ -13,7 +13,6 @@
     function save() { RBQ.api.saveSettings(); }
 
     // ── Coordinate Mapping ───────────────────────────────────
-    // Worldbook 5x5 grid: A-E (col, left->right), 1-5 (row, top->bottom)
     const COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
     const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
 
@@ -28,66 +27,52 @@
     }
 
     // ── Format Parser ────────────────────────────────────────
-    // Directly detects Scene:/Char1:/Char1 UC: segments in the prompt.
-    // Works with or without the image###...### wrapper.
-    function parseMultiCharPrompt(rawPrompt) {
-        let body = rawPrompt;
-
-        // If wrapped in image###...###, unwrap it
-        const wrapMatch = rawPrompt.match(/image###([\s\S]*?)###/);
-        if (wrapMatch) {
-            body = wrapMatch[1].trim();
-        }
-
-        // Quick check: must have at least "Scene:" and "Char" with "|centers:"
-        if (!/Scene:/i.test(body) || !/Char\d+:/i.test(body)) {
+    // Strategy: from the full prompt, EXTRACT Char segments and UC segments.
+    // Everything left behind stays as base_caption.
+    function parseAndExtract(fullPrompt) {
+        // Quick guard: must contain at least one Char with centers
+        if (!/Char\d+:/i.test(fullPrompt) || !/\|centers:/i.test(fullPrompt)) {
             return null;
         }
 
-        // Split by semicolons
-        const segments = body.split(';').map(s => s.trim()).filter(Boolean);
-
-        let scene = '';
+        let remaining = fullPrompt;
         const chars = {};
         const charUCs = {};
 
-        for (const seg of segments) {
-            // Scene:
-            if (/^Scene:/i.test(seg)) {
-                scene = seg.replace(/^Scene:/i, '').trim();
-                continue;
+        // 1. Extract "Char{N} UC:...;" segments first (before Char{N}: to avoid partial match)
+        //    Pattern: Char1 UC:content;  (terminated by semicolon)
+        remaining = remaining.replace(/Char(\d+)\s+UC:([^;]*);?/gi, (match, idx, content) => {
+            charUCs[idx] = content.trim();
+            return ''; // remove from remaining
+        });
+
+        // 2. Extract "Char{N}:content|centers:XY;" segments
+        //    Pattern: Char1:content|centers:C3;  (terminated by semicolon)
+        remaining = remaining.replace(/Char(\d+):([^;]*\|centers:[A-Ea-e][1-5])\s*;?/gi, (match, idx, content) => {
+            let caption = content.trim();
+            let coord = { x: 0.5, y: 0.5 };
+
+            const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5])\s*$/i);
+            if (centersMatch) {
+                coord = parseCoord(centersMatch[1]);
+                caption = caption.slice(0, centersMatch.index).trim();
             }
 
-            // Char{N} UC: (must check before Char{N}: since "Char1 UC" contains "Char1")
-            const ucMatch = seg.match(/^Char(\d+)\s+UC:([\s\S]*)/i);
-            if (ucMatch) {
-                charUCs[ucMatch[1]] = ucMatch[2].trim();
-                continue;
-            }
-
-            // Char{N}: with optional |centers:XY
-            const charMatch = seg.match(/^Char(\d+):([\s\S]*)/i);
-            if (charMatch) {
-                const idx = charMatch[1];
-                let content = charMatch[2].trim();
-                let coord = { x: 0.5, y: 0.5 };
-
-                // Extract |centers:XY
-                const centersMatch = content.match(/\|centers:([A-Ea-e][1-5])\s*$/);
-                if (centersMatch) {
-                    coord = parseCoord(centersMatch[1]);
-                    content = content.slice(0, centersMatch.index).trim();
-                }
-
-                chars[idx] = { caption: content, centers: [coord] };
-                continue;
-            }
-        }
+            chars[idx] = { caption: caption, centers: [coord] };
+            return ''; // remove from remaining
+        });
 
         const charIndices = Object.keys(chars).sort((a, b) => Number(a) - Number(b));
         if (charIndices.length === 0) return null;
 
-        return { scene, chars, charUCs, charIndices, fullMatch: wrapMatch ? wrapMatch[0] : null };
+        // 3. Clean up remaining: strip "Scene:" prefix label (keep content), clean double commas/semicolons
+        remaining = remaining.replace(/Scene:/gi, '');
+        remaining = remaining.replace(/image###/g, '').replace(/###/g, '');
+        remaining = remaining.replace(/[;,]\s*[;,]/g, ','); // collapse double separators
+        remaining = remaining.replace(/^[;,\s]+|[;,\s]+$/g, ''); // trim leading/trailing junk
+        remaining = remaining.replace(/\s{2,}/g, ' ').trim();
+
+        return { remaining, chars, charUCs, charIndices };
     }
 
     // ── Payload Hook ─────────────────────────────────────────
@@ -96,10 +81,10 @@
         if (!store.enabled) return payload;
 
         const rawPrompt = payload.input || '';
-        const parsed = parseMultiCharPrompt(rawPrompt);
+        const parsed = parseAndExtract(rawPrompt);
         if (!parsed) return payload;
 
-        const { scene, chars, charUCs, charIndices, fullMatch } = parsed;
+        const { remaining, chars, charUCs, charIndices } = parsed;
 
         // Build v4_prompt char_captions
         const charCaptions = charIndices.map(idx => ({
@@ -113,24 +98,21 @@
             centers: chars[idx].centers
         }));
 
-        // Existing base negative prompt
+        // base_caption = everything that's left after extracting Char/UC segments
+        // This preserves presets, quality tags, scene content, etc.
+        const baseCaption = remaining;
+
+        // Existing negative base stays intact
         const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
             || payload.parameters?.negative_prompt
             || '';
 
-        // If there's text outside the image###...### block, prepend it to scene
-        let finalScene = scene;
-        if (fullMatch) {
-            const outsideText = rawPrompt.replace(fullMatch, '').trim();
-            if (outsideText) finalScene = outsideText + ', ' + scene;
-        }
-
-        // Overwrite payload
-        payload.input = finalScene;
+        // Update payload
+        payload.input = baseCaption;
 
         payload.parameters.v4_prompt = {
             caption: {
-                base_caption: finalScene,
+                base_caption: baseCaption,
                 char_captions: charCaptions
             },
             use_coords: true,
@@ -148,12 +130,12 @@
             legacy_uc: false
         };
 
-        console.info('[' + PLUGIN_NAME + '] Multi-char payload built: ' + charIndices.length + ' characters');
-        console.debug('[' + PLUGIN_NAME + '] Scene:', finalScene);
-        console.debug('[' + PLUGIN_NAME + '] Chars:', charCaptions);
-        console.debug('[' + PLUGIN_NAME + '] Neg Chars:', negCharCaptions);
+        console.info('[' + PLUGIN_NAME + '] Payload rewritten: ' + charIndices.length + ' characters extracted');
+        console.debug('[' + PLUGIN_NAME + '] base_caption:', baseCaption);
+        console.debug('[' + PLUGIN_NAME + '] char_captions:', charCaptions);
+        console.debug('[' + PLUGIN_NAME + '] neg char_captions:', negCharCaptions);
 
-        toastr.info('多角色模式：' + charIndices.length + ' 个角色已映射', PLUGIN_NAME);
+        toastr.info('多角色：' + charIndices.length + ' 个角色已映射', PLUGIN_NAME);
 
         return payload;
     });
@@ -162,7 +144,6 @@
     function injectToggle() {
         if (document.getElementById('rbq-multi-char-enabled')) return;
 
-        // Target: the checkbox grid next to Variety+ checkbox
         const checkboxGrid = document.querySelector('.st-scene-trigger-nai-checkbox-grid');
         if (!checkboxGrid) return;
 
@@ -183,13 +164,10 @@
         checkboxGrid.appendChild(label);
     }
 
-    // Poll for modal to appear (it's rendered lazily)
     setInterval(() => {
         if (document.getElementById('rbq-multi-char-enabled')) return;
         const grid = document.querySelector('.st-scene-trigger-nai-checkbox-grid');
-        if (grid && grid.offsetParent !== null) {
-            injectToggle();
-        }
+        if (grid && grid.offsetParent !== null) injectToggle();
     }, 800);
 
     console.info('[' + PLUGIN_NAME + '] Plugin loaded.');

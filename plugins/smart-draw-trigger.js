@@ -759,7 +759,7 @@ JSON 格式：
 
         const wrapper = RBQ.api.createPromptCard({
             messageId,
-            prompt: '',
+            prompt: finalPrompt || trigger.marker || '[Smart Draw]',
             raw: trigger.marker || '[Smart Draw]',
             id: `smart-draw:${key}`,
             label: 'smart-draw',

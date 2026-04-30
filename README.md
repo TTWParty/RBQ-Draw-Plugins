@@ -54,6 +54,90 @@ conf.myPluginState.count += 1;
 RBQ.api.saveSettings(); // 保存进宿主磁盘
 ```
 
+### 3. `RBQ.api` 高级宿主能力 —— 消息读取、卡片渲染与直接出图
+从宿主版本 `0.3.5` 起，RBQ 向子插件开放了一组用于“无正文 tag 生图”的安全 API。它们允许插件读取聊天上下文、在消息 DOM 内创建 RBQ 原生生图卡片，并复用宿主已经配置好的 NAI / ComfyUI / 自定义模式出图链路。
+
+> 这组 API 适合开发“智能 tagger”“自动画面插入”“剧情截图”等插件：完整 prompt 可以只保存在插件缓存里，不必写进聊天正文，避免污染上下文。
+
+#### 消息与上下文读取
+```javascript
+const ctx = RBQ.api.getContext();
+const current = RBQ.api.getMessage(messageId);
+const recent = RBQ.api.getRecentMessages(messageId, 5);
+```
+
+- `RBQ.api.getContext()`：返回 SillyTavern 当前上下文对象。
+- `RBQ.api.getMessage(messageId)`：读取指定楼层消息。
+- `RBQ.api.getRecentMessages(messageId, count)`：读取包含当前楼层在内的最近若干条消息，返回 `{ id, is_user, name, mes }[]`。
+
+#### 消息 DOM 定位
+```javascript
+const messageElement = RBQ.api.getMessageElement(messageId);
+const textContainer = RBQ.api.getMessageTextContainer(messageId);
+```
+
+- `RBQ.api.getMessageElement(messageId)`：返回 `.mes[mesid="..."]` 消息根节点。
+- `RBQ.api.getMessageTextContainer(messageId)`：返回消息正文容器，可用于插入自定义 UI。
+
+#### 创建 RBQ 原生生图卡片
+```javascript
+const wrapper = RBQ.api.createPromptCard({
+  messageId,
+  prompt: '1girl, cinematic lighting, rain, detailed face',
+  raw: '[draw]',
+  id: 'my-plugin:unique-key',
+  label: 'my-plugin'
+});
+
+RBQ.api.getMessageTextContainer(messageId)?.append(wrapper);
+```
+
+- `prompt`：实际用于出图的完整 prompt。
+- `raw`：隐藏/回退文本，通常可以放短标记或插件名。
+- `id`：去重用的稳定 ID。
+- `label`：插件标签。
+
+创建出的卡片会复用 RBQ 原有按钮、加载器、结果图样式和画廊逻辑。
+
+#### 直接调用宿主生图链路
+```javascript
+if (RBQ.api.shouldAutoGenerate()) {
+  const result = await RBQ.api.generateImage(prompt, 'my-plugin', { messageId }, (status) => {
+    console.log(status);
+  });
+  RBQ.api.renderInlineGeneratedImage(wrapper, result);
+}
+```
+
+- `RBQ.api.shouldAutoGenerate()`：读取 RBQ 主设置中的“自动生成”开关。
+- `RBQ.api.generateImage(prompt, reason, meta, onProgress)`：复用宿主当前生图模式发起生成。
+- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：把结果图渲染进 `createPromptCard()` 创建的卡片。
+
+### 4. 官方示例：智能生图触发器 (Smart Draw Trigger)
+本仓库内置 `rbq-smart-draw-trigger` 插件，文件为 `plugins/smart-draw-trigger.js`。它演示了如何在不向正文写入长 tag 的情况下，通过外部 tagger API 自动生成 prompt 并插入 RBQ 生图卡片。
+
+支持能力：
+- **短标记模式**：正文只输出 `[draw]` / `[画图]` 等短标记，插件在原位置隐藏短标记并替换成生图卡片。
+- **自动定位模式**：正文不需要输出任何标记，插件把当前消息和最近上下文发给 tagger API，由 API 判断是否生图以及插入在第几句后。
+- **混合模式**：优先短标记；没有短标记时自动定位。
+- **OpenAI 兼容接口**：配置 Base URL、API Key、Model 后请求 `/chat/completions`。
+- **自定义 HTTP 接口**：插件发送统一 JSON 入参，你的服务返回统一 JSON 出参。
+
+推荐 tagger 返回格式：
+```json
+{
+  "shouldDraw": true,
+  "prompt": "1girl, cinematic lighting, rain, detailed face",
+  "negative": "low quality, bad anatomy",
+  "anchor": { "type": "sentence", "index": 1 },
+  "reason": "当前消息出现明确视觉场景"
+}
+```
+
+- `shouldDraw=false` 时插件不会插卡片。
+- `prompt` 不要包含 `[scene]` / `[img]` 包裹标签。
+- `anchor.index` 表示插入到当前消息第几句之后，从 `1` 开始；定位失败时插件会退回消息末尾。
+
 ---
 
 ## 🛠 开发与测试指南

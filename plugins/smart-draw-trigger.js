@@ -411,6 +411,46 @@ JSON 格式：
         document.head.append(style);
     }
 
+    function switchRbqTab(tab) {
+        document.querySelectorAll('[data-kite-tab]').forEach((element) => {
+            if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kiteTab === tab);
+        });
+        document.querySelectorAll('[data-kite-panel]').forEach((element) => {
+            if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kitePanel === tab);
+        });
+    }
+
+    function ensureSettingsPanel() {
+        const rail = document.querySelector('.st-scene-trigger-tab-rail');
+        const content = document.querySelector('.st-scene-trigger-modal-content');
+        if (!(rail instanceof HTMLElement) || !(content instanceof HTMLElement)) return null;
+
+        let button = document.querySelector('[data-kite-tab="smart-draw"]');
+        if (!(button instanceof HTMLButtonElement)) {
+            button = document.createElement('button');
+            button.className = 'st-scene-trigger-tab-button';
+            button.dataset.kiteTab = 'smart-draw';
+            button.type = 'button';
+            button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>智能触发</span>';
+            button.addEventListener('click', () => switchRbqTab('smart-draw'));
+            const promptButton = rail.querySelector('[data-kite-tab="prompt"]');
+            if (promptButton?.nextSibling) {
+                rail.insertBefore(button, promptButton.nextSibling);
+            } else {
+                rail.append(button);
+            }
+        }
+
+        let panel = document.querySelector('[data-kite-panel="smart-draw"]');
+        if (!(panel instanceof HTMLElement)) {
+            panel = document.createElement('section');
+            panel.className = 'st-scene-trigger-modal-panel';
+            panel.dataset.kitePanel = 'smart-draw';
+            content.append(panel);
+        }
+        return panel;
+    }
+
     function val(id) { return document.getElementById(id)?.value || ''; }
     function checked(id) { return !!document.getElementById(id)?.checked; }
 
@@ -490,7 +530,7 @@ JSON 格式：
     }
 
     function waitForPanel() {
-        const panel = document.querySelector('[data-kite-panel="prompt"]') || document.querySelector('[data-kite-panel="plugins"]');
+        const panel = ensureSettingsPanel();
         if (panel) return renderSettings(panel);
         setTimeout(waitForPanel, 400);
     }

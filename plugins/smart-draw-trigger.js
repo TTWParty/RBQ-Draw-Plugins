@@ -84,6 +84,27 @@ JSON 格式：
         return true;
     }
 
+    function getDomMessageText(messageId) {
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return '';
+        const clone = container.cloneNode(true);
+        if (!(clone instanceof HTMLElement)) return '';
+        clone.querySelectorAll(`.${CARD_CLASS}, .st-scene-trigger-inline-wrap, script, style`).forEach(node => node.remove());
+        return String(clone.textContent || '').trim();
+    }
+
+    function getMessageSnapshot(messageId) {
+        const source = RBQ.api.getMessage(messageId) || {};
+        const domText = getDomMessageText(messageId);
+        const mes = domText || String(source.mes || '');
+        return {
+            ...source,
+            mes,
+            is_user: !!source.is_user,
+            name: source.name || '',
+        };
+    }
+
     function makeKey(messageId, message, mode, marker) {
         return `${messageId}:${hashText(message?.mes || '')}:${mode}:${hashText(marker || '')}`;
     }
@@ -130,13 +151,17 @@ JSON 格式：
 
     function buildRequestPayload(messageId, trigger) {
         const store = getStore();
-        const current = RBQ.api.getMessage(messageId);
+        const current = getMessageSnapshot(messageId);
         const recentMessages = RBQ.api.getRecentMessages(messageId, store.contextCount).map(item => ({
             id: item.id,
             role: item.is_user ? 'user' : 'assistant',
             name: item.name,
             content: item.mes,
         }));
+        if (recentMessages.length) {
+            const last = recentMessages[recentMessages.length - 1];
+            if (Number(last.id) === Number(messageId)) last.content = current.mes;
+        }
         return {
             mode: trigger.type,
             marker: trigger.marker || '',
@@ -354,7 +379,7 @@ JSON 格式：
 
     async function processMessage(messageId) {
         const store = getStore();
-        const message = RBQ.api.getMessage(messageId);
+        const message = getMessageSnapshot(messageId);
         if (!shouldHandleMessage(message)) return;
         const trigger = getTrigger(message);
         if (!trigger) return;
@@ -648,6 +673,16 @@ JSON 格式：
     function observeMessages() {
         const observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
+                if (mutation.type === 'characterData') {
+                    const parent = mutation.target?.parentElement;
+                    const message = parent?.closest?.('.mes[mesid]');
+                    if (message) scheduleProcess(Number(message.getAttribute('mesid')));
+                    continue;
+                }
+                if (mutation.type === 'childList') {
+                    const targetMessage = mutation.target instanceof Element ? mutation.target.closest?.('.mes[mesid]') : null;
+                    if (targetMessage) scheduleProcess(Number(targetMessage.getAttribute('mesid')));
+                }
                 for (const node of mutation.addedNodes) {
                     if (!(node instanceof Element)) continue;
                     const message = node.matches?.('.mes[mesid]') ? node : node.querySelector?.('.mes[mesid]');
@@ -655,9 +690,10 @@ JSON 格式：
                 }
             }
         });
-        observer.observe(document.body, { childList: true, subtree: true });
-        setInterval(scanAllVisible, 5000);
-        scanAllVisible();
+        observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+        setInterval(scanAllVisible, 2000);
+        setTimeout(scanAllVisible, 250);
+        setTimeout(scanAllVisible, 1200);
     }
 
     waitForPanel();

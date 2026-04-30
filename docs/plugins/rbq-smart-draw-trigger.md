@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.0.3`
+版本：`1.0.4`
 
 ---
 
@@ -288,6 +288,7 @@ tagger API 应返回：
 ## 注意事项
 
 - 自动定位模式会把最近上下文发送给外部 tagger API，请注意隐私和成本。
+- 插件会监听消息 DOM 的新增与文本变化；如果宿主聊天数据尚未同步，会使用页面正文文本作为兜底，以避免正文已经输出但 tagger 未触发。
 - 如果 tagger 返回的 `anchor.index` 找不到对应句子，插件会把卡片追加到消息末尾。
 - 插件不会修改聊天正文，也不会把完整 prompt 写回 SillyTavern 聊天记录。
 - 插件依赖宿主 `0.3.5+` 的 `RBQ.api.createPromptCard()` 和 `RBQ.api.generateImage()` 等接口。

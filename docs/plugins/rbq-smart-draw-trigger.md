@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.3.0`
+版本：`1.4.0`
 
 ---
 
@@ -33,6 +33,20 @@
 - tagger 可返回结构化多角色 JSON：`scene / characters / center / uc`。
 - 插件会在本地把结构化结果拼成 `Scene / CharN / CharN UC / |centers:` 协议文本。
 - 这样就能直接兼容 [`multi-char-composer`](../rbq-multi-char.md) 的多角色 payload 改写逻辑。
+
+从 `1.4.0` 开始，插件新增**手动 tagger 触发模式**：
+
+- 新增 `自动调用 tagger API` 开关，默认关闭。
+- 默认行为改为：楼层里先出现 Smart Draw 按钮，点击后才开始“解析世界书 → 调 tagger → 生成 prompt”。
+- 状态会区分为：
+  - 按钮已生成
+  - 正在调用 tagger API
+  - tagger 已返回
+  - 正在调用 RBQ 生图
+- 只有在同时开启：
+  - `自动调用 tagger API`
+  - RBQ 主设置里的 `自动生成`
+  才会自动从 tagger 继续走到生图。
 
 ---
 

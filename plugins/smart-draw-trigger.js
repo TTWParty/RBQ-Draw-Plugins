@@ -628,6 +628,12 @@ JSON 格式：
         return `image###${parts.join('')}###`;
     }
 
+    function logFinalPrompt(result) {
+        const finalPrompt = getFinalPrompt(result);
+        console.info(`[${PLUGIN_NAME}] final prompt =>`, finalPrompt);
+        return finalPrompt;
+    }
+
     function getFinalPrompt(result) {
         const store = getStore();
         return store.multiCharOutput && result?.multiChar
@@ -772,9 +778,12 @@ JSON 格式：
         wrapper.dataset.rbqSdtFinalPrompt = finalPrompt;
 
         // 短标记按标记位置替换；自动定位默认插入消息末尾，避免 anchor.index=1 时挤到正文最前面。
-        const inserted = trigger.type === 'marker' && trigger.marker
-            ? insertAtMarker(container, trigger.marker, wrapper)
-            : false;
+        let inserted = false;
+        if (trigger.type === 'marker' && trigger.marker) {
+            inserted = insertAtMarker(container, trigger.marker, wrapper);
+        } else if (result?.anchor?.type === 'sentence') {
+            inserted = insertAfterSentence(container, result.anchor.index || 1, wrapper);
+        }
         if (!inserted) container.append(wrapper);
         return wrapper;
     }
@@ -942,7 +951,7 @@ JSON 格式：
                 processedKeys.add(key);
                 return;
             }
-            wrapper.dataset.prompt = getFinalPrompt(result);
+            wrapper.dataset.prompt = logFinalPrompt(result);
             ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
             setGenerateButtonState(wrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
             setWrapperStage(wrapper, 'ready-generate');
@@ -989,7 +998,7 @@ JSON 格式：
         if (cached?.shouldDraw && cached.prompt) {
             const wrapper = insertCard(messageId, trigger, cached, key);
             if (wrapper) {
-                wrapper.dataset.prompt = getFinalPrompt(cached);
+                wrapper.dataset.prompt = logFinalPrompt(cached);
                 ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
                 setGenerateButtonState(wrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
                 setWrapperStage(wrapper, 'ready-generate');

@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.4.3`
+版本：`1.5.0`
 
 ---
 

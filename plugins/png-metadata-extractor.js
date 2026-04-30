@@ -1,4 +1,4 @@
-(function(RBQ, $, toastr) {
+(function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[PNG Metadata Extractor] RBQ Core API missing');
 
     const PLUGIN_NAME = 'PNG Metadata Extractor';
@@ -18,47 +18,121 @@
 
     function showMetadataModal(dataObj) {
         const meta = formatNaiData(dataObj);
-        
+
+        if (!document.getElementById('rbq-nai-modal-style')) {
+            const style = document.createElement('style');
+            style.id = 'rbq-nai-modal-style';
+            style.textContent = `
+                @keyframes rbq-fade-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+                .rbq-extractor-overlay {
+                    position: fixed; inset: 0; z-index: 2147483647; 
+                    background: rgba(0,0,0,0.75); display: flex; 
+                    align-items: center; justify-content: center; backdrop-filter: blur(4px);
+                    padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px);
+                    box-sizing: border-box;
+                }
+                .rbq-extractor-dialog {
+                    background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); 
+                    border-radius: 12px; width: 100%; max-width: 500px;
+                    /* Use max-height with padding accounted for, and fallback for older browsers */
+                    max-height: calc(100vh - env(safe-area-inset-top, 16px) - env(safe-area-inset-bottom, 16px) - 32px);
+                    max-height: calc(min(100dvh, 100vh) - env(safe-area-inset-top, 16px) - env(safe-area-inset-bottom, 16px) - 32px);
+                    color: #eee;
+                    box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+                    display: flex; flex-direction: column; overflow: hidden;
+                    animation: rbq-fade-in 0.2s ease-out;
+                    pointer-events: auto;
+                }
+                .rbq-extractor-header {
+                    padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); 
+                    display:flex; justify-content:space-between; align-items:center; 
+                    background:rgba(30,30,46,0.95); z-index:2; flex-shrink:0; gap:8px;
+                }
+                .rbq-extractor-title {
+                    font-weight:bold; font-size:16px; display:flex; align-items:center; gap:8px;
+                }
+                .rbq-extractor-close {
+                    padding:6px; font-size:18px; margin:0; line-height:1; width:34px; height:34px; 
+                    display:flex; justify-content:center; align-items:center; border-radius:50%; 
+                    background:transparent; border:none; cursor:pointer; color:#eee;
+                }
+                .rbq-extractor-body {
+                    padding: 16px; flex:1; overflow-y:auto; -webkit-overflow-scrolling: touch;
+                }
+                .rbq-extractor-subtitle {
+                    font-size:12px; color:#ff99cc; margin-bottom:16px; text-align:center; opacity:0.8;
+                }
+                .rbq-extractor-field {
+                    margin-bottom: 12px; background: rgba(0,0,0,0.25); padding: 12px; 
+                    border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);
+                }
+                .rbq-extractor-field-header {
+                    display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px; gap: 8px;
+                }
+                .rbq-extractor-field-title {
+                    font-size:13px; font-weight:600; color:rgba(255,255,255,0.5); line-height: 1.4; word-break: break-word; flex: 1;
+                }
+                .rbq-extractor-copy-btn {
+                    font-size:12px; padding:6px 10px; margin:0; display:inline-flex; gap:4px; align-items:center; 
+                    border-radius:6px; border:none; cursor:pointer; font-weight:bold; 
+                    background:rgba(255,255,255,0.1); color:#fff; transition: background 0.2s; 
+                    min-height:28px; flex-shrink: 0; white-space: nowrap;
+                }
+                .rbq-extractor-copy-btn:hover { background: rgba(255,255,255,0.2); }
+                .rbq-extractor-copy-btn:active { background: rgba(255,255,255,0.3); }
+                .rbq-extractor-field-content {
+                    font-size:14px; overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; 
+                    max-height: 150px; overflow-y:auto; padding-right:4px; line-height:1.5; 
+                    font-family:var(--font-family, monospace); user-select:text; -webkit-user-select:text;
+                }
+                .rbq-extractor-grid {
+                    display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom: 12px;
+                }
+                /* Mobile optimization */
+                @media (max-width: 480px) {
+                    .rbq-extractor-overlay {
+                        /* Force top alignment on mobile to prevent center-flex from pushing content out of view if it's too tall */
+                        align-items: flex-start;
+                        /* Extra padding top to ensure it clears dynamic status bars if env() fails */
+                        padding-top: max(env(safe-area-inset-top, 16px), 24px); 
+                    }
+                    .rbq-extractor-grid {
+                        grid-template-columns: 1fr; /* Force single column on narrow screens to prevent crushing */
+                    }
+                    .rbq-extractor-copy-btn {
+                        padding: 8px 12px; /* Slightly larger touch target */
+                        min-height: 32px;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         const overlay = document.createElement('div');
-        overlay.style.cssText = `
-            position: fixed; inset: 0; z-index: 2147483647; 
-            background: rgba(0,0,0,0.75); display: flex; 
-            align-items: center; justify-content: center; backdrop-filter: blur(4px);
-        `;
-        
+        overlay.className = 'rbq-extractor-overlay';
+
         const dialog = document.createElement('div');
-        dialog.style.cssText = `
-            background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); 
-            border-radius: 12px; width: 94vw; max-width: 500px;
-            max-height: min(85vh, 85dvh); color: #eee;
-            box-shadow: 0 16px 40px rgba(0,0,0,0.5);
-            display: flex; flex-direction: column; overflow: hidden;
-            animation: rbq-fade-in 0.2s ease-out;
-            pointer-events: auto;
-        `;
+        dialog.className = 'rbq-extractor-dialog';
 
         const createField = (title, content) => {
             if (!content) return null;
             const box = document.createElement('div');
-            box.style.cssText = 'margin-bottom: 12px; background: rgba(0,0,0,0.25); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);';
-            
+            box.className = 'rbq-extractor-field';
+
             const header = document.createElement('div');
-            header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;';
-            
+            header.className = 'rbq-extractor-field-header';
+
             const titleSpan = document.createElement('span');
-            titleSpan.style.cssText = 'font-size:13px; font-weight:600; color:rgba(255,255,255,0.5);';
+            titleSpan.className = 'rbq-extractor-field-title';
             titleSpan.textContent = title;
-            
+
             const btn = document.createElement('button');
-            btn.className = 'menu_button';
-            btn.style.cssText = 'font-size:12px; padding:8px 14px; margin:0; display:flex; gap:6px; align-items:center; border-radius:6px; border:none; cursor:pointer; font-weight:bold; background:rgba(255,255,255,0.1); color:#fff; transition: background 0.2s; min-height:32px;';
+            btn.className = 'menu_button rbq-extractor-copy-btn';
             btn.innerHTML = '<i class="fa-regular fa-copy"></i> 复制';
-            
-            btn.onmouseenter = () => btn.style.background = 'rgba(255,255,255,0.2)';
-            btn.onmouseleave = () => btn.style.background = 'rgba(255,255,255,0.1)';
+
             btn.addEventListener('touchstart', () => { btn.style.background = 'rgba(255,255,255,0.2)'; }, { passive: true });
-            btn.addEventListener('touchend', () => { btn.style.background = 'rgba(255,255,255,0.1)'; }, { passive: true });
-            
+            btn.addEventListener('touchend', () => { btn.style.background = ''; }, { passive: true });
+
             btn.onclick = () => {
                 navigator.clipboard.writeText(content).then(() => {
                     const old = btn.innerHTML;
@@ -67,34 +141,34 @@
                     setTimeout(() => { btn.innerHTML = old; btn.style.color = '#fff'; }, 2000);
                 });
             };
-            
+
             header.append(titleSpan, btn);
-            
+
             const bodyContent = document.createElement('div');
-            bodyContent.style.cssText = 'font-size:14px; overflow-wrap:break-word; word-break:break-word; white-space:pre-wrap; max-height: 150px; overflow-y:auto; padding-right:4px; line-height:1.5; font-family:var(--font-family, monospace); user-select:text; -webkit-user-select:text;';
+            bodyContent.className = 'rbq-extractor-field-content';
             bodyContent.textContent = content;
-            
+
             box.append(header, bodyContent);
             return box;
         };
 
         const headerHTML = document.createElement('div');
-        headerHTML.style.cssText = 'padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; position:relative; background:rgba(30,30,46,0.95); z-index:2; flex-shrink:0; gap:8px;';
+        headerHTML.className = 'rbq-extractor-header';
         headerHTML.innerHTML = `
-            <div style="font-weight:bold; font-size:16px; display:flex; align-items:center; gap:8px;">
+            <div class="rbq-extractor-title">
                 <i class="fa-solid fa-photo-film" style="color:#ff99cc;"></i> NAI 数据提取结果
             </div>
-            <button class="menu_button st-scene-trigger-icon-button modal-close" style="padding:6px; font-size:18px; margin:0; line-height:1; width:34px; height:34px; display:flex; justify-content:center; align-items:center; border-radius:50%; background:transparent; border:none; cursor:pointer; color:#eee;"><i class="fa-solid fa-xmark"></i></button>
+            <button class="menu_button st-scene-trigger-icon-button rbq-extractor-close"><i class="fa-solid fa-xmark"></i></button>
         `;
-        
-        headerHTML.querySelector('.modal-close').onclick = () => overlay.remove();
+
+        headerHTML.querySelector('.rbq-extractor-close').onclick = () => overlay.remove();
         dialog.appendChild(headerHTML);
 
         const bodyDiv = document.createElement('div');
-        bodyDiv.style.cssText = 'padding: 16px; flex:1; overflow-y:auto;';
-        
+        bodyDiv.className = 'rbq-extractor-body';
+
         const subtitle = document.createElement('div');
-        subtitle.style.cssText = 'font-size:12px; color:#ff99cc; margin-bottom:16px; text-align:center; opacity:0.8;';
+        subtitle.className = 'rbq-extractor-subtitle';
         subtitle.innerHTML = '提示：如需复用，请手动点击一键复制然后粘贴至输入框。';
         bodyDiv.appendChild(subtitle);
 
@@ -105,7 +179,7 @@
         fields.forEach(f => f && bodyDiv.appendChild(f));
 
         const grid = document.createElement('div');
-        grid.style.cssText = 'display:grid; grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)); gap:10px; margin-bottom: 12px;';
+        grid.className = 'rbq-extractor-grid';
         const smallFields = [
             createField('种子 (Seed)', meta.seed),
             createField('尺寸 (Size)', meta.size),
@@ -123,13 +197,6 @@
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) overlay.remove();
         });
-        
-        if (!document.getElementById('rbq-nai-modal-style')) {
-            const style = document.createElement('style');
-            style.id = 'rbq-nai-modal-style';
-            style.textContent = `@keyframes rbq-fade-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }`;
-            document.head.appendChild(style);
-        }
     }
 
     async function handleExtract(imgUrl) {
@@ -138,17 +205,17 @@
             toastr.info('正在解析图片元数据...', 'NAI 提取器');
             const res = await fetch(imgUrl);
             const blob = await res.blob();
-            
+
             const arrayBuffer = await blob.arrayBuffer();
             const dataView = new DataView(arrayBuffer);
-            
+
             if (dataView.getUint32(0) !== 0x89504E47 || dataView.getUint32(4) !== 0x0D0A1A0A) {
                 throw new Error('该图片不是无损 PNG 格式。可能已被平台压缩转换为 WebP 或 JPEG，元数据已丢失。');
             }
-            
+
             let offset = 8;
             let foundJson = null;
-            
+
             while (offset < dataView.byteLength) {
                 const length = dataView.getUint32(offset);
                 const type = String.fromCharCode(
@@ -157,11 +224,11 @@
                     dataView.getUint8(offset + 6),
                     dataView.getUint8(offset + 7)
                 );
-                
+
                 if (type === 'tEXt' || type === 'iTXt') {
                     const chunkData = new Uint8Array(arrayBuffer, offset + 8, length);
                     const text = new TextDecoder().decode(chunkData);
-                    
+
                     if (text.startsWith('Description\0') || text.startsWith('Comment\0')) {
                         const jsonStart = text.indexOf('{');
                         const jsonEnd = text.lastIndexOf('}');
@@ -178,14 +245,14 @@
                 }
                 offset += length + 12;
             }
-            
+
             if (foundJson) {
                 toastr.success('成功提取并解析 NAI 元数据！');
                 showMetadataModal(foundJson);
             } else {
                 toastr.warning('未检测到有价值的 NAI 元数据。(该图可能已丢失附加信息或并非由 NAI 官方格式直接产出)', '解析失败');
             }
-            
+
         } catch (err) {
             console.error('[PNG Metadata Extractor]', err);
             toastr.error('执行失败: ' + err.message);
@@ -203,16 +270,16 @@
             btn.title = "提取 NAI 参数";
             btn.type = "button";
             btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
-            
+
             // Basic styles to match ST icons, with NAI pink tint
             btn.style.cssText = 'cursor: pointer; color: #ffb3d9; display: inline-flex; justify-content: center; align-items: center; background: transparent; border: none; transition: filter 0.2s; min-width:40px; min-height:40px;';
             btn.onmouseenter = () => btn.style.filter = 'brightness(1.5)';
             btn.onmouseleave = () => btn.style.filter = 'none';
-            
+
             if (viewerSpec.insertMode === 'custom-absolute') {
                 btn.style.position = 'absolute';
                 btn.style.top = '10px';
-                btn.style.left = '40px'; 
+                btn.style.left = '40px';
                 btn.style.padding = '10px';
                 btn.style.fontSize = '20px';
                 btn.style.zIndex = '999999';
@@ -234,7 +301,7 @@
                 }
             }
         }
-        
+
         btn.onclick = (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -311,11 +378,11 @@
             injectToolbarButton(spec, dialog, activeImg.src);
             break; // Stop after finding the topmost active viewer
         }
-        
+
         // Clean up any remaining legacy capsule buttons if they stuck around
         const legacyBtn = document.getElementById('rbq-nai-gallery-btn');
         if (legacyBtn) legacyBtn.remove();
-        
+
         // Clean up chat inline buttons since the user doesn't want them
         const chatBtns = document.querySelectorAll('.rbq-nai-extract-btn');
         chatBtns.forEach(b => {
@@ -331,7 +398,7 @@
     // Inject polling engine unconditionally
     setInterval(scanAndInject, 500);
     setTimeout(scanAndInject, 100); // Immediate trigger
-    
+
     console.info(`📋 ${PLUGIN_NAME} plugin loaded via Toolbar Poller.`);
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

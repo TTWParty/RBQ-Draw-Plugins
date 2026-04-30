@@ -641,6 +641,10 @@ JSON 格式：
         };
     }
 
+    function logTaggerPayload(tag, payload) {
+        console.info(`[${PLUGIN_NAME}] ${tag} =>`, payload);
+    }
+
     function buildMultiCharPrompt(result) {
         const scene = String(result?.scene || '').trim() || String(result?.prompt || '').trim();
         const chars = Array.isArray(result?.characters) ? result.characters : [];
@@ -712,6 +716,7 @@ JSON 格式：
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         if (!store.openaiModel) throw new Error('请先填写模型名称');
         const body = buildRequestPayload(messageId, trigger);
+        logTaggerPayload('tagger request body', body);
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -729,7 +734,11 @@ JSON 格式：
             }),
         });
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
-        return normalizeTaggerResult(await response.json());
+        const json = await response.json();
+        logTaggerPayload('tagger raw response', json);
+        const normalized = normalizeTaggerResult(json);
+        logTaggerPayload('tagger normalized result', normalized);
+        return normalized;
     }
 
     async function callCustomHttp(messageId, trigger) {
@@ -741,13 +750,19 @@ JSON 格式：
             const headerName = store.customApiKeyHeader || 'Authorization';
             headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
         }
+        const body = buildRequestPayload(messageId, trigger);
+        logTaggerPayload('tagger request body', body);
         const response = await fetch(url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(buildRequestPayload(messageId, trigger)),
+            body: JSON.stringify(body),
         });
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
-        return normalizeTaggerResult(await response.json());
+        const json = await response.json();
+        logTaggerPayload('tagger raw response', json);
+        const normalized = normalizeTaggerResult(json);
+        logTaggerPayload('tagger normalized result', normalized);
+        return normalized;
     }
 
     async function callTagger(messageId, trigger) {

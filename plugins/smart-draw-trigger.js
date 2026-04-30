@@ -354,6 +354,16 @@ JSON 格式：
                 negative: 'string optional',
                 anchor: { type: 'sentence', index: 'number, 1-based' },
                 reason: 'string optional',
+                segments: [
+                    {
+                        anchor: { type: 'sentence', index: 'number, 1-based' },
+                        prompt: 'string',
+                        negative: 'string optional',
+                        multiChar: 'boolean optional',
+                        scene: 'string optional',
+                        characters: 'array optional'
+                    }
+                ],
             },
         };
     }
@@ -590,6 +600,25 @@ JSON 格式：
 
     function normalizeTaggerResult(data) {
         const source = data?.choices?.[0]?.message?.content ? extractJson(data.choices[0].message.content) : data;
+        const segments = Array.isArray(source?.segments)
+            ? source.segments.map((item, index) => ({
+                anchor: item?.anchor && typeof item.anchor === 'object'
+                    ? { type: item.anchor.type || 'sentence', index: Math.max(1, Number(item.anchor.index) || (index + 1)) }
+                    : { type: 'sentence', index: index + 1 },
+                prompt: String(item?.prompt || '').trim(),
+                negative: String(item?.negative || '').trim(),
+                multiChar: !!item?.multiChar,
+                scene: String(item?.scene || '').trim(),
+                characters: Array.isArray(item?.characters)
+                    ? item.characters.map((char, charIndex) => ({
+                        index: Math.max(1, Number(char?.index) || (charIndex + 1)),
+                        caption: String(char?.caption || '').trim(),
+                        center: String(char?.center || 'C3').trim().toUpperCase(),
+                        uc: String(char?.uc || '').trim(),
+                    })).filter((char) => char.caption)
+                    : [],
+            })).filter((item) => item.prompt || item.characters.length)
+            : [];
         return {
             shouldDraw: !!source?.shouldDraw,
             prompt: String(source?.prompt || '').trim(),
@@ -608,6 +637,7 @@ JSON 格式：
                 ? { type: source.anchor.type || 'sentence', index: Math.max(1, Number(source.anchor.index) || 1) }
                 : { type: 'sentence', index: 1 },
             reason: String(source?.reason || '').trim(),
+            segments,
         };
     }
 
@@ -639,6 +669,41 @@ JSON 格式：
         return store.multiCharOutput && result?.multiChar
             ? buildMultiCharPrompt(result)
             : String(result?.prompt || '').trim();
+    }
+
+    function getResultSegments(result) {
+        if (Array.isArray(result?.segments) && result.segments.length) {
+            return result.segments.map((segment, index) => ({
+                ...result,
+                ...segment,
+                segmentIndex: index,
+            }));
+        }
+        return [{
+            ...result,
+            segmentIndex: 0,
+        }];
+    }
+
+    function materializeResultCards(messageId, trigger, result, baseKey) {
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return [];
+
+        const stale = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(baseKey)}"]`);
+        if (stale instanceof HTMLElement) stale.remove();
+
+        const segments = getResultSegments(result)
+            .filter((segment) => getFinalPrompt(segment));
+
+        return segments.map((segment, index) => {
+            const segKey = `${baseKey}:seg:${index}`;
+            const wrapper = insertCard(messageId, trigger, segment, segKey);
+            if (!(wrapper instanceof HTMLElement)) return null;
+            wrapper.dataset.prompt = getFinalPrompt(segment);
+            wrapper.dataset.rbqSdtBaseKey = baseKey;
+            wrapper.dataset.rbqSdtSegmentIndex = String(index);
+            return { wrapper, key: segKey, segment };
+        }).filter(Boolean);
     }
 
     async function callOpenAiCompatible(messageId, trigger) {
@@ -753,13 +818,6 @@ JSON 格式：
         if (!(container instanceof HTMLElement)) return null;
         const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
         if (existing instanceof HTMLElement) return existing;
-
-        // 自动定位在流式输出期间可能随着正文 hash 变化多次触发。
-        // 同一楼层同一轮自动定位只保留一张卡片，避免所有卡片堆在开头。
-        if (trigger.type === 'auto') {
-            const existingAuto = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-trigger-type="auto"]`);
-            if (existingAuto instanceof HTMLElement) return existingAuto;
-        }
 
         const finalPrompt = getFinalPrompt(result);
 
@@ -935,7 +993,8 @@ JSON 格式：
             if (loader instanceof HTMLElement) loader.style.display = 'flex';
             if (sub instanceof HTMLElement) sub.textContent = '正在调用 tagger API 解析世界书与提示词...';
             const result = await callTagger(messageId, trigger);
-            store.cache[key] = {
+            const cacheKey = wrapper.dataset.rbqSdtBaseKey || key;
+            store.cache[cacheKey] = {
                 ...result,
                 checked: true,
                 createdAt: Date.now(),
@@ -948,17 +1007,21 @@ JSON 格式：
                 ensureTaggerButtonState(wrapper, 'tagger 判断无需生图');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'done-no-draw');
-                processedKeys.add(key);
+                processedKeys.add(cacheKey);
                 return;
             }
-            wrapper.dataset.prompt = logFinalPrompt(result);
-            ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
-            setGenerateButtonState(wrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
-            setWrapperStage(wrapper, 'ready-generate');
-            if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
-                await maybeAutoGenerate(wrapper, result, messageId, key);
+            const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
+            for (const item of rendered) {
+                const renderedWrapper = item.wrapper;
+                ensureTaggerButtonState(renderedWrapper, '重新解析/刷新 tag');
+                setGenerateButtonState(renderedWrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
+                setWrapperStage(renderedWrapper, 'ready-generate');
+                bindWrapperManualRun(renderedWrapper, trigger, messageId, cacheKey);
+                if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
+                    await maybeAutoGenerate(renderedWrapper, item.segment, messageId, cacheKey);
+                }
             }
-            processedKeys.add(key);
+            processedKeys.add(cacheKey);
         } catch (error) {
             console.error('[Smart Draw Trigger]', error);
             toastr.error(error.message || String(error), PLUGIN_NAME);
@@ -974,37 +1037,27 @@ JSON 格式：
         const store = getStore();
         if (!isLatestMessage(messageId)) return;
         const message = getMessageSnapshot(messageId);
-        if (!shouldHandleMessage(message)) {
-            console.info(`[Smart Draw Trigger] skipped #${messageId}: role out of scope or empty message`);
-            return;
-        }
+        if (!shouldHandleMessage(message)) return;
         const trigger = getTrigger(message);
-        if (!trigger) {
-            console.info(`[Smart Draw Trigger] skipped #${messageId}: no trigger matched`);
-            return;
-        }
+        if (!trigger) return;
         const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
         if (processedKeys.has(key)) return;
-        if (inFlight.has(key)) {
-            debugInfo(`已触发 #${messageId}，请求正在进行中，跳过重复触发`);
-            return;
-        }
+        if (inFlight.has(key)) return;
         const cached = store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
             processedKeys.add(key);
-            debugWarning(`已命中缓存 #${messageId}：tagger 判断不需要生图`);
             return;
         }
-        if (cached?.shouldDraw && cached.prompt) {
-            const wrapper = insertCard(messageId, trigger, cached, key);
-            if (wrapper) {
-                wrapper.dataset.prompt = logFinalPrompt(cached);
+        if (cached?.shouldDraw && (cached.prompt || cached.segments?.length)) {
+            const rendered = materializeResultCards(messageId, trigger, cached, key);
+            for (const item of rendered) {
+                const wrapper = item.wrapper;
                 ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
                 setGenerateButtonState(wrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
                 setWrapperStage(wrapper, 'ready-generate');
                 bindWrapperManualRun(wrapper, trigger, messageId, key);
                 if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
-                    await maybeAutoGenerate(wrapper, cached, messageId, key);
+                    await maybeAutoGenerate(wrapper, item.segment, messageId, key);
                 }
             }
             processedKeys.add(key);

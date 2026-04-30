@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.8.3`
+版本：`1.9.1`
 
 ---
 
@@ -70,6 +70,20 @@
 - 一键“重置为所选内置 Prompt”
 
 如果你之前已经保存过旧 `systemPrompt`，插件升级**不会自动覆盖**本地保存值；需要你手动点击重置按钮。
+
+从 `1.9.0` 开始，插件重点优化**功能体验**：
+
+- `segments[]` 会渲染为多个独立生图卡片，每个卡片拥有独立 prompt、按钮状态和自动生图标记。
+- `anchor.text` 会被保留并优先用于插入定位，定位失败才回退到 `anchor.index`。
+- 自动生图按 segment 独立执行，避免多段结果只生成第一段或互相串状态。
+- “重新扫描/恢复可见楼层”支持恢复可见历史楼层中的 Smart Draw 卡片。
+
+从 `1.9.1` 开始，插件优化**内置 System Prompt**：
+
+- 严格版更强调视觉焦点判定、`anchor.text` 原文锚点、`segments[]` 多分镜和多角色结构。
+- 平衡版降低过度堆词倾向，要求只吸收与当前画面相关的世界书/规则书内容。
+- 旧版回退版也补齐 `anchor.text` 与 `segments[]` 兼容字段，便于老接口逐步迁移。
+- 内置 Prompt 版本升级到 `v5`，旧本地 Prompt 不会自动覆盖，需要手动点击“重置为所选内置 Prompt”。
 
 ---
 
@@ -323,9 +337,24 @@ OpenAI 兼容模式下，此结构会作为 user message 的 JSON 内容发送�
     "negative": "string optional",
     "anchor": {
       "type": "sentence",
-      "index": "number, 1-based"
+      "index": "number, 1-based",
+      "text": "string optional, original sentence text"
     },
-    "reason": "string optional"
+    "reason": "string optional",
+    "segments": [
+      {
+        "anchor": {
+          "type": "sentence",
+          "index": "number, 1-based",
+          "text": "string optional, original sentence text"
+        },
+        "prompt": "string",
+        "negative": "string optional",
+        "multiChar": "boolean optional",
+        "scene": "string optional",
+        "characters": "array optional"
+      }
+    ]
   }
 }
 ```
@@ -351,7 +380,8 @@ tagger API 应返回：
   "negative": "low quality, bad anatomy",
   "anchor": {
     "type": "sentence",
-    "index": 1
+    "index": 1,
+    "text": "她推开门走进昏暗房间。"
   },
   "reason": "当前消息出现明确视觉场景"
 }
@@ -364,7 +394,31 @@ tagger API 应返回：
 - `negative`：可选，第一版仅缓存，不强制覆盖 RBQ 主负面词。
 - `anchor.type`：目前建议固定为 `sentence`。
 - `anchor.index`：插在当前消息第几句后，从 `1` 开始。
+- `anchor.text`：可选但强烈建议填写，直接摘抄当前消息原句；插件会优先按它定位卡片插入位置。
 - `reason`：可选，用于调试。
+
+如果一条消息需要多个插图点，可以返回 `segments[]`：
+
+```json
+{
+  "shouldDraw": true,
+  "reason": "当前消息有两个视觉高潮点",
+  "segments": [
+    {
+      "anchor": { "type": "sentence", "index": 1, "text": "她推开门走进昏暗房间。" },
+      "prompt": "1girl, entering dark room, cinematic lighting",
+      "negative": "low quality"
+    },
+    {
+      "anchor": { "type": "sentence", "index": 3, "text": "窗外雨水在玻璃上拖出长长的光痕。" },
+      "prompt": "rainy window, neon reflection, moody atmosphere",
+      "negative": "low quality"
+    }
+  ]
+}
+```
+
+`1.9.0` 起，每个 segment 会变成独立卡片，并独立记录是否已自动生图。
 
 如果不需要生图：
 
@@ -388,6 +442,7 @@ tagger API 应返回：
 - 当前消息正文哈希
 - 触发模式
 - 短标记内容或自动定位标识
+- segment prompt 哈希（用于区分多段卡片状态）
 
 这样可以避免刷新、滑动、消息重渲染时重复调用 tagger API 或重复生图。
 
@@ -400,6 +455,6 @@ tagger API 应返回：
 - 自动定位模式会把最近上下文发送给外部 tagger API，请注意隐私和成本。
 - 插件会监听消息 DOM 的新增与文本变化；如果宿主聊天数据尚未同步，会使用页面正文文本作为兜底，以避免正文已经输出但 tagger 未触发。
 - 插件不再周期轮询；默认只在消息新增/文本变化/初始加载时处理最新楼层，并在当前页面会话中记住已处理 key，避免同一消息反复恢复卡片。
-- 如果 tagger 返回的 `anchor.index` 找不到对应句子，插件会把卡片追加到消息末尾。
+- 如果 tagger 返回了 `anchor.text`，插件会优先按原句匹配；如果匹配失败，再回退到 `anchor.index`；仍失败时把卡片追加到消息末尾。
 - 插件不会修改聊天正文，也不会把完整 prompt 写回 SillyTavern 聊天记录。
 - 插件依赖宿主 `0.3.5+` 的 `RBQ.api.createPromptCard()` 和 `RBQ.api.generateImage()` 等接口。

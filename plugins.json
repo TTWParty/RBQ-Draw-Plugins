@@ -27,9 +27,9 @@
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "无需让正文输出长 tag。支持短标记和自动定位两种模式，调用 OpenAI 兼容或自定义 HTTP tagger API 生成 prompt，并在正文中插入 RBQ 生图卡片。",
-    "version": "1.8.3",
+    "version": "1.9.1",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=1.8.3"
+    "main": "plugins/smart-draw-trigger.js?v=1.9.1"
   },
   {
     "id": "rbq-multi-char",

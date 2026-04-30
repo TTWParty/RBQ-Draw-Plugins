@@ -4,180 +4,197 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 3;
-    const STRICT_SYSTEM_PROMPT = `你是一个“世界书驱动的生图协议规划器”，不是普通的文生图提示词补全器。
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 5;
+    const STRICT_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的“剧情视觉分镜 + 生图协议规划器”。你不是聊天角色，也不是普通提示词补全器。
 
 你的任务：
-1. 先阅读当前消息、最近上下文、lorebook、ruleBook。
-2. 把 lorebook / ruleBook 视为高优先级强约束，而不是参考建议。
-3. 判断这条消息里应该在正文哪些位置插入图片按钮。
-4. 输出严格结构化 JSON，供前端生成多个生图按钮或多角色 prompt。
+1. 阅读输入 JSON 中的 currentMessage、recentMessages、marker、lorebook、ruleBook。
+2. 判断当前消息是否真的需要插入生图卡片。
+3. 如果需要，规划一个或多个插图点 segments[]。
+4. 为每个插图点输出稳定可用的英文生图 prompt，或输出多角色结构 scene + characters[]。
+5. 返回严格 JSON 对象；不要返回 markdown，不要解释，不要输出额外文字。
 
-你必须只返回 JSON，不要返回 markdown，不要解释，不要额外文字。
+【硬性输出规则】
+- 只能返回 JSON object。
+- shouldDraw=false 时：prompt=""，negative=""，segments=[]。
+- shouldDraw=true 时：优先输出 segments[]；顶层 prompt/negative/anchor 可镜像第一个 segment 以兼容旧流程。
+- 每个 segment 必须有 anchor.text。anchor.text 必须逐字摘抄 currentMessage.content 中真实存在的一句或一小段原文，不要改写、翻译、概括。
+- anchor.index 是辅助序号，从 1 开始；如果无法精确数句，也要尽量给出合理 index，但 anchor.text 优先。
+- prompt 不要包含 [scene]、[img]、image###、markdown、解释文字或 JSON 片段。
+- prompt 用英文逗号分隔标签/短语，优先视觉元素：主体、人数、构图、动作、表情、服装、场景、光照、镜头、风格。
+- negative 用英文逗号分隔负面词，保持简洁；不要把正面主体放入 negative。
 
-【最重要的规则】
-- 如果 shouldDraw=true，你应优先输出 segments[]。
-- 单条消息里如果存在多个视觉焦点，就必须返回多个 segments，不能偷懒合并成一个 prompt。
-- 如果只能确定一个插图点，也允许返回顶层 prompt/negative/anchor；前端会自动兼容为单段 segment。
-- 如果是多角色画面，必须返回 multiChar=true，并提供 scene + characters[]，不要把所有角色硬塞进一个普通长 prompt。
-- 如果无法给出结构化结果，就返回 shouldDraw=false。
-- prompt 只写画面描述，不要包含 [scene]、[img] 等包裹标签。
+【是否生图判定】
+返回 shouldDraw=true 的典型情况：
+- 当前消息出现明确视觉高潮、角色动作、姿态、服装变化、场景转换、关键表情、构图明显的画面。
+- marker 存在时，优先视为用户强制插图，但仍需输出真实可用 prompt。
+- lorebook/ruleBook 明确要求某类场景、角色外观或生图模板，并且当前消息触发了相关画面。
 
-【输出 JSON 总格式】
+返回 shouldDraw=false 的情况：
+- 当前消息主要是过渡、心理独白、纯对白、规则说明、系统提示、回忆总结，缺少可视化焦点。
+- 当前消息重复上一张图的画面，没有新增构图/动作/服装/场景变化。
+- 无法找到可逐字摘抄的 anchor.text。
+
+【多段 segments 规则】
+- 单条消息只有一个视觉焦点：输出 1 个 segment。
+- 单条消息存在多个明确视觉焦点、镜头切换、动作阶段或场景转场：输出 2-3 个 segments。
+- 不要为了凑数量拆分微小动作；每个 segment 都应对应一个独立画面。
+- 每个 segment 的 anchor.text 必须对应其插图点附近的当前消息原文。
+
+【lorebook / ruleBook 使用规则】
+- ruleBook 是高优先级格式/画风/偏好规则。
+- lorebook 是角色、模板、标签库、动作、禁忌、构图等约束来源。
+- 只吸收与当前 segment 直接相关的条目；不要机械堆叠所有命中词条。
+- 如果 lorebook/ruleBook 明确给出主体模板、标签库、SEX/动作模板或多角色结构，必须优先遵守。
+- 冲突时：当前消息事实 > ruleBook 强约束 > lorebook 命中条目 > 最近上下文推断。
+
+【多角色输出规则】
+- 当画面中有两个或以上需要分别控制的角色，或 ruleBook/lorebook 要求多角色结构时，segment.multiChar=true。
+- multiChar=true 时：segment.prompt 可为空；必须填写 scene 和 characters[]。
+- scene 写整体场景、构图、气氛、动作关系、镜头。
+- characters[] 每项包含 index、caption、center、uc。
+- caption 写该角色的外观、服装、姿态、表情、身份视觉特征。
+- center 使用 C1/C2/C3/C4/C5 等构图位置；不确定时主角 C3，第二角色 C4 或 C2。
+- uc 只写该角色局部负面，不要把另一个角色写进 uc。
+
+【输出 JSON Schema】
 {
   "shouldDraw": true,
   "reason": "short chinese reason",
-  "prompt": "optional single-segment prompt",
-  "negative": "optional single-segment negative prompt",
-  "anchor": { "type": "sentence", "index": 1, "text": "原文中对应的那一句" },
+  "prompt": "optional first segment prompt",
+  "negative": "optional first segment negative",
+  "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
   "multiChar": false,
-  "scene": "optional multi-char scene prompt",
-  "characters": [
+  "scene": "optional first segment scene",
+  "characters": [],
+  "segments": [
     {
-      "index": 1,
-      "caption": "character prompt",
-      "center": "C3",
-      "uc": "character negative prompt"
+      "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
+      "prompt": "english image prompt, comma separated tags",
+      "negative": "worst quality, low quality, bad anatomy",
+      "multiChar": false,
+      "scene": "",
+      "characters": []
     }
+  ]
+}
+
+【示例：无需生图】
+{
+  "shouldDraw": false,
+  "reason": "当前消息缺少明确视觉焦点",
+  "prompt": "",
+  "negative": "",
+  "anchor": { "type": "sentence", "index": 1, "text": "" },
+  "multiChar": false,
+  "scene": "",
+  "characters": [],
+  "segments": []
+}
+
+【示例：单图】
+{
+  "shouldDraw": true,
+  "reason": "当前句子形成一个明确室内近景画面",
+  "prompt": "1girl, close-up, indoor, warm lighting, tense expression, detailed eyes, cinematic composition",
+  "negative": "worst quality, low quality, bad anatomy, blurry",
+  "anchor": { "type": "sentence", "index": 2, "text": "当前消息中真实存在的目标原句。" },
+  "multiChar": false,
+  "scene": "",
+  "characters": [],
+  "segments": [
+    {
+      "anchor": { "type": "sentence", "index": 2, "text": "当前消息中真实存在的目标原句。" },
+      "prompt": "1girl, close-up, indoor, warm lighting, tense expression, detailed eyes, cinematic composition",
+      "negative": "worst quality, low quality, bad anatomy, blurry",
+      "multiChar": false,
+      "scene": "",
+      "characters": []
+    }
+  ]
+}
+
+【示例：多角色】
+{
+  "shouldDraw": true,
+  "reason": "当前画面需要分别控制两名角色",
+  "prompt": "",
+  "negative": "worst quality, low quality, bad anatomy",
+  "anchor": { "type": "sentence", "index": 3, "text": "当前消息中真实存在的双人互动原句。" },
+  "multiChar": true,
+  "scene": "duo, indoor, sofa, intimate distance, cinematic lighting, medium shot",
+  "characters": [
+    { "index": 1, "caption": "1girl, long hair, expressive eyes, looking back, detailed face", "center": "C3", "uc": "bad face, extra arms" },
+    { "index": 2, "caption": "1boy, taller male, dark hair, close behind", "center": "C4", "uc": "bad hands, deformed body" }
   ],
   "segments": [
     {
-      "anchor": { "type": "sentence", "index": 1, "text": "原文中对应的那一句" },
-      "prompt": "english image prompt, comma separated tags",
-      "negative": "optional negative prompt",
-      "multiChar": false,
-      "scene": "optional multi-char scene prompt",
-      "characters": []
-    }
-  ]
-}
-
-【字段说明】
-- shouldDraw=false 时，segments 为空数组，prompt 为空字符串。
-- anchor.text 是优先锚点，必须直接摘抄当前消息正文里对应的那一句原文。
-- anchor.index 表示插在当前消息第几句之后，从 1 开始，仅作为辅助编号。
-- lorebook 是本轮命中的世界书规则；如果其中包含主体模板、标签库、SEX 模板、常规模板，你应优先吸收这些规则，而不是自由发挥。
-- ruleBook 是插件内补充规则，也应优先遵守。
-
-【few-shot 示例 1：单图点】
-输入语义：一条消息中只有一个明确画面，适合在第 2 句后插图。
-输出：
-{
-  "shouldDraw": true,
-  "reason": "当前镜头只有一个明确视觉焦点",
-  "prompt": "1girl, indoor, warm lighting, close-up",
-  "negative": "worst quality, low quality",
-  "anchor": { "type": "sentence", "index": 2, "text": "当前消息中的第二句原文" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": [
-    {
-      "anchor": { "type": "sentence", "index": 2, "text": "当前消息中的第二句原文" },
-      "prompt": "1girl, indoor, warm lighting, close-up",
-      "negative": "worst quality, low quality",
-      "multiChar": false,
-      "scene": "",
-      "characters": []
-    }
-  ]
-}
-
-【few-shot 示例 2：多图点】
-输入语义：一条消息先描写入口动作，再描写后半段高潮画面，适合两张图。
-输出：
-{
-  "shouldDraw": true,
-  "reason": "当前消息存在两个视觉高潮点",
-  "prompt": "",
-  "negative": "",
-  "anchor": { "type": "sentence", "index": 1, "text": "当前消息中的第一处视觉段落原文" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": [
-    {
-      "anchor": { "type": "sentence", "index": 2, "text": "当前消息中的第一处视觉段落原文" },
-      "prompt": "1girl, entering room, side view, indoor",
-      "negative": "worst quality, low quality",
-      "multiChar": false,
-      "scene": "",
-      "characters": []
-    },
-    {
-      "anchor": { "type": "sentence", "index": 5, "text": "当前消息中的第二处视觉段落原文" },
-      "prompt": "1girl, close-up, intense expression, sweat",
-      "negative": "worst quality, low quality",
-      "multiChar": false,
-      "scene": "",
-      "characters": []
-    }
-  ]
-}
-
-【few-shot 示例 3：多角色】
-输入语义：双人后入场景，需兼容多角色插件。
-输出：
-{
-  "shouldDraw": true,
-  "reason": "当前画面是明确双人交互镜头",
-  "prompt": "",
-  "negative": "",
-  "anchor": { "type": "sentence", "index": 3, "text": "当前消息中的双人交互那一句原文" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": [
-    {
-      "anchor": { "type": "sentence", "index": 3, "text": "当前消息中的双人交互那一句原文" },
+      "anchor": { "type": "sentence", "index": 3, "text": "当前消息中真实存在的双人互动原句。" },
       "prompt": "",
-      "negative": "worst quality, low quality",
+      "negative": "worst quality, low quality, bad anatomy",
       "multiChar": true,
-      "scene": "nsfw, hetero, duo, indoor, sofa, from behind",
+      "scene": "duo, indoor, sofa, intimate distance, cinematic lighting, medium shot",
       "characters": [
-        {
-          "index": 1,
-          "caption": "1girl, milf, huge ass, looking back, doggystyle",
-          "center": "C3",
-          "uc": "nude, shoes, standing"
-        },
-        {
-          "index": 2,
-          "caption": "1boy, faceless male, large penis",
-          "center": "C4",
-          "uc": "face, hair"
-        }
+        { "index": 1, "caption": "1girl, long hair, expressive eyes, looking back, detailed face", "center": "C3", "uc": "bad face, extra arms" },
+        { "index": 2, "caption": "1boy, taller male, dark hair, close behind", "center": "C4", "uc": "bad hands, deformed body" }
       ]
     }
   ]
-}
+}`;
 
-如果 lorebook / ruleBook 中已经明确规定了主体、动作模板、标签库和多角色结构，就必须优先服从这些规则。不要为了省事退回单个普通 prompt。
+    const BALANCED_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的剧情生图规划器。你的目标是先理解剧情画面，再输出稳定 JSON，让前端在合适位置插入生图卡片。
 
-锚点输出规则：
-- 每个 segment 都必须提供 anchor.text。
-- anchor.text 必须是当前消息正文里真实存在的那一句原文，不要改写、概括或重述。
-- 如果无法稳定给出 anchor.text，就返回 shouldDraw=false。`;
+只返回 JSON，不要 markdown，不要解释。
 
-    const BALANCED_SYSTEM_PROMPT = `你是一个面向剧情文本的生图规划器。你会参考 lorebook 与 ruleBook，但首先要准确理解当前剧情的视觉重点，再输出结构化 JSON 给前端。
+【工作方式】
+1. 阅读 currentMessage.content，并参考 recentMessages、lorebook、ruleBook。
+2. 判断当前消息是否有值得出图的视觉焦点。
+3. 有图则输出 segments[]；每个 segment 对应一个独立画面。
+4. 每个 segment 都尽量提供 anchor.text，它必须是 currentMessage.content 里的原句或原文片段。
+5. 只将与当前画面相关的 lorebook/ruleBook 内容融入 prompt，避免无关堆词。
 
-你必须只返回 JSON，不要返回 markdown，不要解释。
-
-优先目标：
-1. 先理解当前剧情里真正值得插图的视觉焦点。
-2. 如果只有一个焦点，可以返回单个 prompt，并同时提供 segments[0]。
-3. 如果有多个明显焦点，返回多个 segments[]。
-4. 如果是明确双人/多人画面，再启用 multiChar=true，并提供 scene + characters[]。
-
-请不要机械堆叠世界书中的所有词条；只挑与当前镜头相关的内容。
-
-输出 JSON 总格式：
+【输出格式】
 {
   "shouldDraw": true,
   "reason": "short chinese reason",
-  "prompt": "optional single-segment prompt",
-  "negative": "optional single-segment negative prompt",
-  "anchor": { "type": "sentence", "index": 1 },
+  "prompt": "optional first segment prompt",
+  "negative": "optional first segment negative",
+  "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
+  "multiChar": false,
+  "scene": "optional first segment scene",
+  "characters": [],
+  "segments": [
+    {
+      "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
+      "prompt": "english image prompt, comma separated tags",
+      "negative": "optional negative prompt",
+      "multiChar": false,
+      "scene": "",
+      "characters": []
+    }
+  ]
+}
+
+【规则】
+- shouldDraw=false 时，segments=[]，prompt=""。
+- 单个明确视觉焦点输出 1 个 segment；多个明显镜头/动作阶段/场景变化可输出 2-3 个 segments。
+- prompt 使用英文逗号分隔，描述视觉画面，不要包含 [scene]、[img]、image### 或解释。
+- anchor.text 优先于 anchor.index；必须摘抄原文，不要重写。
+- 多角色画面使用 multiChar=true，并填写 scene + characters[]；否则使用普通 prompt。
+- 顶层字段尽量镜像第一个 segment，便于旧接口兼容。
+- 不确定是否值得出图时，宁可 shouldDraw=false，避免过度触发。`;
+
+    const LEGACY_SYSTEM_PROMPT = `你是 SillyTavern/RBQ 生图扩展的提示词规划器。根据当前聊天正文判断是否需要插入图片，并返回 JSON。
+
+只返回 JSON，不要 markdown，不要解释。
+
+JSON 格式：
+{
+  "shouldDraw": true,
+  "prompt": "english image prompt, comma separated tags",
+  "negative": "optional negative prompt",
+  "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
+  "reason": "short chinese reason",
   "multiChar": false,
   "scene": "optional multi-char scene prompt",
   "characters": [],
@@ -185,41 +202,12 @@
 }
 
 规则：
-- shouldDraw=false 时，segments 为空数组。
-- 尽量使用 segments[]，但如果只有一个焦点，允许同时返回顶层 prompt。
-- prompt 不要包含 [scene]、[img] 等包裹标签。
-- lorebook / ruleBook 是重要参考，但不要求逐字照搬所有命中规则。
-- 如果画面是多角色，必须返回 multiChar=true，并把角色拆到 characters[]。`;
-
-    const LEGACY_SYSTEM_PROMPT = `你是 SillyTavern/RBQ 生图扩展的提示词规划器。你的任务是根据聊天正文判断是否需要插入一张图片，并输出 NovelAI/通用文生图英文 prompt。
-
-必须只返回 JSON，不要返回 markdown，不要解释。
-JSON 格式：
-{
-  "shouldDraw": true,
-  "prompt": "english image prompt, comma separated tags",
-  "negative": "optional negative prompt",
-  "anchor": { "type": "sentence", "index": 1 },
-  "reason": "short chinese reason",
-  "multiChar": false,
-  "scene": "optional multi-char scene prompt",
-  "characters": [
-    {
-      "index": 1,
-      "caption": "character prompt",
-      "center": "C3",
-      "uc": "character negative prompt"
-    }
-  ]
-}
-
-规则：
-- shouldDraw=false 时 prompt 为空字符串。
-- prompt 只写画面描述，不要包含 [scene]、[img] 等包裹标签。
-- anchor.index 表示插在当前消息第几句之后，从 1 开始；不确定就用 1。
-- 如果用户提供了 marker，代表该位置强制需要生图。
+- shouldDraw=false 时 prompt=""，segments=[]。
+- prompt 只写视觉画面，不要包含 [scene]、[img]、image###、解释或分析。
+- anchor.text 建议填写当前消息里真实存在的目标句子；anchor.index 表示插在第几句后。
+- 如果当前消息有多个明显插图点，可以填写 segments[]，每段都有 anchor/prompt/negative。
 - 如果是多角色模式，优先返回 multiChar=true，并提供 scene / characters / center / uc 结构化字段。
-- 不要把无关系统说明、分析过程、审查声明写进 prompt。`;
+- 不要把系统说明、审查声明、无关上下文写进 prompt。`;
 
     const SYSTEM_PROMPT_PRESETS = {
         strict: { label: '严格结构化版', prompt: STRICT_SYSTEM_PROMPT },
@@ -797,13 +785,39 @@ JSON 格式：
         throw new Error('tagger 返回不是有效 JSON');
     }
 
+    function normalizeAnchor(anchor, fallbackIndex = 1) {
+        const index = Math.max(1, Number(anchor?.index) || Number(fallbackIndex) || 1);
+        return {
+            type: String(anchor?.type || 'sentence'),
+            index,
+            text: String(anchor?.text || '').trim(),
+        };
+    }
+
+    function normalizeComparableText(text) {
+        return String(text || '')
+            .replace(/\s+/g, '')
+            .replace(/[“”]/g, '"')
+            .replace(/[‘’]/g, "'")
+            .trim();
+    }
+
+    function anchorsMatchSentence(anchorText, sentenceText) {
+        const needle = String(anchorText || '').trim();
+        const sentence = String(sentenceText || '').trim();
+        if (!needle || !sentence) return false;
+        if (sentence.includes(needle) || needle.includes(sentence)) return true;
+        const normalizedNeedle = normalizeComparableText(needle);
+        const normalizedSentence = normalizeComparableText(sentence);
+        return !!normalizedNeedle && !!normalizedSentence
+            && (normalizedSentence.includes(normalizedNeedle) || normalizedNeedle.includes(normalizedSentence));
+    }
+
     function normalizeTaggerResult(data) {
         const source = data?.choices?.[0]?.message?.content ? extractJson(data.choices[0].message.content) : data;
         let segments = Array.isArray(source?.segments)
             ? source.segments.map((item, index) => ({
-                anchor: item?.anchor && typeof item.anchor === 'object'
-                    ? { type: item.anchor.type || 'sentence', index: Math.max(1, Number(item.anchor.index) || (index + 1)) }
-                    : { type: 'sentence', index: index + 1 },
+                anchor: normalizeAnchor(item?.anchor, index + 1),
                 prompt: String(item?.prompt || '').trim(),
                 negative: String(item?.negative || '').trim(),
                 multiChar: !!item?.multiChar,
@@ -832,9 +846,7 @@ JSON 格式：
                     uc: String(item?.uc || '').trim(),
                 })).filter((item) => item.caption)
                 : [],
-            anchor: source?.anchor && typeof source.anchor === 'object'
-                ? { type: source.anchor.type || 'sentence', index: Math.max(1, Number(source.anchor.index) || 1) }
-                : { type: 'sentence', index: 1 },
+            anchor: normalizeAnchor(source?.anchor, 1),
             reason: String(source?.reason || '').trim(),
             segments,
         };
@@ -911,12 +923,31 @@ JSON 格式：
                 ...result,
                 ...segment,
                 segmentIndex: index,
+                segmentKeySuffix: `seg:${index}:${hashText(getFinalPrompt({ ...result, ...segment }) || JSON.stringify(segment))}`,
             }));
         }
         return [{
             ...result,
             segmentIndex: 0,
+            segmentKeySuffix: `seg:0:${hashText(getFinalPrompt(result) || JSON.stringify(result))}`,
         }];
+    }
+
+    function getSegmentState(store, baseKey, segmentKey) {
+        const cache = store.cache?.[baseKey];
+        if (!cache) return null;
+        if (!cache.segmentStates || typeof cache.segmentStates !== 'object') cache.segmentStates = {};
+        if (!cache.segmentStates[segmentKey]) cache.segmentStates[segmentKey] = {};
+        return cache.segmentStates[segmentKey];
+    }
+
+    function markSegmentAutoGenerated(baseKey, segmentKey) {
+        const store = getStore();
+        const state = getSegmentState(store, baseKey, segmentKey);
+        if (!state) return;
+        state.autoGenerated = true;
+        state.generatedAt = Date.now();
+        save();
     }
 
     function materializeResultCards(messageId, trigger, result, baseKey) {
@@ -928,6 +959,12 @@ JSON 格式：
 
         const segments = getResultSegments(result)
             .filter((segment) => getFinalPrompt(segment));
+        const nextKeys = new Set(segments.map((segment, index) => `${baseKey}:${segment.segmentKeySuffix || `seg:${index}`}`));
+        container.querySelectorAll(`[data-rbq-sdt-base-key="${CSS.escape(baseKey)}"]`).forEach((element) => {
+            if (!(element instanceof HTMLElement)) return;
+            const key = element.dataset.rbqSdtKey || '';
+            if (!nextKeys.has(key)) element.remove();
+        });
 
         console.info(`[${PLUGIN_NAME}] materializeResultCards =>`, {
             messageId,
@@ -945,7 +982,7 @@ JSON 格式：
         });
 
         return segments.map((segment, index) => {
-            const segKey = `${baseKey}:seg:${index}`;
+            const segKey = `${baseKey}:${segment.segmentKeySuffix || `seg:${index}`}`;
             const wrapper = insertCard(messageId, trigger, segment, segKey);
             console.info(`[${PLUGIN_NAME}] materialize segment result =>`, {
                 messageId,
@@ -958,7 +995,8 @@ JSON 格式：
             wrapper.dataset.prompt = getFinalPrompt(segment);
             wrapper.dataset.rbqSdtBaseKey = baseKey;
             wrapper.dataset.rbqSdtSegmentIndex = String(index);
-            return { wrapper, key: segKey, segment };
+            wrapper.dataset.rbqSdtSegmentKey = segKey;
+            return { wrapper, key: segKey, baseKey, segment };
         }).filter(Boolean);
     }
 
@@ -1162,46 +1200,22 @@ JSON 格式：
     }
 
     function insertBySentenceMap(messageId, anchor, wrapper) {
-        const map = buildSentenceMap(messageId);
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return false;
+        const map = buildSentenceMapFromRoot(container);
         if (!map.length) return false;
 
         let matched = null;
         if (anchor?.text) {
-            const needle = String(anchor.text || '').trim();
-            matched = map.find((entry) => entry.text.includes(needle) || needle.includes(entry.text)) || null;
+            matched = map.find((entry) => anchorsMatchSentence(anchor.text, entry.text)) || null;
         }
         if (!matched) {
             const targetIndex = Math.max(1, Number(anchor?.index) || 1);
             matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
         }
         if (!matched) return false;
-
-        const liveRoot = getLivePureMessageRoot(messageId);
-        if (!(liveRoot instanceof HTMLElement)) return false;
-        const liveMap = buildSentenceMapFromRoot(liveRoot);
-
-        let liveMatch = null;
-        if (anchor?.text) {
-            const needle = String(anchor.text || '').trim();
-            liveMatch = liveMap.find((entry) => entry.text.includes(needle) || needle.includes(entry.text)) || null;
-        }
-        if (!liveMatch) {
-            liveMatch = liveMap.find((entry) => entry.sentenceIndex === matched.sentenceIndex) || null;
-        }
-        if (!liveMatch) return false;
-
-        const liveContainer = RBQ.api.getMessageTextContainer(messageId);
-        if (!(liveContainer instanceof HTMLElement)) return false;
-        const realNodes = visibleTextNodes(liveContainer);
-        for (const realNode of realNodes) {
-            const realText = realNode.nodeValue || '';
-            const realIdx = realText.indexOf(liveMatch.text);
-            if (realIdx >= 0) {
-                insertWrapperAtTextNode(realNode, realIdx + liveMatch.text.length, realIdx + liveMatch.text.length, wrapper);
-                return true;
-            }
-        }
-        return false;
+        insertWrapperAtTextNode(matched.node, matched.endOffset, matched.endOffset, wrapper);
+        return true;
     }
 
     function insertCard(messageId, trigger, result, key) {
@@ -1307,11 +1321,22 @@ JSON 格式：
     }
 
     function setWrapperStage(wrapper, stage) {
-        if (wrapper instanceof HTMLElement) wrapper.dataset.rbqSdtStage = String(stage || 'idle');
+        if (!(wrapper instanceof HTMLElement)) return;
+        wrapper.dataset.rbqSdtStage = String(stage || 'idle');
+        const label = {
+            idle: '等待解析 tagger',
+            parsing: '正在解析 tagger',
+            'ready-generate': 'tagger 已返回，可生成图片',
+            'generating-image': '正在生成图片',
+            generated: '图片已生成',
+            'done-no-draw': 'tagger 判断无需生图',
+            error: '发生错误，可重试',
+        }[String(stage || 'idle')] || String(stage || 'idle');
+        wrapper.dataset.rbqSdtStageLabel = label;
+        wrapper.title = label;
     }
 
-    async function runImageGenerationForWrapper(wrapper, messageId, key) {
-        const store = getStore();
+    async function runImageGenerationForWrapper(wrapper, messageId, baseKey, segmentKey = '') {
         const finalPrompt = String(wrapper?.dataset?.prompt || '').trim();
         if (!finalPrompt) {
             toastr.warning('当前还没有可用 prompt，请先解析 tag', PLUGIN_NAME);
@@ -1326,22 +1351,21 @@ JSON 格式：
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
             RBQ.api.renderInlineGeneratedImage(wrapper, image);
-            if (store.cache[key]) store.cache[key].autoGenerated = true;
-            save();
+            if (baseKey && segmentKey) markSegmentAutoGenerated(baseKey, segmentKey);
             ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
             setGenerateButtonState(wrapper, true, '重新生成图片', false);
-            setWrapperStage(wrapper, 'ready-generate');
+            setWrapperStage(wrapper, 'generated');
         } catch (error) {
             toastr.error(error.message || String(error), PLUGIN_NAME);
             ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
             setGenerateButtonState(wrapper, true, '生成图片', false);
-            setWrapperStage(wrapper, 'ready-generate');
+            setWrapperStage(wrapper, 'error');
         } finally {
             clearWrapperLoading(wrapper);
         }
     }
 
-    function bindWrapperManualRun(wrapper, trigger, messageId, key) {
+    function bindWrapperManualRun(wrapper, trigger, messageId, baseKey, segmentKey = '') {
         if (!(wrapper instanceof HTMLElement)) return;
         if (wrapper.dataset.rbqSdtBound === '1') return;
         wrapper.dataset.rbqSdtBound = '1';
@@ -1351,39 +1375,45 @@ JSON 格式：
         button.addEventListener('click', async (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (inFlight.has(key)) return;
-            inFlight.add(key);
+            if (inFlight.has(baseKey)) return;
+            inFlight.add(baseKey);
             try {
                 setWrapperStage(wrapper, 'parsing');
-                await runTaggerForWrapper(wrapper, trigger, messageId, key);
+                await runTaggerForWrapper(wrapper, trigger, messageId, baseKey);
             } finally {
-                inFlight.delete(key);
+                inFlight.delete(baseKey);
             }
         });
         if (generateButton instanceof HTMLButtonElement) {
             generateButton.addEventListener('click', async (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                await runImageGenerationForWrapper(wrapper, messageId, key);
+                await runImageGenerationForWrapper(wrapper, messageId, baseKey, segmentKey || wrapper.dataset.rbqSdtSegmentKey || '');
             });
         }
     }
 
-    async function maybeAutoGenerate(wrapper, result, messageId, key) {
+    async function maybeAutoGenerate(wrapper, result, messageId, baseKey, segmentKey) {
         const store = getStore();
-        if (!store.autoRunTagger || !RBQ.api.shouldAutoGenerate() || store.cache[key]?.autoGenerated) return;
+        const state = getSegmentState(store, baseKey, segmentKey);
+        if (!store.autoRunTagger || !RBQ.api.shouldAutoGenerate() || state?.autoGenerated) return;
         try {
+            setWrapperStage(wrapper, 'generating-image');
             setWrapperLoading(wrapper, 'tagger 已返回，正在调用 RBQ 生图...');
+            setGenerateButtonState(wrapper, true, '自动生成中...', true);
             const finalPrompt = getFinalPrompt(result);
             const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
             RBQ.api.renderInlineGeneratedImage(wrapper, image);
-            if (store.cache[key]) store.cache[key].autoGenerated = true;
-            save();
+            markSegmentAutoGenerated(baseKey, segmentKey);
+            setGenerateButtonState(wrapper, true, '重新生成图片', false);
+            setWrapperStage(wrapper, 'generated');
         } catch (error) {
             toastr.error(error.message || String(error), PLUGIN_NAME);
+            setGenerateButtonState(wrapper, true, '生成图片', false);
+            setWrapperStage(wrapper, 'error');
         } finally {
             clearWrapperLoading(wrapper);
         }
@@ -1407,6 +1437,7 @@ JSON 格式：
                 createdAt: Date.now(),
                 triggerType: trigger.type,
                 marker: trigger.marker || '',
+                segmentStates: store.cache[cacheKey]?.segmentStates || {},
             };
             pruneCache();
             save();
@@ -1425,9 +1456,9 @@ JSON 格式：
                 ensureTaggerButtonState(renderedWrapper, '重新解析/刷新 tag');
                 setGenerateButtonState(renderedWrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
                 setWrapperStage(renderedWrapper, 'ready-generate');
-                bindWrapperManualRun(renderedWrapper, trigger, messageId, cacheKey);
+                bindWrapperManualRun(renderedWrapper, trigger, messageId, cacheKey, item.key);
                 if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
-                    await maybeAutoGenerate(renderedWrapper, item.segment, messageId, cacheKey);
+                    await maybeAutoGenerate(renderedWrapper, item.segment, messageId, cacheKey, item.key);
                 }
             }
             processedKeys.add(cacheKey);
@@ -1442,14 +1473,16 @@ JSON 格式：
         }
     }
 
-    async function processMessage(messageId) {
+    async function processMessage(messageId, options = {}) {
+        const { allowHistorical = false, force = false } = options;
         const store = getStore();
-        if (!isLatestMessage(messageId)) return;
+        if (!allowHistorical && !isLatestMessage(messageId)) return;
         const message = getMessageSnapshot(messageId);
         if (!shouldHandleMessage(message)) return;
         const trigger = getTrigger(message);
         if (!trigger) return;
         const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
+        if (force) processedKeys.delete(key);
         if (processedKeys.has(key)) return;
         if (inFlight.has(key)) return;
         const cached = store.cache[key];
@@ -1464,9 +1497,9 @@ JSON 格式：
                 ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
                 setGenerateButtonState(wrapper, true, store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : '生成图片', false);
                 setWrapperStage(wrapper, 'ready-generate');
-                bindWrapperManualRun(wrapper, trigger, messageId, key);
+                bindWrapperManualRun(wrapper, trigger, messageId, key, item.key);
                 if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
-                    await maybeAutoGenerate(wrapper, item.segment, messageId, key);
+                    await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
                 }
             }
             processedKeys.add(key);
@@ -1488,6 +1521,7 @@ JSON 格式：
         wrapper.dataset.messageId = String(messageId);
         wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
         wrapper.dataset.rbqSdtKey = key;
+        wrapper.dataset.rbqSdtBaseKey = key;
         ensureTaggerButtonState(wrapper, store.autoRunTagger ? '解析中...' : '开始解析/生成 tag');
         setGenerateButtonState(wrapper, false);
         setWrapperStage(wrapper, 'idle');
@@ -1505,19 +1539,19 @@ JSON 格式：
         }
     }
 
-    function scheduleProcess(messageId) {
+    function scheduleProcess(messageId, options = {}) {
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
         clearTimeout(pendingTimers.get(id));
         pendingTimers.set(id, setTimeout(() => {
             pendingTimers.delete(id);
-            processMessage(id);
+            processMessage(id, options);
         }, 900));
     }
 
     function scanAllVisible() {
         document.querySelectorAll('.mes[mesid]').forEach(element => {
-            scheduleProcess(Number(element.getAttribute('mesid')));
+            scheduleProcess(Number(element.getAttribute('mesid')), { allowHistorical: true, force: true });
         });
     }
 
@@ -1535,6 +1569,17 @@ JSON 格式：
             #rbq-smart-draw-panel textarea { min-height: 70px; }
             #rbq-smart-draw-panel .rbq-sdt-note { font-size:12px; opacity:.72; line-height:1.45; }
             .rbq-sdt-card { display:block; margin: 10px 0; }
+            .rbq-sdt-card[data-rbq-sdt-stage="parsing"],
+            .rbq-sdt-card[data-rbq-sdt-stage="generating-image"] { opacity:.92; }
+            .rbq-sdt-card[data-rbq-sdt-stage="generated"] .st-scene-trigger-inline-button { filter: saturate(1.08); }
+            .rbq-sdt-card[data-rbq-sdt-segment-index]::before {
+                content: "Smart Draw #" attr(data-rbq-sdt-segment-index);
+                display:inline-flex;
+                margin:0 0 4px 2px;
+                font-size:11px;
+                opacity:.62;
+                letter-spacing:.02em;
+            }
             #rbq-sdt-lorebook-list { display:flex; flex-direction:column; gap:8px; }
             .rbq-sdt-lorebook-item { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); }
             .rbq-sdt-lorebook-meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
@@ -1693,7 +1738,7 @@ JSON 格式：
         container.id = 'rbq-smart-draw-panel';
         container.innerHTML = `
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw)</span></div>
-            <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。</div>
+            <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。支持 segments[] 多段卡片、anchor.text 精准插入，以及按段落独立自动生图。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="marker">仅短标记</option><option value="auto">仅自动定位</option><option value="hybrid">自动定位 + 短标记兜底</option></select></label>
@@ -1724,13 +1769,13 @@ JSON 格式：
                 <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为所选内置 Prompt</button>
                 <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
-                <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描当前聊天</button>
+                <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描/恢复可见楼层</button>
             </div>
             <div class="st-scene-trigger-field wide">
                 <span>已挂载世界书</span>
                 <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
             </div>
-            <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会自动出图；关闭时只显示“生成图片”按钮。</div>
+            <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会按 segment 独立自动出图；关闭时只显示“生成图片”按钮。建议让 tagger 返回 anchor.text，以便卡片插入到目标原句后方。</div>
         `;
         panel.append(container);
 

@@ -37,7 +37,7 @@ JSON 格式：
         contextCount: 5,
         markers: '[draw]\n[画图]',
         targetRole: 'assistant',
-        debugToast: true,
+        debugToast: false,
         ruleBookEnabled: false,
         ruleBookScanDepth: 5,
         ruleBookBudget: 1800,
@@ -72,6 +72,18 @@ JSON 格式：
     function debugWarning(message) {
         if (!getStore().debugToast) return;
         toastr.warning(message, PLUGIN_NAME);
+    }
+
+    function getLatestMessageId() {
+        const ids = [...document.querySelectorAll('.mes[mesid]')]
+            .map(element => Number(element.getAttribute('mesid')))
+            .filter(Number.isFinite);
+        return ids.length ? Math.max(...ids) : null;
+    }
+
+    function isLatestMessage(messageId) {
+        const latest = getLatestMessageId();
+        return latest != null && Number(messageId) === latest;
     }
 
     function hashText(text) {
@@ -454,14 +466,15 @@ JSON 格式：
 
     async function processMessage(messageId) {
         const store = getStore();
+        if (!isLatestMessage(messageId)) return;
         const message = getMessageSnapshot(messageId);
         if (!shouldHandleMessage(message)) {
-            if (store.enabled && store.mode !== 'off') debugWarning(`已扫描 #${messageId}，但消息角色不在监听范围内或消息为空`);
+            console.info(`[Smart Draw Trigger] skipped #${messageId}: role out of scope or empty message`);
             return;
         }
         const trigger = getTrigger(message);
         if (!trigger) {
-            debugWarning(`已扫描 #${messageId}，但没有匹配短标记，且当前模式不允许自动定位`);
+            console.info(`[Smart Draw Trigger] skipped #${messageId}: no trigger matched`);
             return;
         }
         const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
@@ -520,6 +533,11 @@ JSON 格式：
         document.querySelectorAll('.mes[mesid]').forEach(element => {
             scheduleProcess(Number(element.getAttribute('mesid')));
         });
+    }
+
+    function scanLatestVisible() {
+        const latest = getLatestMessageId();
+        if (latest != null) scheduleProcess(latest);
     }
 
     function injectStyles() {
@@ -761,7 +779,7 @@ JSON 格式：
             s.systemPrompt = val('rbq-sdt-system-prompt').trim() || DEFAULT_SYSTEM_PROMPT;
             save();
             toastr.success('智能生图触发器设置已保存', PLUGIN_NAME);
-            scanAllVisible();
+            scanLatestVisible();
         };
         document.getElementById('rbq-sdt-clear-cache').onclick = () => {
             getStore().cache = {};
@@ -798,9 +816,9 @@ JSON 格式：
             }
         });
         observer.observe(document.body, { childList: true, characterData: true, subtree: true });
-        setInterval(scanAllVisible, 2000);
-        setTimeout(scanAllVisible, 250);
-        setTimeout(scanAllVisible, 1200);
+        setInterval(scanLatestVisible, 2000);
+        setTimeout(scanLatestVisible, 250);
+        setTimeout(scanLatestVisible, 1200);
     }
 
     waitForPanel();

@@ -463,6 +463,30 @@ JSON 格式：
     function val(id) { return document.getElementById(id)?.value || ''; }
     function checked(id) { return !!document.getElementById(id)?.checked; }
 
+    function bindSwitch(fieldId, inputId) {
+        const field = document.getElementById(fieldId);
+        const input = document.getElementById(inputId);
+        if (!(field instanceof HTMLElement) || !(input instanceof HTMLInputElement)) return;
+        const sync = () => field.setAttribute('aria-checked', input.checked ? 'true' : 'false');
+        sync();
+        field.setAttribute('role', 'switch');
+        field.tabIndex = 0;
+        field.addEventListener('click', (event) => {
+            event.preventDefault();
+            input.checked = !input.checked;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            sync();
+        });
+        field.addEventListener('keydown', (event) => {
+            if (event.key !== ' ' && event.key !== 'Enter') return;
+            event.preventDefault();
+            input.checked = !input.checked;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            sync();
+        });
+        input.addEventListener('change', sync);
+    }
+
     function populateModelSelect(models, selected) {
         const select = document.getElementById('rbq-sdt-openai-model');
         if (!(select instanceof HTMLSelectElement)) return;
@@ -546,7 +570,7 @@ JSON 格式：
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw)</span></div>
             <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。</div>
             <div class="st-scene-trigger-modal-grid">
-                <label class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></label>
+                <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="marker">仅短标记</option><option value="auto">仅自动定位</option><option value="hybrid">自动定位 + 短标记兜底</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
@@ -583,6 +607,7 @@ JSON 格式：
         document.getElementById('rbq-sdt-custom-key').value = store.customApiKey;
         document.getElementById('rbq-sdt-system-prompt').value = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
         updateProviderVisibility();
+        bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;

@@ -29,7 +29,7 @@
   "reason": "short chinese reason",
   "prompt": "optional single-segment prompt",
   "negative": "optional single-segment negative prompt",
-  "anchor": { "type": "sentence", "index": 1 },
+  "anchor": { "type": "sentence", "index": 1, "text": "原文中对应的那一句" },
   "multiChar": false,
   "scene": "optional multi-char scene prompt",
   "characters": [
@@ -42,7 +42,7 @@
   ],
   "segments": [
     {
-      "anchor": { "type": "sentence", "index": 1 },
+      "anchor": { "type": "sentence", "index": 1, "text": "原文中对应的那一句" },
       "prompt": "english image prompt, comma separated tags",
       "negative": "optional negative prompt",
       "multiChar": false,
@@ -54,7 +54,8 @@
 
 【字段说明】
 - shouldDraw=false 时，segments 为空数组，prompt 为空字符串。
-- anchor.index 表示插在当前消息第几句之后，从 1 开始。
+- anchor.text 是优先锚点，必须直接摘抄当前消息正文里对应的那一句原文。
+- anchor.index 表示插在当前消息第几句之后，从 1 开始，仅作为辅助编号。
 - lorebook 是本轮命中的世界书规则；如果其中包含主体模板、标签库、SEX 模板、常规模板，你应优先吸收这些规则，而不是自由发挥。
 - ruleBook 是插件内补充规则，也应优先遵守。
 
@@ -66,13 +67,13 @@
   "reason": "当前镜头只有一个明确视觉焦点",
   "prompt": "1girl, indoor, warm lighting, close-up",
   "negative": "worst quality, low quality",
-  "anchor": { "type": "sentence", "index": 2 },
+  "anchor": { "type": "sentence", "index": 2, "text": "当前消息中的第二句原文" },
   "multiChar": false,
   "scene": "",
   "characters": [],
   "segments": [
     {
-      "anchor": { "type": "sentence", "index": 2 },
+      "anchor": { "type": "sentence", "index": 2, "text": "当前消息中的第二句原文" },
       "prompt": "1girl, indoor, warm lighting, close-up",
       "negative": "worst quality, low quality",
       "multiChar": false,
@@ -90,13 +91,13 @@
   "reason": "当前消息存在两个视觉高潮点",
   "prompt": "",
   "negative": "",
-  "anchor": { "type": "sentence", "index": 1 },
+  "anchor": { "type": "sentence", "index": 1, "text": "当前消息中的第一处视觉段落原文" },
   "multiChar": false,
   "scene": "",
   "characters": [],
   "segments": [
     {
-      "anchor": { "type": "sentence", "index": 2 },
+      "anchor": { "type": "sentence", "index": 2, "text": "当前消息中的第一处视觉段落原文" },
       "prompt": "1girl, entering room, side view, indoor",
       "negative": "worst quality, low quality",
       "multiChar": false,
@@ -104,7 +105,7 @@
       "characters": []
     },
     {
-      "anchor": { "type": "sentence", "index": 5 },
+      "anchor": { "type": "sentence", "index": 5, "text": "当前消息中的第二处视觉段落原文" },
       "prompt": "1girl, close-up, intense expression, sweat",
       "negative": "worst quality, low quality",
       "multiChar": false,
@@ -122,13 +123,13 @@
   "reason": "当前画面是明确双人交互镜头",
   "prompt": "",
   "negative": "",
-  "anchor": { "type": "sentence", "index": 3 },
+  "anchor": { "type": "sentence", "index": 3, "text": "当前消息中的双人交互那一句原文" },
   "multiChar": false,
   "scene": "",
   "characters": [],
   "segments": [
     {
-      "anchor": { "type": "sentence", "index": 3 },
+      "anchor": { "type": "sentence", "index": 3, "text": "当前消息中的双人交互那一句原文" },
       "prompt": "",
       "negative": "worst quality, low quality",
       "multiChar": true,
@@ -151,7 +152,12 @@
   ]
 }
 
-如果 lorebook / ruleBook 中已经明确规定了主体、动作模板、标签库和多角色结构，就必须优先服从这些规则。不要为了省事退回单个普通 prompt。`;
+如果 lorebook / ruleBook 中已经明确规定了主体、动作模板、标签库和多角色结构，就必须优先服从这些规则。不要为了省事退回单个普通 prompt。
+
+锚点输出规则：
+- 每个 segment 都必须提供 anchor.text。
+- anchor.text 必须是当前消息正文里真实存在的那一句原文，不要改写、概括或重述。
+- 如果无法稳定给出 anchor.text，就返回 shouldDraw=false。`;
 
     const BALANCED_SYSTEM_PROMPT = `你是一个面向剧情文本的生图规划器。你会参考 lorebook 与 ruleBook，但首先要准确理解当前剧情的视觉重点，再输出结构化 JSON 给前端。
 

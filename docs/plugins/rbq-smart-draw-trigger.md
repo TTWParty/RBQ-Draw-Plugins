@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.2.0`
+版本：`1.3.0`
 
 ---
 
@@ -26,6 +26,13 @@
 - 第一阶段支持 `constant / key / keysecondary / order / disable / selectiveLogic` 命中。
 - 支持按消息条数实现 `sticky / cooldown`。
 - 支持基础递归限制：`preventRecursion / excludeRecursion`。
+
+从 `1.3.0` 开始，插件新增**多角色结构化输出模式**：
+
+- 新增“多角色输出模式”开关。
+- tagger 可返回结构化多角色 JSON：`scene / characters / center / uc`。
+- 插件会在本地把结构化结果拼成 `Scene / CharN / CharN UC / |centers:` 协议文本。
+- 这样就能直接兼容 [`multi-char-composer`](../rbq-multi-char.md) 的多角色 payload 改写逻辑。
 
 ---
 

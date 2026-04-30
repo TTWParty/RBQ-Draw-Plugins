@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.1.2`
+版本：`1.2.0`
 
 ---
 
@@ -18,6 +18,14 @@
 本插件的思路是：**正文不再输出完整生图 tag**。插件读取当前消息和最近上下文，调用外部 tagger API 生成完整 prompt，然后只在界面中插入 RBQ 原生生图卡片。
 
 完整 prompt 只存在插件缓存中，不写入聊天正文。
+
+从 `1.2.0` 开始，插件新增**世界书兼容第一期**：
+
+- 支持通过文件选择器导入酒馆世界书 JSON。
+- 支持挂载多个世界书源。
+- 第一阶段支持 `constant / key / keysecondary / order / disable / selectiveLogic` 命中。
+- 支持按消息条数实现 `sticky / cooldown`。
+- 支持基础递归限制：`preventRecursion / excludeRecursion`。
 
 ---
 
@@ -347,6 +355,7 @@ tagger API 应返回：
 
 - 自动定位模式会把最近上下文发送给外部 tagger API，请注意隐私和成本。
 - 插件会监听消息 DOM 的新增与文本变化；如果宿主聊天数据尚未同步，会使用页面正文文本作为兜底，以避免正文已经输出但 tagger 未触发。
+- 插件不再周期轮询；默认只在消息新增/文本变化/初始加载时处理最新楼层，并在当前页面会话中记住已处理 key，避免同一消息反复恢复卡片。
 - 如果 tagger 返回的 `anchor.index` 找不到对应句子，插件会把卡片追加到消息末尾。
 - 插件不会修改聊天正文，也不会把完整 prompt 写回 SillyTavern 聊天记录。
 - 插件依赖宿主 `0.3.5+` 的 `RBQ.api.createPromptCard()` 和 `RBQ.api.generateImage()` 等接口。

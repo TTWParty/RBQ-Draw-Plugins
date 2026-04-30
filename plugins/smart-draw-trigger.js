@@ -38,6 +38,9 @@ JSON 格式：
         markers: '[draw]\n[画图]',
         targetRole: 'assistant',
         debugToast: false,
+        lorebookEnabled: false,
+        lorebookContextDepth: 5,
+        lorebookSources: [],
         ruleBookEnabled: false,
         ruleBookScanDepth: 5,
         ruleBookBudget: 1800,
@@ -48,6 +51,11 @@ JSON 格式：
 
     const pendingTimers = new Map();
     const inFlight = new Set();
+    const processedKeys = new Set();
+    const lorebookRuntimeState = {
+        stickyState: new Map(),
+        cooldownState: new Map(),
+    };
 
     function getStore() {
         const settings = RBQ.api.getSettings();
@@ -62,6 +70,129 @@ JSON 格式：
 
     function save() {
         RBQ.api.saveSettings();
+    }
+
+    function ensureLorebookStore() {
+        const store = getStore();
+        if (!Array.isArray(store.lorebookSources)) store.lorebookSources = [];
+        return store.lorebookSources;
+    }
+
+    function inferLorebookType(name) {
+        const text = String(name || '').toLowerCase();
+        if (text.includes('主体') || text.includes('文生图')) return 'main';
+        if (text.includes('标签库')) return 'taglib';
+        if (text.includes('sex')) return 'sex';
+        if (text.includes('模板')) return 'template';
+        return 'custom';
+    }
+
+    function normalizeLorebookSource(raw, fallbackName = '未命名世界书') {
+        const entries = raw?.entries && typeof raw.entries === 'object' ? raw.entries : {};
+        const jsonText = JSON.stringify(raw || {});
+        return {
+            id: String(raw?.id || `sdt-lb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`),
+            name: String(raw?.name || fallbackName),
+            enabled: raw?.enabled !== false,
+            type: String(raw?.type || inferLorebookType(raw?.name || fallbackName)),
+            sourcePath: String(raw?.sourcePath || ''),
+            importedAt: Number(raw?.importedAt || Date.now()),
+            versionHash: hashText(jsonText),
+            rawJson: jsonText,
+            entryCount: Object.keys(entries).length,
+        };
+    }
+
+    function normalizeLorebookEntry(source, entryKey, entry) {
+        const characterFilter = entry?.characterFilter && typeof entry.characterFilter === 'object'
+            ? entry.characterFilter
+            : {};
+        return {
+            sourceId: source.id,
+            sourceName: source.name,
+            sourceType: source.type,
+            uid: entry?.uid ?? entryKey,
+            comment: String(entry?.comment || ''),
+            content: String(entry?.content || '').trim(),
+            constant: !!entry?.constant,
+            disabled: !!entry?.disable,
+            key: Array.isArray(entry?.key) ? entry.key.map(String).filter(Boolean) : [],
+            keysecondary: Array.isArray(entry?.keysecondary) ? entry.keysecondary.map(String).filter(Boolean) : [],
+            order: Number(entry?.order || 0),
+            selective: entry?.selective !== false,
+            selectiveLogic: Number(entry?.selectiveLogic || 0),
+            sticky: Math.max(0, Number(entry?.sticky || 0)),
+            cooldown: Math.max(0, Number(entry?.cooldown || 0)),
+            depth: entry?.depth == null ? null : Math.max(0, Number(entry.depth) || 0),
+            preventRecursion: !!entry?.preventRecursion,
+            excludeRecursion: !!entry?.excludeRecursion,
+            probability: Math.max(0, Math.min(100, Number(entry?.probability || 100))),
+            useProbability: !!entry?.useProbability,
+            role: entry?.role ?? null,
+            characterFilter: {
+                isExclude: !!characterFilter.isExclude,
+                names: Array.isArray(characterFilter.names) ? characterFilter.names.map(String).filter(Boolean) : [],
+                tags: Array.isArray(characterFilter.tags) ? characterFilter.tags.map(String).filter(Boolean) : [],
+            },
+        };
+    }
+
+    function getLorebookEntryRuntimeKey(entry) {
+        return `${entry.sourceId}:${entry.uid}`;
+    }
+
+    function parseLorebookRawJson(rawJson, fallbackName = '未命名世界书') {
+        const parsed = JSON.parse(String(rawJson || '{}'));
+        const source = normalizeLorebookSource(parsed, fallbackName);
+        const entries = parsed?.entries && typeof parsed.entries === 'object' ? parsed.entries : {};
+        return {
+            source,
+            entries: Object.entries(entries)
+                .map(([entryKey, entry]) => normalizeLorebookEntry(source, entryKey, entry))
+                .filter((entry) => !entry.disabled && entry.content),
+        };
+    }
+
+    function getNormalizedLorebooks() {
+        const store = getStore();
+        if (!store.lorebookEnabled) return [];
+        return ensureLorebookStore()
+            .filter((source) => source && source.enabled !== false && source.rawJson)
+            .flatMap((source) => {
+                try {
+                    const parsed = parseLorebookRawJson(source.rawJson, source.name);
+                    return parsed.entries;
+                } catch (error) {
+                    console.warn(`[${PLUGIN_NAME}] 世界书解析失败: ${source?.name || 'unknown'}`, error);
+                    return [];
+                }
+            });
+    }
+
+    function renderLorebookSourceList() {
+        const sources = ensureLorebookStore();
+        if (!sources.length) return '暂无已导入世界书';
+        return sources.map((source) => {
+            const state = source.enabled !== false ? '●' : '○';
+            const actionText = source.enabled !== false ? '禁用' : '启用';
+            return `
+                <div class="rbq-sdt-lorebook-item" data-id="${source.id}">
+                    <div class="rbq-sdt-lorebook-meta">
+                        <strong>${state} ${source.name}</strong>
+                        <small>${source.type} · ${source.entryCount || 0} entries</small>
+                    </div>
+                    <div class="rbq-sdt-lorebook-actions">
+                        <button class="menu_button" type="button" data-action="toggle-lorebook" data-id="${source.id}">${actionText}</button>
+                        <button class="menu_button" type="button" data-action="remove-lorebook" data-id="${source.id}">移除</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function refreshLorebookListUi() {
+        const list = document.getElementById('rbq-sdt-lorebook-list');
+        if (list instanceof HTMLElement) list.innerHTML = renderLorebookSourceList();
     }
 
     function debugInfo(message) {
@@ -190,6 +321,7 @@ JSON 格式：
             if (Number(last.id) === Number(messageId)) last.content = current.mes;
         }
         const ruleBook = collectActiveRules(current.mes, recentMessages);
+        const lorebook = collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
         return {
             mode: trigger.type,
             marker: trigger.marker || '',
@@ -201,6 +333,7 @@ JSON 格式：
             },
             recentMessages,
             ruleBook,
+            lorebook,
             contextCount: Number(store.contextCount) || 5,
             outputSchema: {
                 shouldDraw: 'boolean',
@@ -257,6 +390,175 @@ JSON 格式：
             if (used >= budget) break;
         }
         return result;
+    }
+
+    function buildLorebookScopeText(currentText, recentMessages) {
+        const store = getStore();
+        const depth = Math.max(1, Math.min(50, Number(store.lorebookContextDepth) || 5));
+        return [
+            ...recentMessages.slice(-depth).map(item => item.content),
+            currentText,
+        ].join('\n');
+    }
+
+    function matchLorebookEntry(entry, scopeText) {
+        if (!entry || entry.disabled || !entry.content) return null;
+        if (entry.constant) {
+            return {
+                sourceId: entry.sourceId,
+                uid: entry.uid,
+                comment: entry.comment,
+                content: entry.content,
+                reason: 'constant',
+                matchedKeys: [],
+                matchedSecondaryKeys: [],
+                order: entry.order,
+                sticky: entry.sticky,
+                cooldown: entry.cooldown,
+                preventRecursion: entry.preventRecursion,
+                excludeRecursion: entry.excludeRecursion,
+            };
+        }
+
+        const matchedKeys = entry.key.filter((key) => scopeText.includes(key));
+        if (!matchedKeys.length) return null;
+
+        const matchedSecondaryKeys = entry.keysecondary.filter((key) => scopeText.includes(key));
+        const needsSecondary = entry.keysecondary.length > 0;
+
+        if (entry.selectiveLogic === 0 && needsSecondary && !matchedSecondaryKeys.length) {
+            return null;
+        }
+
+        return {
+            sourceId: entry.sourceId,
+            uid: entry.uid,
+            comment: entry.comment,
+            content: entry.content,
+            reason: 'key',
+            matchedKeys,
+            matchedSecondaryKeys,
+            order: entry.order,
+            sticky: entry.sticky,
+            cooldown: entry.cooldown,
+            preventRecursion: entry.preventRecursion,
+            excludeRecursion: entry.excludeRecursion,
+        };
+    }
+
+    function isLorebookStickyActive(entry, messageId) {
+        const state = lorebookRuntimeState.stickyState.get(getLorebookEntryRuntimeKey(entry));
+        return !!state && Number(messageId) <= Number(state.untilMessageId || -1);
+    }
+
+    function isLorebookCooldownActive(entry, messageId) {
+        const state = lorebookRuntimeState.cooldownState.get(getLorebookEntryRuntimeKey(entry));
+        return !!state && Number(messageId) <= Number(state.untilMessageId || -1);
+    }
+
+    function updateLorebookRuntime(entries, messageId) {
+        entries.forEach((entry) => {
+            const runtimeKey = getLorebookEntryRuntimeKey(entry);
+            if (entry.reason === 'key' || entry.reason === 'recursive') {
+                if (Number(entry.sticky) > 0) {
+                    lorebookRuntimeState.stickyState.set(runtimeKey, {
+                        untilMessageId: Number(messageId) + Number(entry.sticky),
+                        activatedAtMessageId: Number(messageId),
+                    });
+                }
+                if (Number(entry.cooldown) > 0) {
+                    lorebookRuntimeState.cooldownState.set(runtimeKey, {
+                        untilMessageId: Number(messageId) + Number(entry.cooldown),
+                        activatedAtMessageId: Number(messageId),
+                    });
+                }
+            }
+        });
+
+        for (const [runtimeKey, state] of lorebookRuntimeState.stickyState.entries()) {
+            if (Number(messageId) > Number(state.untilMessageId || -1)) {
+                lorebookRuntimeState.stickyState.delete(runtimeKey);
+            }
+        }
+        for (const [runtimeKey, state] of lorebookRuntimeState.cooldownState.entries()) {
+            if (Number(messageId) > Number(state.untilMessageId || -1)) {
+                lorebookRuntimeState.cooldownState.delete(runtimeKey);
+            }
+        }
+    }
+
+    function collectMatchedLorebookEntries(currentText, recentMessages, messageId) {
+        const entries = getNormalizedLorebooks();
+        if (!entries.length) return [];
+        const scopeText = buildLorebookScopeText(currentText, recentMessages);
+        const sortedEntries = [...entries].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+        const matched = [];
+        const matchedRuntimeKeys = new Set();
+        const recursionFragments = [];
+
+        for (const entry of sortedEntries) {
+            const runtimeKey = getLorebookEntryRuntimeKey(entry);
+
+            if (entry.constant) {
+                const constantMatch = matchLorebookEntry(entry, scopeText);
+                if (constantMatch) {
+                    matched.push(constantMatch);
+                    matchedRuntimeKeys.add(runtimeKey);
+                }
+                continue;
+            }
+
+            if (isLorebookStickyActive(entry, messageId)) {
+                matched.push({
+                    sourceId: entry.sourceId,
+                    uid: entry.uid,
+                    comment: entry.comment,
+                    content: entry.content,
+                    reason: 'sticky',
+                    matchedKeys: [],
+                    matchedSecondaryKeys: [],
+                    order: entry.order,
+                    sticky: entry.sticky,
+                    cooldown: entry.cooldown,
+                    preventRecursion: entry.preventRecursion,
+                    excludeRecursion: entry.excludeRecursion,
+                });
+                matchedRuntimeKeys.add(runtimeKey);
+                continue;
+            }
+
+            if (isLorebookCooldownActive(entry, messageId)) continue;
+
+            const keyMatch = matchLorebookEntry(entry, scopeText);
+            if (!keyMatch) continue;
+            if (matchedRuntimeKeys.has(runtimeKey)) continue;
+            matched.push(keyMatch);
+            matchedRuntimeKeys.add(runtimeKey);
+            if (!entry.excludeRecursion) recursionFragments.push(entry.content);
+        }
+
+        if (recursionFragments.length) {
+            const recursionScope = `${scopeText}\n${recursionFragments.join('\n')}`;
+            for (const entry of sortedEntries) {
+                const runtimeKey = getLorebookEntryRuntimeKey(entry);
+                if (matchedRuntimeKeys.has(runtimeKey)) continue;
+                if (entry.constant) continue;
+                if (entry.preventRecursion) continue;
+                if (isLorebookStickyActive(entry, messageId)) continue;
+                if (isLorebookCooldownActive(entry, messageId)) continue;
+                const recursiveMatch = matchLorebookEntry(entry, recursionScope);
+                if (!recursiveMatch) continue;
+                matched.push({
+                    ...recursiveMatch,
+                    reason: 'recursive',
+                });
+                matchedRuntimeKeys.add(runtimeKey);
+            }
+        }
+
+        matched.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+        updateLorebookRuntime(matched, messageId);
+        return matched;
     }
 
     function extractJson(text) {
@@ -478,18 +780,21 @@ JSON 格式：
             return;
         }
         const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
+        if (processedKeys.has(key)) return;
         if (inFlight.has(key)) {
             debugInfo(`已触发 #${messageId}，请求正在进行中，跳过重复触发`);
             return;
         }
         const cached = store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
+            processedKeys.add(key);
             debugWarning(`已命中缓存 #${messageId}：tagger 判断不需要生图`);
             return;
         }
         if (cached?.shouldDraw && cached.prompt) {
             const wrapper = insertCard(messageId, trigger, cached, key);
             if (wrapper) await maybeAutoGenerate(wrapper, cached, messageId, key);
+            processedKeys.add(key);
             return;
         }
 
@@ -507,9 +812,13 @@ JSON 格式：
             };
             pruneCache();
             save();
-            if (!result.shouldDraw || !result.prompt) return;
+            if (!result.shouldDraw || !result.prompt) {
+                processedKeys.add(key);
+                return;
+            }
             const wrapper = insertCard(messageId, trigger, result, key);
             if (wrapper) await maybeAutoGenerate(wrapper, result, messageId, key);
+            processedKeys.add(key);
         } catch (error) {
             console.error('[Smart Draw Trigger]', error);
             toastr.error(error.message || String(error), PLUGIN_NAME);
@@ -548,6 +857,11 @@ JSON 格式：
             #rbq-smart-draw-panel textarea { min-height: 70px; }
             #rbq-smart-draw-panel .rbq-sdt-note { font-size:12px; opacity:.72; line-height:1.45; }
             .rbq-sdt-card { display:block; margin: 10px 0; }
+            #rbq-sdt-lorebook-list { display:flex; flex-direction:column; gap:8px; }
+            .rbq-sdt-lorebook-item { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); }
+            .rbq-sdt-lorebook-meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
+            .rbq-sdt-lorebook-meta strong, .rbq-sdt-lorebook-meta small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+            .rbq-sdt-lorebook-actions { display:flex; gap:8px; flex-shrink:0; }
         `;
         document.head.append(style);
     }
@@ -695,6 +1009,7 @@ JSON 格式：
         if (document.getElementById('rbq-smart-draw-panel')) return;
         injectStyles();
         const store = getStore();
+        const lorebookSources = ensureLorebookStore();
         const container = document.createElement('div');
         container.className = 'st-scene-trigger-subpanel';
         container.id = 'rbq-smart-draw-panel';
@@ -712,6 +1027,8 @@ JSON 格式：
                 <label class="st-scene-trigger-field"><span>规则扫描深度</span><input id="rbq-sdt-rulebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>规则注入预算（字符）</span><input id="rbq-sdt-rulebook-budget" type="number" min="200" max="12000" step="100"></label>
                 <label class="st-scene-trigger-field wide"><span>轻量规则书 JSON</span><textarea id="rbq-sdt-rulebook-entries" style="min-height:180px;"></textarea></label>
+                <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
@@ -723,8 +1040,13 @@ JSON 格式：
             </div>
             <div class="st-scene-trigger-buttons">
                 <button id="rbq-sdt-save" class="menu_button" type="button">保存智能触发器设置</button>
+                <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
                 <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描当前聊天</button>
+            </div>
+            <div class="st-scene-trigger-field wide">
+                <span>已挂载世界书</span>
+                <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
             </div>
             <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会自动出图；关闭时只显示“生成图片”按钮。</div>
         `;
@@ -740,6 +1062,8 @@ JSON 格式：
         document.getElementById('rbq-sdt-rulebook-depth').value = store.ruleBookScanDepth;
         document.getElementById('rbq-sdt-rulebook-budget').value = store.ruleBookBudget;
         document.getElementById('rbq-sdt-rulebook-entries').value = store.ruleBookEntries;
+        document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
+        document.getElementById('rbq-sdt-lorebook-depth').value = store.lorebookContextDepth;
         document.getElementById('rbq-sdt-provider').value = store.provider;
         document.getElementById('rbq-sdt-openai-base').value = store.openaiBaseUrl;
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
@@ -752,6 +1076,7 @@ JSON 格式：
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
         bindSwitch('rbq-sdt-rulebook-field', 'rbq-sdt-rulebook-enabled');
+        bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
@@ -768,6 +1093,8 @@ JSON 格式：
             s.ruleBookScanDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-rulebook-depth')) || 5));
             s.ruleBookBudget = Math.max(200, Math.min(12000, Number(val('rbq-sdt-rulebook-budget')) || 1800));
             s.ruleBookEntries = val('rbq-sdt-rulebook-entries');
+            s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
+            s.lorebookContextDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-lorebook-depth')) || 5));
             s.provider = val('rbq-sdt-provider');
             s.openaiBaseUrl = val('rbq-sdt-openai-base').trim();
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();
@@ -780,6 +1107,52 @@ JSON 格式：
             toastr.success('智能生图触发器设置已保存', PLUGIN_NAME);
             scanLatestVisible();
         };
+        document.getElementById('rbq-sdt-import-lorebook').onclick = () => {
+            let input = document.getElementById('rbq-sdt-lorebook-file-input');
+            if (!(input instanceof HTMLInputElement)) {
+                input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.id = 'rbq-sdt-lorebook-file-input';
+                input.style.display = 'none';
+                document.body.append(input);
+                input.addEventListener('change', async () => {
+                    const file = input.files?.[0];
+                    input.value = '';
+                    if (!file) return;
+                    try {
+                        const raw = await file.text();
+                        const parsed = parseLorebookRawJson(raw, file.name.replace(/\.json$/i, '') || file.name);
+                        const next = ensureLorebookStore();
+                        next.push(parsed.source);
+                        save();
+                        toastr.success(`已导入世界书：${parsed.source.name}`, PLUGIN_NAME);
+                        refreshLorebookListUi();
+                    } catch (error) {
+                        toastr.error(`世界书导入失败: ${error.message || String(error)}`, PLUGIN_NAME);
+                    }
+                });
+            }
+            input.click();
+        };
+        document.getElementById('rbq-sdt-lorebook-list')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-action][data-id]');
+            if (!(button instanceof HTMLButtonElement)) return;
+            const action = button.dataset.action;
+            const id = button.dataset.id;
+            const sources = ensureLorebookStore();
+            const index = sources.findIndex((source) => source.id === id);
+            if (index < 0) return;
+            if (action === 'toggle-lorebook') {
+                sources[index].enabled = sources[index].enabled === false;
+                save();
+                refreshLorebookListUi();
+            } else if (action === 'remove-lorebook') {
+                sources.splice(index, 1);
+                save();
+                refreshLorebookListUi();
+            }
+        });
         document.getElementById('rbq-sdt-clear-cache').onclick = () => {
             getStore().cache = {};
             save();
@@ -815,7 +1188,6 @@ JSON 格式：
             }
         });
         observer.observe(document.body, { childList: true, characterData: true, subtree: true });
-        setInterval(scanLatestVisible, 2000);
         setTimeout(scanLatestVisible, 250);
         setTimeout(scanLatestVisible, 1200);
     }

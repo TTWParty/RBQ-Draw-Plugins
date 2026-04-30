@@ -1,89 +1,169 @@
-# 🏆 RBQ-Draw 插件大厅生态 - 开发者指南 (Developer Guide)
+# RBQ-Draw Plugins
 
-欢迎来到 **SillyTavern-RBQ-Draw** 扩展的子插件开发平台！
-本指南将教你如何开发自定义插件，不仅能拦截、修改所有的生图请求，还可以与 SillyTavern 自身环境（如 `jQuery`, `toastr` 等）进行深度交互。
+这是 [`SillyTavern-RBQ-Draw`](https://github.com/TTWParty/SillyTavern-RBQ-Draw) 的官方子插件仓库。
 
----
-
-## 🚀 插件加载运行机制 
-1. **代码纯文本化**：插件的 `index.js` 代码会被完全读取为文本，并存储在宿主的通用设置 `settings.json` 内。这让你实现了一次安装，**彻底离线断网可用**。
-2. **强隔离沙盒加载**：宿主会在初始化 `init()` 的最后一刻，通过 `new Function('RBQ', 'jQuery', 'toastr', pluginContent)` 的方式将你的代码无痕挂载。你可以通过传入的三个顶级变量控制整个系统。
-3. **安全更新机制**：你的插件在 `plugins.json` 注册中心必须声明版本号。如果用户点击了“更新”，宿主才会覆盖掉本地内存的代码。
+本仓库主 [`README.md`](README.md) 只维护插件生态的**开发规范、API 文档、发布流程与目录约定**。每个具体插件都应拥有自己的独立说明文档，写清功能、配置项、使用方式和接口格式。
 
 ---
 
-## 📦 核心注入对象 (The API)
-你的插件会在这样一个闭包里被执行：
-```javascript
-(function(RBQ, $, toastr) {
-    // 你的逻辑填在这里
-})(window.RBQ, jQuery, toastr);
+## 目录规范
+
+```text
+RBQ-Draw-Plugins/
+├── plugins.json
+├── README.md
+├── docs/
+│   └── plugins/
+│       └── <plugin-id>.md
+└── plugins/
+    └── <plugin-file>.js
 ```
 
-### 1. `RBQ.on(event, callback)` —— 拦截器钩子
-在宿主的运行生命周期中，如果你想修改即将发送给后端（如 ComfyUI 或 NovelAI）的结构体，直接劫持它！
+约定：
 
-可用事件列表：
-- **`buildComfyUiWorkflow`**：拦截 ComfyUI 本地生图时解析出的最终 `prompt`（即 ComfyUI Workflow JSON 字典表）。
-- **`buildNaiV4Payload`**：拦截 NovelAI 直连或中转生图时构建的原始请求 Payload 参数。
-- **`buildGeneratePayload`**：拦截“白嫖模式”下的传统中转 Payload 参数。
+- [`plugins.json`](plugins.json)：插件市场索引，宿主通过它发现、安装、更新插件。
+- [`plugins/`](plugins/)：插件脚本目录，每个插件原则上一个入口文件。
+- [`docs/plugins/`](docs/plugins/)：每个插件的独立说明文档目录。
+- 主 README 只写生态规则，不写某个插件的长篇使用说明。
 
-> ⚠️ **非常重要**：拦截器回调的入参 `payload` 就是核心代码正准备发送的对象结构。你修改后，**必须 `return payload;`**，否则生图链路将崩溃！
+---
 
-**示例：在 NAI 生图前强行往末尾加上 "masterpiece, best quality"**
+## 当前插件索引
+
+| 插件 ID | 名称 | 入口 | 文档 |
+|---|---|---|---|
+| `rbq-core-hello` | Hello World 测试扩展 | [`plugins/example-hello.js`](plugins/example-hello.js) | [`docs/plugins/rbq-core-hello.md`](docs/plugins/rbq-core-hello.md) |
+| `rbq-prompt-presets` | 提示词预设 | [`plugins/prompt-presets.js`](plugins/prompt-presets.js) | [`docs/plugins/rbq-prompt-presets.md`](docs/plugins/rbq-prompt-presets.md) |
+| `rbq-png-metadata` | NAI 图片信息提取器 | [`plugins/png-metadata-extractor.js`](plugins/png-metadata-extractor.js) | [`docs/plugins/rbq-png-metadata.md`](docs/plugins/rbq-png-metadata.md) |
+| `rbq-smart-draw-trigger` | 智能生图触发器 | [`plugins/smart-draw-trigger.js`](plugins/smart-draw-trigger.js) | [`docs/plugins/rbq-smart-draw-trigger.md`](docs/plugins/rbq-smart-draw-trigger.md) |
+| `rbq-multi-char` | NAI 多角色模式 | [`plugins/multi-char-composer.js`](plugins/multi-char-composer.js) | [`docs/plugins/rbq-multi-char.md`](docs/plugins/rbq-multi-char.md) |
+
+---
+
+## 插件加载机制
+
+1. 插件市场读取 [`plugins.json`](plugins.json)。
+2. 用户点击安装后，宿主下载 `main` 指向的脚本内容。
+3. 脚本内容被保存进 RBQ 宿主设置中的 `_plugins` 字段。
+4. 宿主刷新页面后，用以下形式加载插件：
+
+```javascript
+const runner = new Function('RBQ', 'jQuery', 'toastr', plugin.code);
+runner(window.RBQ, $, toastr);
+```
+
+插件入口推荐保持为：
+
+```javascript
+(function(RBQ, $, toastr) {
+  if (!RBQ) return console.error('[My Plugin] RBQ Core API missing');
+  // plugin code here
+})(
+  (typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)),
+  (typeof jQuery !== 'undefined' ? jQuery : window.$),
+  (typeof toastr !== 'undefined' ? toastr : console)
+);
+```
+
+---
+
+## `plugins.json` 规范
+
+每个插件条目必须包含：
+
+```json
+{
+  "id": "rbq-your-plugin-id",
+  "name": "插件显示名",
+  "description": "插件简介",
+  "version": "1.0.0",
+  "author": "作者名",
+  "main": "plugins/your-plugin.js?v=1.0.0"
+}
+```
+
+要求：
+
+- `id` 必须稳定，不要随版本变化。
+- `version` 使用语义化版本。
+- `main` 建议带 `?v=<version>`，用于刷新浏览器和宿主缓存。
+- 插件有更新时必须同时修改 `version` 和 `main` 查询参数。
+- 新插件必须添加独立文档到 [`docs/plugins/`](docs/plugins/)。
+
+---
+
+## 宿主 API
+
+### 生命周期 Hook
+
+插件可通过 `RBQ.on(event, callback)` 拦截生图流程中的 payload。
+
 ```javascript
 RBQ.on('buildNaiV4Payload', (payload) => {
-    // payload 就是 NAI API 所需的 JSON
-    if (payload.parameters && payload.input) {
-        payload.input += ", masterpiece, best quality";
-        toastr.info("已触发画质提升器 🪄");
-    }
-    return payload; // 绝对不能漏写
+  payload.input += ', masterpiece, best quality';
+  return payload;
 });
 ```
 
-### 2. `RBQ.api.getSettings()` / `saveSettings()` —— 持久化存储
-因为你的插件与 RBQ 扩展共用生命周期，你可以获取环境中的配置项，也可以偷偷保存你自己的内部状态。
-```javascript
-const conf = RBQ.api.getSettings();
-console.log("当前引擎模式是: ", conf.currentMode);
+可用事件：
 
-// 如果你想持久化你自己的变量
-if (!conf.myPluginState) conf.myPluginState = { count: 0 };
-conf.myPluginState.count += 1;
-RBQ.api.saveSettings(); // 保存进宿主磁盘
+- `buildNaiV4Payload`：拦截 NovelAI V4 请求 payload。
+- `buildGeneratePayload`：拦截传统中转 / Free 模式 payload。
+- `buildComfyUiWorkflow`：拦截 ComfyUI workflow JSON。
+
+回调必须返回 payload，除非你明确不想修改。
+
+### 设置读写
+
+```javascript
+const settings = RBQ.api.getSettings();
+settings._myPlugin = settings._myPlugin || {};
+RBQ.api.saveSettings();
 ```
 
-### 3. `RBQ.api` 高级宿主能力 —— 消息读取、卡片渲染与直接出图
-从宿主版本 `0.3.5` 起，RBQ 向子插件开放了一组用于“无正文 tag 生图”的安全 API。它们允许插件读取聊天上下文、在消息 DOM 内创建 RBQ 原生生图卡片，并复用宿主已经配置好的 NAI / ComfyUI / 自定义模式出图链路。
+- `RBQ.api.getSettings()`：读取 RBQ 宿主设置对象。
+- `RBQ.api.saveSettings()`：触发宿主保存设置。
 
-> 这组 API 适合开发“智能 tagger”“自动画面插入”“剧情截图”等插件：完整 prompt 可以只保存在插件缓存里，不必写进聊天正文，避免污染上下文。
+建议插件把自己的状态放在 `_pluginName` 或 `_pluginId` 字段中，避免污染宿主顶层配置。
 
-#### 消息与上下文读取
+### 自定义生图模式注册
+
+```javascript
+RBQ.api.registerMode('my-mode', {
+  title: 'My Mode',
+  accent: 'custom'
+}, async ({ prompt, settings, onProgress }) => {
+  onProgress?.('正在请求自定义后端...');
+  return { url: 'https://example.com/image.png' };
+});
+```
+
+- `id`：模式 ID。
+- `meta.title`：显示名称。
+- `generateFn`：返回 `{ url }` 或 `{ blob }`。
+
+### 消息读取与 UI 渲染 API
+
+宿主 `0.3.5+` 开始提供以下 API，用于开发不污染正文的智能生图类插件。
+
 ```javascript
 const ctx = RBQ.api.getContext();
-const current = RBQ.api.getMessage(messageId);
+const message = RBQ.api.getMessage(messageId);
 const recent = RBQ.api.getRecentMessages(messageId, 5);
-```
-
-- `RBQ.api.getContext()`：返回 SillyTavern 当前上下文对象。
-- `RBQ.api.getMessage(messageId)`：读取指定楼层消息。
-- `RBQ.api.getRecentMessages(messageId, count)`：读取包含当前楼层在内的最近若干条消息，返回 `{ id, is_user, name, mes }[]`。
-
-#### 消息 DOM 定位
-```javascript
 const messageElement = RBQ.api.getMessageElement(messageId);
 const textContainer = RBQ.api.getMessageTextContainer(messageId);
 ```
 
-- `RBQ.api.getMessageElement(messageId)`：返回 `.mes[mesid="..."]` 消息根节点。
-- `RBQ.api.getMessageTextContainer(messageId)`：返回消息正文容器，可用于插入自定义 UI。
+- `RBQ.api.getContext()`：返回 SillyTavern 当前上下文对象。
+- `RBQ.api.getMessage(messageId)`：读取指定楼层消息。
+- `RBQ.api.getRecentMessages(messageId, count)`：读取最近消息，返回 `{ id, is_user, name, mes }[]`。
+- `RBQ.api.getMessageElement(messageId)`：返回消息根节点。
+- `RBQ.api.getMessageTextContainer(messageId)`：返回消息正文容器。
 
-#### 创建 RBQ 原生生图卡片
 ```javascript
 const wrapper = RBQ.api.createPromptCard({
   messageId,
-  prompt: '1girl, cinematic lighting, rain, detailed face',
+  prompt: '1girl, cinematic lighting, rain',
   raw: '[draw]',
   id: 'my-plugin:unique-key',
   label: 'my-plugin'
@@ -92,14 +172,11 @@ const wrapper = RBQ.api.createPromptCard({
 RBQ.api.getMessageTextContainer(messageId)?.append(wrapper);
 ```
 
-- `prompt`：实际用于出图的完整 prompt。
-- `raw`：隐藏/回退文本，通常可以放短标记或插件名。
-- `id`：去重用的稳定 ID。
-- `label`：插件标签。
+- `RBQ.api.createPromptCard(options)`：创建 RBQ 原生生图卡片。
+- `prompt` 是实际出图 prompt。
+- `raw` 是隐藏/回退文本。
+- `id` 应保持稳定，用于去重。
 
-创建出的卡片会复用 RBQ 原有按钮、加载器、结果图样式和画廊逻辑。
-
-#### 直接调用宿主生图链路
 ```javascript
 if (RBQ.api.shouldAutoGenerate()) {
   const result = await RBQ.api.generateImage(prompt, 'my-plugin', { messageId }, (status) => {
@@ -109,68 +186,69 @@ if (RBQ.api.shouldAutoGenerate()) {
 }
 ```
 
-- `RBQ.api.shouldAutoGenerate()`：读取 RBQ 主设置中的“自动生成”开关。
-- `RBQ.api.generateImage(prompt, reason, meta, onProgress)`：复用宿主当前生图模式发起生成。
-- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：把结果图渲染进 `createPromptCard()` 创建的卡片。
-
-### 4. 官方示例：智能生图触发器 (Smart Draw Trigger)
-本仓库内置 `rbq-smart-draw-trigger` 插件，文件为 `plugins/smart-draw-trigger.js`。它演示了如何在不向正文写入长 tag 的情况下，通过外部 tagger API 自动生成 prompt 并插入 RBQ 生图卡片。
-
-支持能力：
-- **短标记模式**：正文只输出 `[draw]` / `[画图]` 等短标记，插件在原位置隐藏短标记并替换成生图卡片。
-- **自动定位模式**：正文不需要输出任何标记，插件把当前消息和最近上下文发给 tagger API，由 API 判断是否生图以及插入在第几句后。
-- **混合模式**：优先短标记；没有短标记时自动定位。
-- **OpenAI 兼容接口**：配置 Base URL、API Key、Model 后请求 `/chat/completions`。
-- **自定义 HTTP 接口**：插件发送统一 JSON 入参，你的服务返回统一 JSON 出参。
-
-推荐 tagger 返回格式：
-```json
-{
-  "shouldDraw": true,
-  "prompt": "1girl, cinematic lighting, rain, detailed face",
-  "negative": "low quality, bad anatomy",
-  "anchor": { "type": "sentence", "index": 1 },
-  "reason": "当前消息出现明确视觉场景"
-}
-```
-
-- `shouldDraw=false` 时插件不会插卡片。
-- `prompt` 不要包含 `[scene]` / `[img]` 包裹标签。
-- `anchor.index` 表示插入到当前消息第几句之后，从 `1` 开始；定位失败时插件会退回消息末尾。
+- `RBQ.api.shouldAutoGenerate()`：读取 RBQ 主设置中的自动生成开关。
+- `RBQ.api.generateImage(prompt, reason, meta, onProgress)`：复用宿主当前模式出图。
+- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：把结果图渲染到卡片内。
 
 ---
 
-## 🛠 开发与测试指南
-既然是本地免重载沙盒，如何在本地零成本开发调试一个新插件？
+## 插件开发规范
 
-### 步骤一：创建你自己的 Github 专属仓库
-1. 建一个新的 Github 公开仓库，命名为比如 `RBQ-Plugins`
-2. 在仓库根目录建立一个 `plugins.json`（可参考本目录自带的模版）
-3. 创建子目录 `plugins/`，存放你的代码，如：`plugins/enhance-tagger/index.js`
+### 命名
 
-**你的 `plugins.json` 长这样：**
-```json
-[
-  {
-    "id": "rbq-enhance-tagger",
-    "name": "提示词无敌打标插件",
-    "description": "拦截每次生图任务，为你偷偷补齐万能修饰词。",
-    "version": "1.0.0",
-    "author": "Alice",
-    "main": "plugins/enhance-tagger/index.js"
-  }
-]
+- 插件 ID 使用 `rbq-` 前缀，例如 `rbq-smart-draw-trigger`。
+- 私有设置字段使用 `_` 前缀，例如 `_smartDrawTrigger`。
+- DOM ID / class 建议带插件短前缀，避免和宿主或其他插件冲突。
+
+### UI 注入
+
+- 优先注入 RBQ 设置面板中的现有区域，例如 `[data-kite-panel="prompt"]` 或 `[data-kite-panel="plugins"]`。
+- 不要覆盖宿主原有 DOM。
+- 所有事件监听要尽量局部绑定，避免全局误伤。
+
+### 安全
+
+- 动态 HTML 必须转义，或使用 `textContent`。
+- 外部 API Key 应保存在宿主设置里，不应写死在插件源码。
+- 网络请求应捕获错误并通过 `toastr` 提示。
+
+### 缓存和去重
+
+- 对消息扫描类插件，必须用 `messageId + messageHash + mode` 做去重。
+- 避免刷新、滑动、消息更新时重复请求 API 或重复生图。
+- 缓存建议限制数量，避免无限增长。
+
+### 发布
+
+发布或更新插件时需要：
+
+1. 修改插件源码。
+2. 更新独立插件文档。
+3. 更新 [`plugins.json`](plugins.json) 中该插件的 `version`。
+4. 同步更新 `main` 查询参数，例如 `?v=1.0.1`。
+5. 执行语法检查：
+
+```bash
+node --check plugins/your-plugin.js
+python3 -m json.tool plugins.json >/dev/null
 ```
 
-### 步骤二：向宿主注册中心注册
-你可以开启 Github Pages 环境或直接拿到 Github 原始 raw 链接池。
-进入你的 SillyTavern，打开 RBQ 扩展控制台 -> 通用设置 -> 将你的 Github RAW JSON 文件地址填入 **仓库源地址**。
-点击刷新！你的插件就会立刻显示在这个列表中，随时随地开启点击安装！
+6. 提交并推送仓库。
 
-> 💡 **建议：本地开发服联调测试**
-> 开发调试期间，没有必要每天推 Github。你可以直接在存放代码的本地目录（比如 `C:/dev/rbq-plugin-test/`）下运行 `python -m http.server 8000` 或是其他 `Live Server`（注意开启 CORS）。
-> 然后把仓库源地址直接填 `http://127.0.0.1:8000/plugins.json`。这样你在 IDE 敲完代码，在面板里一键刷新安装，立马生效！不用推送到云端！
+---
 
-## 🚀 未来计划
-随着核心引擎支持的开放，我们未来可能会暴露 `RBQ.ui.addSettingPanel` 方法，允许子插件动态在“通用面板”里注入独有的自定义 UI 控制器！
-敬请期待。
+## 本地调试
+
+可以在本仓库目录运行本地静态服务器：
+
+```bash
+python3 -m http.server 8000
+```
+
+然后在 RBQ 扩展控制台的插件仓库源地址中填写：
+
+```text
+http://127.0.0.1:8000/plugins.json
+```
+
+这样每次修改插件后，只需要刷新插件市场并重新安装/更新插件即可测试。

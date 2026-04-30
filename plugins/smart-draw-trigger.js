@@ -1128,11 +1128,14 @@ JSON 格式：
     function insertBySentenceMap(messageId, anchor, wrapper) {
         const map = buildSentenceMap(messageId);
         if (!map.length) return false;
-        const targetIndex = Math.max(1, Number(anchor?.index) || 1);
-        let matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
-        if (!matched && anchor?.text) {
+        let matched = null;
+        if (anchor?.text) {
             const needle = String(anchor.text || '').trim();
             matched = map.find((entry) => entry.text.includes(needle) || needle.includes(entry.text)) || null;
+        }
+        if (!matched) {
+            const targetIndex = Math.max(1, Number(anchor?.index) || 1);
+            matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
         }
         if (!matched) return false;
 

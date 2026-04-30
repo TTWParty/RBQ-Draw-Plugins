@@ -4,34 +4,40 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT = `你是 SillyTavern/RBQ 生图扩展的提示词规划器。你的任务是根据聊天正文判断是否需要插入一张图片，并输出 NovelAI/通用文生图英文 prompt。
+    const DEFAULT_SYSTEM_PROMPT = `你是 SillyTavern/RBQ 生图扩展的提示词规划器。你的任务是根据聊天正文判断是否需要插入图片，并且必须输出严格结构化 JSON 给前端消费。
 
 必须只返回 JSON，不要返回 markdown，不要解释。
 JSON 格式：
 {
   "shouldDraw": true,
-  "prompt": "english image prompt, comma separated tags",
-  "negative": "optional negative prompt",
-  "anchor": { "type": "sentence", "index": 1 },
   "reason": "short chinese reason",
-  "multiChar": false,
-  "scene": "optional multi-char scene prompt",
-  "characters": [
+  "segments": [
     {
-      "index": 1,
-      "caption": "character prompt",
-      "center": "C3",
-      "uc": "character negative prompt"
+      "anchor": { "type": "sentence", "index": 1 },
+      "prompt": "english image prompt, comma separated tags",
+      "negative": "optional negative prompt",
+      "multiChar": false,
+      "scene": "optional multi-char scene prompt",
+      "characters": [
+        {
+          "index": 1,
+          "caption": "character prompt",
+          "center": "C3",
+          "uc": "character negative prompt"
+        }
+      ]
     }
   ]
 }
 
 规则：
-- shouldDraw=false 时 prompt 为空字符串。
+- shouldDraw=false 时 segments 为空数组。
+- 单条消息如果存在多个适合插图的位置，必须返回多个 segments，不能只合并成一个 prompt。
+- 每个 segment 都必须带 anchor.index，表示插在当前消息第几句之后，从 1 开始。
 - prompt 只写画面描述，不要包含 [scene]、[img] 等包裹标签。
-- anchor.index 表示插在当前消息第几句之后，从 1 开始；不确定就用 1。
 - 如果用户提供了 marker，代表该位置强制需要生图。
-- 如果是多角色模式，优先返回 multiChar=true，并提供 scene / characters / center / uc 结构化字段。
+- 如果是多角色模式，必须返回 multiChar=true，并提供 scene / characters / center / uc 结构化字段；不要把多角色信息混成一个普通长 prompt。
+- 如果你无法给出结构化 segments，就返回 shouldDraw=false，而不是退回旧格式。
 - 不要把无关系统说明、分析过程、审查声明写进 prompt。`;
 
     const DEFAULTS = {
@@ -641,6 +647,27 @@ JSON 格式：
         };
     }
 
+    function validateStructuredResult(result) {
+        const store = getStore();
+        const hasSegments = Array.isArray(result?.segments) && result.segments.length > 0;
+
+        if (result?.shouldDraw && !hasSegments) {
+            throw new Error('tagger 返回了 shouldDraw=true，但没有提供 segments[] 结构化结果');
+        }
+
+        if (store.multiCharOutput && hasSegments) {
+            const invalidMultiChar = result.segments.some((segment) => {
+                if (!segment?.multiChar) return false;
+                return !segment.scene || !Array.isArray(segment.characters) || !segment.characters.length;
+            });
+            if (invalidMultiChar) {
+                throw new Error('tagger 返回了多角色片段，但缺少 scene 或 characters[] 结构');
+            }
+        }
+
+        return result;
+    }
+
     function logTaggerPayload(tag, payload) {
         console.info(`[${PLUGIN_NAME}] ${tag} =>`, payload);
     }
@@ -736,7 +763,7 @@ JSON 格式：
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
         logTaggerPayload('tagger raw response', json);
-        const normalized = normalizeTaggerResult(json);
+        const normalized = validateStructuredResult(normalizeTaggerResult(json));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
@@ -760,7 +787,7 @@ JSON 格式：
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
         logTaggerPayload('tagger raw response', json);
-        const normalized = normalizeTaggerResult(json);
+        const normalized = validateStructuredResult(normalizeTaggerResult(json));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }

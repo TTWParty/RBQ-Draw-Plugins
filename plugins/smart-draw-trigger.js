@@ -37,6 +37,11 @@ JSON 格式：
         contextCount: 5,
         markers: '[draw]\n[画图]',
         targetRole: 'assistant',
+        debugToast: true,
+        ruleBookEnabled: false,
+        ruleBookScanDepth: 5,
+        ruleBookBudget: 1800,
+        ruleBookEntries: '[\n  {\n    "name": "画风总规则",\n    "enabled": true,\n    "constant": true,\n    "keys": [],\n    "priority": 100,\n    "content": "输出英文逗号分隔 prompt，优先提炼当前画面主体、服装、表情、动作、场景、光照。"\n  },\n  {\n    "name": "雨夜场景",\n    "enabled": true,\n    "constant": false,\n    "keys": ["雨", "夜", "雨声"],\n    "priority": 80,\n    "content": "如果当前场景包含雨夜，加入 rain, wet skin/clothes, cinematic lighting, dark atmosphere 等视觉元素。"\n  }\n]',
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         cache: {},
     };
@@ -57,6 +62,16 @@ JSON 格式：
 
     function save() {
         RBQ.api.saveSettings();
+    }
+
+    function debugInfo(message) {
+        if (!getStore().debugToast) return;
+        toastr.info(message, PLUGIN_NAME);
+    }
+
+    function debugWarning(message) {
+        if (!getStore().debugToast) return;
+        toastr.warning(message, PLUGIN_NAME);
     }
 
     function hashText(text) {
@@ -162,6 +177,7 @@ JSON 格式：
             const last = recentMessages[recentMessages.length - 1];
             if (Number(last.id) === Number(messageId)) last.content = current.mes;
         }
+        const ruleBook = collectActiveRules(current.mes, recentMessages);
         return {
             mode: trigger.type,
             marker: trigger.marker || '',
@@ -172,6 +188,7 @@ JSON 格式：
                 content: String(current?.mes || ''),
             },
             recentMessages,
+            ruleBook,
             contextCount: Number(store.contextCount) || 5,
             outputSchema: {
                 shouldDraw: 'boolean',
@@ -181,6 +198,53 @@ JSON 格式：
                 reason: 'string optional',
             },
         };
+    }
+
+    function parseRuleBookEntries() {
+        const store = getStore();
+        if (!store.ruleBookEnabled) return [];
+        try {
+            const data = JSON.parse(store.ruleBookEntries || '[]');
+            if (!Array.isArray(data)) throw new Error('规则书必须是 JSON 数组');
+            return data
+                .filter(entry => entry && entry.enabled !== false && String(entry.content || '').trim())
+                .map((entry, index) => ({
+                    name: String(entry.name || `规则 ${index + 1}`),
+                    constant: !!entry.constant,
+                    keys: Array.isArray(entry.keys) ? entry.keys.map(String).filter(Boolean) : [],
+                    priority: Number(entry.priority) || 0,
+                    content: String(entry.content || '').trim(),
+                }));
+        } catch (error) {
+            debugWarning(`规则书 JSON 解析失败：${error.message || String(error)}`);
+            return [];
+        }
+    }
+
+    function collectActiveRules(currentText, recentMessages) {
+        const store = getStore();
+        const entries = parseRuleBookEntries();
+        if (!entries.length) return [];
+        const depth = Math.max(1, Math.min(50, Number(store.ruleBookScanDepth) || 5));
+        const scopeText = [
+            ...recentMessages.slice(-depth).map(item => item.content),
+            currentText,
+        ].join('\n');
+        const active = entries.filter((entry) => {
+            if (entry.constant) return true;
+            return entry.keys.some(key => scopeText.includes(key));
+        }).sort((a, b) => b.priority - a.priority);
+        const budget = Math.max(200, Math.min(12000, Number(store.ruleBookBudget) || 1800));
+        const result = [];
+        let used = 0;
+        for (const entry of active) {
+            const chunk = entry.content.slice(0, Math.max(0, budget - used));
+            if (!chunk) break;
+            result.push({ name: entry.name, content: chunk, priority: entry.priority, constant: entry.constant, keys: entry.keys });
+            used += chunk.length;
+            if (used >= budget) break;
+        }
+        return result;
     }
 
     function extractJson(text) {
@@ -322,6 +386,14 @@ JSON 格式：
         if (!(container instanceof HTMLElement)) return null;
         const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
         if (existing instanceof HTMLElement) return existing;
+
+        // 自动定位在流式输出期间可能随着正文 hash 变化多次触发。
+        // 同一楼层同一轮自动定位只保留一张卡片，避免所有卡片堆在开头。
+        if (trigger.type === 'auto') {
+            const existingAuto = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-trigger-type="auto"]`);
+            if (existingAuto instanceof HTMLElement) return existingAuto;
+        }
+
         const wrapper = RBQ.api.createPromptCard({
             messageId,
             prompt: result.prompt,
@@ -332,10 +404,13 @@ JSON 格式：
         if (!(wrapper instanceof HTMLElement)) return null;
         wrapper.classList.add(CARD_CLASS);
         wrapper.dataset.rbqSdtKey = key;
+        wrapper.dataset.rbqSdtTriggerType = trigger.type;
         wrapper.dataset.rbqSdtReason = result.reason || '';
+
+        // 短标记按标记位置替换；自动定位默认插入消息末尾，避免 anchor.index=1 时挤到正文最前面。
         const inserted = trigger.type === 'marker' && trigger.marker
             ? insertAtMarker(container, trigger.marker, wrapper)
-            : insertAfterSentence(container, result.anchor?.index || 1, wrapper);
+            : false;
         if (!inserted) container.append(wrapper);
         return wrapper;
     }
@@ -380,14 +455,27 @@ JSON 格式：
     async function processMessage(messageId) {
         const store = getStore();
         const message = getMessageSnapshot(messageId);
-        if (!shouldHandleMessage(message)) return;
+        if (!shouldHandleMessage(message)) {
+            if (store.enabled && store.mode !== 'off') debugWarning(`已扫描 #${messageId}，但消息角色不在监听范围内或消息为空`);
+            return;
+        }
         const trigger = getTrigger(message);
-        if (!trigger) return;
+        if (!trigger) {
+            debugWarning(`已扫描 #${messageId}，但没有匹配短标记，且当前模式不允许自动定位`);
+            return;
+        }
         const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
-        if (inFlight.has(key)) return;
+        if (inFlight.has(key)) {
+            debugInfo(`已触发 #${messageId}，请求正在进行中，跳过重复触发`);
+            return;
+        }
         const cached = store.cache[key];
-        if (cached?.checked && !cached.shouldDraw) return;
+        if (cached?.checked && !cached.shouldDraw) {
+            debugWarning(`已命中缓存 #${messageId}：tagger 判断不需要生图`);
+            return;
+        }
         if (cached?.shouldDraw && cached.prompt) {
+            debugInfo(`已命中缓存 #${messageId}，正在恢复生图卡片`);
             const wrapper = insertCard(messageId, trigger, cached, key);
             if (wrapper) await maybeAutoGenerate(wrapper, cached, messageId, key);
             return;
@@ -395,7 +483,9 @@ JSON 格式：
 
         inFlight.add(key);
         try {
+            debugInfo(`已触发 #${messageId}（${trigger.type === 'marker' ? `短标记 ${trigger.marker}` : '自动定位'}），正在请求 tagger API...`);
             const result = await callTagger(messageId, trigger);
+            debugInfo(`tagger 已返回 #${messageId}：${result.shouldDraw ? '需要生图' : '不需要生图'}`);
             store.cache[key] = {
                 ...result,
                 checked: true,
@@ -599,7 +689,12 @@ JSON 格式：
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="marker">仅短标记</option><option value="auto">仅自动定位</option><option value="hybrid">自动定位 + 短标记兜底</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
+                <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field wide"><span>短标记（每行一个）</span><textarea id="rbq-sdt-markers"></textarea></label>
+                <div id="rbq-sdt-rulebook-field" class="st-scene-trigger-field switch"><span>启用轻量规则书</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-rulebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label class="st-scene-trigger-field"><span>规则扫描深度</span><input id="rbq-sdt-rulebook-depth" type="number" min="1" max="50" step="1"></label>
+                <label class="st-scene-trigger-field"><span>规则注入预算（字符）</span><input id="rbq-sdt-rulebook-budget" type="number" min="200" max="12000" step="100"></label>
+                <label class="st-scene-trigger-field wide"><span>轻量规则书 JSON</span><textarea id="rbq-sdt-rulebook-entries" style="min-height:180px;"></textarea></label>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
@@ -622,7 +717,12 @@ JSON 格式：
         document.getElementById('rbq-sdt-mode').value = store.mode;
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
+        document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-markers').value = store.markers;
+        document.getElementById('rbq-sdt-rulebook-enabled').checked = !!store.ruleBookEnabled;
+        document.getElementById('rbq-sdt-rulebook-depth').value = store.ruleBookScanDepth;
+        document.getElementById('rbq-sdt-rulebook-budget').value = store.ruleBookBudget;
+        document.getElementById('rbq-sdt-rulebook-entries').value = store.ruleBookEntries;
         document.getElementById('rbq-sdt-provider').value = store.provider;
         document.getElementById('rbq-sdt-openai-base').value = store.openaiBaseUrl;
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
@@ -633,6 +733,8 @@ JSON 格式：
         document.getElementById('rbq-sdt-system-prompt').value = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
         updateProviderVisibility();
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
+        bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
+        bindSwitch('rbq-sdt-rulebook-field', 'rbq-sdt-rulebook-enabled');
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
@@ -643,7 +745,12 @@ JSON 格式：
             s.mode = val('rbq-sdt-mode');
             s.targetRole = val('rbq-sdt-target-role');
             s.contextCount = Math.max(1, Math.min(50, Number(val('rbq-sdt-context-count')) || 5));
+            s.debugToast = checked('rbq-sdt-debug');
             s.markers = val('rbq-sdt-markers');
+            s.ruleBookEnabled = checked('rbq-sdt-rulebook-enabled');
+            s.ruleBookScanDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-rulebook-depth')) || 5));
+            s.ruleBookBudget = Math.max(200, Math.min(12000, Number(val('rbq-sdt-rulebook-budget')) || 1800));
+            s.ruleBookEntries = val('rbq-sdt-rulebook-entries');
             s.provider = val('rbq-sdt-provider');
             s.openaiBaseUrl = val('rbq-sdt-openai-base').trim();
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();

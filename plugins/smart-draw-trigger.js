@@ -606,7 +606,7 @@ JSON 格式：
 
     function normalizeTaggerResult(data) {
         const source = data?.choices?.[0]?.message?.content ? extractJson(data.choices[0].message.content) : data;
-        const segments = Array.isArray(source?.segments)
+        let segments = Array.isArray(source?.segments)
             ? source.segments.map((item, index) => ({
                 anchor: item?.anchor && typeof item.anchor === 'object'
                     ? { type: item.anchor.type || 'sentence', index: Math.max(1, Number(item.anchor.index) || (index + 1)) }
@@ -625,7 +625,7 @@ JSON 格式：
                     : [],
             })).filter((item) => item.prompt || item.characters.length)
             : [];
-        return {
+        const normalized = {
             shouldDraw: !!source?.shouldDraw,
             prompt: String(source?.prompt || '').trim(),
             negative: String(source?.negative || '').trim(),
@@ -645,15 +645,25 @@ JSON 格式：
             reason: String(source?.reason || '').trim(),
             segments,
         };
+
+        if (!segments.length && normalized.shouldDraw && (normalized.prompt || normalized.characters.length)) {
+            segments = [{
+                anchor: normalized.anchor,
+                prompt: normalized.prompt,
+                negative: normalized.negative,
+                multiChar: normalized.multiChar,
+                scene: normalized.scene,
+                characters: normalized.characters,
+            }];
+            normalized.segments = segments;
+        }
+
+        return normalized;
     }
 
     function validateStructuredResult(result) {
         const store = getStore();
         const hasSegments = Array.isArray(result?.segments) && result.segments.length > 0;
-
-        if (result?.shouldDraw && !hasSegments) {
-            throw new Error('tagger 返回了 shouldDraw=true，但没有提供 segments[] 结构化结果');
-        }
 
         if (store.multiCharOutput && hasSegments) {
             const invalidMultiChar = result.segments.some((segment) => {

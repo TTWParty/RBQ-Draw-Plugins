@@ -961,6 +961,57 @@
         return nodes;
     }
 
+    function getPureMessageRoot(messageId) {
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return null;
+        const clone = container.cloneNode(true);
+        if (!(clone instanceof HTMLElement)) return null;
+
+        clone.querySelectorAll([
+            '.mes_timer',
+            '.mes_reasoning',
+            '.mes_reasoning_header',
+            '.mes_reasoning_details',
+            '.mes_reasoning_summary',
+            'summary',
+            'details',
+            '.st-scene-trigger-inline-wrap',
+            `.${CARD_CLASS}`,
+            '.mes_buttons',
+            '.mes_edit_buttons',
+            '.mes_img_controls',
+            '[data-role="message-actions"]',
+            '[data-role="message-metadata"]'
+        ].join(',')).forEach(node => node.remove());
+
+        return clone;
+    }
+
+    function buildSentenceMap(messageId) {
+        const root = getPureMessageRoot(messageId);
+        if (!(root instanceof HTMLElement)) return [];
+        const sentenceRegex = /[^。！？.!?\n]+[。！？.!?]?/g;
+        const map = [];
+        let sentenceIndex = 0;
+        for (const node of visibleTextNodes(root)) {
+            const text = node.nodeValue || '';
+            let match;
+            while ((match = sentenceRegex.exec(text))) {
+                const sentence = String(match[0] || '').trim();
+                if (!sentence) continue;
+                sentenceIndex += 1;
+                map.push({
+                    sentenceIndex,
+                    text: sentence,
+                    node,
+                    startOffset: match.index,
+                    endOffset: match.index + match[0].length,
+                });
+            }
+        }
+        return map;
+    }
+
     function insertWrapperAtTextNode(node, start, end, wrapper) {
         const text = node.nodeValue || '';
         const fragment = document.createDocumentFragment();
@@ -1002,6 +1053,40 @@
         return false;
     }
 
+    function insertBySentenceMap(messageId, anchor, wrapper) {
+        const map = buildSentenceMap(messageId);
+        if (!map.length) return false;
+        const targetIndex = Math.max(1, Number(anchor?.index) || 1);
+        let matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
+        if (!matched && anchor?.text) {
+            const needle = String(anchor.text || '').trim();
+            matched = map.find((entry) => entry.text.includes(needle) || needle.includes(entry.text)) || null;
+        }
+        if (!matched) return false;
+
+        const liveContainer = RBQ.api.getMessageTextContainer(messageId);
+        if (!(liveContainer instanceof HTMLElement)) return false;
+        const liveNodes = visibleTextNodes(liveContainer);
+        let seen = 0;
+        const sentenceRegex = /[^。！？.!?\n]+[。！？.!?]?/g;
+        for (const node of liveNodes) {
+            const text = node.nodeValue || '';
+            let match;
+            while ((match = sentenceRegex.exec(text))) {
+                const sentence = String(match[0] || '').trim();
+                if (!sentence) continue;
+                seen += 1;
+                const textMatch = sentence === matched.text;
+                if (seen === matched.sentenceIndex || textMatch) {
+                    const insertAt = match.index + match[0].length;
+                    insertWrapperAtTextNode(node, insertAt, insertAt, wrapper);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     function insertCard(messageId, trigger, result, key) {
         const container = RBQ.api.getMessageTextContainer(messageId);
         if (!(container instanceof HTMLElement)) return null;
@@ -1029,7 +1114,10 @@
         if (trigger.type === 'marker' && trigger.marker) {
             inserted = insertAtMarker(container, trigger.marker, wrapper);
         } else if (result?.anchor?.type === 'sentence') {
-            inserted = insertAfterSentence(container, result.anchor.index || 1, wrapper);
+            inserted = insertBySentenceMap(messageId, result.anchor, wrapper);
+            if (!inserted) {
+                inserted = insertAfterSentence(container, result.anchor.index || 1, wrapper);
+            }
         }
         if (!inserted) container.append(wrapper);
 

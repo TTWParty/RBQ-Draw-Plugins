@@ -4,8 +4,8 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 2;
-    const DEFAULT_SYSTEM_PROMPT = `你是一个“世界书驱动的生图协议规划器”，不是普通的文生图提示词补全器。
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 3;
+    const STRICT_SYSTEM_PROMPT = `你是一个“世界书驱动的生图协议规划器”，不是普通的文生图提示词补全器。
 
 你的任务：
 1. 先阅读当前消息、最近上下文、lorebook、ruleBook。
@@ -153,6 +153,77 @@
 
 如果 lorebook / ruleBook 中已经明确规定了主体、动作模板、标签库和多角色结构，就必须优先服从这些规则。不要为了省事退回单个普通 prompt。`;
 
+    const BALANCED_SYSTEM_PROMPT = `你是一个面向剧情文本的生图规划器。你会参考 lorebook 与 ruleBook，但首先要准确理解当前剧情的视觉重点，再输出结构化 JSON 给前端。
+
+你必须只返回 JSON，不要返回 markdown，不要解释。
+
+优先目标：
+1. 先理解当前剧情里真正值得插图的视觉焦点。
+2. 如果只有一个焦点，可以返回单个 prompt，并同时提供 segments[0]。
+3. 如果有多个明显焦点，返回多个 segments[]。
+4. 如果是明确双人/多人画面，再启用 multiChar=true，并提供 scene + characters[]。
+
+请不要机械堆叠世界书中的所有词条；只挑与当前镜头相关的内容。
+
+输出 JSON 总格式：
+{
+  "shouldDraw": true,
+  "reason": "short chinese reason",
+  "prompt": "optional single-segment prompt",
+  "negative": "optional single-segment negative prompt",
+  "anchor": { "type": "sentence", "index": 1 },
+  "multiChar": false,
+  "scene": "optional multi-char scene prompt",
+  "characters": [],
+  "segments": []
+}
+
+规则：
+- shouldDraw=false 时，segments 为空数组。
+- 尽量使用 segments[]，但如果只有一个焦点，允许同时返回顶层 prompt。
+- prompt 不要包含 [scene]、[img] 等包裹标签。
+- lorebook / ruleBook 是重要参考，但不要求逐字照搬所有命中规则。
+- 如果画面是多角色，必须返回 multiChar=true，并把角色拆到 characters[]。`;
+
+    const LEGACY_SYSTEM_PROMPT = `你是 SillyTavern/RBQ 生图扩展的提示词规划器。你的任务是根据聊天正文判断是否需要插入一张图片，并输出 NovelAI/通用文生图英文 prompt。
+
+必须只返回 JSON，不要返回 markdown，不要解释。
+JSON 格式：
+{
+  "shouldDraw": true,
+  "prompt": "english image prompt, comma separated tags",
+  "negative": "optional negative prompt",
+  "anchor": { "type": "sentence", "index": 1 },
+  "reason": "short chinese reason",
+  "multiChar": false,
+  "scene": "optional multi-char scene prompt",
+  "characters": [
+    {
+      "index": 1,
+      "caption": "character prompt",
+      "center": "C3",
+      "uc": "character negative prompt"
+    }
+  ]
+}
+
+规则：
+- shouldDraw=false 时 prompt 为空字符串。
+- prompt 只写画面描述，不要包含 [scene]、[img] 等包裹标签。
+- anchor.index 表示插在当前消息第几句之后，从 1 开始；不确定就用 1。
+- 如果用户提供了 marker，代表该位置强制需要生图。
+- 如果是多角色模式，优先返回 multiChar=true，并提供 scene / characters / center / uc 结构化字段。
+- 不要把无关系统说明、分析过程、审查声明写进 prompt。`;
+
+    const SYSTEM_PROMPT_PRESETS = {
+        strict: { label: '严格结构化版', prompt: STRICT_SYSTEM_PROMPT },
+        balanced: { label: '平衡版', prompt: BALANCED_SYSTEM_PROMPT },
+        legacy: { label: '旧版回退版', prompt: LEGACY_SYSTEM_PROMPT },
+    };
+
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'strict';
+    const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
+
     const DEFAULTS = {
         enabled: false,
         mode: 'hybrid', // off | marker | auto | hybrid
@@ -170,6 +241,7 @@
         debugToast: false,
         multiCharOutput: false,
         autoRunTagger: false,
+        systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         lorebookEnabled: false,
         lorebookContextDepth: 5,
         lorebookSources: [],
@@ -1599,11 +1671,12 @@
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="strict">严格结构化版</option><option value="balanced">平衡版</option><option value="legacy">旧版回退版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
                 <button id="rbq-sdt-save" class="menu_button" type="button">保存智能触发器设置</button>
-                <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为最新默认 Prompt</button>
+                <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为所选内置 Prompt</button>
                 <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
                 <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描当前聊天</button>
@@ -1623,6 +1696,7 @@
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
+        document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-rulebook-enabled').checked = !!store.ruleBookEnabled;
         document.getElementById('rbq-sdt-rulebook-depth').value = store.ruleBookScanDepth;
@@ -1638,9 +1712,10 @@
         document.getElementById('rbq-sdt-custom-key-header').value = store.customApiKeyHeader;
         document.getElementById('rbq-sdt-custom-key').value = store.customApiKey;
         document.getElementById('rbq-sdt-system-prompt').value = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        const presetLabel = SYSTEM_PROMPT_PRESETS[store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET]?.label || '未知';
         const promptVersionText = store.systemPromptVersion === DEFAULT_SYSTEM_PROMPT_VERSION
-            ? `v${store.systemPromptVersion}（最新）`
-            : `本地 v${store.systemPromptVersion} / 内置 v${DEFAULT_SYSTEM_PROMPT_VERSION}`;
+            ? `${presetLabel} · v${store.systemPromptVersion}（最新）`
+            : `${presetLabel} · 本地 v${store.systemPromptVersion} / 内置 v${DEFAULT_SYSTEM_PROMPT_VERSION}`;
         document.getElementById('rbq-sdt-system-prompt-version').textContent = promptVersionText;
         updateProviderVisibility();
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
@@ -1662,6 +1737,7 @@
             s.debugToast = checked('rbq-sdt-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');
             s.autoRunTagger = checked('rbq-sdt-autorun');
+            s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.ruleBookEnabled = checked('rbq-sdt-rulebook-enabled');
             s.ruleBookScanDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-rulebook-depth')) || 5));
@@ -1684,12 +1760,15 @@
         };
         document.getElementById('rbq-sdt-reset-system-prompt').onclick = () => {
             const s = getStore();
-            s.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+            const preset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
+            const nextPrompt = SYSTEM_PROMPT_PRESETS[preset]?.prompt || DEFAULT_SYSTEM_PROMPT;
+            s.systemPromptPreset = preset;
+            s.systemPrompt = nextPrompt;
             s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
             save();
-            document.getElementById('rbq-sdt-system-prompt').value = DEFAULT_SYSTEM_PROMPT;
-            document.getElementById('rbq-sdt-system-prompt-version').textContent = `v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
-            toastr.success('已重置为插件内置的最新默认 System Prompt', PLUGIN_NAME);
+            document.getElementById('rbq-sdt-system-prompt').value = nextPrompt;
+            document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
+            toastr.success(`已重置为所选内置 Prompt：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
         };
         document.getElementById('rbq-sdt-import-lorebook').onclick = () => {
             let input = document.getElementById('rbq-sdt-lorebook-file-input');

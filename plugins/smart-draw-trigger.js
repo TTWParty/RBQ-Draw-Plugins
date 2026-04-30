@@ -851,9 +851,31 @@
         const segments = getResultSegments(result)
             .filter((segment) => getFinalPrompt(segment));
 
+        console.info(`[${PLUGIN_NAME}] materializeResultCards =>`, {
+            messageId,
+            baseKey,
+            segmentCount: segments.length,
+            segments: segments.map((segment, index) => ({
+                index,
+                anchor: segment.anchor,
+                multiChar: segment.multiChar,
+                promptPreview: String(getFinalPrompt(segment)).slice(0, 120),
+            })),
+            containerTag: container.tagName,
+            containerClass: container.className,
+            containerPreview: String(container.textContent || '').slice(0, 160),
+        });
+
         return segments.map((segment, index) => {
             const segKey = `${baseKey}:seg:${index}`;
             const wrapper = insertCard(messageId, trigger, segment, segKey);
+            console.info(`[${PLUGIN_NAME}] materialize segment result =>`, {
+                messageId,
+                segKey,
+                anchor: segment.anchor,
+                inserted: !!wrapper,
+                wrapperConnected: !!wrapper?.isConnected,
+            });
             if (!(wrapper instanceof HTMLElement)) return null;
             wrapper.dataset.prompt = getFinalPrompt(segment);
             wrapper.dataset.rbqSdtBaseKey = baseKey;
@@ -1010,6 +1032,19 @@
             inserted = insertAfterSentence(container, result.anchor.index || 1, wrapper);
         }
         if (!inserted) container.append(wrapper);
+
+        console.info(`[${PLUGIN_NAME}] insertCard =>`, {
+            messageId,
+            key,
+            triggerType: trigger.type,
+            anchor: result?.anchor,
+            insertedByAnchor: inserted,
+            fallbackAppend: !inserted,
+            wrapperConnected: wrapper.isConnected,
+            containerTag: container.tagName,
+            containerClass: container.className,
+            cardCountAfterInsert: container.querySelectorAll(`.${CARD_CLASS}`).length,
+        });
         return wrapper;
     }
 

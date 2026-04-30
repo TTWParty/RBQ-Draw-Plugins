@@ -66,12 +66,12 @@ JSON 格式：
 
     function debugInfo(message) {
         if (!getStore().debugToast) return;
-        toastr.info(message, PLUGIN_NAME);
+        console.info(`[${PLUGIN_NAME}] ${message}`);
     }
 
     function debugWarning(message) {
         if (!getStore().debugToast) return;
-        toastr.warning(message, PLUGIN_NAME);
+        console.warn(`[${PLUGIN_NAME}] ${message}`);
     }
 
     function getLatestMessageId() {
@@ -488,7 +488,6 @@ JSON 格式：
             return;
         }
         if (cached?.shouldDraw && cached.prompt) {
-            debugInfo(`已命中缓存 #${messageId}，正在恢复生图卡片`);
             const wrapper = insertCard(messageId, trigger, cached, key);
             if (wrapper) await maybeAutoGenerate(wrapper, cached, messageId, key);
             return;

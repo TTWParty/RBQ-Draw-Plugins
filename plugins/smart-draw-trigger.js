@@ -4,6 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 2;
     const DEFAULT_SYSTEM_PROMPT = `你是一个“世界书驱动的生图协议规划器”，不是普通的文生图提示词补全器。
 
 你的任务：
@@ -177,6 +178,7 @@
         ruleBookBudget: 1800,
         ruleBookEntries: '[\n  {\n    "name": "画风总规则",\n    "enabled": true,\n    "constant": true,\n    "keys": [],\n    "priority": 100,\n    "content": "输出英文逗号分隔 prompt，优先提炼当前画面主体、服装、表情、动作、场景、光照。"\n  },\n  {\n    "name": "雨夜场景",\n    "enabled": true,\n    "constant": false,\n    "keys": ["雨", "夜", "雨声"],\n    "priority": 80,\n    "content": "如果当前场景包含雨夜，加入 rain, wet skin/clothes, cinematic lighting, dark atmosphere 等视觉元素。"\n  }\n]',
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
         cache: {},
     };
 
@@ -196,6 +198,7 @@
             if (store[key] === undefined) store[key] = value;
         }
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
+        if (!store.systemPromptVersion) store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         return store;
     }
 
@@ -1471,10 +1474,11 @@
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field wide"><span>System Prompt</span><textarea id="rbq-sdt-system-prompt"></textarea></label>
+                <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
                 <button id="rbq-sdt-save" class="menu_button" type="button">保存智能触发器设置</button>
+                <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为最新默认 Prompt</button>
                 <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
                 <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描当前聊天</button>
@@ -1509,6 +1513,10 @@
         document.getElementById('rbq-sdt-custom-key-header').value = store.customApiKeyHeader;
         document.getElementById('rbq-sdt-custom-key').value = store.customApiKey;
         document.getElementById('rbq-sdt-system-prompt').value = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        const promptVersionText = store.systemPromptVersion === DEFAULT_SYSTEM_PROMPT_VERSION
+            ? `v${store.systemPromptVersion}（最新）`
+            : `本地 v${store.systemPromptVersion} / 内置 v${DEFAULT_SYSTEM_PROMPT_VERSION}`;
+        document.getElementById('rbq-sdt-system-prompt-version').textContent = promptVersionText;
         updateProviderVisibility();
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
@@ -1544,9 +1552,19 @@
             s.customApiKeyHeader = val('rbq-sdt-custom-key-header').trim() || 'Authorization';
             s.customApiKey = val('rbq-sdt-custom-key').trim();
             s.systemPrompt = val('rbq-sdt-system-prompt').trim() || DEFAULT_SYSTEM_PROMPT;
+            s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
             save();
             toastr.success('智能生图触发器设置已保存', PLUGIN_NAME);
             scanLatestVisible();
+        };
+        document.getElementById('rbq-sdt-reset-system-prompt').onclick = () => {
+            const s = getStore();
+            s.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+            s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+            save();
+            document.getElementById('rbq-sdt-system-prompt').value = DEFAULT_SYSTEM_PROMPT;
+            document.getElementById('rbq-sdt-system-prompt-version').textContent = `v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
+            toastr.success('已重置为插件内置的最新默认 System Prompt', PLUGIN_NAME);
         };
         document.getElementById('rbq-sdt-import-lorebook').onclick = () => {
             let input = document.getElementById('rbq-sdt-lorebook-file-input');

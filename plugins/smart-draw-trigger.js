@@ -30,6 +30,7 @@ JSON 格式：
         openaiBaseUrl: '',
         openaiApiKey: '',
         openaiModel: '',
+        openaiModels: [],
         customUrl: '',
         customApiKey: '',
         customApiKeyHeader: 'Authorization',
@@ -117,6 +118,14 @@ JSON 格式：
         if (!base) return '';
         if (/\/chat\/completions$/.test(base)) return base;
         return `${base}/chat/completions`;
+    }
+
+    function normalizeModelsUrl(baseUrl) {
+        const base = String(baseUrl || '').trim().replace(/\/+$/, '');
+        if (!base) return '';
+        if (/\/chat\/completions$/.test(base)) return base.replace(/\/chat\/completions$/, '/models');
+        if (/\/models$/.test(base)) return base;
+        return `${base}/models`;
     }
 
     function buildRequestPayload(messageId, trigger) {
@@ -454,6 +463,78 @@ JSON 格式：
     function val(id) { return document.getElementById(id)?.value || ''; }
     function checked(id) { return !!document.getElementById(id)?.checked; }
 
+    function populateModelSelect(models, selected) {
+        const select = document.getElementById('rbq-sdt-openai-model');
+        if (!(select instanceof HTMLSelectElement)) return;
+        const values = Array.isArray(models) ? [...new Set(models.map(String).filter(Boolean))] : [];
+        if (selected && !values.includes(selected)) values.unshift(selected);
+        select.innerHTML = '';
+        if (!values.length) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '请先刷新模型列表';
+            select.append(option);
+            return;
+        }
+        values.forEach((model) => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            select.append(option);
+        });
+        select.value = selected && values.includes(selected) ? selected : values[0];
+    }
+
+    function updateProviderVisibility() {
+        const provider = val('rbq-sdt-provider') || 'openai';
+        document.querySelectorAll('[data-rbq-sdt-provider]').forEach((element) => {
+            if (!(element instanceof HTMLElement)) return;
+            const group = element.dataset.rbqSdtProvider;
+            element.style.display = group === provider ? '' : 'none';
+        });
+    }
+
+    async function refreshOpenAiModels() {
+        const button = document.getElementById('rbq-sdt-refresh-models');
+        const store = getStore();
+        const baseUrl = val('rbq-sdt-openai-base').trim() || store.openaiBaseUrl;
+        const apiKey = val('rbq-sdt-openai-key').trim() || store.openaiApiKey;
+        const url = normalizeModelsUrl(baseUrl);
+        if (!url) return toastr.warning('请先填写 OpenAI Base URL', PLUGIN_NAME);
+        try {
+            if (button instanceof HTMLButtonElement) {
+                button.disabled = true;
+                button.textContent = '刷新中...';
+            }
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                },
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status} ${await response.text()}`);
+            const data = await response.json();
+            const models = Array.isArray(data?.data)
+                ? data.data.map(item => item?.id).filter(Boolean)
+                : (Array.isArray(data?.models) ? data.models.map(item => typeof item === 'string' ? item : item?.id).filter(Boolean) : []);
+            if (!models.length) throw new Error('接口未返回可用模型列表');
+            store.openaiModels = models;
+            store.openaiBaseUrl = baseUrl;
+            store.openaiApiKey = apiKey;
+            if (!store.openaiModel || !models.includes(store.openaiModel)) store.openaiModel = models[0];
+            populateModelSelect(models, store.openaiModel);
+            save();
+            toastr.success(`已获取 ${models.length} 个模型`, PLUGIN_NAME);
+        } catch (error) {
+            toastr.error(`获取模型失败: ${error.message || String(error)}`, PLUGIN_NAME);
+        } finally {
+            if (button instanceof HTMLButtonElement) {
+                button.disabled = false;
+                button.textContent = '刷新模型';
+            }
+        }
+    }
+
     function renderSettings(panel) {
         if (document.getElementById('rbq-smart-draw-panel')) return;
         injectStyles();
@@ -471,12 +552,12 @@ JSON 格式：
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field wide"><span>短标记（每行一个）</span><textarea id="rbq-sdt-markers"></textarea></label>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
-                <label class="st-scene-trigger-field wide"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
-                <label class="st-scene-trigger-field"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>OpenAI Model</span><input id="rbq-sdt-openai-model" type="text" placeholder="gpt-4o-mini"></label>
-                <label class="st-scene-trigger-field wide"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
-                <label class="st-scene-trigger-field"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
-                <label class="st-scene-trigger-field"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
+                <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
+                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
+                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
+                <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
+                <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
+                <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt</span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
@@ -496,11 +577,15 @@ JSON 格式：
         document.getElementById('rbq-sdt-provider').value = store.provider;
         document.getElementById('rbq-sdt-openai-base').value = store.openaiBaseUrl;
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
-        document.getElementById('rbq-sdt-openai-model').value = store.openaiModel;
+        populateModelSelect(store.openaiModels || [], store.openaiModel);
         document.getElementById('rbq-sdt-custom-url').value = store.customUrl;
         document.getElementById('rbq-sdt-custom-key-header').value = store.customApiKeyHeader;
         document.getElementById('rbq-sdt-custom-key').value = store.customApiKey;
         document.getElementById('rbq-sdt-system-prompt').value = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        updateProviderVisibility();
+
+        document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
+        document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
 
         document.getElementById('rbq-sdt-save').onclick = () => {
             const s = getStore();

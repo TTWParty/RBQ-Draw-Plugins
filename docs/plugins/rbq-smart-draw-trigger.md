@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.0.1`
+版本：`1.0.2`
 
 ---
 
@@ -144,6 +144,8 @@
 - `OpenAI API Key`
 - `OpenAI Model`
 - `System Prompt`
+
+界面会提供“刷新模型”按钮。填写 Base URL 和 API Key 后，插件会请求 `/models` 获取模型列表，并把 `OpenAI Model` 显示为下拉选择。
 
 如果 Base URL 填：
 

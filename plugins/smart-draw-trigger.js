@@ -1170,7 +1170,9 @@
             };
             pruneCache();
             save();
-            if (!result.shouldDraw || !result.prompt) {
+            const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment));
+            const hasTopLevelPrompt = !!getFinalPrompt(result);
+            if (!result.shouldDraw || (!hasUsableSegments && !hasTopLevelPrompt)) {
                 ensureTaggerButtonState(wrapper, 'tagger 判断无需生图');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'done-no-draw');

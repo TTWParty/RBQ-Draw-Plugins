@@ -1065,8 +1065,7 @@ JSON 格式：
         return clone;
     }
 
-    function buildSentenceMap(messageId) {
-        const root = getPureMessageRoot(messageId);
+    function buildSentenceMapFromRoot(root) {
         if (!(root instanceof HTMLElement)) return [];
         const sentenceRegex = /[^。！？.!?\n]+[。！？.!?]?/g;
         const map = [];
@@ -1088,6 +1087,37 @@ JSON 格式：
             }
         }
         return map;
+    }
+
+    function buildSentenceMap(messageId) {
+        const root = getPureMessageRoot(messageId);
+        return buildSentenceMapFromRoot(root);
+    }
+
+    function getLivePureMessageRoot(messageId) {
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return null;
+        const clone = container.cloneNode(true);
+        if (!(clone instanceof HTMLElement)) return null;
+
+        clone.querySelectorAll([
+            '.mes_timer',
+            '.mes_reasoning',
+            '.mes_reasoning_header',
+            '.mes_reasoning_details',
+            '.mes_reasoning_summary',
+            'summary',
+            'details',
+            '.st-scene-trigger-inline-wrap',
+            `.${CARD_CLASS}`,
+            '.mes_buttons',
+            '.mes_edit_buttons',
+            '.mes_img_controls',
+            '[data-role="message-actions"]',
+            '[data-role="message-metadata"]'
+        ].join(',')).forEach(node => node.remove());
+
+        return clone;
     }
 
     function insertWrapperAtTextNode(node, start, end, wrapper) {
@@ -1134,6 +1164,7 @@ JSON 格式：
     function insertBySentenceMap(messageId, anchor, wrapper) {
         const map = buildSentenceMap(messageId);
         if (!map.length) return false;
+
         let matched = null;
         if (anchor?.text) {
             const needle = String(anchor.text || '').trim();
@@ -1145,24 +1176,29 @@ JSON 格式：
         }
         if (!matched) return false;
 
+        const liveRoot = getLivePureMessageRoot(messageId);
+        if (!(liveRoot instanceof HTMLElement)) return false;
+        const liveMap = buildSentenceMapFromRoot(liveRoot);
+
+        let liveMatch = null;
+        if (anchor?.text) {
+            const needle = String(anchor.text || '').trim();
+            liveMatch = liveMap.find((entry) => entry.text.includes(needle) || needle.includes(entry.text)) || null;
+        }
+        if (!liveMatch) {
+            liveMatch = liveMap.find((entry) => entry.sentenceIndex === matched.sentenceIndex) || null;
+        }
+        if (!liveMatch) return false;
+
         const liveContainer = RBQ.api.getMessageTextContainer(messageId);
         if (!(liveContainer instanceof HTMLElement)) return false;
-        const liveNodes = visibleTextNodes(liveContainer);
-        let seen = 0;
-        const sentenceRegex = /[^。！？.!?\n]+[。！？.!?]?/g;
-        for (const node of liveNodes) {
-            const text = node.nodeValue || '';
-            let match;
-            while ((match = sentenceRegex.exec(text))) {
-                const sentence = String(match[0] || '').trim();
-                if (!sentence) continue;
-                seen += 1;
-                const textMatch = sentence === matched.text;
-                if (seen === matched.sentenceIndex || textMatch) {
-                    const insertAt = match.index + match[0].length;
-                    insertWrapperAtTextNode(node, insertAt, insertAt, wrapper);
-                    return true;
-                }
+        const realNodes = visibleTextNodes(liveContainer);
+        for (const realNode of realNodes) {
+            const realText = realNode.nodeValue || '';
+            const realIdx = realText.indexOf(liveMatch.text);
+            if (realIdx >= 0) {
+                insertWrapperAtTextNode(realNode, realIdx + liveMatch.text.length, realIdx + liveMatch.text.length, wrapper);
+                return true;
             }
         }
         return false;

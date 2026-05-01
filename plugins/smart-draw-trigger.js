@@ -4,280 +4,56 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 6;
-    const STRICT_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的“文生图本体世界书执行器”。
+        const DEFAULT_SYSTEM_PROMPT_VERSION = 7;
+    const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的“小说分镜师”。
+你的任务是阅读当前的小说/剧情片段，将其拆解为 1~3 个关键视觉分镜，并为每个分镜生成画面描述，最后返回严格的 JSON。
 
-你的任务不是自由创作提示词，也不是重新设计多角色 JSON 协议。
-你的任务是：严格阅读并执行输入中的 lorebook / ruleBook，尤其是“文生图本体世界书”的格式要求，然后把它产出的最终文生图内容包装成 Smart Draw Trigger 需要的 JSON。
+【核心工作原则】
+1. 只输出 JSON，禁止 markdown，禁止解释。
+2. 你的重点是找准“该在哪个动作瞬间插图”，而不是默写人物长相。人物的外貌 Tag 将由后续系统自动补充。
+3. 如果当前内容是纯对话、纯心理活动、规则说明，或没有明显新画面，不需要出图 (shouldDraw: false)。
 
-你必须只返回 JSON object。
-不要返回 markdown。
-不要解释。
-不要输出 JSON 以外的文字。
+【插图定位 (Anchor)】 - 绝对不可出错！
+- anchor.text 必须是能代表该分镜瞬间的**原文一字不差的摘抄**。
+- 请从 currentMessage.content 中直接复制那句话。绝对不能翻译，不能缩写，不能修改哪怕一个标点。
+- 只有找到准确的原文原句，前端才能在对应的位置精确插入图片。
 
-【最高优先级原则】
+【分镜拆解 (Segments)】
+- 若段落中有空间转换（如从门外到屋内），或强烈的动作演进（如先坐着，后来抱在一起），请输出多个 segment。
+- 不要为每一句话配图。通常 1 个 segment 即可，长段落最多 2-3 个。
+- 每一个 segment 都必须有自己的 anchor.text 和 scene。
 
-1. 如果 lorebook / ruleBook 中存在“文生图本体”“文生图格式”“解析格式”“绘图格式”“图片标题”“image_think”“image###”“Scene:”“Char1:”等规则，必须优先服从这些规则。
-2. 不要自己发明新的格式。
-3. 不要把插件的 multiChar JSON 结构当作主要目标。
-4. 如果文生图本体世界书要求输出 image###...###、Scene:...;Char1:...|centers:...; 之类协议，则把这整段协议当作最终 prompt 字符串。
-5. Smart Draw Trigger 的 JSON 只是外层容器，真正的文生图格式由世界书决定。
+【画面描述 (characters & scene)】
+- 只需要提炼：角色名称（name，如果世界书中有匹配最好）、动作/姿态/衣服/表情（action），以及环境（scene）。
+- 请使用简单的英文词组 (tags)。例如 action: "sitting, looking away, angry, wearing a shirt"。
+- 不要把整句剧情翻译进 action。
 
-【输入说明】
-
-你会收到一个 JSON，包含：
-- currentMessage：当前楼层正文，是本轮镜头的主要依据。
-- recentMessages：最近上下文，用于补充角色、场景、服装、连续性。
-- lorebook：命中的世界书内容，尤其要执行文生图本体世界书。
-- ruleBook：额外生图规则。
-- marker：如果存在，代表用户强制希望在该位置附近生图。
-
-优先级：
-currentMessage 当前画面 > 文生图本体世界书格式 > ruleBook 强约束 > lorebook 命中条目 > recentMessages 补充信息。
-
-【核心输出目标】
-
-你要返回 Smart Draw Trigger 需要的 JSON：
-
+【输出格式示例】
 {
   "shouldDraw": true,
-  "reason": "short chinese reason",
-  "prompt": "最终文生图 prompt 或世界书协议文本",
-  "negative": "optional negative prompt",
-  "anchor": { "type": "sentence", "index": 1, "text": "当前消息中真实存在的原句" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
+  "reason": "当前发生了明显的动作转换和镜头切换",
   "segments": [
     {
-      "anchor": { "type": "sentence", "index": 1, "text": "当前消息中真实存在的原句" },
-      "prompt": "最终文生图 prompt 或世界书协议文本",
-      "negative": "optional negative prompt",
-      "multiChar": false,
-      "scene": "",
-      "characters": []
+      "anchor": {
+        "text": "必须完全摘抄原文片段以定位插入点"
+      },
+      "scene": "night, bedroom, dark atmosphere",
+      "characters": [
+        {
+          "name": "张三",
+          "action": "sitting on the bed, holding a phone, angry expression"
+        }
+      ],
+      "standalone_prompt": "如果不涉及具体角色，而是一些单独的画面描述，可放这里"
     }
   ]
-}
-
-注意：
-- 顶层字段必须镜像第一个 segment。
-- 默认 multiChar=false。
-- 默认 scene=""。
-- 默认 characters=[]。
-- 即使 prompt 里包含 image###Scene:...;Char1:...###，外层 multiChar 也保持 false。
-- 不要输出 multiChar=true，除非用户明确要求 Smart Draw Trigger 原生 characters[] 结构；通常不要这么做。
-
-【不需要生图时】
-
-如果当前消息缺少明确视觉焦点，返回：
-
-{
-  "shouldDraw": false,
-  "reason": "当前消息缺少明确视觉焦点",
-  "prompt": "",
-  "negative": "",
-  "anchor": { "type": "sentence", "index": 1, "text": "" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": []
-}
-
-【anchor 规则】
-
-- 每个 segment 必须有 anchor.text。
-- anchor.text 必须逐字摘抄 currentMessage.content 中真实存在的一句或一小段。
-- 不要翻译 anchor.text。
-- 不要改写 anchor.text。
-- 不要概括 anchor.text。
-- anchor.index 从 1 开始，表示插在当前消息第几句后。
-- 如果找不到可靠 anchor.text，则 shouldDraw=false。
-
-【是否需要生图】
-
-shouldDraw=true 的情况：
-- 当前消息包含明确视觉镜头、动作、姿态、服装、场景、表情、身体状态、互动关系、光影氛围。
-- marker 存在，并且能从当前消息或上下文提炼出画面。
-- 文生图本体世界书判断当前楼层适合出图。
-- 当前消息对应世界书中的文生图触发格式或绘图规则。
-
-shouldDraw=false 的情况：
-- 纯对白。
-- 纯心理活动。
-- 纯解释或规则说明。
-- 没有新画面变化。
-- 无法确定插图点。
-- 无法提供真实 anchor.text。
-
-【segments 规则】
-
-- 默认输出 1 个 segment。
-- 只有当前消息存在多个明确镜头、多个动作阶段、场景转场、前后两个视觉高潮时，才输出 2-3 个 segments。
-- 不要为了凑数拆分同一个画面。
-- 每个 segment 都必须按文生图本体世界书格式独立生成 prompt。
-- 每个 segment 的 anchor.text 必须对应它自己的插入位置。
-
-【如何执行文生图本体世界书】
-
-你必须把 lorebook 中的文生图本体内容视为格式规范，而不是普通参考。
-
-如果世界书规定：
-- 需要 image_think：则把其中的思考结果转化为 prompt 所需内容，但不要把 <image_think> 暴露到最终 JSON，除非世界书明确要求它属于最终绘图文本。
-- 需要 图片标题：可把标题信息融入 reason 或 prompt，但不要破坏 JSON。
-- 需要 image###...###：则 prompt 必须完整输出 image###...###。
-- 需要 Scene / CharN / centers / UC：则必须按世界书原格式拼接进 prompt 字符串。
-- 需要标签库/模板：必须吸收进 prompt。
-- 需要主体模板：必须优先确定主体角色。
-- 需要 SEX 模板/动作模板：只在当前剧情确实触发时使用，不要无关套用。
-- 需要常规模板：作为风格、质量、构图补充。
-
-【普通文生图 prompt 模式】
-
-如果文生图本体世界书没有要求 image### 协议，则 prompt 使用英文逗号分隔 tags / short phrases。
-
-建议顺序：
-1. 质量与风格
-2. 主体数量
-3. 主体身份
-4. 角色外观
-5. 服装
-6. 姿势动作
-7. 表情视线
-8. 场景
-9. 构图镜头
-10. 光影氛围
-11. 细节强化
-
-示例：
-masterpiece, best quality, newest, very aesthetic, 1girl, long hair, detailed eyes, black dress, sitting on bed, looking at viewer, shy expression, bedroom, night, soft lighting, cinematic composition, depth of field
-
-【世界书多角色协议模式】
-
-如果文生图本体世界书要求多角色协议，请不要使用外层 multiChar=true。
-你应该把完整协议作为 prompt 字符串返回，例如：
-
-{
-  "shouldDraw": true,
-  "reason": "文生图本体世界书要求多角色协议",
-  "prompt": "image###Scene:duo, indoor, sofa, cinematic lighting;Char1:1girl, long hair, looking back|centers:C3;Char1 UC:bad face, extra arms;Char2:1boy, taller male, close behind|centers:C4;Char2 UC:bad hands, deformed body;###",
-  "negative": "worst quality, low quality, bad anatomy, bad hands, blurry, text, watermark",
-  "anchor": { "type": "sentence", "index": 1, "text": "当前消息中真实存在的原句" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": [
-    {
-      "anchor": { "type": "sentence", "index": 1, "text": "当前消息中真实存在的原句" },
-      "prompt": "image###Scene:duo, indoor, sofa, cinematic lighting;Char1:1girl, long hair, looking back|centers:C3;Char1 UC:bad face, extra arms;Char2:1boy, taller male, close behind|centers:C4;Char2 UC:bad hands, deformed body;###",
-      "negative": "worst quality, low quality, bad anatomy, bad hands, blurry, text, watermark",
-      "multiChar": false,
-      "scene": "",
-      "characters": []
-    }
-  ]
-}
-
-关键点：
-- 外层 multiChar=false。
-- scene=""。
-- characters=[]。
-- 多角色信息全部留在 prompt 的 image###...### 字符串中。
-- 让后续 Multi-Char 插件解析 prompt，而不是让 Smart Draw Trigger 校验 characters[]。
-
-【negative 规则】
-
-如果世界书有明确 UC / negative 格式，按世界书格式走。
-如果没有，则使用简洁通用 negative：
-
-worst quality, low quality, lowres, bad anatomy, bad hands, bad fingers, extra fingers, missing fingers, deformed, malformed limbs, blurry, jpeg artifacts, text, watermark, logo, censored, mosaic censoring
-
-不要把正面主体、角色身份、服装、动作放入 negative。
-
-【最终检查】
-
-返回前必须检查：
-- 输出是合法 JSON object。
-- 没有 markdown 代码块。
-- 没有解释文字。
-- shouldDraw=false 时 segments=[]。
-- shouldDraw=true 时至少有一个 segment。
-- 每个 segment 有真实 anchor.text。
-- 顶层字段镜像第一个 segment。
-- 除非绝对必要，外层 multiChar 必须是 false。
-- 如果 prompt 使用 image###...###，必须完整闭合 ###。
-- 不要输出 scene/characters 作为外层多角色结构，除非用户明确要求 Smart Draw Trigger 原生多角色 JSON。`;
-
-    const BALANCED_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的剧情生图规划器。
-你的主要目标是阅读并执行“文生图本体世界书”的格式要求，将提取的画面包装成稳定的 JSON。
-
-只返回 JSON，不要 markdown，不要解释。
-
-【工作方式】
-1. 阅读 currentMessage.content，并参考 recentMessages、lorebook、ruleBook。
-2. 重点关注 lorebook 中关于“文生图”“格式”“协议”的定义，并严格执行。
-3. 把按世界书生成的绘图文本放入 JSON 的 prompt 字段。
-4. 如果世界书要求输出 image###...### 多角色协议，将整段文本放在 prompt 里，保持外层 multiChar=false。
-
-【输出格式】
-{
-  "shouldDraw": true,
-  "reason": "short chinese reason",
-  "prompt": "世界书协议文本或普通 prompt",
-  "negative": "optional negative prompt",
-  "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": [
-    {
-      "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
-      "prompt": "世界书协议文本或普通 prompt",
-      "negative": "optional negative prompt",
-      "multiChar": false,
-      "scene": "",
-      "characters": []
-    }
-  ]
-}
-
-【规则】
-- shouldDraw=false 时，segments=[]，prompt=""。
-- 除非特殊情况，多角色信息应写在 prompt 的 image### 字符串中，保持 multiChar=false。
-- anchor.text 优先于 anchor.index；必须摘抄原文，不要重写。
-- 顶层字段尽量镜像第一个 segment，便于旧接口兼容。`;
-
-    const LEGACY_SYSTEM_PROMPT = `你是 SillyTavern/RBQ 生图扩展的提示词规划器。根据当前聊天正文判断是否需要插入图片，优先执行文生图本体世界书的格式要求，并返回 JSON。
-
-只返回 JSON，不要 markdown，不要解释。
-
-JSON 格式：
-{
-  "shouldDraw": true,
-  "prompt": "世界书协议文本或普通 english image prompt",
-  "negative": "optional negative prompt",
-  "anchor": { "type": "sentence", "index": 1, "text": "current message exact sentence" },
-  "reason": "short chinese reason",
-  "multiChar": false,
-  "scene": "",
-  "characters": [],
-  "segments": []
-}
-
-规则：
-- shouldDraw=false 时 prompt=""，segments=[]。
-- prompt 可以是普通英文逗号分隔 tags，或者是 image###...### 格式的多角色协议。
-- 即使使用了多角色协议，外层 multiChar 也请保持 false。
-- anchor.text 建议填写当前消息里真实存在的目标句子；anchor.index 表示插在第几句后。
-- 如果当前消息有多个明显插图点，可以填写 segments[]，每段都有 anchor/prompt/negative。`;
+}`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        strict: { label: '严格结构化版', prompt: STRICT_SYSTEM_PROMPT },
-        balanced: { label: '平衡版', prompt: BALANCED_SYSTEM_PROMPT },
-        legacy: { label: '旧版回退版', prompt: LEGACY_SYSTEM_PROMPT },
+        storyboarder: { label: '分层架构-分镜版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'strict';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
     const DEFAULTS = {
@@ -584,7 +360,8 @@ JSON 格式：
         }
         const ruleBook = collectActiveRules(current.mes, recentMessages);
         const lorebook = collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
-        return {
+        
+        const payload = {
             mode: trigger.type,
             marker: trigger.marker || '',
             messageId,
@@ -594,482 +371,26 @@ JSON 格式：
                 content: String(current?.mes || ''),
             },
             recentMessages,
-            ruleBook,
-            lorebook,
+            ruleBook: ruleBook.map(r => ({ name: r.name, content: r.content })),
+            lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys })),
             contextCount: Number(store.contextCount) || 5,
             outputSchema: {
                 shouldDraw: 'boolean',
-                prompt: 'string',
-                negative: 'string optional',
-                anchor: { type: 'sentence', index: 'number, 1-based' },
                 reason: 'string optional',
                 segments: [
                     {
-                        anchor: { type: 'sentence', index: 'number, 1-based' },
-                        prompt: 'string',
-                        negative: 'string optional',
-                        multiChar: 'boolean optional',
+                        anchor: { text: 'string exact sentence' },
                         scene: 'string optional',
-                        characters: 'array optional'
+                        standalone_prompt: 'string optional',
+                        characters: [
+                            { name: 'string', action: 'string' }
+                        ]
                     }
-                ],
+                ]
             },
         };
-    }
-
-    function parseRuleBookEntries() {
-        const store = getStore();
-        if (!store.ruleBookEnabled) return [];
-        try {
-            const data = JSON.parse(store.ruleBookEntries || '[]');
-            if (!Array.isArray(data)) throw new Error('规则书必须是 JSON 数组');
-            return data
-                .filter(entry => entry && entry.enabled !== false && String(entry.content || '').trim())
-                .map((entry, index) => ({
-                    name: String(entry.name || `规则 ${index + 1}`),
-                    constant: !!entry.constant,
-                    keys: Array.isArray(entry.keys) ? entry.keys.map(String).filter(Boolean) : [],
-                    priority: Number(entry.priority) || 0,
-                    content: String(entry.content || '').trim(),
-                }));
-        } catch (error) {
-            debugWarning(`规则书 JSON 解析失败：${error.message || String(error)}`);
-            return [];
-        }
-    }
-
-    function collectActiveRules(currentText, recentMessages) {
-        const store = getStore();
-        const entries = parseRuleBookEntries();
-        if (!entries.length) return [];
-        const depth = Math.max(1, Math.min(50, Number(store.ruleBookScanDepth) || 5));
-        const scopeText = [
-            ...recentMessages.slice(-depth).map(item => item.content),
-            currentText,
-        ].join('\n');
-        const active = entries.filter((entry) => {
-            if (entry.constant) return true;
-            return entry.keys.some(key => scopeText.includes(key));
-        }).sort((a, b) => b.priority - a.priority);
-        const budget = Math.max(200, Math.min(12000, Number(store.ruleBookBudget) || 1800));
-        const result = [];
-        let used = 0;
-        for (const entry of active) {
-            const chunk = entry.content.slice(0, Math.max(0, budget - used));
-            if (!chunk) break;
-            result.push({ name: entry.name, content: chunk, priority: entry.priority, constant: entry.constant, keys: entry.keys });
-            used += chunk.length;
-            if (used >= budget) break;
-        }
-        return result;
-    }
-
-    function buildLorebookScopeText(currentText, recentMessages) {
-        const store = getStore();
-        const depth = Math.max(1, Math.min(50, Number(store.lorebookContextDepth) || 5));
-        return [
-            ...recentMessages.slice(-depth).map(item => item.content),
-            currentText,
-        ].join('\n');
-    }
-
-    function matchLorebookEntry(entry, scopeText) {
-        if (!entry || entry.disabled || !entry.content) return null;
-        if (entry.constant) {
-            return {
-                sourceId: entry.sourceId,
-                uid: entry.uid,
-                comment: entry.comment,
-                content: entry.content,
-                reason: 'constant',
-                matchedKeys: [],
-                matchedSecondaryKeys: [],
-                order: entry.order,
-                sticky: entry.sticky,
-                cooldown: entry.cooldown,
-                preventRecursion: entry.preventRecursion,
-                excludeRecursion: entry.excludeRecursion,
-            };
-        }
-
-        const matchedKeys = entry.key.filter((key) => scopeText.includes(key));
-        if (!matchedKeys.length) return null;
-
-        const matchedSecondaryKeys = entry.keysecondary.filter((key) => scopeText.includes(key));
-        const needsSecondary = entry.keysecondary.length > 0;
-
-        if (entry.selectiveLogic === 0 && needsSecondary && !matchedSecondaryKeys.length) {
-            return null;
-        }
-
-        return {
-            sourceId: entry.sourceId,
-            uid: entry.uid,
-            comment: entry.comment,
-            content: entry.content,
-            reason: 'key',
-            matchedKeys,
-            matchedSecondaryKeys,
-            order: entry.order,
-            sticky: entry.sticky,
-            cooldown: entry.cooldown,
-            preventRecursion: entry.preventRecursion,
-            excludeRecursion: entry.excludeRecursion,
-        };
-    }
-
-    function isLorebookStickyActive(entry, messageId) {
-        const state = lorebookRuntimeState.stickyState.get(getLorebookEntryRuntimeKey(entry));
-        return !!state && Number(messageId) <= Number(state.untilMessageId || -1);
-    }
-
-    function isLorebookCooldownActive(entry, messageId) {
-        const state = lorebookRuntimeState.cooldownState.get(getLorebookEntryRuntimeKey(entry));
-        return !!state && Number(messageId) <= Number(state.untilMessageId || -1);
-    }
-
-    function updateLorebookRuntime(entries, messageId) {
-        entries.forEach((entry) => {
-            const runtimeKey = getLorebookEntryRuntimeKey(entry);
-            if (entry.reason === 'key' || entry.reason === 'recursive') {
-                if (Number(entry.sticky) > 0) {
-                    lorebookRuntimeState.stickyState.set(runtimeKey, {
-                        untilMessageId: Number(messageId) + Number(entry.sticky),
-                        activatedAtMessageId: Number(messageId),
-                    });
-                }
-                if (Number(entry.cooldown) > 0) {
-                    lorebookRuntimeState.cooldownState.set(runtimeKey, {
-                        untilMessageId: Number(messageId) + Number(entry.cooldown),
-                        activatedAtMessageId: Number(messageId),
-                    });
-                }
-            }
-        });
-
-        for (const [runtimeKey, state] of lorebookRuntimeState.stickyState.entries()) {
-            if (Number(messageId) > Number(state.untilMessageId || -1)) {
-                lorebookRuntimeState.stickyState.delete(runtimeKey);
-            }
-        }
-        for (const [runtimeKey, state] of lorebookRuntimeState.cooldownState.entries()) {
-            if (Number(messageId) > Number(state.untilMessageId || -1)) {
-                lorebookRuntimeState.cooldownState.delete(runtimeKey);
-            }
-        }
-    }
-
-    function collectMatchedLorebookEntries(currentText, recentMessages, messageId) {
-        const entries = getNormalizedLorebooks();
-        if (!entries.length) return [];
-        const scopeText = buildLorebookScopeText(currentText, recentMessages);
-        const sortedEntries = [...entries].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-        const matched = [];
-        const matchedRuntimeKeys = new Set();
-        const recursionFragments = [];
-
-        for (const entry of sortedEntries) {
-            const runtimeKey = getLorebookEntryRuntimeKey(entry);
-
-            if (entry.constant) {
-                const constantMatch = matchLorebookEntry(entry, scopeText);
-                if (constantMatch) {
-                    matched.push(constantMatch);
-                    matchedRuntimeKeys.add(runtimeKey);
-                }
-                continue;
-            }
-
-            if (isLorebookStickyActive(entry, messageId)) {
-                matched.push({
-                    sourceId: entry.sourceId,
-                    uid: entry.uid,
-                    comment: entry.comment,
-                    content: entry.content,
-                    reason: 'sticky',
-                    matchedKeys: [],
-                    matchedSecondaryKeys: [],
-                    order: entry.order,
-                    sticky: entry.sticky,
-                    cooldown: entry.cooldown,
-                    preventRecursion: entry.preventRecursion,
-                    excludeRecursion: entry.excludeRecursion,
-                });
-                matchedRuntimeKeys.add(runtimeKey);
-                continue;
-            }
-
-            if (isLorebookCooldownActive(entry, messageId)) continue;
-
-            const keyMatch = matchLorebookEntry(entry, scopeText);
-            if (!keyMatch) continue;
-            if (matchedRuntimeKeys.has(runtimeKey)) continue;
-            matched.push(keyMatch);
-            matchedRuntimeKeys.add(runtimeKey);
-            if (!entry.excludeRecursion) recursionFragments.push(entry.content);
-        }
-
-        if (recursionFragments.length) {
-            const recursionScope = `${scopeText}\n${recursionFragments.join('\n')}`;
-            for (const entry of sortedEntries) {
-                const runtimeKey = getLorebookEntryRuntimeKey(entry);
-                if (matchedRuntimeKeys.has(runtimeKey)) continue;
-                if (entry.constant) continue;
-                if (entry.preventRecursion) continue;
-                if (isLorebookStickyActive(entry, messageId)) continue;
-                if (isLorebookCooldownActive(entry, messageId)) continue;
-                const recursiveMatch = matchLorebookEntry(entry, recursionScope);
-                if (!recursiveMatch) continue;
-                matched.push({
-                    ...recursiveMatch,
-                    reason: 'recursive',
-                });
-                matchedRuntimeKeys.add(runtimeKey);
-            }
-        }
-
-        matched.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-        updateLorebookRuntime(matched, messageId);
-        return matched;
-    }
-
-    function extractJson(text) {
-        const raw = String(text || '').trim();
-        if (!raw) throw new Error('tagger 返回为空');
-        try { return JSON.parse(raw); } catch (_) { }
-        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (fenced) {
-            try { return JSON.parse(fenced[1]); } catch (_) { }
-        }
-        const start = raw.indexOf('{');
-        const end = raw.lastIndexOf('}');
-        if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
-        throw new Error('tagger 返回不是有效 JSON');
-    }
-
-    function normalizeAnchor(anchor, fallbackIndex = 1) {
-        const index = Math.max(1, Number(anchor?.index) || Number(fallbackIndex) || 1);
-        return {
-            type: String(anchor?.type || 'sentence'),
-            index,
-            text: String(anchor?.text || '').trim(),
-        };
-    }
-
-    function normalizeComparableText(text) {
-        return String(text || '')
-            .replace(/\s+/g, '')
-            .replace(/[“”]/g, '"')
-            .replace(/[‘’]/g, "'")
-            .trim();
-    }
-
-    function anchorsMatchSentence(anchorText, sentenceText) {
-        const needle = String(anchorText || '').trim();
-        const sentence = String(sentenceText || '').trim();
-        if (!needle || !sentence) return false;
-        if (sentence.includes(needle) || needle.includes(sentence)) return true;
-        const normalizedNeedle = normalizeComparableText(needle);
-        const normalizedSentence = normalizeComparableText(sentence);
-        return !!normalizedNeedle && !!normalizedSentence
-            && (normalizedSentence.includes(normalizedNeedle) || normalizedNeedle.includes(normalizedSentence));
-    }
-
-    function normalizeTaggerResult(data) {
-        const source = data?.choices?.[0]?.message?.content ? extractJson(data.choices[0].message.content) : data;
-        let segments = Array.isArray(source?.segments)
-            ? source.segments.map((item, index) => ({
-                anchor: normalizeAnchor(item?.anchor, index + 1),
-                prompt: String(item?.prompt || '').trim(),
-                negative: String(item?.negative || '').trim(),
-                multiChar: !!item?.multiChar,
-                scene: String(item?.scene || '').trim(),
-                characters: Array.isArray(item?.characters)
-                    ? item.characters.map((char, charIndex) => ({
-                        index: Math.max(1, Number(char?.index) || (charIndex + 1)),
-                        caption: String(char?.caption || '').trim(),
-                        center: String(char?.center || 'C3').trim().toUpperCase(),
-                        uc: String(char?.uc || '').trim(),
-                    })).filter((char) => char.caption)
-                    : [],
-            })).filter((item) => item.prompt || item.characters.length)
-            : [];
-        const normalized = {
-            shouldDraw: !!source?.shouldDraw,
-            prompt: String(source?.prompt || '').trim(),
-            negative: String(source?.negative || '').trim(),
-            multiChar: !!source?.multiChar,
-            scene: String(source?.scene || '').trim(),
-            characters: Array.isArray(source?.characters)
-                ? source.characters.map((item, index) => ({
-                    index: Math.max(1, Number(item?.index) || (index + 1)),
-                    caption: String(item?.caption || '').trim(),
-                    center: String(item?.center || 'C3').trim().toUpperCase(),
-                    uc: String(item?.uc || '').trim(),
-                })).filter((item) => item.caption)
-                : [],
-            anchor: normalizeAnchor(source?.anchor, 1),
-            reason: String(source?.reason || '').trim(),
-            segments,
-        };
-
-        if (!segments.length && normalized.shouldDraw && (normalized.prompt || normalized.characters.length)) {
-            segments = [{
-                anchor: normalized.anchor,
-                prompt: normalized.prompt,
-                negative: normalized.negative,
-                multiChar: normalized.multiChar,
-                scene: normalized.scene,
-                characters: normalized.characters,
-            }];
-            normalized.segments = segments;
-        }
-
-        return normalized;
-    }
-
-
-    function validateStructuredResult(result) {
-        // Validation logic has been intentionally relaxed.
-        // We now prefer passing multiChar information via the `prompt` string (image###...###)
-        // rather than strictly enforcing the `scene/characters[]` JSON structure.
-        return result;
-    }
-
-
-    function logTaggerPayload(tag, payload) {
-        console.info(`[${PLUGIN_NAME}] ${tag} =>`, payload);
-    }
-
-    function buildMultiCharPrompt(result) {
-        const scene = String(result?.scene || '').trim() || String(result?.prompt || '').trim();
-        const chars = Array.isArray(result?.characters) ? result.characters : [];
-        if (!chars.length) return String(result?.prompt || '').trim();
-        const parts = [];
-        if (scene) parts.push(`Scene:${scene};`);
-        chars.forEach((item, index) => {
-            const charIndex = Math.max(1, Number(item?.index) || (index + 1));
-            const caption = String(item?.caption || '').trim();
-            const center = String(item?.center || 'C3').trim().toUpperCase() || 'C3';
-            const uc = String(item?.uc || '').trim();
-            if (caption) parts.push(`Char${charIndex}:${caption}|centers:${center};`);
-            if (uc) parts.push(`Char${charIndex} UC:${uc};`);
-        });
-        return `image###${parts.join('')}###`;
-    }
-
-    function logFinalPrompt(result) {
-        const finalPrompt = getFinalPrompt(result);
-        console.info(`[${PLUGIN_NAME}] final prompt =>`, finalPrompt);
-        return finalPrompt;
-    }
-
-
-    function postProcessPrompt(prompt) {
-        let p = String(prompt || '').trim();
-        if (p.includes('image###')) {
-            // Remove newlines and excess whitespace
-            p = p.replace(/\r?\n/g, '').replace(/\s{2,}/g, ' ');
-            // Ensure CharN internally doesn't use semicolons incorrectly if possible, but regex replacement is tricky.
-            // At least ensure it ends with ###
-            if (!p.endsWith('###')) {
-                p += '###';
-            }
-        }
-        return p;
-    }
-
-
-    function getFinalPrompt(result) {
-        const store = getStore();
-        let rawPrompt = store.multiCharOutput && result?.multiChar
-            ? buildMultiCharPrompt(result)
-            : String(result?.prompt || '').trim();
-        return postProcessPrompt(rawPrompt);
-    }
-
-
-    function getResultSegments(result) {
-        if (Array.isArray(result?.segments) && result.segments.length) {
-            return result.segments.map((segment, index) => ({
-                ...result,
-                ...segment,
-                segmentIndex: index,
-                segmentKeySuffix: `seg:${index}:${hashText(getFinalPrompt({ ...result, ...segment }) || JSON.stringify(segment))}`,
-            }));
-        }
-        return [{
-            ...result,
-            segmentIndex: 0,
-            segmentKeySuffix: `seg:0:${hashText(getFinalPrompt(result) || JSON.stringify(result))}`,
-        }];
-    }
-
-    function getSegmentState(store, baseKey, segmentKey) {
-        const cache = store.cache?.[baseKey];
-        if (!cache) return null;
-        if (!cache.segmentStates || typeof cache.segmentStates !== 'object') cache.segmentStates = {};
-        if (!cache.segmentStates[segmentKey]) cache.segmentStates[segmentKey] = {};
-        return cache.segmentStates[segmentKey];
-    }
-
-    function markSegmentAutoGenerated(baseKey, segmentKey) {
-        const store = getStore();
-        const state = getSegmentState(store, baseKey, segmentKey);
-        if (!state) return;
-        state.autoGenerated = true;
-        state.generatedAt = Date.now();
-        save();
-    }
-
-    function materializeResultCards(messageId, trigger, result, baseKey) {
-        const container = RBQ.api.getMessageTextContainer(messageId);
-        if (!(container instanceof HTMLElement)) return [];
-
-        const stale = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(baseKey)}"]`);
-        if (stale instanceof HTMLElement) stale.remove();
-
-        const segments = getResultSegments(result)
-            .filter((segment) => getFinalPrompt(segment));
-        const nextKeys = new Set(segments.map((segment, index) => `${baseKey}:${segment.segmentKeySuffix || `seg:${index}`}`));
-        container.querySelectorAll(`[data-rbq-sdt-base-key="${CSS.escape(baseKey)}"]`).forEach((element) => {
-            if (!(element instanceof HTMLElement)) return;
-            const key = element.dataset.rbqSdtKey || '';
-            if (!nextKeys.has(key)) element.remove();
-        });
-
-        console.info(`[${PLUGIN_NAME}] materializeResultCards =>`, {
-            messageId,
-            baseKey,
-            segmentCount: segments.length,
-            segments: segments.map((segment, index) => ({
-                index,
-                anchor: segment.anchor,
-                multiChar: segment.multiChar,
-                promptPreview: String(getFinalPrompt(segment)).slice(0, 120),
-            })),
-            containerTag: container.tagName,
-            containerClass: container.className,
-            containerPreview: String(container.textContent || '').slice(0, 160),
-        });
-
-        return segments.map((segment, index) => {
-            const segKey = `${baseKey}:${segment.segmentKeySuffix || `seg:${index}`}`;
-            const wrapper = insertCard(messageId, trigger, segment, segKey);
-            console.info(`[${PLUGIN_NAME}] materialize segment result =>`, {
-                messageId,
-                segKey,
-                anchor: segment.anchor,
-                inserted: !!wrapper,
-                wrapperConnected: !!wrapper?.isConnected,
-            });
-            if (!(wrapper instanceof HTMLElement)) return null;
-            wrapper.dataset.prompt = getFinalPrompt(segment);
-            wrapper.dataset.rbqSdtBaseKey = baseKey;
-            wrapper.dataset.rbqSdtSegmentIndex = String(index);
-            wrapper.dataset.rbqSdtSegmentKey = segKey;
-            return { wrapper, key: segKey, baseKey, segment };
-        }).filter(Boolean);
+        
+        return { payload, rawLorebooks: lorebook };
     }
 
     async function callOpenAiCompatible(messageId, trigger) {
@@ -1077,8 +398,8 @@ JSON 格式：
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         if (!store.openaiModel) throw new Error('请先填写模型名称');
-        const body = buildRequestPayload(messageId, trigger);
-        logTaggerPayload('tagger request body', body);
+        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
+        logTaggerPayload('tagger request body', payload);
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -1091,14 +412,14 @@ JSON 格式：
                 response_format: { type: 'json_object' },
                 messages: [
                     { role: 'system', content: store.systemPrompt || DEFAULT_SYSTEM_PROMPT },
-                    { role: 'user', content: JSON.stringify(body, null, 2) },
+                    { role: 'user', content: JSON.stringify(payload, null, 2) },
                 ],
             }),
         });
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
@@ -1112,17 +433,17 @@ JSON 格式：
             const headerName = store.customApiKeyHeader || 'Authorization';
             headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
         }
-        const body = buildRequestPayload(messageId, trigger);
-        logTaggerPayload('tagger request body', body);
+        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
+        logTaggerPayload('tagger request body', payload);
         const response = await fetch(url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body),
+            body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
@@ -1833,7 +1154,7 @@ JSON 格式：
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="strict">严格结构化版</option><option value="balanced">平衡版</option><option value="legacy">旧版回退版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="storyboarder">分层架构-分镜版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

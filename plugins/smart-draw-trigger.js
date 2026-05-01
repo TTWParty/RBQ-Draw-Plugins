@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-        const DEFAULT_SYSTEM_PROMPT_VERSION = 7;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 7;
     const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的“小说分镜师”。
 你的任务是阅读当前的小说/剧情片段，将其拆解为 1~3 个关键视觉分镜，并为每个分镜生成画面描述，最后返回严格的 JSON。
 
@@ -345,6 +345,239 @@
         return `${base}/models`;
     }
 
+    function logTaggerPayload(label, data) {
+        if (!getStore().debugToast) return;
+        console.info(`[${PLUGIN_NAME}] ${label}:`, typeof data === 'string' ? data : JSON.parse(JSON.stringify(data)));
+    }
+
+    function collectActiveRules(currentMes, recentMessages) {
+        const store = getStore();
+        if (!store.ruleBookEnabled) return [];
+        let entries = [];
+        try {
+            entries = JSON.parse(store.ruleBookEntries || '[]');
+        } catch {
+            return [];
+        }
+        const contextText = [
+            ...recentMessages.slice(-store.ruleBookScanDepth).map(m => m.content),
+            currentMes
+        ].join('\n').toLowerCase();
+
+        return entries
+            .filter(entry => entry && entry.enabled)
+            .filter(entry => {
+                if (entry.constant) return true;
+                if (!Array.isArray(entry.keys) || !entry.keys.length) return false;
+                return entry.keys.some(k => contextText.includes(String(k).toLowerCase()));
+            })
+            .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+            .reduce((acc, curr) => {
+                if (acc.totalLength + curr.content.length <= store.ruleBookBudget) {
+                    acc.list.push(curr);
+                    acc.totalLength += curr.content.length;
+                }
+                return acc;
+            }, { list: [], totalLength: 0 }).list;
+    }
+
+    function collectMatchedLorebookEntries(currentMes, recentMessages, messageId) {
+        const store = getStore();
+        if (!store.lorebookEnabled) return [];
+        const entries = getNormalizedLorebooks();
+        const depth = Math.max(1, Number(store.lorebookContextDepth) || 5);
+        const contextText = [
+            ...recentMessages.slice(-depth).map(m => m.content),
+            currentMes
+        ].join('\n').toLowerCase();
+
+        const matched = entries.filter(entry => {
+            if (entry.constant) return true;
+            const keys = entry.key.map(k => String(k).toLowerCase());
+            return keys.some(k => contextText.includes(k));
+        });
+
+        return matched.map(entry => ({
+            ...entry,
+            matchedKeys: entry.key
+        }));
+    }
+
+    function validateStructuredResult(normalized) {
+        return normalized;
+    }
+
+    function normalizeAnchor(anchor, defaultIndex) {
+        if (!anchor || typeof anchor !== 'object') return { type: 'sentence', index: defaultIndex };
+        return {
+            type: 'sentence',
+            index: Number.isFinite(Number(anchor.index)) ? Number(anchor.index) : defaultIndex,
+            text: String(anchor.text || '').trim()
+        };
+    }
+
+    function extractJson(text) {
+        try {
+            const str = String(text || '').trim();
+            const start = str.indexOf('{');
+            const end = str.lastIndexOf('}');
+            if (start >= 0 && end >= start) {
+                return JSON.parse(str.slice(start, end + 1));
+            }
+            return JSON.parse(str);
+        } catch {
+            return {};
+        }
+    }
+
+    function normalizeTaggerResult(data, matchedLorebooks = []) {
+        const source = data?.choices?.[0]?.message?.content ? extractJson(data.choices[0].message.content) : data;
+        let segments = Array.isArray(source?.segments)
+            ? source.segments.map((item, index) => {
+                const anchor = normalizeAnchor(item?.anchor, index + 1);
+                const scene = String(item?.scene || '').trim();
+                const standalone = String(item?.standalone_prompt || '').trim();
+
+                const characters = Array.isArray(item?.characters) ? item.characters.map((char, charIndex) => {
+                    const name = String(char?.name || '').trim();
+                    const action = String(char?.action || '').trim();
+                    let appearanceTags = '';
+
+                    if (name) {
+                        const matched = matchedLorebooks.find(l => {
+                            const lName = String(l.comment || l.sourceName || '').toLowerCase();
+                            const keys = Array.isArray(l.matchedKeys) ? l.matchedKeys.map(k => String(k).toLowerCase()) : [];
+                            const lowerName = name.toLowerCase();
+                            return lName === lowerName || lName.includes(lowerName) || keys.some(k => k === lowerName || k.includes(lowerName) || lowerName.includes(k));
+                        });
+                        if (matched) {
+                            appearanceTags = String(matched.content || '').trim();
+                        }
+                    }
+
+                    return {
+                        index: charIndex + 1,
+                        caption: [appearanceTags, action].filter(Boolean).join(', '),
+                        center: 'C3',
+                        uc: '',
+                        _rawName: name,
+                        _rawAction: action
+                    };
+                }).filter((char) => char.caption || char._rawName) : [];
+
+                const charPrompts = characters.map(c => c.caption).filter(Boolean).join(' AND ');
+                const finalPromptFallback = [scene, standalone, charPrompts].filter(Boolean).join(', ');
+
+                return {
+                    anchor,
+                    scene,
+                    prompt: finalPromptFallback,
+                    negative: String(item?.negative || '').trim(),
+                    multiChar: characters.length > 1,
+                    characters,
+                };
+            }).filter((item) => item.prompt || item.characters.length)
+            : [];
+
+        const normalized = {
+            shouldDraw: !!source?.shouldDraw,
+            prompt: segments.length ? segments[0].prompt : '',
+            negative: '',
+            multiChar: segments.length ? segments[0].multiChar : false,
+            scene: segments.length ? segments[0].scene : '',
+            characters: segments.length ? segments[0].characters : [],
+            anchor: normalizeAnchor(source?.anchor, 1),
+            reason: String(source?.reason || '').trim(),
+            segments,
+        };
+
+        if (!segments.length && normalized.shouldDraw && (normalized.prompt || normalized.characters.length)) {
+            normalized.segments = [{
+                anchor: normalized.anchor,
+                prompt: normalized.prompt,
+                negative: normalized.negative,
+                multiChar: normalized.multiChar,
+                scene: normalized.scene,
+                characters: normalized.characters,
+            }];
+        }
+
+        return normalized;
+    }
+
+    function getFinalPrompt(obj) {
+        if (!obj) return '';
+        if (getStore().multiCharOutput && Array.isArray(obj.characters) && obj.characters.length > 0) {
+            let lines = [];
+            if (obj.scene) lines.push(`Scene: ${obj.scene}`);
+            obj.characters.forEach((char, idx) => {
+                lines.push(`Char${idx + 1}: ${char.caption || [char._rawName, char._rawAction].filter(Boolean).join(', ')}`);
+                if (char.uc) lines.push(`Char${idx + 1} UC: ${char.uc}`);
+            });
+            const centers = obj.characters.map(c => c.center || 'C3').join(',');
+            lines.push(`|centers:${centers}`);
+            return lines.join('\n');
+        }
+
+        if (obj.prompt) return obj.prompt;
+
+        const chars = Array.isArray(obj.characters) ? obj.characters.map(c => c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', ')).join(' AND ') : '';
+        const scene = obj.scene || '';
+        const standalone = obj.standalone_prompt || '';
+
+        return [scene, standalone, chars].filter(Boolean).join(', ');
+    }
+
+    function materializeResultCards(messageId, trigger, result, key) {
+        const rendered = [];
+        const segments = Array.isArray(result?.segments) ? result.segments : [];
+
+        if (segments.length > 0) {
+            segments.forEach((seg, index) => {
+                const segmentKey = `${key}-seg-${index}`;
+                const wrapper = insertCard(messageId, trigger, { ...result, anchor: seg.anchor }, segmentKey);
+                if (wrapper) {
+                    wrapper.dataset.prompt = getFinalPrompt(seg);
+                    wrapper.dataset.rbqSdtBaseKey = key;
+                    wrapper.dataset.rbqSdtSegmentKey = segmentKey;
+                    wrapper.dataset.rbqSdtSegmentIndex = String(index + 1);
+                    rendered.push({ wrapper, key: segmentKey, segment: seg });
+                }
+            });
+        } else {
+            const wrapper = insertCard(messageId, trigger, result, key);
+            if (wrapper) {
+                wrapper.dataset.prompt = getFinalPrompt(result);
+                wrapper.dataset.rbqSdtBaseKey = key;
+                wrapper.dataset.rbqSdtSegmentKey = key;
+                rendered.push({ wrapper, key, segment: result });
+            }
+        }
+        return rendered;
+    }
+
+    function markSegmentAutoGenerated(baseKey, segmentKey) {
+        const store = getStore();
+        const cache = store.cache[baseKey];
+        if (!cache) return;
+        if (!cache.segmentStates) cache.segmentStates = {};
+        if (!cache.segmentStates[segmentKey]) cache.segmentStates[segmentKey] = {};
+        cache.segmentStates[segmentKey].autoGenerated = true;
+        save();
+    }
+
+    function getSegmentState(store, baseKey, segmentKey) {
+        const cache = store.cache[baseKey];
+        return cache?.segmentStates?.[segmentKey] || {};
+    }
+
+    function anchorsMatchSentence(anchorText, nodeText) {
+        const a = String(anchorText || '').trim().toLowerCase().replace(/\s+/g, '');
+        const b = String(nodeText || '').trim().toLowerCase().replace(/\s+/g, '');
+        if (!a || !b) return false;
+        return b.includes(a) || a.includes(b);
+    }
+
     function buildRequestPayload(messageId, trigger) {
         const store = getStore();
         const current = getMessageSnapshot(messageId);
@@ -360,7 +593,7 @@
         }
         const ruleBook = collectActiveRules(current.mes, recentMessages);
         const lorebook = collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
-        
+
         const payload = {
             mode: trigger.type,
             marker: trigger.marker || '',
@@ -389,7 +622,7 @@
                 ]
             },
         };
-        
+
         return { payload, rawLorebooks: lorebook };
     }
 

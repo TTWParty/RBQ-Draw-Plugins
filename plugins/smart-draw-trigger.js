@@ -4,53 +4,78 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 7;
-    const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的“小说分镜师”。
-你的任务是阅读当前的小说/剧情片段，将其拆解为 1~3 个关键视觉分镜，并为每个分镜生成画面描述，最后返回严格的 JSON。
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 8;
+    const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的"分镜师与提示词工程师"。
+你的任务是阅读当前的小说/剧情片段，拆解为关键视觉分镜，为每个分镜生成 NAI/Danbooru 风格的英文 Tag prompt，返回 JSON。
 
-【核心工作原则】
-1. 只输出 JSON，禁止 markdown，禁止解释。
-2. 你的重点是找准“该在哪个动作瞬间插图”，而不是默写人物长相。人物的外貌 Tag 将由后续系统自动补充。
-3. 如果当前内容是纯对话、纯心理活动、规则说明，或没有明显新画面，不需要出图 (shouldDraw: false)。
+═══════ 铁律（违反任何一条 = 输出无效）═══════
 
-【插图定位 (Anchor)】 - 绝对不可出错！
-- anchor.text 必须是能代表该分镜瞬间的**原文一字不差的摘抄**。
-- 请从 currentMessage.content 中直接复制那句话。绝对不能翻译，不能缩写，不能修改哪怕一个标点。
-- 只有找到准确的原文原句，前端才能在对应的位置精确插入图片。
+1.【格式】只输出合法 JSON。禁止 markdown、禁止解释、禁止注释。
+2.【anchor.text 定位】必须从 currentMessage.content 中**逐字复制**一段原文（10~40字）作为插图锚点。
+  - 不可翻译、不可改写、不可省略或修改任何标点。
+  - 前端通过 indexOf(anchor.text) 在原文中定位插图位置。找不到 = 你的输出失败。
+3.【Tag 来源】你收到的 payload.lorebook 中包含根据当前文本关键词匹配到的 Tag 参考条目。
+  - 每个条目有 name（条目名）、keys（触发关键词）、tags（可用的 Tag 列表）。
+  - 请阅读这些 Tag 参考，从中挑选适合当前画面的 Tag 融入你的 prompt。不是所有条目都适用——请根据画面内容判断取舍。
+  - 直接引用 lorebook 中的 Tag，不要改写。如果 lorebook 未覆盖，你可自行补充合理的 Danbooru/NAI 风格 Tag。
+4.【不配对话/心理图】如果当前内容只有对话或内心独白，没有明显视觉场景变化，返回 shouldDraw: false。
 
-【分镜拆解 (Segments)】
-- 若段落中有空间转换（如从门外到屋内），或强烈的动作演进（如先坐着，后来抱在一起），请输出多个 segment。
-- 不要为每一句话配图。通常 1 个 segment 即可，长段落最多 2-3 个。
-- 每一个 segment 都必须有自己的 anchor.text 和 scene。
+═══════ 画面规则 ═══════
 
-【画面描述 (characters & scene)】
-- 只需要提炼：角色名称（name，如果世界书中有匹配最好）、动作/姿态/衣服/表情（action），以及环境（scene）。
-- 请使用简单的英文词组 (tags)。例如 action: "sitting, looking away, angry, wearing a shirt"。
-- 不要把整句剧情翻译进 action。
+## 插图规划
+- 通读全文→标记强视觉段落→段落间插图，禁止文末堆积
+- 单轮 1~5 张，均匀分布
+- 优先级（降序）：NSFW 时 媒介内容>表现力峰值>情色峰值>核心剧情标志；SFW 时 媒介内容>核心剧情标志>表现力峰值
 
-【输出格式示例】
+## 核心原则
+- 真实原则：文本有述→直用；无述→基于上文补全；冲突→文本优先
+- 主次原则：主角详述占 Char 槽主导配额；配角简述聚焦与主角互动；路人剔除
+- 镜头原则：图片=静态镜头，按当前镜头严格过滤不可见元素，越界 Tag 禁入
+
+## Tag 规范
+- 排序：按画面占比/重要性降序，关联 Tag 相邻
+- 拆解：复合语义→独立 Tag（月下→moonlit, night；害羞→shy, blush, wavy mouth）
+- 配额：总计 70~100 个 Tag
+- 结构顺序：quality→场景环境→光影氛围→镜头角度→人物数量→人物核心设定→服装→动作姿势→表情视线
+- 微细节（5~15 Tag）：即时反馈(trembling,splash)、主体标志(hair ornament)、氛围渲染(光影/粒子)、细节补全
+
+## 角色规则
+- 多女同框仅 yuri/协同；其他场景默认单女
+- 种族判定：人形→girl/boy，非人→no humans
+- DNA：首登角色全描述，后续仅变更部分
+- 防偷懒：配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
+
+═══════ 分镜逻辑 ═══════
+
+- 寻找「视觉断裂点」：空间转换、动作突变、情绪高潮
+- 每条消息通常 1~3 张图，不要为每句话配图
+- 原文很短（<100字）或纯对话 → 0~1 张图
+- 有空间转换或强烈动作演进 → 拆分为多个 segment
+
+═══════ 输出格式 ═══════
+
 {
   "shouldDraw": true,
-  "reason": "当前发生了明显的动作转换和镜头切换",
+  "reason": "简述为什么需要配图（中文，10~30字）",
   "segments": [
     {
       "anchor": {
-        "text": "必须完全摘抄原文片段以定位插入点"
+        "text": "从 currentMessage.content 中逐字复制的原文片段"
       },
-      "scene": "night, bedroom, dark atmosphere",
+      "scene": "night, bedroom, dim lighting",
       "characters": [
         {
-          "name": "张三",
-          "action": "sitting on the bed, holding a phone, angry expression"
+          "name": "角色在原文中的名字",
+          "action": "sitting on bed, leaning forward, shy smile, blushing"
         }
       ],
-      "standalone_prompt": "如果不涉及具体角色，而是一些单独的画面描述，可放这里"
+      "standalone_prompt": "如无具体角色的独立画面描述可放这里"
     }
   ]
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: '分层架构-分镜版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V8-分镜+Tag 融合版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
@@ -76,6 +101,7 @@
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         lorebookEnabled: false,
         lorebookContextDepth: 5,
+        lorebookBudget: 8000,
         lorebookSources: [],
         ruleBookEnabled: false,
         ruleBookScanDepth: 5,
@@ -164,8 +190,14 @@
             depth: entry?.depth == null ? null : Math.max(0, Number(entry.depth) || 0),
             preventRecursion: !!entry?.preventRecursion,
             excludeRecursion: !!entry?.excludeRecursion,
+            caseSensitive: !!entry?.caseSensitive,
+            matchWholeWords: !!entry?.matchWholeWords,
             probability: Math.max(0, Math.min(100, Number(entry?.probability || 100))),
             useProbability: !!entry?.useProbability,
+            group: String(entry?.group || ''),
+            groupOverride: !!entry?.groupOverride,
+            groupWeight: Math.max(0, Number(entry?.groupWeight || 100)),
+            useGroupScoring: !!entry?.useGroupScoring,
             role: entry?.role ?? null,
             characterFilter: {
                 isExclude: !!characterFilter.isExclude,
@@ -381,26 +413,176 @@
             }, { list: [], totalLength: 0 }).list;
     }
 
+    /* ── SillyTavern-compatible worldbook matching engine ── */
+
+    function matchKeyInText(key, text, caseSensitive) {
+        if (!key) return false;
+        if (caseSensitive) return text.includes(key);
+        return text.toLowerCase().includes(key.toLowerCase());
+    }
+
+    function checkEntryKeyMatch(entry, contextText) {
+        const cs = !!entry.caseSensitive;
+        if (entry.constant) return true;
+        if (!entry.key.length) return false;
+
+        const primaryHit = entry.key.some(k => matchKeyInText(k, contextText, cs));
+        if (!primaryHit) return false;
+
+        // selective + secondary key logic (mirrors SillyTavern)
+        if (entry.selective && entry.keysecondary.length > 0) {
+            const secResults = entry.keysecondary.map(k => matchKeyInText(k, contextText, cs));
+            const anySecHit = secResults.some(Boolean);
+            const allSecHit = secResults.every(Boolean);
+            switch (entry.selectiveLogic) {
+                case 0: return anySecHit;        // AND_ANY:  primary AND any secondary
+                case 1: return !allSecHit;       // NOT_ALL:  primary AND NOT all secondary
+                case 2: return !anySecHit;       // NOT_ANY:  primary AND NOT any secondary
+                case 3: return allSecHit;        // AND_ALL:  primary AND ALL secondary
+                default: return anySecHit;
+            }
+        }
+        return true;
+    }
+
     function collectMatchedLorebookEntries(currentMes, recentMessages, messageId) {
         const store = getStore();
         if (!store.lorebookEnabled) return [];
         const entries = getNormalizedLorebooks();
-        const depth = Math.max(1, Number(store.lorebookContextDepth) || 5);
-        const contextText = [
-            ...recentMessages.slice(-depth).map(m => m.content),
-            currentMes
-        ].join('\n').toLowerCase();
+        const globalDepth = Math.max(1, Number(store.lorebookContextDepth) || 5);
+        const allContext = [...recentMessages.map(m => m.content), currentMes];
 
-        const matched = entries.filter(entry => {
-            if (entry.constant) return true;
-            const keys = entry.key.map(k => String(k).toLowerCase());
-            return keys.some(k => contextText.includes(k));
+        // Phase 1: keyword activation with full ST-compatible logic
+        const activated = [];
+        for (const entry of entries) {
+            const entryDepth = entry.depth != null ? Math.max(1, entry.depth + 1) : globalDepth + 1;
+            const contextText = allContext.slice(-entryDepth).join('\n');
+            const rKey = getLorebookEntryRuntimeKey(entry);
+
+            const isMatch = checkEntryKeyMatch(entry, contextText);
+
+            if (!isMatch) {
+                // Sticky: keep active for N messages after last trigger
+                const sticky = lorebookRuntimeState.stickyState.get(rKey);
+                if (sticky && sticky.remaining > 0) {
+                    sticky.remaining--;
+                    activated.push({ ...entry, _matchType: 'sticky', matchedKeys: entry.key });
+                    if (sticky.remaining <= 0) {
+                        lorebookRuntimeState.stickyState.delete(rKey);
+                        if (entry.cooldown > 0) {
+                            lorebookRuntimeState.cooldownState.set(rKey, { remaining: entry.cooldown });
+                        }
+                    }
+                    continue;
+                }
+                // Decrement cooldown even when not matched
+                const cd = lorebookRuntimeState.cooldownState.get(rKey);
+                if (cd && cd.remaining > 0) {
+                    cd.remaining--;
+                    if (cd.remaining <= 0) lorebookRuntimeState.cooldownState.delete(rKey);
+                }
+                continue;
+            }
+
+            // Matched by keyword — check cooldown
+            const cd = lorebookRuntimeState.cooldownState.get(rKey);
+            if (cd && cd.remaining > 0) {
+                cd.remaining--;
+                if (cd.remaining <= 0) lorebookRuntimeState.cooldownState.delete(rKey);
+                continue;
+            }
+
+            // Probability check
+            if (entry.useProbability && entry.probability < 100) {
+                if (Math.random() * 100 >= entry.probability) continue;
+            }
+
+            // Start sticky timer
+            if (entry.sticky > 0) {
+                lorebookRuntimeState.stickyState.set(rKey, { remaining: entry.sticky });
+            }
+
+            const cs = !!entry.caseSensitive;
+            const hitKeys = entry.key.filter(k => matchKeyInText(k, contextText, cs));
+            activated.push({ ...entry, _matchType: 'keyword', matchedKeys: hitKeys.length ? hitKeys : entry.key });
+        }
+
+        // Phase 2: Group / Mutual Exclusion — same group entries compete, highest priority wins
+        const grouped = new Map();
+        const ungrouped = [];
+        for (const entry of activated) {
+            if (entry.group) {
+                if (!grouped.has(entry.group)) grouped.set(entry.group, []);
+                grouped.get(entry.group).push(entry);
+            } else {
+                ungrouped.push(entry);
+            }
+        }
+        const afterGroup = [...ungrouped];
+        for (const [groupName, members] of grouped) {
+            if (members.length <= 1) {
+                afterGroup.push(...members);
+                continue;
+            }
+            // GroupOverride: use groupWeight for scoring; otherwise use order
+            const useScoring = members.some(m => m.groupOverride || m.useGroupScoring);
+            if (useScoring) {
+                const totalWeight = members.reduce((sum, m) => sum + (m.groupWeight || 100), 0);
+                let roll = Math.random() * totalWeight;
+                let picked = members[0];
+                for (const m of members) {
+                    roll -= (m.groupWeight || 100);
+                    if (roll <= 0) { picked = m; break; }
+                }
+                afterGroup.push(picked);
+            } else {
+                // Highest order wins
+                members.sort((a, b) => (b.order || 0) - (a.order || 0));
+                afterGroup.push(members[0]);
+            }
+            debugInfo(`互斥分组 "${groupName}": ${members.length} 条竞争, 胜出: ${members.length > 0 ? (afterGroup[afterGroup.length - 1].comment || afterGroup[afterGroup.length - 1].uid) : '无'}`);
+        }
+
+        // Phase 3: Multi-pass Recursion — keep scanning until stable (like SillyTavern)
+        const activatedUids = new Set(afterGroup.map(e => `${e.sourceId}:${e.uid}`));
+        const MAX_RECURSION_PASSES = 5;
+        for (let pass = 0; pass < MAX_RECURSION_PASSES; pass++) {
+            const recursionContent = afterGroup.filter(e => !e.excludeRecursion).map(e => e.content).join('\n');
+            const remaining = entries.filter(e => !activatedUids.has(`${e.sourceId}:${e.uid}`));
+            let foundNew = false;
+            for (const entry of remaining) {
+                if (entry.preventRecursion) continue;
+                if (!checkEntryKeyMatch(entry, recursionContent)) continue;
+                if (entry.useProbability && entry.probability < 100) {
+                    if (Math.random() * 100 >= entry.probability) continue;
+                }
+                const cs = !!entry.caseSensitive;
+                const hitKeys = entry.key.filter(k => matchKeyInText(k, recursionContent, cs));
+                afterGroup.push({ ...entry, _matchType: 'recursion', matchedKeys: hitKeys.length ? hitKeys : entry.key });
+                activatedUids.add(`${entry.sourceId}:${entry.uid}`);
+                foundNew = true;
+            }
+            if (!foundNew) break;
+            if (pass > 0) debugInfo(`递归第 ${pass + 1} 轮: 新增条目`);
+        }
+
+        // Phase 4: Sort by order (higher = higher priority) and apply budget
+        afterGroup.sort((a, b) => {
+            if (a.constant !== b.constant) return a.constant ? -1 : 1;
+            return (b.order || 0) - (a.order || 0);
         });
 
-        return matched.map(entry => ({
-            ...entry,
-            matchedKeys: entry.key
-        }));
+        const budget = Math.max(500, Number(store.lorebookBudget) || 8000);
+        let totalLen = 0;
+        const budgeted = afterGroup.filter(entry => {
+            const len = (entry.content || '').length;
+            if (totalLen + len > budget) return false;
+            totalLen += len;
+            return true;
+        });
+
+        debugInfo(`世界书匹配: ${afterGroup.length} 条激活, ${budgeted.length} 条入选 (预算 ${totalLen}/${budget} 字符)`);
+        return budgeted;
     }
 
     function validateStructuredResult(normalized) {
@@ -574,8 +756,15 @@
     function anchorsMatchSentence(anchorText, nodeText) {
         const a = String(anchorText || '').trim().toLowerCase().replace(/\s+/g, '');
         const b = String(nodeText || '').trim().toLowerCase().replace(/\s+/g, '');
-        if (!a || !b) return false;
-        return b.includes(a) || a.includes(b);
+        if (!a || !b || a.length < 4) return false;
+        // 1. Exact substring (best case)
+        if (b.includes(a) || a.includes(b)) return true;
+        // 2. Fuzzy: 70% of anchor chars appear consecutively in nodeText
+        const minOverlap = Math.max(4, Math.floor(a.length * 0.7));
+        for (let i = 0; i <= a.length - minOverlap; i++) {
+            if (b.includes(a.slice(i, i + minOverlap))) return true;
+        }
+        return false;
     }
 
     function buildRequestPayload(messageId, trigger) {
@@ -605,7 +794,7 @@
             },
             recentMessages,
             ruleBook: ruleBook.map(r => ({ name: r.name, content: r.content })),
-            lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys })),
+            lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
             outputSchema: {
                 shouldDraw: 'boolean',
@@ -1380,6 +1569,7 @@
                 <label class="st-scene-trigger-field wide"><span>轻量规则书 JSON</span><textarea id="rbq-sdt-rulebook-entries" style="min-height:180px;"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
+                <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" max="50000" step="500"></label>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
@@ -1420,6 +1610,7 @@
         document.getElementById('rbq-sdt-rulebook-entries').value = store.ruleBookEntries;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
         document.getElementById('rbq-sdt-lorebook-depth').value = store.lorebookContextDepth;
+        document.getElementById('rbq-sdt-lorebook-budget').value = store.lorebookBudget || 8000;
         document.getElementById('rbq-sdt-provider').value = store.provider;
         document.getElementById('rbq-sdt-openai-base').value = store.openaiBaseUrl;
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
@@ -1461,6 +1652,7 @@
             s.ruleBookEntries = val('rbq-sdt-rulebook-entries');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
             s.lorebookContextDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-lorebook-depth')) || 5));
+            s.lorebookBudget = Math.max(500, Math.min(50000, Number(val('rbq-sdt-lorebook-budget')) || 8000));
             s.provider = val('rbq-sdt-provider');
             s.openaiBaseUrl = val('rbq-sdt-openai-base').trim();
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();

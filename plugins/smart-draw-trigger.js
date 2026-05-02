@@ -152,12 +152,33 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion) store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+
+        // Restore critical settings from localStorage backup (in case saveSettingsDebounced didn't complete)
+        try {
+            const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
+            if (backup.characterMemoryEnabled !== undefined && store.characterMemoryEnabled === false && backup.characterMemoryEnabled === true) {
+                store.characterMemoryEnabled = true;
+                debugInfo('📦 从 localStorage 恢复 characterMemoryEnabled=true');
+            }
+            if (backup.characterProfiles && Object.keys(store.characterProfiles).length === 0 && Object.keys(backup.characterProfiles).length > 0) {
+                store.characterProfiles = backup.characterProfiles;
+                debugInfo(`📦 从 localStorage 恢复 characterProfiles: ${Object.keys(backup.characterProfiles).length} 个聊天`);
+            }
+        } catch { /* noop */ }
+
         return store;
     }
 
     function save() {
         const store = getStore();
         debugInfo(`💾 save(): characterMemoryEnabled=${store.characterMemoryEnabled}, profiles=${JSON.stringify(Object.keys(store.characterProfiles || {}))}`);
+        // Immediate localStorage backup for critical settings (survives refresh even if debounced save hasn't fired)
+        try {
+            localStorage.setItem('rbq-sdt-backup', JSON.stringify({
+                characterMemoryEnabled: store.characterMemoryEnabled,
+                characterProfiles: store.characterProfiles,
+            }));
+        } catch { /* noop - quota exceeded etc */ }
         RBQ.api.saveSettings();
     }
 

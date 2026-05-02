@@ -1973,13 +1973,21 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
         bindSwitch('rbq-sdt-char-memory-field', 'rbq-sdt-char-memory');
-        document.getElementById('rbq-sdt-char-memory').checked = !!store.characterMemoryEnabled;
+        // Read directly from localStorage — most reliable source after refresh
+        let charMemoryValue = !!store.characterMemoryEnabled;
+        try {
+            const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
+            if (backup.characterMemoryEnabled === true) charMemoryValue = true;
+        } catch { /* noop */ }
+        document.getElementById('rbq-sdt-char-memory').checked = charMemoryValue;
+        store.characterMemoryEnabled = charMemoryValue; // sync back to store
+        console.info(`[Smart Draw] UI init: characterMemoryEnabled=${charMemoryValue} (store=${!!store.characterMemoryEnabled})`);
         // Auto-save when char memory toggle changes (no need to click save button)
         document.getElementById('rbq-sdt-char-memory').addEventListener('change', (e) => {
             const s = getStore();
             s.characterMemoryEnabled = e.target.checked;
             save();
-            debugInfo(`角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存`);
+            console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存到 localStorage`);
         });
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);

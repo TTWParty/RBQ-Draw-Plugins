@@ -1950,6 +1950,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
         bindSwitch('rbq-sdt-char-memory-field', 'rbq-sdt-char-memory');
         document.getElementById('rbq-sdt-char-memory').checked = !!store.characterMemoryEnabled;
+        // Auto-save when char memory toggle changes (no need to click save button)
+        document.getElementById('rbq-sdt-char-memory').addEventListener('change', (e) => {
+            const s = getStore();
+            s.characterMemoryEnabled = e.target.checked;
+            save();
+            debugInfo(`角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存`);
+        });
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;

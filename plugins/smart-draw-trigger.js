@@ -2102,7 +2102,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         });
         observer.observe(document.body, { childList: true, characterData: true, subtree: true });
         setTimeout(scanLatestVisible, 250);
-        setTimeout(scanLatestVisible, 1200);
+        // Delayed full scan to restore all cached cards (including images) on page reload
+        setTimeout(scanAllVisible, 1500);
     }
 
     waitForPanel();

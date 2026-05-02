@@ -778,7 +778,12 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
         if (segments.length > 0) {
             segments.forEach((seg, index) => {
                 const segmentKey = `${key}-seg-${index}`;
-                const wrapper = insertCard(messageId, trigger, { ...result, anchor: seg.anchor }, segmentKey);
+                // Pass the individual segment (not top-level result) so charData/label are per-segment
+                const segResult = {
+                    ...seg,
+                    reason: result.reason || '',
+                };
+                const wrapper = insertCard(messageId, trigger, segResult, segmentKey);
                 if (wrapper) {
                     wrapper.dataset.prompt = getFinalPrompt(seg);
                     wrapper.dataset.rbqSdtBaseKey = key;
@@ -1123,11 +1128,9 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
         let inserted = false;
         if (trigger.type === 'marker' && trigger.marker) {
             inserted = insertAtMarker(container, trigger.marker, wrapper);
-        } else if (result?.anchor?.type === 'sentence') {
+        } else if (result?.anchor?.text) {
+            // Only try anchor text matching; if it fails, fall through to append (bottom)
             inserted = insertBySentenceMap(messageId, result.anchor, wrapper);
-            if (!inserted) {
-                inserted = insertAfterSentence(container, result.anchor.index || 1, wrapper);
-            }
         }
         if (!inserted) container.append(wrapper);
 
@@ -1357,6 +1360,11 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
                 return;
             }
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
+            // Hide/remove the initial placeholder card if new segment cards were created
+            if (rendered.length > 0 && rendered.every(item => item.wrapper !== wrapper)) {
+                wrapper.style.display = 'none';
+                wrapper.remove();
+            }
             for (const item of rendered) {
                 const renderedWrapper = item.wrapper;
                 ensureTaggerButtonState(renderedWrapper, '重新解析/刷新 tag');

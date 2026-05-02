@@ -252,8 +252,10 @@ DNA锁定: 首次出场建立身份+外貌+穿搭 DNA，跨图锁定，仅文本
      */
     function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
         const store = getStore();
+        const chatKey = getChatKey();
 
-        debugInfo(`角色「${name}」LLM 输出: base="${(llmBase || '').slice(0, 30)}", outfit="${(llmOutfit || '').slice(0, 30)}", action="${(llmAction || '').slice(0, 30)}"`);
+        debugInfo(`角色「${name}」LLM 输出: base="${(llmBase || '').slice(0, 40)}", outfit="${(llmOutfit || '').slice(0, 40)}", action="${(llmAction || '').slice(0, 40)}"`);
+        debugInfo(`角色记忆状态: ${store.characterMemoryEnabled ? '✅ 启用' : '❌ 禁用'}, chatKey="${chatKey}"`);
 
         if (!store.characterMemoryEnabled) {
             // No memory: fallback to old behavior (appearance + all LLM tags)
@@ -278,7 +280,7 @@ DNA锁定: 首次出场建立身份+外貌+穿搭 DNA，跨图锁定，仅文本
                 updateCharacterProfile(name, finalBase, finalOutfit);
                 refreshCharacterProfileListUi();
             } else if (!finalBase && name) {
-                debugInfo(`角色「${name}」: LLM 未输出 base 字段，无法建档。请重置 System Prompt 到 V11`);
+                debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V14 且 LLM 支持 base/outfit/action 拆分`);
             }
         }
 

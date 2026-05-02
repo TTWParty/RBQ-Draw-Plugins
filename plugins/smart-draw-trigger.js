@@ -294,6 +294,9 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
      */
     function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
         const store = getStore();
+
+        debugInfo(`角色「${name}」LLM 输出: base="${(llmBase || '').slice(0, 30)}", outfit="${(llmOutfit || '').slice(0, 30)}", action="${(llmAction || '').slice(0, 30)}"`);
+
         if (!store.characterMemoryEnabled) {
             // No memory: fallback to old behavior (appearance + all LLM tags)
             const allLlmTags = [llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
@@ -313,7 +316,12 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
             // First time: learn from LLM and store
             finalBase = llmBase || '';
             finalOutfit = llmOutfit || '';
-            if (finalBase) updateCharacterProfile(name, finalBase, finalOutfit);
+            if (finalBase && name) {
+                updateCharacterProfile(name, finalBase, finalOutfit);
+                refreshCharacterProfileListUi();
+            } else if (!finalBase && name) {
+                debugInfo(`角色「${name}」: LLM 未输出 base 字段，无法建档。请重置 System Prompt 到 V11`);
+            }
         }
 
         // Merge: appearance(lorebook) + base + outfit + action

@@ -52,6 +52,7 @@ lorebook: payload.lorebook 含 Tag 模板库，匹配到的 tag **直接引用�
 镜头: 图片=静态镜头，不可见元素禁入：
   pov→禁面部 | upper_body→禁下身 | from_behind→禁正面表情 | cowboy_shot→禁膝下 | 遮挡→禁被遮部位
 方向: 原文"仰头"→head_back,looking_up（不是 looking_down）
+视角选择: pov=主观(观察者不出镜,适合直视/互动) / third-person=旁观(适合多角色/对视,追加from_side,face_to_face,facing_another,eye_contact,坐标B3↔D3)
 防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
 
 ══ 角色规则 ══
@@ -1874,7 +1875,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field wide"><span>短标记（每行一个）</span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" max="50000" step="500"></label>
+                <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
@@ -1965,7 +1966,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
             s.lorebookContextDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-lorebook-depth')) || 5));
-            s.lorebookBudget = Math.max(500, Math.min(50000, Number(val('rbq-sdt-lorebook-budget')) || 8000));
+            s.lorebookBudget = Math.max(500, Number(val('rbq-sdt-lorebook-budget')) || 8000);
             s.provider = val('rbq-sdt-provider');
             s.openaiBaseUrl = val('rbq-sdt-openai-base').trim();
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();

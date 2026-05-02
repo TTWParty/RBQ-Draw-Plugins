@@ -1791,6 +1791,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         field.setAttribute('role', 'switch');
         field.tabIndex = 0;
         field.addEventListener('click', (event) => {
+            // Skip if clicking the checkbox directly — it already toggles itself
+            if (event.target === input) return;
             event.preventDefault();
             input.checked = !input.checked;
             input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1972,17 +1974,16 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
-        bindSwitch('rbq-sdt-char-memory-field', 'rbq-sdt-char-memory');
-        // Read directly from localStorage — most reliable source after refresh
+        // Set checkbox value BEFORE bindSwitch — sync() reads initial state
         let charMemoryValue = !!store.characterMemoryEnabled;
         try {
             const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
             if (backup.characterMemoryEnabled === true) charMemoryValue = true;
         } catch { /* noop */ }
         document.getElementById('rbq-sdt-char-memory').checked = charMemoryValue;
-        store.characterMemoryEnabled = charMemoryValue; // sync back to store
-        console.info(`[Smart Draw] UI init: characterMemoryEnabled=${charMemoryValue} (store=${!!store.characterMemoryEnabled})`);
-        // Auto-save when char memory toggle changes (no need to click save button)
+        store.characterMemoryEnabled = charMemoryValue;
+        bindSwitch('rbq-sdt-char-memory-field', 'rbq-sdt-char-memory');
+        // Auto-save when char memory toggle changes
         document.getElementById('rbq-sdt-char-memory').addEventListener('change', (e) => {
             const s = getStore();
             s.characterMemoryEnabled = e.target.checked;

@@ -1404,6 +1404,15 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
         if (force) processedKeys.delete(key);
         if (processedKeys.has(key)) return;
         if (inFlight.has(key)) return;
+
+        // Guard: if this message already has Smart Draw cards (from a previous run with a different key hash),
+        // don't create duplicate placeholders. DOM mutations can change the hash.
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (container instanceof HTMLElement && container.querySelector(`.${CARD_CLASS}`) && !force) {
+            processedKeys.add(key);
+            return;
+        }
+
         const cached = store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
             processedKeys.add(key);

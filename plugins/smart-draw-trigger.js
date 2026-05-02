@@ -199,6 +199,7 @@ DNA锁定: 首次出场建立身份+外貌+穿搭 DNA，跨图锁定，仅文本
             debugInfo(`角色记忆新建「${name}」: base="${(baseTags || '').slice(0, 40)}...", outfit="${(outfitTags || '').slice(0, 40)}..."`);
         }
         save();
+        refreshCharacterProfileListUi();
     }
 
     function deleteCharacterProfile(name) {
@@ -284,7 +285,6 @@ DNA锁定: 首次出场建立身份+外貌+穿搭 DNA，跨图锁定，仅文本
             finalOutfit = llmOutfit || '';
             if (finalBase && name) {
                 updateCharacterProfile(name, finalBase, finalOutfit);
-                refreshCharacterProfileListUi();
             } else if (!finalBase && name) {
                 debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V14 且 LLM 支持 base/outfit/action 拆分`);
             }

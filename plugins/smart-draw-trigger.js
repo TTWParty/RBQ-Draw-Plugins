@@ -4,9 +4,10 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 8;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 9;
     const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的"分镜师与提示词工程师"。
 你的任务是阅读当前的小说/剧情片段，拆解为关键视觉分镜，为每个分镜生成 NAI/Danbooru 风格的英文 Tag prompt，返回 JSON。
+你的输出将被直接映射到 NovelAI V4 多角色 API，每个 character 是一个独立的角色槽。
 
 ═══════ 铁律（违反任何一条 = 输出无效）═══════
 
@@ -35,7 +36,7 @@
 ## Tag 规范
 - 排序：按画面占比/重要性降序，关联 Tag 相邻
 - 拆解：复合语义→独立 Tag（月下→moonlit, night；害羞→shy, blush, wavy mouth）
-- 配额：总计 70~100 个 Tag
+- 配额：scene 20~40 Tag，每个角色 30~60 Tag
 - 结构顺序：quality→场景环境→光影氛围→镜头角度→人物数量→人物核心设定→服装→动作姿势→表情视线
 - 微细节（5~15 Tag）：即时反馈(trembling,splash)、主体标志(hair ornament)、氛围渲染(光影/粒子)、细节补全
 
@@ -52,6 +53,28 @@
 - 原文很短（<100字）或纯对话 → 0~1 张图
 - 有空间转换或强烈动作演进 → 拆分为多个 segment
 
+═══════ 输出结构说明 ═══════
+
+每个 segment 的 characters 数组直接映射到 NAI V4 API 的角色槽：
+- name: 角色在原文中的名字（用于匹配世界书中的角色外貌 Tag）
+- action: 该角色在此画面的**完整 Tag 描述**（外貌+服装+姿态+表情+动作），这会成为该角色槽的全部 prompt
+- center: 角色在画面中的位置坐标，格式为"列行"（A-E 列, 1-5 行），例如 B3=左中, D2=右上, C3=正中
+- uc: 该角色的负面提示词（不需要出现的元素），留空字符串如不需要
+
+scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共享）。
+quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前面。
+
+═══════ 坐标参考 ═══════
+
+列: A=最左(0.1) B=左(0.3) C=中(0.5) D=右(0.7) E=最右(0.9)
+行: 1=最上(0.1) 2=上(0.3) 3=中(0.5) 4=下(0.7) 5=最下(0.9)
+
+常用组合：
+- 单人正中: C3
+- 两人对视: B3 + D3
+- 三人: B3 + C3 + D3（或 A3 + C3 + E3 更分散）
+- 俯视/仰视: 列不变，行用 1-2 或 4-5
+
 ═══════ 输出格式 ═══════
 
 {
@@ -62,20 +85,27 @@
       "anchor": {
         "text": "从 currentMessage.content 中逐字复制的原文片段"
       },
-      "scene": "night, bedroom, dim lighting",
+      "scene": "best quality, masterpiece, absurdres, night, bedroom, dim lighting, wooden floor",
       "characters": [
         {
-          "name": "角色在原文中的名字",
-          "action": "sitting on bed, leaning forward, shy smile, blushing"
+          "name": "角色名",
+          "action": "1girl, long black hair, red eyes, medium breasts, white dress, sitting on bed, leaning forward, shy smile, blushing, looking at viewer",
+          "center": "B3",
+          "uc": ""
+        },
+        {
+          "name": "角色名2",
+          "action": "1boy, short brown hair, tall, muscular, black shirt, standing, arms crossed, smirking",
+          "center": "D3",
+          "uc": ""
         }
-      ],
-      "standalone_prompt": "如无具体角色的独立画面描述可放这里"
+      ]
     }
   ]
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: 'V8-分镜+Tag 融合版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V9-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
@@ -643,8 +673,8 @@
                     return {
                         index: charIndex + 1,
                         caption: [appearanceTags, action].filter(Boolean).join(', '),
-                        center: 'C3',
-                        uc: '',
+                        center: String(char?.center || 'C3').trim().toUpperCase(),
+                        uc: String(char?.uc || '').trim(),
                         _rawName: name,
                         _rawAction: action
                     };

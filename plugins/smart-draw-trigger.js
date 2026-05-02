@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 9;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 10;
     const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的"分镜师与提示词工程师"。
 你的任务是阅读当前的小说/剧情片段，拆解为关键视觉分镜，为每个分镜生成 NAI/Danbooru 风格的英文 Tag prompt，返回 JSON。
 你的输出将被直接映射到 NovelAI V4 多角色 API，每个 character 是一个独立的角色槽。
@@ -36,8 +36,11 @@
 ## Tag 规范
 - 排序：按画面占比/重要性降序，关联 Tag 相邻
 - 拆解：复合语义→独立 Tag（月下→moonlit, night；害羞→shy, blush, wavy mouth）
-- 配额：scene 20~40 Tag，每个角色 30~60 Tag
-- 结构顺序：quality→场景环境→光影氛围→镜头角度→人物数量→人物核心设定→服装→动作姿势→表情视线
+- 配额：scene 15~35 Tag，每个角色 30~60 Tag
+- ⚠️ **scene 禁止输出 quality/aesthetic 类 Tag**（如 best quality, masterpiece, absurdres, very aesthetic, amazing quality 等）。这些由外部预设系统自动添加，你输出会导致重复。
+- scene 结构顺序：场景环境→光影氛围→镜头角度→构图
+- ⚠️ **scene 只放全局环境**，不放角色专属 Tag。角色动作（如 girl on top, sitting, straddling）必须放在对应角色的 action 中，不是 scene 中。
+- 角色 action 结构顺序：人物数量(1girl/1boy)→核心外貌设定→服装→动作姿势→表情视线→微细节
 - 微细节（5~15 Tag）：即时反馈(trembling,splash)、主体标志(hair ornament)、氛围渲染(光影/粒子)、细节补全
 
 ## 角色规则
@@ -64,7 +67,7 @@
 label 字段是该分镜的中文短语标题（5~15字），用于在 UI 按钮上显示。用简洁的中文概括当前画面的核心内容。
 
 scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共享）。
-quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前面。
+⚠️ 不要在 scene 中放 quality Tag，不要在 scene 中放角色专属 Tag。
 
 ═══════ 坐标参考 ═══════
 
@@ -88,7 +91,7 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
       "anchor": {
         "text": "从 currentMessage.content 中逐字复制的原文片段"
       },
-      "scene": "best quality, masterpiece, absurdres, night, bedroom, dim lighting, wooden floor",
+      "scene": "night, bedroom, dim lighting, wooden floor, warm atmosphere",
       "characters": [
         {
           "name": "角色名",
@@ -108,7 +111,7 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: 'V9-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V10-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
@@ -631,12 +634,23 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
                     if (name) {
                         const matched = matchedLorebooks.find(l => {
                             const lName = String(l.comment || l.sourceName || '').toLowerCase();
-                            const keys = Array.isArray(l.matchedKeys) ? l.matchedKeys.map(k => String(k).toLowerCase()) : [];
+                            const allKeys = [
+                                ...(Array.isArray(l.matchedKeys) ? l.matchedKeys : []),
+                                ...(Array.isArray(l.key) ? l.key : []),
+                            ].map(k => String(k).toLowerCase()).filter(Boolean);
                             const lowerName = name.toLowerCase();
-                            return lName === lowerName || lName.includes(lowerName) || keys.some(k => k === lowerName || k.includes(lowerName) || lowerName.includes(k));
+                            return lName === lowerName
+                                || lName.includes(lowerName)
+                                || allKeys.some(k => k === lowerName || k.includes(lowerName) || lowerName.includes(k));
                         });
                         if (matched) {
                             appearanceTags = String(matched.content || '').trim();
+                            debugInfo(`角色「${name}」匹配到世界书: comment="${matched.comment}", tags=${appearanceTags.slice(0, 60)}...`);
+                        } else {
+                            debugInfo(`角色「${name}」未匹配到世界书 (共 ${matchedLorebooks.length} 条已激活条目)`);
+                            if (matchedLorebooks.length > 0) {
+                                debugInfo(`  已激活条目: ${matchedLorebooks.map(l => `"${l.comment || l.sourceName}"`).slice(0, 5).join(', ')}`);
+                            }
                         }
                     }
 
@@ -720,6 +734,20 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
         return [scene, standalone, chars].filter(Boolean).join(', ');
     }
 
+    /* ── Quality tag deduplication ── */
+    const QUALITY_TAGS_SET = new Set([
+        'best quality', 'masterpiece', 'absurdres', 'highres', 'very aesthetic',
+        'amazing quality', 'good quality', 'high quality', 'ultra detailed',
+        'incredibly absurdres', 'newest', 'year 2024', 'year 2025',
+    ]);
+    function deduplicateQualityTags(scene) {
+        if (!scene) return '';
+        return scene.split(',')
+            .map(t => t.trim())
+            .filter(t => t && !QUALITY_TAGS_SET.has(t.toLowerCase().replace(/[()\[\]{}]/g, '').trim()))
+            .join(', ');
+    }
+
     /** Prepare structured char data for the NAI V4 payload hook */
     function prepareNaiCharData(segmentResult) {
         if (!segmentResult || !Array.isArray(segmentResult.characters) || segmentResult.characters.length === 0) {
@@ -727,6 +755,7 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
             return;
         }
         pendingNaiCharData = {
+            scene: deduplicateQualityTags(segmentResult.scene || ''),
             characters: segmentResult.characters.map(c => ({
                 caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
                 center: c.center || 'C3',
@@ -753,8 +782,14 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
         const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
             || payload.parameters?.negative_prompt || '';
 
+        // Build base_caption: Prompt Presets prefix (from payload.input before our scene) + deduped scene
+        // payload.input = [Presets prefix], [getFinalPrompt scene]
+        // We replace the scene portion with the deduped version stored in pendingNaiCharData
+        const storedScene = pendingNaiCharData.scene || '';
+        const baseCaptionFinal = storedScene ? payload.input : payload.input;
+
         payload.parameters.v4_prompt = {
-            caption: { base_caption: payload.input, char_captions: charCaptions },
+            caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },
             use_coords: true,
             use_order: true,
             legacy_uc: false,
@@ -766,7 +801,7 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
             legacy_uc: false,
         };
 
-        debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${payload.input.slice(0, 60)}..."`);
+        debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
         pendingNaiCharData = null; // consume
         return payload;
     });
@@ -1260,13 +1295,12 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
             });
             RBQ.api.renderInlineGeneratedImage(wrapper, image);
             if (baseKey && segmentKey) markSegmentAutoGenerated(baseKey, segmentKey);
-            ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
-            setGenerateButtonState(wrapper, true, '重新生成图片', false);
+            // Don't re-show tagger button — it lives on the bottom re-parse card only
+            setGenerateButtonState(wrapper, true, '🔄 重新生成图片', false);
             setWrapperStage(wrapper, 'generated');
         } catch (error) {
             toastr.error(error.message || String(error), PLUGIN_NAME);
-            ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
-            setGenerateButtonState(wrapper, true, '生成图片', false);
+            setGenerateButtonState(wrapper, true, '🎨 生成图片', false);
             setWrapperStage(wrapper, 'error');
         } finally {
             clearWrapperLoading(wrapper);

@@ -243,7 +243,13 @@ DNA锁定: 首次出场建立身份+外貌+穿搭 DNA，跨图锁定，仅文本
 
     function refreshCharacterProfileListUi() {
         const el = document.getElementById('rbq-sdt-char-profile-list');
-        if (el instanceof HTMLElement) el.innerHTML = renderCharacterProfileList();
+        const profiles = getCharacterProfiles();
+        const count = Object.keys(profiles).length;
+        debugInfo(`角色记忆 UI 刷新: element=${el ? '✅找到' : '❌未找到'}, 已存档角色=${count}`);
+        if (el) {
+            el.innerHTML = renderCharacterProfileList();
+            debugInfo(`角色记忆 UI 已更新，内容长度=${el.innerHTML.length}`);
+        }
     }
 
     /**

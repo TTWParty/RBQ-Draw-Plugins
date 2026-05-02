@@ -188,10 +188,30 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
     }
 
     /* ── Character Appearance Memory ── */
+    function getChatKey() {
+        // Try SillyTavern context for chat-scoped profiles
+        try {
+            const ctx = window.SillyTavern?.getContext?.();
+            if (ctx?.chatId) return String(ctx.chatId);
+            if (ctx?.characterId !== undefined) return `char-${ctx.characterId}`;
+        } catch { /* noop */ }
+        // Fallback: try to read from chat metadata element
+        try {
+            const chatEl = document.querySelector('#chat');
+            const chatFile = chatEl?.closest?.('[data-chat-file]')?.dataset?.chatFile;
+            if (chatFile) return chatFile;
+        } catch { /* noop */ }
+        return '_global';
+    }
+
     function getCharacterProfiles() {
         const store = getStore();
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
-        return store.characterProfiles;
+        const chatKey = getChatKey();
+        if (!store.characterProfiles[chatKey] || typeof store.characterProfiles[chatKey] !== 'object') {
+            store.characterProfiles[chatKey] = {};
+        }
+        return store.characterProfiles[chatKey];
     }
 
     function getCharacterProfile(name) {
@@ -233,7 +253,11 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
     }
 
     function clearAllCharacterProfiles() {
-        getStore().characterProfiles = {};
+        const store = getStore();
+        const chatKey = getChatKey();
+        if (store.characterProfiles?.[chatKey]) {
+            store.characterProfiles[chatKey] = {};
+        }
         save();
     }
 

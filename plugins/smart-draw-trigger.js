@@ -120,6 +120,9 @@
         cooldownState: new Map(),
     };
 
+    // Temp state for passing structured char data to buildNaiV4Payload hook
+    let pendingNaiCharData = null;
+
     function getStore() {
         const settings = RBQ.api.getSettings();
         if (!settings[STORAGE_KEY]) settings[STORAGE_KEY] = {};
@@ -687,28 +690,85 @@
         return normalized;
     }
 
+    /* ── NAI V4 coordinate grid (A-E × 1-5 → 0.0-1.0) ── */
+    const SDT_COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
+    const SDT_ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
+    function sdtParseCoord(coordStr) {
+        const s = (coordStr || '').trim().toUpperCase();
+        const col = s.charAt(0), row = s.charAt(1);
+        if (SDT_COL_MAP[col] != null && SDT_ROW_MAP[row] != null) return { x: SDT_COL_MAP[col], y: SDT_ROW_MAP[row] };
+        return { x: 0.5, y: 0.5 };
+    }
+
     function getFinalPrompt(obj) {
         if (!obj) return '';
+
+        // Multi-char: base prompt = scene only; characters go via NAI V4 char_captions hook
         if (getStore().multiCharOutput && Array.isArray(obj.characters) && obj.characters.length > 0) {
-            let lines = [];
-            if (obj.scene) lines.push(`Scene: ${obj.scene}`);
-            obj.characters.forEach((char, idx) => {
-                lines.push(`Char${idx + 1}: ${char.caption || [char._rawName, char._rawAction].filter(Boolean).join(', ')}`);
-                if (char.uc) lines.push(`Char${idx + 1} UC: ${char.uc}`);
-            });
-            const centers = obj.characters.map(c => c.center || 'C3').join(',');
-            lines.push(`|centers:${centers}`);
-            return lines.join('\n');
+            const scene = obj.scene || '';
+            const standalone = obj.standalone_prompt || '';
+            return [scene, standalone].filter(Boolean).join(', ');
         }
 
         if (obj.prompt) return obj.prompt;
 
-        const chars = Array.isArray(obj.characters) ? obj.characters.map(c => c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', ')).join(' AND ') : '';
+        const chars = Array.isArray(obj.characters) ? obj.characters.map(c => c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', ')).join(', ') : '';
         const scene = obj.scene || '';
         const standalone = obj.standalone_prompt || '';
 
         return [scene, standalone, chars].filter(Boolean).join(', ');
     }
+
+    /** Prepare structured char data for the NAI V4 payload hook */
+    function prepareNaiCharData(segmentResult) {
+        if (!segmentResult || !Array.isArray(segmentResult.characters) || segmentResult.characters.length === 0) {
+            pendingNaiCharData = null;
+            return;
+        }
+        pendingNaiCharData = {
+            characters: segmentResult.characters.map(c => ({
+                caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
+                center: c.center || 'C3',
+                uc: c.uc || '',
+            })),
+        };
+    }
+
+    /* ── NAI V4 payload hook: inject char_captions directly ── */
+    RBQ.on('buildNaiV4Payload', (payload) => {
+        if (!pendingNaiCharData || !getStore().multiCharOutput) return payload;
+        const { characters } = pendingNaiCharData;
+        if (!characters.length) return payload;
+
+        const charCaptions = characters.map(c => ({
+            char_caption: c.caption,
+            centers: [sdtParseCoord(c.center)],
+        }));
+        const negCharCaptions = characters.map(c => ({
+            char_caption: c.uc || '',
+            centers: [sdtParseCoord(c.center)],
+        }));
+
+        const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
+            || payload.parameters?.negative_prompt || '';
+
+        payload.parameters.v4_prompt = {
+            caption: { base_caption: payload.input, char_captions: charCaptions },
+            use_coords: true,
+            use_order: true,
+            legacy_uc: false,
+        };
+        payload.parameters.v4_negative_prompt = {
+            caption: { base_caption: existingNegBase, char_captions: negCharCaptions },
+            use_coords: false,
+            use_order: false,
+            legacy_uc: false,
+        };
+
+        debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${payload.input.slice(0, 60)}..."`);
+        pendingNaiCharData = null; // consume
+        return payload;
+    });
 
     function materializeResultCards(messageId, trigger, result, key) {
         const rendered = [];
@@ -1054,6 +1114,10 @@
         wrapper.dataset.rbqSdtTriggerType = trigger.type;
         wrapper.dataset.rbqSdtReason = result.reason || '';
         wrapper.dataset.rbqSdtFinalPrompt = finalPrompt;
+        // Store structured char data for NAI V4 direct injection on manual generate
+        if (Array.isArray(result?.characters) && result.characters.length > 0) {
+            try { wrapper.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch { /* noop */ }
+        }
 
         // 短标记按标记位置替换；自动定位默认插入消息末尾，避免 anchor.index=1 时挤到正文最前面。
         let inserted = false;
@@ -1161,6 +1225,14 @@
             setWrapperStage(wrapper, 'generating-image');
             setWrapperLoading(wrapper, 'tagger 已完成，正在调用 RBQ 生图...');
             setGenerateButtonState(wrapper, true, '生成中...', true);
+            // Restore structured char data for NAI V4 hook
+            const charDataJson = wrapper?.dataset?.rbqSdtCharData;
+            if (charDataJson) {
+                try {
+                    const chars = JSON.parse(charDataJson);
+                    prepareNaiCharData({ characters: chars });
+                } catch { /* noop */ }
+            }
             const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
@@ -1216,6 +1288,7 @@
             setWrapperStage(wrapper, 'generating-image');
             setWrapperLoading(wrapper, 'tagger 已返回，正在调用 RBQ 生图...');
             setGenerateButtonState(wrapper, true, '自动生成中...', true);
+            prepareNaiCharData(result);
             const finalPrompt = getFinalPrompt(result);
             const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');

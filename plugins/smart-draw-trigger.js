@@ -1295,6 +1295,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         });
         if (!(wrapper instanceof HTMLElement)) return null;
         wrapper.classList.add(CARD_CLASS);
+        // Hide host extension's default "生成图片" button — we use our own
+        const hostButton = wrapper.querySelector('.st-scene-trigger-generate:not(.rbq-sdt-run-image)');
+        if (hostButton) hostButton.style.display = 'none';
         wrapper.dataset.rbqSdtKey = key;
         wrapper.dataset.rbqSdtTriggerType = trigger.type;
         wrapper.dataset.rbqSdtReason = result.reason || '';

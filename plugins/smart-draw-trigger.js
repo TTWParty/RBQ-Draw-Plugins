@@ -1703,6 +1703,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         document.querySelectorAll('.mes[mesid]').forEach(element => {
             scheduleProcess(Number(element.getAttribute('mesid')), { allowHistorical: true, force: true });
         });
+        // Chat context is likely loaded by now. Refresh the profile list UI if the panel is open.
+        refreshCharacterProfileListUi();
     }
 
     function scanLatestVisible() {

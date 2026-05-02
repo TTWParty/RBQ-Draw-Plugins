@@ -1186,19 +1186,27 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
         return button;
     }
 
-    /** Generate a short label for a segment's generate button */
+    /** Generate a short Chinese label for a segment's generate button */
     function getSegmentLabel(seg, prefix = '🎨') {
         if (!seg) return `${prefix} 生成图片`;
-        // Try scene first, strip quality tags
-        let desc = String(seg.scene || '').replace(/best quality|masterpiece|absurdres|,/gi, '').trim();
-        // Fallback to reason
-        if (!desc && seg.reason) desc = String(seg.reason).trim();
-        // Fallback to first character action
-        if (!desc && Array.isArray(seg.characters) && seg.characters.length > 0) {
-            desc = String(seg.characters[0]._rawAction || seg.characters[0].action || '').split(',').slice(0, 3).join(',').trim();
+        let desc = '';
+
+        // 1. anchor.text — 原文锚点，最直观的中文描述
+        if (seg.anchor?.text) {
+            desc = String(seg.anchor.text).replace(/[，。！？、；：""''（）\s]+/g, ' ').trim();
         }
-        // Truncate
-        if (desc.length > 20) desc = desc.slice(0, 18) + '...';
+
+        // 2. 角色名拼接
+        if (!desc && Array.isArray(seg.characters) && seg.characters.length > 0) {
+            const names = seg.characters.map(c => c._rawName).filter(Boolean);
+            if (names.length) desc = names.join('·');
+        }
+
+        // 3. reason（LLM 的中文理由）
+        if (!desc && seg.reason) desc = String(seg.reason).trim();
+
+        // Truncate to 12 Chinese chars (wider characters)
+        if (desc.length > 12) desc = desc.slice(0, 11) + '…';
         return desc ? `${prefix} ${desc}` : `${prefix} 生成图片`;
     }
 

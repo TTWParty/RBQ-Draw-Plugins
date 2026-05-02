@@ -61,6 +61,8 @@
 - center: 角色在画面中的位置坐标，格式为"列行"（A-E 列, 1-5 行），例如 B3=左中, D2=右上, C3=正中
 - uc: 该角色的负面提示词（不需要出现的元素），留空字符串如不需要
 
+label 字段是该分镜的中文短语标题（5~15字），用于在 UI 按钮上显示。用简洁的中文概括当前画面的核心内容。
+
 scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共享）。
 quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前面。
 
@@ -82,6 +84,7 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
   "reason": "简述为什么需要配图（中文，10~30字）",
   "segments": [
     {
+      "label": "5~15字中文短语概括画面（如：客厅沉默·松手瞬间）",
       "anchor": {
         "text": "从 currentMessage.content 中逐字复制的原文片段"
       },
@@ -652,6 +655,7 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
 
                 return {
                     anchor,
+                    label: String(item?.label || '').trim(),
                     scene,
                     prompt: finalPromptFallback,
                     negative: String(item?.negative || '').trim(),
@@ -1189,25 +1193,19 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
     /** Generate a short Chinese label for a segment's generate button */
     function getSegmentLabel(seg, prefix = '🎨') {
         if (!seg) return `${prefix} 生成图片`;
-        let desc = '';
-
-        // 1. anchor.text — 原文锚点，最直观的中文描述
-        if (seg.anchor?.text) {
-            desc = String(seg.anchor.text).replace(/[，。！？、；：""''（）\s]+/g, ' ').trim();
-        }
-
+        // 1. LLM 输出的 label 字段（首选）
+        if (seg.label) return `${prefix} ${seg.label}`;
         // 2. 角色名拼接
-        if (!desc && Array.isArray(seg.characters) && seg.characters.length > 0) {
+        if (Array.isArray(seg.characters) && seg.characters.length > 0) {
             const names = seg.characters.map(c => c._rawName).filter(Boolean);
-            if (names.length) desc = names.join('·');
+            if (names.length) return `${prefix} ${names.join('·')}`;
         }
-
-        // 3. reason（LLM 的中文理由）
-        if (!desc && seg.reason) desc = String(seg.reason).trim();
-
-        // Truncate to 12 Chinese chars (wider characters)
-        if (desc.length > 12) desc = desc.slice(0, 11) + '…';
-        return desc ? `${prefix} ${desc}` : `${prefix} 生成图片`;
+        // 3. reason
+        if (seg.reason) {
+            const r = String(seg.reason).trim();
+            return `${prefix} ${r.length > 12 ? r.slice(0, 11) + '…' : r}`;
+        }
+        return `${prefix} 生成图片`;
     }
 
     function setGenerateButtonState(wrapper, visible, text = '生成图片', disabled = false) {

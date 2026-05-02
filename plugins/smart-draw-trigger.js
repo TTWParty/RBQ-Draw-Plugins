@@ -4,125 +4,63 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 11;
-    const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的"分镜师与提示词工程师"。
-你的任务是阅读当前的小说/剧情片段，拆解为关键视觉分镜，为每个分镜生成 NAI/Danbooru 风格的英文 Tag prompt，返回 JSON。
-你的输出将被直接映射到 NovelAI V4 多角色 API，每个 character 是一个独立的角色槽。
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 12;
+    const STORYBOARDER_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
-═══════ 铁律（违反任何一条 = 输出无效）═══════
+══ 铁律 ══
+1. 只输出合法 JSON，禁 markdown/注释/解释
+2. anchor.text 从 currentMessage.content **逐字复制** 10~40字原文，indexOf 找不到=失败
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. 所有 Tag 必须是 **Danbooru 标准 tag**（下划线连接如 cowgirl_position），禁止自然语言短语（如 sitting down on penis）
 
-1.【格式】只输出合法 JSON。禁止 markdown、禁止解释、禁止注释。
-2.【anchor.text 定位】必须从 currentMessage.content 中**逐字复制**一段原文（10~40字）作为插图锚点。
-  - 不可翻译、不可改写、不可省略或修改任何标点。
-  - 前端通过 indexOf(anchor.text) 在原文中定位插图位置。找不到 = 你的输出失败。
-3.【Tag 来源】你收到的 payload.lorebook 中包含根据当前文本关键词匹配到的 Tag 参考条目。
-  - 每个条目有 name（条目名）、keys（触发关键词）、tags（可用的 Tag 列表）。
-  - 请阅读这些 Tag 参考，从中挑选适合当前画面的 Tag 融入你的 prompt。不是所有条目都适用——请根据画面内容判断取舍。
-  - 直接引用 lorebook 中的 Tag，不要改写。如果 lorebook 未覆盖，你可自行补充合理的 Danbooru/NAI 风格 Tag。
-4.【不配对话/心理图】如果当前内容只有对话或内心独白，没有明显视觉场景变化，返回 shouldDraw: false。
+══ Tag 规范 ══
+- 权重语法: \`1.2::tag::\` 增强, \`0.7::tag::\` 减弱, \`{tag}\` 轻度增强
+- **lorebook 优先**：payload.lorebook 中的条目含现成 tag 列表（可能带权重），匹配到的 **直接引用不要改写/自造同义词**
+- 排序：画面占比/重要性降序，关联 tag 相邻
+- 复合概念拆解：害羞→shy,blush；月下→moonlit,night
 
-═══════ 画面规则 ═══════
+══ 字段说明 ══
+- **scene**: 全局环境（base_caption），10~25 tag。⛔禁 quality tag(best quality等)；⛔禁角色 tag(girl_on_top等)。结构：场景→光影→镜头→构图
+- **base**: 角色固定生理特征，8~15 tag。性别/发色发型/瞳色/体型/标志(痣疤)，整个故事不变
+- **outfit**: 当前穿着配饰，5~15 tag。可引用 lorebook 中服装模板的 tag（含权重）
+- **action**: 当前动作表情体位，15~35 tag。结构：体位→姿势→表情→视线→即时反馈(trembling,sweat)→微细节
+- **center**: 坐标 列A-E 行1-5。单人:C3 两人:B3+D3 骑乘:C2+C4
+- **uc**: 负面 tag。不需要则留空字符串
 
-## 插图规划
-- 通读全文→标记强视觉段落→段落间插图，禁止文末堆积
-- 单轮 1~5 张，均匀分布
-- 优先级（降序）：NSFW 时 媒介内容>表现力峰值>情色峰值>核心剧情标志；SFW 时 媒介内容>核心剧情标志>表现力峰值
+══ 准确性 ══
+- 文本有述→直用；无述→上文补全；冲突→文本优先
+- **禁止虚构**：文本没描述的动作/穿着禁编造
+- **方向一致**：原文"仰头"→head_back,looking_up（不是looking_down）
+- NSFW场景必须包含体位tag（sex,vaginal,cowgirl_position,girl_on_top等），不要回避
+- 镜头过滤：pov禁面部tag | upper_body禁下身tag | from_behind禁正面表情 | 遮挡物禁被遮部位tag
 
-## 核心原则
-- 真实原则：文本有述→直用；无述→基于上文补全；冲突→文本优先
-- 主次原则：主角详述占 Char 槽主导配额；配角简述聚焦与主角互动；路人剔除
-- 镜头原则：图片=静态镜头，按当前镜头严格过滤不可见元素，越界 Tag 禁入
+══ 分镜 ══
+- 断裂点：空间转换/动作突变/情绪高潮
+- 单消息1~3张，均匀分布，禁文末堆积
+- 短文(<100字)/纯对话→0~1张
+- 主角详述/配角简述聚焦互动/路人剔除
 
-## Tag 规范
-- 排序：按画面占比/重要性降序，关联 Tag 相邻
-- 拆解：复合语义→独立 Tag（月下→moonlit, night；害羞→shy, blush, wavy mouth）
-- 配额：scene 15~35 Tag，每个角色 30~60 Tag
-- ⚠️ **scene 禁止输出 quality/aesthetic 类 Tag**（如 best quality, masterpiece, absurdres, very aesthetic, amazing quality 等）。这些由外部预设系统自动添加，你输出会导致重复。
-- scene 结构顺序：场景环境→光影氛围→镜头角度→构图
-- ⚠️ **scene 只放全局环境**，不放角色专属 Tag。角色动作（如 girl on top, sitting, straddling）必须放在对应角色的 action 中，不是 scene 中。
-- 角色 action 结构顺序：人物数量(1girl/1boy)→核心外貌设定→服装→动作姿势→表情视线→微细节
-- 微细节（5~15 Tag）：即时反馈(trembling,splash)、主体标志(hair ornament)、氛围渲染(光影/粒子)、细节补全
-
-## 角色规则
-- 多女同框仅 yuri/协同；其他场景默认单女
-- 种族判定：人形→girl/boy，非人→no humans
-- DNA：首登角色全描述，后续仅变更部分
-- 防偷懒：配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
-
-═══════ 分镜逻辑 ═══════
-
-- 寻找「视觉断裂点」：空间转换、动作突变、情绪高潮
-- 每条消息通常 1~3 张图，不要为每句话配图
-- 原文很短（<100字）或纯对话 → 0~1 张图
-- 有空间转换或强烈动作演进 → 拆分为多个 segment
-
-═══════ 输出结构说明 ═══════
-
-每个 segment 的 characters 数组直接映射到 NAI V4 API 的角色槽：
-- name: 角色在原文中的名字（必须与上下文中的名字完全一致）
-- base: 角色的**固定外貌特征** Tag（性别、发色发型、瞳色、体型、标志性特征如痣/疤痕），这些在整个故事中不会改变
-- outfit: 角色**当前穿着/配饰** Tag（衣服、鞋子、饰品等），这些可能随场景变化
-- action: 角色**当前动作/姿态/表情** Tag（姿势、动作、表情、视线方向等），这些每帧都不同
-- center: 角色在画面中的位置坐标，格式为"列行"（A-E 列, 1-5 行），例如 B3=左中, D2=右上, C3=正中
-- uc: 该角色的负面提示词（不需要出现的元素），留空字符串如不需要
-
-⚠️ base/outfit/action 三个字段分别存储，系统会自动合并。请严格按分类填写：
-- base: 只放不变的生理特征（1girl, long black hair, red eyes, medium breasts, beauty mark under eye）
-- outfit: 只放当前穿着（white dress, black stockings, hair ribbon）
-- action: 只放当前动作（sitting on bed, leaning forward, shy smile, blushing, looking at viewer）
-
-label 字段是该分镜的中文短语标题（5~15字），用于在 UI 按钮上显示。用简洁的中文概括当前画面的核心内容。
-
-scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共享）。
-⚠️ 不要在 scene 中放 quality Tag，不要在 scene 中放角色专属 Tag。
-
-═══════ 坐标参考 ═══════
-
-列: A=最左(0.1) B=左(0.3) C=中(0.5) D=右(0.7) E=最右(0.9)
-行: 1=最上(0.1) 2=上(0.3) 3=中(0.5) 4=下(0.7) 5=最下(0.9)
-
-常用组合：
-- 单人正中: C3
-- 两人对视: B3 + D3
-- 三人: B3 + C3 + D3（或 A3 + C3 + E3 更分散）
-- 俯视/仰视: 列不变，行用 1-2 或 4-5
-
-═══════ 输出格式 ═══════
-
+══ 输出 ══
 {
   "shouldDraw": true,
-  "reason": "简述为什么需要配图（中文，10~30字）",
-  "segments": [
-    {
-      "label": "5~15字中文短语概括画面（如：客厅沉默·松手瞬间）",
-      "anchor": {
-        "text": "从 currentMessage.content 中逐字复制的原文片段"
-      },
-      "scene": "night, bedroom, dim lighting, wooden floor, warm atmosphere",
-      "characters": [
-        {
-          "name": "角色名",
-          "base": "1girl, long black hair, red eyes, medium breasts",
-          "outfit": "white dress, black stockings, hair ribbon",
-          "action": "sitting on bed, leaning forward, shy smile, blushing, looking at viewer",
-          "center": "B3",
-          "uc": ""
-        },
-        {
-          "name": "角色名2",
-          "base": "1boy, short brown hair, tall, muscular",
-          "outfit": "black shirt, dark jeans",
-          "action": "standing, arms crossed, smirking, looking down",
-          "center": "D3",
-          "uc": ""
-        }
-      ]
-    }
-  ]
+  "reason": "中文10~30字",
+  "segments": [{
+    "label": "5~15字中文",
+    "anchor": {"text": "逐字复制原文"},
+    "scene": "night, indoor, living_room, dim_lighting, from_below",
+    "characters": [{
+      "name": "角色名",
+      "base": "1girl, long_hair, brown_hair, light_brown_eyes, large_breasts, mole_under_eye",
+      "outfit": "1.2::pink_chiffon_blouse::, open_clothes, {black_lace_bra}, no_panties",
+      "action": "cowgirl_position, girl_on_top, sex, vaginal, straddling, head_back, open_mouth, panting, bouncing_breasts, sweat, trembling",
+      "center": "C2",
+      "uc": ""
+    }]
+  }]
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: 'V11-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V12-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
@@ -1062,14 +1000,14 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
             contextCount: Number(store.contextCount) || 5,
             outputSchema: {
                 shouldDraw: 'boolean',
-                reason: 'string optional',
+                reason: 'string (中文)',
                 segments: [
                     {
-                        anchor: { text: 'string exact sentence' },
-                        scene: 'string optional',
-                        standalone_prompt: 'string optional',
+                        label: 'string (5~15字中文)',
+                        anchor: { text: 'string exact copy from content' },
+                        scene: 'string danbooru tags, NO quality tags, NO character tags',
                         characters: [
-                            { name: 'string', action: 'string' }
+                            { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
                         ]
                     }
                 ]

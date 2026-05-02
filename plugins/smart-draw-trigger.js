@@ -1360,14 +1360,18 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
                 return;
             }
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
-            // Hide/remove the initial placeholder card if new segment cards were created
+            // Repurpose the initial placeholder card as the sole "re-parse" button at bottom
             if (rendered.length > 0 && rendered.every(item => item.wrapper !== wrapper)) {
-                wrapper.style.display = 'none';
-                wrapper.remove();
+                ensureTaggerButtonState(wrapper, '🔄 重新解析/刷新 tag');
+                setGenerateButtonState(wrapper, false);
+                setWrapperStage(wrapper, 'ready-generate');
+                clearWrapperLoading(wrapper);
             }
             for (const item of rendered) {
                 const renderedWrapper = item.wrapper;
-                ensureTaggerButtonState(renderedWrapper, '重新解析/刷新 tag');
+                // Hide tagger button on segment cards — re-parse is on the bottom placeholder
+                const taggerBtn = renderedWrapper.querySelector('.st-scene-trigger-generate');
+                if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
                 const btnLabel = store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : getSegmentLabel(item.segment);
                 setGenerateButtonState(renderedWrapper, true, btnLabel, false);
                 setWrapperStage(renderedWrapper, 'ready-generate');
@@ -1409,13 +1413,31 @@ quality Tag（如 best quality, masterpiece, absurdres）放在 scene 的最前�
             const rendered = materializeResultCards(messageId, trigger, cached, key);
             for (const item of rendered) {
                 const wrapper = item.wrapper;
-                ensureTaggerButtonState(wrapper, '重新解析/刷新 tag');
+                // Hide tagger button on segment cards
+                const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
+                if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
                 const btnLabel2 = store.autoRunTagger && RBQ.api.shouldAutoGenerate() ? '等待自动生图...' : getSegmentLabel(item.segment);
                 setGenerateButtonState(wrapper, true, btnLabel2, false);
                 setWrapperStage(wrapper, 'ready-generate');
                 bindWrapperManualRun(wrapper, trigger, messageId, key, item.key);
                 if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
                     await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
+                }
+            }
+            // Insert a bottom re-parse card if segments were rendered
+            if (rendered.length > 0) {
+                const reparseKey = `${key}-reparse`;
+                const reparsePlaceholder = {
+                    shouldDraw: true, prompt: '', negative: '',
+                    anchor: { type: 'bottom' }, reason: '', multiChar: false,
+                    scene: '', characters: [],
+                };
+                const reparseWrapper = insertCard(messageId, trigger, reparsePlaceholder, reparseKey);
+                if (reparseWrapper instanceof HTMLElement) {
+                    ensureTaggerButtonState(reparseWrapper, '🔄 重新解析/刷新 tag');
+                    setGenerateButtonState(reparseWrapper, false);
+                    setWrapperStage(reparseWrapper, 'ready-generate');
+                    bindWrapperManualRun(reparseWrapper, trigger, messageId, key);
                 }
             }
             processedKeys.add(key);

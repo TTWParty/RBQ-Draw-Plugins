@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 10;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 11;
     const STORYBOARDER_SYSTEM_PROMPT = `你是 RBQ Smart Draw Trigger 的"分镜师与提示词工程师"。
 你的任务是阅读当前的小说/剧情片段，拆解为关键视觉分镜，为每个分镜生成 NAI/Danbooru 风格的英文 Tag prompt，返回 JSON。
 你的输出将被直接映射到 NovelAI V4 多角色 API，每个 character 是一个独立的角色槽。
@@ -59,10 +59,17 @@
 ═══════ 输出结构说明 ═══════
 
 每个 segment 的 characters 数组直接映射到 NAI V4 API 的角色槽：
-- name: 角色在原文中的名字（用于匹配世界书中的角色外貌 Tag）
-- action: 该角色在此画面的**完整 Tag 描述**（外貌+服装+姿态+表情+动作），这会成为该角色槽的全部 prompt
+- name: 角色在原文中的名字（必须与上下文中的名字完全一致）
+- base: 角色的**固定外貌特征** Tag（性别、发色发型、瞳色、体型、标志性特征如痣/疤痕），这些在整个故事中不会改变
+- outfit: 角色**当前穿着/配饰** Tag（衣服、鞋子、饰品等），这些可能随场景变化
+- action: 角色**当前动作/姿态/表情** Tag（姿势、动作、表情、视线方向等），这些每帧都不同
 - center: 角色在画面中的位置坐标，格式为"列行"（A-E 列, 1-5 行），例如 B3=左中, D2=右上, C3=正中
 - uc: 该角色的负面提示词（不需要出现的元素），留空字符串如不需要
+
+⚠️ base/outfit/action 三个字段分别存储，系统会自动合并。请严格按分类填写：
+- base: 只放不变的生理特征（1girl, long black hair, red eyes, medium breasts, beauty mark under eye）
+- outfit: 只放当前穿着（white dress, black stockings, hair ribbon）
+- action: 只放当前动作（sitting on bed, leaning forward, shy smile, blushing, looking at viewer）
 
 label 字段是该分镜的中文短语标题（5~15字），用于在 UI 按钮上显示。用简洁的中文概括当前画面的核心内容。
 
@@ -95,13 +102,17 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
       "characters": [
         {
           "name": "角色名",
-          "action": "1girl, long black hair, red eyes, medium breasts, white dress, sitting on bed, leaning forward, shy smile, blushing, looking at viewer",
+          "base": "1girl, long black hair, red eyes, medium breasts",
+          "outfit": "white dress, black stockings, hair ribbon",
+          "action": "sitting on bed, leaning forward, shy smile, blushing, looking at viewer",
           "center": "B3",
           "uc": ""
         },
         {
           "name": "角色名2",
-          "action": "1boy, short brown hair, tall, muscular, black shirt, standing, arms crossed, smirking",
+          "base": "1boy, short brown hair, tall, muscular",
+          "outfit": "black shirt, dark jeans",
+          "action": "standing, arms crossed, smirking, looking down",
           "center": "D3",
           "uc": ""
         }
@@ -111,7 +122,7 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: 'V10-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V11-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
@@ -140,6 +151,9 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
         lorebookBudget: 8000,
         lorebookSources: [],
 
+        characterMemoryEnabled: false,
+        characterProfiles: {},
+
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
         cache: {},
@@ -164,12 +178,122 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
             if (store[key] === undefined) store[key] = value;
         }
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
+        if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion) store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         return store;
     }
 
     function save() {
         RBQ.api.saveSettings();
+    }
+
+    /* ── Character Appearance Memory ── */
+    function getCharacterProfiles() {
+        const store = getStore();
+        if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
+        return store.characterProfiles;
+    }
+
+    function getCharacterProfile(name) {
+        const profiles = getCharacterProfiles();
+        const key = String(name || '').trim().toLowerCase();
+        return key ? (profiles[key] || null) : null;
+    }
+
+    function updateCharacterProfile(name, baseTags, outfitTags) {
+        const profiles = getCharacterProfiles();
+        const key = String(name || '').trim().toLowerCase();
+        if (!key) return;
+        const existing = profiles[key];
+        if (existing) {
+            // Only update outfit if provided; base is immutable once set
+            if (outfitTags) existing.currentOutfit = outfitTags;
+            existing.updatedAt = Date.now();
+            debugInfo(`角色记忆更新「${name}」: outfit="${(outfitTags || '').slice(0, 40)}..."`);
+        } else {
+            profiles[key] = {
+                displayName: String(name || '').trim(),
+                baseTags: baseTags || '',
+                currentOutfit: outfitTags || '',
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+            };
+            debugInfo(`角色记忆新建「${name}」: base="${(baseTags || '').slice(0, 40)}...", outfit="${(outfitTags || '').slice(0, 40)}..."`);
+        }
+        save();
+    }
+
+    function deleteCharacterProfile(name) {
+        const profiles = getCharacterProfiles();
+        const key = String(name || '').trim().toLowerCase();
+        if (key && profiles[key]) {
+            delete profiles[key];
+            save();
+        }
+    }
+
+    function clearAllCharacterProfiles() {
+        getStore().characterProfiles = {};
+        save();
+    }
+
+    function renderCharacterProfileList() {
+        const profiles = getCharacterProfiles();
+        const entries = Object.entries(profiles);
+        if (!entries.length) return '<span style="opacity:.6">暂无已记忆角色</span>';
+        return entries.map(([key, profile]) => {
+            const base = String(profile.baseTags || '').slice(0, 50);
+            const outfit = String(profile.currentOutfit || '').slice(0, 50);
+            return `
+                <div class="rbq-sdt-lorebook-item" data-char-key="${key}">
+                    <div class="rbq-sdt-lorebook-meta">
+                        <strong>👤 ${profile.displayName || key}</strong>
+                        <small title="${profile.baseTags || ''}">base: ${base}${base.length >= 50 ? '...' : ''}</small>
+                        <small title="${profile.currentOutfit || ''}">outfit: ${outfit}${outfit.length >= 50 ? '...' : ''}</small>
+                    </div>
+                    <div class="rbq-sdt-lorebook-actions">
+                        <button class="menu_button" type="button" data-action="delete-char" data-char-key="${key}">删除</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function refreshCharacterProfileListUi() {
+        const el = document.getElementById('rbq-sdt-char-profile-list');
+        if (el instanceof HTMLElement) el.innerHTML = renderCharacterProfileList();
+    }
+
+    /**
+     * Merge character memory with LLM output.
+     * @returns {string} Final merged caption for char_caption
+     */
+    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
+        const store = getStore();
+        if (!store.characterMemoryEnabled) {
+            // No memory: fallback to old behavior (appearance + all LLM tags)
+            const allLlmTags = [llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
+            return [appearanceTags, allLlmTags].filter(Boolean).join(', ');
+        }
+
+        const profile = getCharacterProfile(name);
+        let finalBase, finalOutfit;
+
+        if (profile) {
+            // Use stored base (immutable), update outfit from LLM
+            finalBase = profile.baseTags;
+            finalOutfit = llmOutfit || profile.currentOutfit;
+            if (llmOutfit) updateCharacterProfile(name, null, llmOutfit);
+            debugInfo(`角色记忆复用「${name}」: storedBase="${finalBase.slice(0, 40)}..."`);
+        } else {
+            // First time: learn from LLM and store
+            finalBase = llmBase || '';
+            finalOutfit = llmOutfit || '';
+            if (finalBase) updateCharacterProfile(name, finalBase, finalOutfit);
+        }
+
+        // Merge: appearance(lorebook) + base + outfit + action
+        return [appearanceTags, finalBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
     function ensureLorebookStore() {
@@ -628,7 +752,10 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
 
                 const characters = Array.isArray(item?.characters) ? item.characters.map((char, charIndex) => {
                     const name = String(char?.name || '').trim();
-                    const action = String(char?.action || '').trim();
+                    // V11: parse base/outfit/action separately; fallback to legacy 'action' field
+                    const llmBase = String(char?.base || '').trim();
+                    const llmOutfit = String(char?.outfit || '').trim();
+                    const llmAction = String(char?.action || '').trim();
                     let appearanceTags = '';
 
                     if (name) {
@@ -654,13 +781,18 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
                         }
                     }
 
+                    // Merge character memory with LLM output
+                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags);
+
                     return {
                         index: charIndex + 1,
-                        caption: [appearanceTags, action].filter(Boolean).join(', '),
+                        caption: finalCaption,
                         center: String(char?.center || 'C3').trim().toUpperCase(),
                         uc: String(char?.uc || '').trim(),
                         _rawName: name,
-                        _rawAction: action
+                        _rawBase: llmBase,
+                        _rawOutfit: llmOutfit,
+                        _rawAction: llmAction
                     };
                 }).filter((char) => char.caption || char._rawName) : [];
 
@@ -1753,6 +1885,21 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
                 <span>已挂载世界书</span>
                 <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
             </div>
+            <div class="st-scene-trigger-subpanel-title" style="margin-top:16px;font-size:14px;">
+                <i class="fa-solid fa-brain"></i>
+                <span>角色外貌记忆</span>
+            </div>
+            <div class="st-scene-trigger-subpanel-hint">首次生图时自动学习角色外貌（发色、瞳色、体型等），后续生图自动复用，确保角色外貌一致性。服装会随剧情自动更新。</div>
+            <div class="st-scene-trigger-modal-grid">
+                <div id="rbq-sdt-char-memory-field" class="st-scene-trigger-field switch"><span>启用角色外貌记忆</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-memory" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+            </div>
+            <div class="st-scene-trigger-field wide">
+                <span>已记忆角色档案</span>
+                <div id="rbq-sdt-char-profile-list" class="rbq-sdt-note">${renderCharacterProfileList()}</div>
+            </div>
+            <div class="st-scene-trigger-buttons">
+                <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button">清空所有角色记忆</button>
+            </div>
             <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会按 segment 独立自动出图；关闭时只显示“生成图片”按钮。建议让 tagger 返回 anchor.text，以便卡片插入到目标原句后方。</div>
         `;
         panel.append(container);
@@ -1788,6 +1935,8 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
+        bindSwitch('rbq-sdt-char-memory-field', 'rbq-sdt-char-memory');
+        document.getElementById('rbq-sdt-char-memory').checked = !!store.characterMemoryEnabled;
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
@@ -1813,6 +1962,7 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
             s.customUrl = val('rbq-sdt-custom-url').trim();
             s.customApiKeyHeader = val('rbq-sdt-custom-key-header').trim() || 'Authorization';
             s.customApiKey = val('rbq-sdt-custom-key').trim();
+            s.characterMemoryEnabled = checked('rbq-sdt-char-memory');
             s.systemPrompt = val('rbq-sdt-system-prompt').trim() || DEFAULT_SYSTEM_PROMPT;
             s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
             save();
@@ -1883,6 +2033,22 @@ scene 字段是全局背景/环境 Tag，会成为 base_caption（全角色共�
             toastr.success('智能触发缓存已清空', PLUGIN_NAME);
         };
         document.getElementById('rbq-sdt-scan').onclick = scanAllVisible;
+
+        // Character profile events
+        document.getElementById('rbq-sdt-clear-char-profiles').onclick = () => {
+            clearAllCharacterProfiles();
+            refreshCharacterProfileListUi();
+            toastr.success('所有角色外貌记忆已清空', PLUGIN_NAME);
+        };
+        document.getElementById('rbq-sdt-char-profile-list')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-action="delete-char"]');
+            if (!(button instanceof HTMLButtonElement)) return;
+            const key = button.dataset.charKey;
+            if (!key) return;
+            deleteCharacterProfile(key);
+            refreshCharacterProfileListUi();
+            toastr.success(`已删除角色记忆：${key}`, PLUGIN_NAME);
+        });
     }
 
     function waitForPanel() {

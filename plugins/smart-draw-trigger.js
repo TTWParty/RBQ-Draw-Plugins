@@ -156,6 +156,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     }
 
     function save() {
+        const store = getStore();
+        debugInfo(`💾 save(): characterMemoryEnabled=${store.characterMemoryEnabled}, profiles=${JSON.stringify(Object.keys(store.characterProfiles || {}))}`);
         RBQ.api.saveSettings();
     }
 
@@ -2095,6 +2097,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
     waitForPanel();
     observeMessages();
-    console.info(`🪄 ${PLUGIN_NAME} loaded.`);
+    // Startup diagnostic: verify persistent data loaded
+    try {
+        const bootStore = getStore();
+        const chatKey = getChatKey();
+        const profileKeys = bootStore.characterProfiles?.[chatKey] ? Object.keys(bootStore.characterProfiles[chatKey]) : [];
+        console.info(`🪄 ${PLUGIN_NAME} loaded. characterMemoryEnabled=${bootStore.characterMemoryEnabled}, chatKey="${chatKey}", profiles=[${profileKeys.join(',')}], allChatKeys=[${Object.keys(bootStore.characterProfiles || {}).join(',')}]`);
+    } catch (e) {
+        console.info(`🪄 ${PLUGIN_NAME} loaded. (diagnostic failed: ${e.message})`);
+    }
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

@@ -184,6 +184,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
     /* ── Character Appearance Memory ── */
     function getChatKey() {
+        // Try ST global getCurrentChatId() first
+        try {
+            if (typeof window.getCurrentChatId === 'function') {
+                const id = window.getCurrentChatId();
+                if (id) return String(id);
+            }
+        } catch { /* noop */ }
         // Try SillyTavern context for chat-scoped profiles
         try {
             const ctx = window.SillyTavern?.getContext?.();
@@ -193,8 +200,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         // Fallback: try to read from chat metadata element
         try {
             const chatEl = document.querySelector('#chat');
-            const chatFile = chatEl?.closest?.('[data-chat-file]')?.dataset?.chatFile;
-            if (chatFile) return chatFile;
+            const chatFile = chatEl?.closest?.('[chat_id]')?.getAttribute('chat_id') || chatEl?.closest?.('[data-chat-file]')?.dataset?.chatFile;
+            if (chatFile) return String(chatFile);
         } catch { /* noop */ }
         return '_global';
     }
@@ -283,7 +290,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const el = document.getElementById('rbq-sdt-char-profile-list');
         const profiles = getCharacterProfiles();
         const count = Object.keys(profiles).length;
-        debugInfo(`角色记忆 UI 刷新: element=${el ? '✅找到' : '❌未找到'}, 已存档角色=${count}`);
+        debugInfo(`角色记忆 UI 刷新: element=${el ? '✅找到' : '❌未找到'}, chatKey=${getChatKey()}, 已存档角色=${count}`);
         if (el) {
             el.innerHTML = renderCharacterProfileList();
             debugInfo(`角色记忆 UI 已更新，内容长度=${el.innerHTML.length}`);
@@ -1595,9 +1602,19 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         }
     }
 
+    let lastChatKey = null;
+
     async function processMessage(messageId, options = {}) {
         const { allowHistorical = false, force = false } = options;
         const store = getStore();
+
+        // Auto-refresh profile UI when chat context becomes available
+        const currentChatKey = getChatKey();
+        if (currentChatKey && currentChatKey !== '_global' && currentChatKey !== lastChatKey) {
+            lastChatKey = currentChatKey;
+            refreshCharacterProfileListUi();
+        }
+
         if (!allowHistorical && !isLatestMessage(messageId)) return;
         const message = getMessageSnapshot(messageId);
         if (!shouldHandleMessage(message)) return;

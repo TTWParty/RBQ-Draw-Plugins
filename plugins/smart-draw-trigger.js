@@ -27,8 +27,10 @@ lorebook: payload.lorebook 含 Tag 模板库。匹配到的 tag **直接引用�
 | base | char_caption 固定 | 身份DNA: 角色名(original)+性别+年龄 / 外貌DNA: 发长+发色+瞳色+罩杯+修饰(痣/疤/纹身) |
 | outfit | char_caption 服装 | 穿搭DNA: 款式+颜色+细节+穿着状态(脱/敞开/半褪)+损耗+裸露部位 |
 | action | char_caption 动态 | 角色镜头+位置(in centers/in down side)+朝向+基础动作+肢体动作+表情+状态(sweat/cum) |
-| center | centers 坐标 | A1-E5 网格（C3=中心） |
+| center | centers 坐标 | A1-E5 网格（C3=中心）。**多角色必须分开坐标**，仅亲密接触(拥抱/亲吻)可重叠 |
 | uc | Char UC | 排除 tag（含跨角色防污染：Char1 red_hair → Char2 uc: red_hair） |
+
+坐标常用组合：单人C3 / 左右对峙B3+D3 / 站+躺C2+C4 / 骑乘C2+C4 / 三人B3+C3+D3
 
 ⛔ scene 禁 quality tag（best quality 等由预设处理）
 ⛔ scene 禁角色 tag（girl_on_top 等放 action）

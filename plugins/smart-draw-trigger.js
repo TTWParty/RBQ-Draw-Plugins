@@ -300,7 +300,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             if (finalBase && name) {
                 updateCharacterProfile(name, finalBase, finalOutfit);
             } else if (!finalBase && name) {
-                debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V14 且 LLM 支持 base/outfit/action 拆分`);
+                debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V16 且 LLM 支持 base/outfit/action 拆分`);
             }
         }
 
@@ -929,8 +929,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         // Build base_caption: Prompt Presets prefix (from payload.input before our scene) + deduped scene
         // payload.input = [Presets prefix], [getFinalPrompt scene]
         // We replace the scene portion with the deduped version stored in pendingNaiCharData
-        const storedScene = pendingNaiCharData.scene || '';
-        const baseCaptionFinal = storedScene ? payload.input : payload.input;
+        const baseCaptionFinal = payload.input;
 
         payload.parameters.v4_prompt = {
             caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },

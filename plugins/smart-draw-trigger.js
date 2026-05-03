@@ -1218,20 +1218,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 model: store.openaiModel,
                 temperature: 0.2,
                 response_format: { type: 'json_object' },
-                ...(store.geminiJailbreak ? {
-                    safetySettings: [
-                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                    ],
-                    safety_settings: [
-                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                    ]
-                } : {}),
                 messages: [
                     { role: 'system', content: (store.geminiJailbreak && store.geminiJailbreakPrompt ? store.geminiJailbreakPrompt + '\n\n' : '') + (store.systemPrompt || DEFAULT_SYSTEM_PROMPT) },
                     { role: 'user', content: JSON.stringify(payload, null, 2) },

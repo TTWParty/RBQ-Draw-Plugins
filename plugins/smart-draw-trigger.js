@@ -4,8 +4,114 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 19;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 20;
     const STORYBOARDER_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
+
+══ 铁律 ══
+1. 只输出合法 JSON，禁 markdown/注释
+2. anchor.text 从 currentMessage.content **逐字复制** 10~40字原文（indexOf 定位，找不到=失败）
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. Tag 必须是 Danbooru 标准 tag（下划线连接）
+
+══ Tag 规范 ══
+权重: \`n::tag::\`（1.1~2 强调/0.1~0.9 弱化），\`{tag}\` 轻度增强
+排序: 画面占比/重要性降序，关联 tag 相邻
+拆解: 复合→独立 tag（害羞→shy,blush；月下→moonlit,night）
+配额: 总量 70~100 tag（scene 18~25, 单主角 35~50, 双主角各 20~25）
+lorebook: payload.lorebook 含 Tag 模板库，匹配到的 tag **直接引用不改写**
+微细节: 配额有余时按优先级补充——即时反馈(trembling,splash) > 主体标志(hair_ornament) > 氛围渲染(光影/粒子) > 细节补全
+
+══ 字段与 Tag 顺序 ══
+
+**scene**（→ base_caption，全角色共享）
+顺序: 分级(nsfw) → 主题 → 关系(hetero/yuri) → 人数(1boy 1girl) → 场景环境 → 光影 → 全局镜头(视角/远近/角度/构图)
+⛔ 禁 quality tag（由预设处理）⛔ 禁单角色动作 tag
+⚠️ pov 模式: 男主身体部位(large_penis, veiny_penis 等)写入 scene 作为环境道具
+
+**base**（→ char_caption 固定部分，跨图锁定不变）
+顺序: girl/boy(不带数字) → 发长+发型+发色 → 瞳色 → 体型+罩杯 → 肤色 → 修饰(痣/疤/纹身)
+
+**outfit**（→ char_caption 服装部分，随场景变化）
+顺序: 主要服装(款式+颜色+细节) → 次要服装/配饰 → 穿着状态(open/off/half-off) → 裸露部位+细节
+⚠️ 服装定义要拆到每个部件（dark_blue_blazer, white_collared_shirt, red_ribbon 而非模糊的 school_uniform）
+
+**action**（→ char_caption 动态部分，每帧不同）
+顺序: 朝向(facing_viewer) → 基础动作/姿势 → 肢体动作 → 表情 → 视线 → 体液/状态(sweat/cum) → 微细节
+⚠️ 多角色交互用 source#/target#/mutual# 前缀明确施受关系
+
+**center**（→ 角色位置坐标，A1-E5 网格）
+**多角色必须分开坐标**，仅亲密接触(拥抱/亲吻)可重叠
+常用: 单人C3 / 并排B3+D3 / 站+躺C2+C4 / 骑乘C2+C4
+
+**uc**（→ 角色负面提示词）
+跨角色防污染: Char1 的 发色/瞳色/表情/服装 → 写入 Char2 uc
+防色偏: 添加 heterochromia + 排除该角色不应有的颜色
+
+══ 核心原则 ══
+真实: 文本有述→直用；无述→上文补全；冲突→文本优先。**禁止虚构**未描述内容
+主次: 主角详述占主导配额；配角简述聚焦互动；路人剔除
+镜头: 图片=静态镜头，不可见元素禁入：
+  upper_body→禁下身 | from_behind→禁正面表情 | cowboy_shot→禁膝下 | 遮挡→禁被遮部位
+方向: 原文"仰头"→head_back,looking_up（不是 looking_down）
+视角选择:
+  pov=主观: 男主=摄像机，**禁止**放入 characters。男主身体写入 scene。女主带 looking_at_viewer + 动作词(handjob/fellatio等)。禁 source#/target#。视角由摄像机位置定: 男主站女主蹲→from_above / 男主躺女主骑→from_below
+  third-person=旁观: 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3
+防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
+
+══ 角色规则 ══
+DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更时更新
+多女: 仅 yuri/协同场景；其他默认单女
+配角聚合: ≤2 各自坐标；>2 同类可合并 1 个 Char 槽
+种族: 人形→girl/boy；非人→no humans
+
+══ 分镜 ══
+断裂点: 空间转换/动作突变/情绪高潮
+数量: 单消息 1~3 张，均匀分布，禁文末堆积
+短文(<100字)/纯对话 → 0~1 张
+优先级(NSFW): 媒介内容 > 表现力峰值 > 情色峰值 > 核心剧情
+
+══ 输出（第三人称示例）══
+{
+  "shouldDraw": true,
+  "reason": "中文10~30字",
+  "segments": [{
+    "label": "5~15字中文",
+    "anchor": {"text": "逐字复制原文"},
+    "scene": "nsfw, sex, hetero, 1boy 1girl, indoor, living_room, night, dim_lighting, warm_lighting, from_below, depth_of_field",
+    "characters": [{
+      "name": "角色名",
+      "base": "girl, long_hair, straight_hair, brown_hair, blunt_bangs, light_brown_eyes, large_breasts, slim, mole_under_eye",
+      "outfit": "1.2::pink_chiffon_blouse::, open_clothes, {black_lace_bra}, no_panties, pussy",
+      "action": "facing_viewer, cowgirl_position, girl_on_top, 1.3::source#sex, source#vaginal::, straddling, head_back, open_mouth, panting, bouncing_breasts, 1.2::sweat::, trembling, motion_lines",
+      "center": "C2",
+      "uc": "boy, short_hair, black_hair, heterochromia"
+    }, {
+      "name": "角色名2",
+      "base": "boy, short_hair, black_hair, tall, muscular",
+      "outfit": "shirtless",
+      "action": "lying, 1.3::target#sex, target#vaginal::, large_penis, hands_on_another's_hips, looking_up",
+      "center": "C4",
+      "uc": "girl, brown_hair, breasts, long_hair"
+    }]
+  }]
+}
+══ 输出（POV 示例·男主不入 characters）══
+{
+  "segments": [{
+    "scene": "nsfw, hetero, 1boy 1girl, pov, pov_crotch, from_above, indoor, infirmary, close-up, 1.2::large_penis::, veiny_penis, pre-cum",
+    "characters": [{
+      "name": "角色名",
+      "base": "girl, long_hair, wavy_hair, brown_hair, fox_eyes, large_breasts",
+      "outfit": "1.2::lab_coat::, open_coat, floral_print_camisole, cleavage, 1.2::facial::, cum_on_face",
+      "action": "facing_viewer, looking_up, holding_penis, 1.3::handjob::, seductive_smile, parted_lips, tongue_out, squatting",
+      "center": "C3",
+      "uc": "boy, black_hair, heterochromia"
+    }]
+  }]
+}`;
+
+    // 经典版：不含 POV 示例，更紧凑
+    const STORYBOARDER_CLASSIC_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
 1. 只输出合法 JSON，禁 markdown/注释
@@ -94,7 +200,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: 'V19-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V20-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        classic: { label: 'V19-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';
@@ -1950,7 +2057,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="storyboarder">分层架构-分镜版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="storyboarder">V20-POV增强版</option><option value="classic">V19-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

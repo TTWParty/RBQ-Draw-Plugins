@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 16;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 17;
     const STORYBOARDER_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
@@ -36,7 +36,7 @@ lorebook: payload.lorebook 含 Tag 模板库，匹配到的 tag **直接引用�
 
 **action**（→ char_caption 动态部分，每帧不同）
 顺序: 朝向(facing_viewer) → 基础动作/姿势 → 肢体动作 → 表情 → 视线 → 体液/状态(sweat/cum) → 微细节
-⚠️ 多角色交互用 source#/target#/mutual# 前缀明确施受关系
+⚠️ 多角色交互用 source#/target#/mutual# 前缀明确施受关系（必须配合通用基础动作如 source#hugging，不可生造复杂互动词如 source#pinching_nipple，具体细节直接用合法 tag 如 nipple_pull）
 
 **center**（→ 角色位置坐标，A1-E5 网格）
 **多角色必须分开坐标**，仅亲密接触(拥抱/亲吻)可重叠
@@ -50,9 +50,9 @@ lorebook: payload.lorebook 含 Tag 模板库，匹配到的 tag **直接引用�
 真实: 文本有述→直用；无述→上文补全；冲突→文本优先。**禁止虚构**未描述内容
 主次: 主角详述占主导配额；配角简述聚焦互动；路人剔除
 镜头: 图片=静态镜头，不可见元素禁入：
-  pov→禁面部 | upper_body→禁下身 | from_behind→禁正面表情 | cowboy_shot→禁膝下 | 遮挡→禁被遮部位
+  pov(第一人称)→男主即摄像机，绝对禁止将男主作为独立角色放入 characters 分配网格！| upper_body→禁下身 | from_behind→禁正面表情 | cowboy_shot→禁膝下 | 遮挡→禁被遮部位
 方向: 原文"仰头"→head_back,looking_up（不是 looking_down）
-视角选择: pov=主观(观察者不出镜,适合直视/互动) / third-person=旁观(适合多角色/对视,追加from_side,face_to_face,facing_another,eye_contact,坐标B3↔D3)
+视角选择: pov=主观(只画女主,互动写在女主action里) / third-person=旁观(画多角色,追加from_side,face_to_face,facing_another,eye_contact,坐标B3↔D3)
 防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
 
 ══ 角色规则 ══
@@ -94,7 +94,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        storyboarder: { label: 'V16-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        storyboarder: { label: 'V17-NAI V4 原生多角色版', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'storyboarder';

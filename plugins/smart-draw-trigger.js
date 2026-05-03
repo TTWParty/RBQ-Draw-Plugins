@@ -1111,6 +1111,20 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 model: store.openaiModel,
                 temperature: 0.2,
                 response_format: { type: 'json_object' },
+                ...(store.geminiJailbreak ? {
+                    safetySettings: [
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                    ],
+                    safety_settings: [
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                    ]
+                } : {}),
                 messages: [
                     { role: 'system', content: store.systemPrompt || DEFAULT_SYSTEM_PROMPT },
                     { role: 'user', content: JSON.stringify(payload, null, 2) },
@@ -1932,6 +1946,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
+                <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>Gemini 原生接口破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
@@ -1984,6 +1999,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         document.getElementById('rbq-sdt-openai-base').value = store.openaiBaseUrl;
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
         populateModelSelect(store.openaiModels || [], store.openaiModel);
+        document.getElementById('rbq-sdt-gemini-jailbreak').checked = !!store.geminiJailbreak;
         document.getElementById('rbq-sdt-custom-url').value = store.customUrl;
         document.getElementById('rbq-sdt-custom-key-header').value = store.customApiKeyHeader;
         document.getElementById('rbq-sdt-custom-key').value = store.customApiKey;
@@ -1999,6 +2015,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
+        bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
         // Set checkbox value BEFORE bindSwitch — sync() reads initial state
         let charMemoryValue = !!store.characterMemoryEnabled;
         try {
@@ -2037,6 +2054,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             s.openaiBaseUrl = val('rbq-sdt-openai-base').trim();
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();
             s.openaiModel = val('rbq-sdt-openai-model').trim();
+            s.geminiJailbreak = checked('rbq-sdt-gemini-jailbreak');
             s.customUrl = val('rbq-sdt-custom-url').trim();
             s.customApiKeyHeader = val('rbq-sdt-custom-key-header').trim() || 'Authorization';
             s.customApiKey = val('rbq-sdt-custom-key').trim();

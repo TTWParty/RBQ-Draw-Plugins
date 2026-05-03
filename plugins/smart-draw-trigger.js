@@ -953,13 +953,19 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             centers: [sdtParseCoord(c.center)],
         }));
 
-        const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
+        let existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
             || payload.parameters?.negative_prompt || '';
 
         // Build base_caption: Prompt Presets prefix (from payload.input before our scene) + deduped scene
         // payload.input = [Presets prefix], [getFinalPrompt scene]
         // We replace the scene portion with the deduped version stored in pendingNaiCharData
         const baseCaptionFinal = payload.input;
+
+        // 【优化】根据官方文档：生成 H 内容时，需从 UC 中移除 nsfw，否则内容会被抑制
+        if (/(nsfw|sex|vaginal|penis|pussy|nudity)/i.test(baseCaptionFinal)) {
+            existingNegBase = existingNegBase.replace(/(?:^|,)\s*nsfw\s*(?=$|,)/gi, ',');
+            existingNegBase = existingNegBase.replace(/^,+|,+$/g, '').replace(/,+/g, ','); // cleanup
+        }
 
         payload.parameters.v4_prompt = {
             caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },

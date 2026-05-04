@@ -1201,6 +1201,42 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return { payload, rawLorebooks: lorebook };
     }
 
+    function parseJailbreakMessages(jailbreakStr, defaultSystemStr) {
+        const str = String(jailbreakStr || '').trim();
+        const baseSystem = String(defaultSystemStr || '').trim();
+
+        if (!str) {
+            return [{ role: 'system', content: baseSystem }];
+        }
+
+        const roleRegex = /<\|(system|user|assistant|model)\|>/gi;
+        if (!roleRegex.test(str)) {
+            return [{ role: 'system', content: str + '\n\n' + baseSystem }];
+        }
+
+        const messages = [];
+        const parts = str.split(roleRegex);
+
+        if (parts[0].trim()) {
+            messages.push({ role: 'system', content: parts[0].trim() });
+        }
+
+        for (let i = 1; i < parts.length; i += 2) {
+            let role = parts[i].toLowerCase();
+            if (role === 'model') role = 'assistant';
+            const content = (parts[i + 1] || '').trim();
+            if (content) {
+                messages.push({ role, content });
+            }
+        }
+
+        if (baseSystem) {
+            messages.push({ role: 'system', content: baseSystem });
+        }
+
+        return messages;
+    }
+
     async function callOpenAiCompatible(messageId, trigger) {
         const store = getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
@@ -1208,6 +1244,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!store.openaiModel) throw new Error('请先填写模型名称');
         const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
+
+        const systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        const messages = store.geminiJailbreak
+            ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
+            : [{ role: 'system', content: systemPrompt }];
+
+        messages.push({ role: 'user', content: JSON.stringify(payload, null, 2) });
+
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -1218,10 +1262,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 model: store.openaiModel,
                 temperature: 0.2,
                 response_format: { type: 'json_object' },
-                messages: [
-                    { role: 'system', content: (store.geminiJailbreak && store.geminiJailbreakPrompt ? store.geminiJailbreakPrompt + '\n\n' : '') + (store.systemPrompt || DEFAULT_SYSTEM_PROMPT) },
-                    { role: 'user', content: JSON.stringify(payload, null, 2) },
-                ],
+                messages,
             }),
         });
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
@@ -2046,7 +2087,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
                 <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词</span><textarea id="rbq-sdt-gemini-jailbreak-prompt" placeholder="在此输入用于绕过系统审核的破限词..."></textarea></label>
+                <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词</span><textarea id="rbq-sdt-gemini-jailbreak-prompt" placeholder="在此输入用于绕过系统审核的破限词... \n如需构造伪造对话记录 (Few-shot)，可使用 <|system|>, <|user|>, <|assistant|> 作为分隔符。"></textarea></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>

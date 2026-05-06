@@ -1219,6 +1219,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     wrapper.dataset.rbqSdtBaseKey = key;
                     wrapper.dataset.rbqSdtSegmentKey = segmentKey;
                     wrapper.dataset.rbqSdtSegmentIndex = String(index + 1);
+                    wrapper.dataset.rbqSdtIsResult = '1';
                     rendered.push({ wrapper, key: segmentKey, segment: seg });
                 }
             });
@@ -1228,6 +1229,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 wrapper.dataset.prompt = getFinalPrompt(result);
                 wrapper.dataset.rbqSdtBaseKey = key;
                 wrapper.dataset.rbqSdtSegmentKey = key;
+                wrapper.dataset.rbqSdtIsResult = '1';
                 rendered.push({ wrapper, key, segment: result });
             }
         }
@@ -2019,7 +2021,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             #rbq-smart-draw-panel textarea { min-height: 70px; }
             #rbq-smart-draw-panel .rbq-sdt-note { font-size:12px; opacity:.72; line-height:1.45; }
             .rbq-sdt-card { display:block; margin: 10px 0; }
-            .rbq-sdt-card .st-scene-trigger-generate:not(.rbq-sdt-run-image) { display: none !important; }
+            .rbq-sdt-card[data-rbq-sdt-is-result="1"] .st-scene-trigger-generate:not(.rbq-sdt-run-image) { display: none !important; }
             .rbq-sdt-card[data-rbq-sdt-stage="parsing"],
             .rbq-sdt-card[data-rbq-sdt-stage="generating-image"] { opacity:.92; }
             .rbq-sdt-card[data-rbq-sdt-stage="generated"] .st-scene-trigger-inline-button { filter: saturate(1.08); }

@@ -991,17 +991,63 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     }
 
     function extractJson(text) {
+        const str = String(text || '').trim();
+        if (!str) return {};
+
         try {
-            const str = String(text || '').trim();
-            const start = str.indexOf('{');
-            const end = str.lastIndexOf('}');
-            if (start >= 0 && end >= start) {
-                return JSON.parse(str.slice(start, end + 1));
-            }
             return JSON.parse(str);
         } catch {
-            return {};
+            // fall through
         }
+
+        const start = str.indexOf('{');
+        if (start < 0) return {};
+
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = start; i < str.length; i++) {
+            const ch = str[i];
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch === '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (ch === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch === '"') {
+                inString = true;
+                continue;
+            }
+
+            if (ch === '{') {
+                depth++;
+                continue;
+            }
+
+            if (ch === '}') {
+                depth--;
+                if (depth === 0) {
+                    try {
+                        return JSON.parse(str.slice(start, i + 1));
+                    } catch {
+                        return {};
+                    }
+                }
+            }
+        }
+
+        return {};
     }
 
     function normalizeTaggerResult(data, matchedLorebooks = []) {

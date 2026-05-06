@@ -2144,6 +2144,12 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             const isJbOn = document.getElementById('rbq-sdt-gemini-jailbreak').checked;
             jbPromptField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
         }
+
+        const mode = val('rbq-sdt-mode');
+        const markersField = document.getElementById('rbq-sdt-markers-field');
+        if (markersField) {
+            markersField.style.display = (mode === 'auto' || mode === 'off') ? 'none' : '';
+        }
     }
 
     async function refreshOpenAiModels() {
@@ -2206,7 +2212,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field wide"><span>短标记（每行一个）</span><textarea id="rbq-sdt-markers"></textarea></label>
+                <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
@@ -2305,6 +2311,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         });
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
+        document.getElementById('rbq-sdt-mode').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
 
         document.getElementById('rbq-sdt-save').onclick = () => {

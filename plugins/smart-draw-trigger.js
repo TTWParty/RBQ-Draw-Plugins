@@ -1301,6 +1301,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
             lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
+            ...(store.enhancedContext ? {
+                contextAnalysisInstructions: "Please implicitly analyze 'recentMessages' to determine the ongoing scene, character relationships, current outfits, and continuous actions, then apply these findings to generate the tags for the 'currentMessage' in the final JSON output. Ensure logical continuity without generating an explicit analysis text."
+            } : {}),
             outputSchema: {
                 shouldDraw: 'boolean',
                 reason: 'string (中文)',
@@ -1368,6 +1371,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const messages = store.geminiJailbreak
             ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
+
+        if (store.enhancedContext) {
+            messages.push({
+                role: 'system',
+                content: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析：提取当前连续的场景环境、人物衣态、物理位置以及动作的承接关系。然后，将这些归纳出的连续性前情，自然地融入对 `currentMessage` 的标签生成中，确保最终输出的 JSON 在视觉上与前情完美连贯。注意：你的最终输出依然且只能是符合 outputSchema 格式的 JSON，绝对不可在 JSON 外输出任何思考过程或分析文本。"
+            });
+        }
 
         messages.push({ role: 'user', content: JSON.stringify(payload, null, 2) });
 
@@ -2211,6 +2221,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
+                <div id="rbq-sdt-enhanced-context-field" class="st-scene-trigger-field switch" title="开启后，将在单次提取中强制模型先归纳前情（场景/动作连贯性），再生成最终 JSON。可能消耗更多 token，但大幅提升连贯性。"><span>启用前情增强分析</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enhanced-context" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -2264,6 +2275,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         document.getElementById('rbq-sdt-mode').value = store.mode;
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
+        document.getElementById('rbq-sdt-enhanced-context').checked = !!store.enhancedContext;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
@@ -2289,6 +2301,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         document.getElementById('rbq-sdt-system-prompt-version').textContent = promptVersionText;
         updateProviderVisibility();
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
+        bindSwitch('rbq-sdt-enhanced-context-field', 'rbq-sdt-enhanced-context');
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
@@ -2322,6 +2335,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             s.mode = val('rbq-sdt-mode');
             s.targetRole = val('rbq-sdt-target-role');
             s.contextCount = Math.max(1, Math.min(50, Number(val('rbq-sdt-context-count')) || 5));
+            s.enhancedContext = checked('rbq-sdt-enhanced-context');
             s.debugToast = checked('rbq-sdt-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');
             s.autoRunTagger = checked('rbq-sdt-autorun');

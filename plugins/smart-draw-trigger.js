@@ -1890,7 +1890,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             refreshCharacterProfileListUi();
         }
 
-        if (!allowHistorical && !isLatestMessage(messageId)) return;
         const message = getMessageSnapshot(messageId);
         if (!shouldHandleMessage(message)) return;
         const trigger = getTrigger(message);
@@ -2201,7 +2200,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。支持 segments[] 多段卡片、anchor.text 精准插入，以及按段落独立自动生图。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="marker">仅短标记</option><option value="auto">仅自动定位</option><option value="hybrid">自动定位 + 短标记兜底</option></select></label>
+                <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>

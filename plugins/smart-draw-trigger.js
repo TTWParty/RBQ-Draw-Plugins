@@ -1995,7 +1995,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 createdAt: Date.now(),
                 triggerType: trigger.type,
                 marker: trigger.marker || '',
-                segmentStates: store.cache[cacheKey]?.segmentStates || {},
+                segmentStates: {},  // Fresh states — re-parse means new tags, old images don't apply
             };
             pruneCache();
             save();

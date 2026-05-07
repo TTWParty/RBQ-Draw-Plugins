@@ -2012,8 +2012,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             // lingering when re-parse returns different segments or fewer segments.
             const container = RBQ.api.getMessageTextContainer(messageId);
             if (container instanceof HTMLElement) {
-                container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(cacheKey)}"][data-rbq-sdt-is-result="1"]`)
-                    .forEach(card => card.remove());
+                const selector = `.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(cacheKey)}"][data-rbq-sdt-is-result="1"]`;
+                const oldCards = container.querySelectorAll(selector);
+                console.info(`[Smart Draw] 🧹 re-parse cleanup: found ${oldCards.length} old cards to remove`, {
+                    selector,
+                    cacheKey,
+                    allSdtCards: container.querySelectorAll(`.${CARD_CLASS}`).length,
+                });
+                oldCards.forEach(card => card.remove());
             }
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
             // Repurpose the initial placeholder card as the sole "re-parse" button at bottom

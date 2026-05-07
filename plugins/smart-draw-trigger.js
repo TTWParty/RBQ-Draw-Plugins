@@ -1256,7 +1256,17 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const segments = Array.isArray(result?.segments) ? result.segments : [];
 
         if (segments.length > 0) {
-            segments.forEach((seg, index) => {
+            // Build indexed list, then insert in REVERSE anchor order (bottom-to-top)
+            // so that earlier text node offsets aren't invalidated by later insertions.
+            const indexed = segments.map((seg, index) => ({ seg, index }));
+            const insertionOrder = [...indexed].sort((a, b) => {
+                const ai = Number(a.seg?.anchor?.index) || a.index;
+                const bi = Number(b.seg?.anchor?.index) || b.index;
+                return bi - ai; // descending: highest anchor index first
+            });
+
+            const resultMap = new Map(); // index → { wrapper, key, segment }
+            for (const { seg, index } of insertionOrder) {
                 const segmentKey = `${key}-seg-${index}`;
                 // Pass the individual segment (not top-level result) so charData/label are per-segment
                 const segResult = {
@@ -1270,9 +1280,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     wrapper.dataset.rbqSdtSegmentKey = segmentKey;
                     wrapper.dataset.rbqSdtSegmentIndex = String(index + 1);
                     wrapper.dataset.rbqSdtIsResult = '1';
-                    rendered.push({ wrapper, key: segmentKey, segment: seg });
+                    resultMap.set(index, { wrapper, key: segmentKey, segment: seg });
                 }
-            });
+            }
+            // Restore original segment order for downstream consumers (auto-gen, event binding)
+            for (let i = 0; i < segments.length; i++) {
+                const item = resultMap.get(i);
+                if (item) rendered.push(item);
+            }
         } else {
             const wrapper = insertCard(messageId, trigger, result, key);
             if (wrapper) {
@@ -1558,32 +1573,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     function buildSentenceMap(messageId) {
         const root = getPureMessageRoot(messageId);
         return buildSentenceMapFromRoot(root);
-    }
-
-    function getLivePureMessageRoot(messageId) {
-        const container = RBQ.api.getMessageTextContainer(messageId);
-        if (!(container instanceof HTMLElement)) return null;
-        const clone = container.cloneNode(true);
-        if (!(clone instanceof HTMLElement)) return null;
-
-        clone.querySelectorAll([
-            '.mes_timer',
-            '.mes_reasoning',
-            '.mes_reasoning_header',
-            '.mes_reasoning_details',
-            '.mes_reasoning_summary',
-            'summary',
-            'details',
-            '.st-scene-trigger-inline-wrap',
-            `.${CARD_CLASS}`,
-            '.mes_buttons',
-            '.mes_edit_buttons',
-            '.mes_img_controls',
-            '[data-role="message-actions"]',
-            '[data-role="message-metadata"]'
-        ].join(',')).forEach(node => node.remove());
-
-        return clone;
     }
 
     function insertWrapperAtTextNode(node, start, end, wrapper) {
@@ -2395,7 +2384,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             const s = getStore();
             s.characterMemoryEnabled = e.target.checked;
             save();
-            console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存到 localStorage`);
+            debugInfo(`角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存到 localStorage`);
         });
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
@@ -2525,7 +2514,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     }
 
     function observeMessages() {
-        const observer = new MutationObserver((mutations) => {
+        let _sdtObserver = null;
+
+        const mutationHandler = (mutations) => {
             for (const mutation of mutations) {
                 if (mutation.type === 'characterData') {
                     const parent = mutation.target?.parentElement;
@@ -2543,8 +2534,20 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     if (message) scheduleProcess(Number(message.getAttribute('mesid')));
                 }
             }
-        });
-        observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+        };
+
+        function attachObserver() {
+            _sdtObserver?.disconnect();
+            const chatEl = document.getElementById('chat');
+            if (!chatEl) {
+                setTimeout(attachObserver, 500);
+                return;
+            }
+            _sdtObserver = new MutationObserver(mutationHandler);
+            _sdtObserver.observe(chatEl, { childList: true, characterData: true, subtree: true });
+        }
+
+        attachObserver();
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);

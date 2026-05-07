@@ -1317,6 +1317,11 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 prompt: image.prompt,
                 cacheId: image.cacheId || '',
             };
+            console.info(`[Smart Draw] 💾 saved imageResult for ${segmentKey}`, {
+                cacheId: image.cacheId || '(none)',
+                urlType: image.url?.startsWith('blob:') ? 'blob' : 'other',
+                hasDisplayUrl: !!image.displayUrl,
+            });
         }
         save();
     }
@@ -2102,11 +2107,19 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 if (segmentState.imageResult) {
                     // Restore valid display URL from IndexedDB via cacheId (blob URLs expire on refresh)
                     const restoredResult = { ...segmentState.imageResult };
+                    console.info(`[Smart Draw] 🔄 restoring image for ${item.key}`, {
+                        cacheId: restoredResult.cacheId || '(none)',
+                        storedUrl: restoredResult.url?.substring(0, 60),
+                        apiAvailable: typeof RBQ.api.ensureHistoryItemDisplayUrl === 'function',
+                    });
                     if (restoredResult.cacheId && typeof RBQ.api.ensureHistoryItemDisplayUrl === 'function') {
                         try {
                             const freshUrl = await RBQ.api.ensureHistoryItemDisplayUrl(restoredResult);
+                            console.info(`[Smart Draw] ✅ restored URL from IndexedDB:`, freshUrl?.substring(0, 60));
                             if (freshUrl) restoredResult.url = freshUrl;
-                        } catch { /* fall through to stored url */ }
+                        } catch (e) {
+                            console.warn(`[Smart Draw] ❌ ensureHistoryItemDisplayUrl failed:`, e);
+                        }
                     }
                     RBQ.api.renderInlineGeneratedImage(wrapper, restoredResult);
                     setGenerateButtonState(wrapper, true, '🔄 重新生成图片', false);

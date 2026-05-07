@@ -1256,7 +1256,17 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const segments = Array.isArray(result?.segments) ? result.segments : [];
 
         if (segments.length > 0) {
-            segments.forEach((seg, index) => {
+            // Build indexed list, then insert in REVERSE anchor order (bottom-to-top)
+            // so that earlier text node offsets aren't invalidated by later insertions.
+            const indexed = segments.map((seg, index) => ({ seg, index }));
+            const insertionOrder = [...indexed].sort((a, b) => {
+                const ai = Number(a.seg?.anchor?.index) || a.index;
+                const bi = Number(b.seg?.anchor?.index) || b.index;
+                return bi - ai; // descending: highest anchor index first
+            });
+
+            const resultMap = new Map(); // index → { wrapper, key, segment }
+            for (const { seg, index } of insertionOrder) {
                 const segmentKey = `${key}-seg-${index}`;
                 // Pass the individual segment (not top-level result) so charData/label are per-segment
                 const segResult = {
@@ -1270,9 +1280,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     wrapper.dataset.rbqSdtSegmentKey = segmentKey;
                     wrapper.dataset.rbqSdtSegmentIndex = String(index + 1);
                     wrapper.dataset.rbqSdtIsResult = '1';
-                    rendered.push({ wrapper, key: segmentKey, segment: seg });
+                    resultMap.set(index, { wrapper, key: segmentKey, segment: seg });
                 }
-            });
+            }
+            // Restore original segment order for downstream consumers (auto-gen, event binding)
+            for (let i = 0; i < segments.length; i++) {
+                const item = resultMap.get(i);
+                if (item) rendered.push(item);
+            }
         } else {
             const wrapper = insertCard(messageId, trigger, result, key);
             if (wrapper) {
@@ -1632,20 +1647,97 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     function insertBySentenceMap(messageId, anchor, wrapper) {
         const container = RBQ.api.getMessageTextContainer(messageId);
         if (!(container instanceof HTMLElement)) return false;
-        const map = buildSentenceMapFromRoot(container);
-        if (!map.length) return false;
 
-        let matched = null;
+        // Strategy 1: Direct text search — handles cross-sentence anchors and inline elements
         if (anchor?.text) {
-            matched = map.find((entry) => anchorsMatchSentence(anchor.text, entry.text)) || null;
+            const inserted = insertByDirectTextSearch(container, anchor.text, wrapper);
+            if (inserted) return true;
         }
-        if (!matched) {
-            const targetIndex = Math.max(1, Number(anchor?.index) || 1);
-            matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
+
+        // Strategy 2: Fall back to sentence index
+        const targetIndex = Math.max(1, Number(anchor?.index) || 1);
+        const map = buildSentenceMapFromRoot(container);
+        const matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
+        if (matched) {
+            insertWrapperAtTextNode(matched.node, matched.endOffset, matched.endOffset, wrapper);
+            return true;
         }
-        if (!matched) return false;
-        insertWrapperAtTextNode(matched.node, matched.endOffset, matched.endOffset, wrapper);
-        return true;
+        return false;
+    }
+
+    /**
+     * Search for anchorText directly in the concatenated visible text of the container,
+     * then insert the wrapper right after where the anchor text ends.
+     * This avoids sentence-boundary issues entirely.
+     */
+    function insertByDirectTextSearch(container, anchorText, wrapper) {
+        const nodes = visibleTextNodes(container);
+        if (!nodes.length) return false;
+
+        const needle = String(anchorText || '').trim();
+        if (needle.length < 4) return false;
+
+        // Build concatenated text with node offset mapping
+        const nodeMap = []; // { node, startInFull, length }
+        let fullText = '';
+        for (const node of nodes) {
+            const text = node.nodeValue || '';
+            nodeMap.push({ node, startInFull: fullText.length, length: text.length });
+            fullText += text;
+        }
+
+        // Find the end position of the anchor text in the full text
+        let matchEnd = findAnchorEndPosition(fullText, needle);
+        if (matchEnd < 0) return false;
+
+        // Map global end position back to a text node + local offset
+        for (const entry of nodeMap) {
+            const nodeEnd = entry.startInFull + entry.length;
+            if (matchEnd <= nodeEnd) {
+                const localOffset = matchEnd - entry.startInFull;
+                insertWrapperAtTextNode(entry.node, localOffset, localOffset, wrapper);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function findAnchorEndPosition(fullText, needle) {
+        // 1. Exact substring match
+        const idx = fullText.indexOf(needle);
+        if (idx >= 0) return idx + needle.length;
+
+        // 2. Whitespace-normalized match (handles minor spacing differences)
+        const normFull = fullText.toLowerCase().replace(/\s+/g, '');
+        const normNeedle = needle.toLowerCase().replace(/\s+/g, '');
+        const normIdx = normFull.indexOf(normNeedle);
+        if (normIdx >= 0) {
+            // Map normalized end position back to original text position
+            const normEnd = normIdx + normNeedle.length;
+            let normPos = 0;
+            for (let i = 0; i < fullText.length; i++) {
+                if (!/\s/.test(fullText[i].toLowerCase())) normPos++;
+                if (normPos >= normEnd) return i + 1;
+            }
+        }
+
+        // 3. Fuzzy: find the longest suffix of the needle that exists in the text
+        //    (handles LLM truncating or slightly modifying the anchor text)
+        const minLen = Math.max(4, Math.floor(normNeedle.length * 0.5));
+        for (let len = normNeedle.length; len >= minLen; len--) {
+            const tail = normNeedle.slice(normNeedle.length - len);
+            const tailIdx = normFull.indexOf(tail);
+            if (tailIdx >= 0) {
+                const normEnd = tailIdx + tail.length;
+                let normPos = 0;
+                for (let i = 0; i < fullText.length; i++) {
+                    if (!/\s/.test(fullText[i].toLowerCase())) normPos++;
+                    if (normPos >= normEnd) return i + 1;
+                }
+            }
+        }
+
+        return -1;
     }
 
     function insertCard(messageId, trigger, result, key) {
@@ -1910,6 +2002,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 setWrapperStage(wrapper, 'done-no-draw');
                 processedKeys.add(cacheKey);
                 return;
+            }
+            // Remove old segment cards before re-materializing — prevents stale cards
+            // lingering when re-parse returns different segments or fewer segments.
+            const container = RBQ.api.getMessageTextContainer(messageId);
+            if (container instanceof HTMLElement) {
+                container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(cacheKey)}"][data-rbq-sdt-is-result="1"]`)
+                    .forEach(card => card.remove());
             }
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
             // Repurpose the initial placeholder card as the sole "re-parse" button at bottom

@@ -2678,12 +2678,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     const targetMessage = mutation.target instanceof Element ? mutation.target.closest?.('.mes[mesid]') : null;
                     if (targetMessage) {
                         const mesId = Number(targetMessage.getAttribute('mesid'));
-                        // Detect swipe: content replaced = both added and removed nodes in the message text area.
-                        // In this case, old SDT cards were destroyed — we need to force re-processing.
+                        // Detect swipe: SillyTavern replaces the DIRECT children of .mes_text.
+                        // Only trigger force re-process when mutation.target IS .mes_text itself,
+                        // NOT for mutations inside nested elements (e.g. card image innerHTML updates).
                         const isContentSwap = mutation.addedNodes.length > 0 && mutation.removedNodes.length > 0;
-                        const isInTextArea = mutation.target instanceof Element &&
-                            (mutation.target.classList?.contains('mes_text') || mutation.target.closest?.('.mes_text'));
-                        if (isContentSwap && isInTextArea) {
+                        const isDirectTextArea = mutation.target instanceof Element &&
+                            mutation.target.classList?.contains('mes_text');
+                        if (isContentSwap && isDirectTextArea) {
                             // Clear all processedKeys for this message so new content is processed fresh
                             for (const pk of processedKeys) {
                                 if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);

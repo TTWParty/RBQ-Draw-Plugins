@@ -1871,6 +1871,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!TRANSIENT_LABELS.includes(text) && !disabled) {
             wrapper.dataset.rbqSdtOrigLabel = text.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}]\s*/u, '').trim();
         }
+        button.disabled = !!disabled;
         return button;
     }
 

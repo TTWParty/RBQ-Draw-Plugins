@@ -2670,7 +2670,23 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 }
                 if (mutation.type === 'childList') {
                     const targetMessage = mutation.target instanceof Element ? mutation.target.closest?.('.mes[mesid]') : null;
-                    if (targetMessage) scheduleProcess(Number(targetMessage.getAttribute('mesid')));
+                    if (targetMessage) {
+                        const mesId = Number(targetMessage.getAttribute('mesid'));
+                        // Detect swipe: content replaced = both added and removed nodes in the message text area.
+                        // In this case, old SDT cards were destroyed — we need to force re-processing.
+                        const isContentSwap = mutation.addedNodes.length > 0 && mutation.removedNodes.length > 0;
+                        const isInTextArea = mutation.target instanceof Element &&
+                            (mutation.target.classList?.contains('mes_text') || mutation.target.closest?.('.mes_text'));
+                        if (isContentSwap && isInTextArea) {
+                            // Clear all processedKeys for this message so new content is processed fresh
+                            for (const pk of processedKeys) {
+                                if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
+                            }
+                            scheduleProcess(mesId, { force: true });
+                        } else {
+                            scheduleProcess(mesId);
+                        }
+                    }
                 }
                 for (const node of mutation.addedNodes) {
                     if (!(node instanceof Element)) continue;

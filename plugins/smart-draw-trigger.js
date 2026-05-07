@@ -1619,20 +1619,97 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     function insertBySentenceMap(messageId, anchor, wrapper) {
         const container = RBQ.api.getMessageTextContainer(messageId);
         if (!(container instanceof HTMLElement)) return false;
-        const map = buildSentenceMapFromRoot(container);
-        if (!map.length) return false;
 
-        let matched = null;
+        // Strategy 1: Direct text search — handles cross-sentence anchors and inline elements
         if (anchor?.text) {
-            matched = map.find((entry) => anchorsMatchSentence(anchor.text, entry.text)) || null;
+            const inserted = insertByDirectTextSearch(container, anchor.text, wrapper);
+            if (inserted) return true;
         }
-        if (!matched) {
-            const targetIndex = Math.max(1, Number(anchor?.index) || 1);
-            matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
+
+        // Strategy 2: Fall back to sentence index
+        const targetIndex = Math.max(1, Number(anchor?.index) || 1);
+        const map = buildSentenceMapFromRoot(container);
+        const matched = map.find((entry) => entry.sentenceIndex === targetIndex) || null;
+        if (matched) {
+            insertWrapperAtTextNode(matched.node, matched.endOffset, matched.endOffset, wrapper);
+            return true;
         }
-        if (!matched) return false;
-        insertWrapperAtTextNode(matched.node, matched.endOffset, matched.endOffset, wrapper);
-        return true;
+        return false;
+    }
+
+    /**
+     * Search for anchorText directly in the concatenated visible text of the container,
+     * then insert the wrapper right after where the anchor text ends.
+     * This avoids sentence-boundary issues entirely.
+     */
+    function insertByDirectTextSearch(container, anchorText, wrapper) {
+        const nodes = visibleTextNodes(container);
+        if (!nodes.length) return false;
+
+        const needle = String(anchorText || '').trim();
+        if (needle.length < 4) return false;
+
+        // Build concatenated text with node offset mapping
+        const nodeMap = []; // { node, startInFull, length }
+        let fullText = '';
+        for (const node of nodes) {
+            const text = node.nodeValue || '';
+            nodeMap.push({ node, startInFull: fullText.length, length: text.length });
+            fullText += text;
+        }
+
+        // Find the end position of the anchor text in the full text
+        let matchEnd = findAnchorEndPosition(fullText, needle);
+        if (matchEnd < 0) return false;
+
+        // Map global end position back to a text node + local offset
+        for (const entry of nodeMap) {
+            const nodeEnd = entry.startInFull + entry.length;
+            if (matchEnd <= nodeEnd) {
+                const localOffset = matchEnd - entry.startInFull;
+                insertWrapperAtTextNode(entry.node, localOffset, localOffset, wrapper);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function findAnchorEndPosition(fullText, needle) {
+        // 1. Exact substring match
+        const idx = fullText.indexOf(needle);
+        if (idx >= 0) return idx + needle.length;
+
+        // 2. Whitespace-normalized match (handles minor spacing differences)
+        const normFull = fullText.toLowerCase().replace(/\s+/g, '');
+        const normNeedle = needle.toLowerCase().replace(/\s+/g, '');
+        const normIdx = normFull.indexOf(normNeedle);
+        if (normIdx >= 0) {
+            // Map normalized end position back to original text position
+            const normEnd = normIdx + normNeedle.length;
+            let normPos = 0;
+            for (let i = 0; i < fullText.length; i++) {
+                if (!/\s/.test(fullText[i].toLowerCase())) normPos++;
+                if (normPos >= normEnd) return i + 1;
+            }
+        }
+
+        // 3. Fuzzy: find the longest suffix of the needle that exists in the text
+        //    (handles LLM truncating or slightly modifying the anchor text)
+        const minLen = Math.max(4, Math.floor(normNeedle.length * 0.5));
+        for (let len = normNeedle.length; len >= minLen; len--) {
+            const tail = normNeedle.slice(normNeedle.length - len);
+            const tailIdx = normFull.indexOf(tail);
+            if (tailIdx >= 0) {
+                const normEnd = tailIdx + tail.length;
+                let normPos = 0;
+                for (let i = 0; i < fullText.length; i++) {
+                    if (!/\s/.test(fullText[i].toLowerCase())) normPos++;
+                    if (normPos >= normEnd) return i + 1;
+                }
+            }
+        }
+
+        return -1;
     }
 
     function insertCard(messageId, trigger, result, key) {
@@ -2521,9 +2598,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     }
 
     function observeMessages() {
-        let _sdtObserver = null;
-
-        const mutationHandler = (mutations) => {
+        const observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 if (mutation.type === 'characterData') {
                     const parent = mutation.target?.parentElement;
@@ -2541,20 +2616,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     if (message) scheduleProcess(Number(message.getAttribute('mesid')));
                 }
             }
-        };
-
-        function attachObserver() {
-            _sdtObserver?.disconnect();
-            const chatEl = document.getElementById('chat');
-            if (!chatEl) {
-                setTimeout(attachObserver, 500);
-                return;
-            }
-            _sdtObserver = new MutationObserver(mutationHandler);
-            _sdtObserver.observe(chatEl, { childList: true, characterData: true, subtree: true });
-        }
-
-        attachObserver();
+        });
+        observer.observe(document.body, { childList: true, characterData: true, subtree: true });
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);

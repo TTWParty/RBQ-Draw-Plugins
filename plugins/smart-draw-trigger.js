@@ -1898,6 +1898,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 processedKeys.add(cacheKey);
                 return;
             }
+            // Remove old segment cards before re-materializing — prevents stale cards
+            // lingering when re-parse returns different segments or fewer segments.
+            const container = RBQ.api.getMessageTextContainer(messageId);
+            if (container instanceof HTMLElement) {
+                container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(cacheKey)}"][data-rbq-sdt-is-result="1"]`)
+                    .forEach(card => card.remove());
+            }
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
             // Repurpose the initial placeholder card as the sole "re-parse" button at bottom
             if (rendered.length > 0 && rendered.every(item => item.wrapper !== wrapper)) {

@@ -1866,16 +1866,18 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!(button instanceof HTMLButtonElement)) return null;
         button.style.display = visible ? '' : 'none';
         button.textContent = text;
-        button.disabled = !!disabled;
+        // Save non-transient labels so getRegenLabel can read the original label
+        const TRANSIENT_LABELS = ['生成中...', '自动生成中...', '等待自动生图...'];
+        if (!TRANSIENT_LABELS.includes(text) && !disabled) {
+            wrapper.dataset.rbqSdtOrigLabel = text.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}]\s*/u, '').trim();
+        }
         return button;
     }
 
-    /** Read the generate button's current label and swap the leading emoji to 🔄 */
+    /** Swap the leading emoji to 🔄 using the stored original label */
     function getRegenLabel(wrapper) {
-        const btn = wrapper instanceof HTMLElement ? wrapper.querySelector('.rbq-sdt-run-image') : null;
-        const raw = (btn?.textContent || '生成图片').trim();
-        // Strip any leading emoji (🎨, 🔄, etc.) and re-prefix with 🔄
-        return '🔄 ' + raw.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}]\s*/u, '');
+        const orig = wrapper?.dataset?.rbqSdtOrigLabel || '生成图片';
+        return '🔄 ' + orig;
     }
 
     function setWrapperStage(wrapper, stage) {

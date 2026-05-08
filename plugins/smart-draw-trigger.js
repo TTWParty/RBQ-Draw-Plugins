@@ -2202,18 +2202,12 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         }
     }
 
-    const pendingForce = new Map(); // messageId → boolean (is force pending?)
-
     function scheduleProcess(messageId, options = {}) {
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
-        // If a force call is already pending, don't let a non-force call downgrade it
-        if (pendingForce.get(id) && !options.force) return;
         clearTimeout(pendingTimers.get(id));
-        if (options.force) pendingForce.set(id, true);
         pendingTimers.set(id, setTimeout(() => {
             pendingTimers.delete(id);
-            pendingForce.delete(id);
             processMessage(id, options);
         }, 900));
     }
@@ -2689,21 +2683,16 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     const targetMessage = mutation.target instanceof Element ? mutation.target.closest?.('.mes[mesid]') : null;
                     if (targetMessage) {
                         const mesId = Number(targetMessage.getAttribute('mesid'));
-                        // Detect swipe: SillyTavern replaces the DIRECT children of .mes_text.
-                        // Only trigger force re-process when mutation.target IS .mes_text itself,
-                        // NOT for mutations inside nested elements (e.g. card image innerHTML updates).
-                        const isContentSwap = mutation.addedNodes.length > 0 && mutation.removedNodes.length > 0;
-                        const isDirectTextArea = mutation.target instanceof Element &&
+                        // When .mes_text content changes (e.g. swipe), clear processedKeys for this
+                        // message so the new content can be processed with a fresh key.
+                        const isInTextArea = mutation.target instanceof Element &&
                             mutation.target.classList?.contains('mes_text');
-                        if (isContentSwap && isDirectTextArea) {
-                            // Clear all processedKeys for this message so new content is processed fresh
+                        if (isInTextArea) {
                             for (const pk of processedKeys) {
                                 if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
                             }
-                            scheduleProcess(mesId, { force: true });
-                        } else {
-                            scheduleProcess(mesId);
                         }
+                        scheduleProcess(mesId);
                     }
                 }
                 for (const node of mutation.addedNodes) {

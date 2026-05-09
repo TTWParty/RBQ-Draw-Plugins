@@ -396,7 +396,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
-        enhancedContext: false,
+        enhancedContext: 'off', // off | v1 | v2
         postProcessEnabled: false,
         postProcessRole: 'assistant',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
@@ -1539,7 +1539,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
             lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
-            ...(store.enhancedContext ? {
+            ...(store.enhancedContext === 'v1' ? {
+                contextAnalysisInstructions: "Please implicitly analyze 'recentMessages' to determine the ongoing scene, character relationships, current outfits, and continuous actions, then apply these findings to generate the tags for the 'currentMessage' in the final JSON output. Ensure logical continuity without generating an explicit analysis text."
+            } : store.enhancedContext === 'v2' ? {
                 contextAnalysisInstructions: "Build a state snapshot of the current frame by analyzing 'recentMessages': scene continuity, per-garment clothing status, body type & pose, emotional tone, temporal phase (imminent/ongoing/completed), and action progression. Tags must faithfully map this snapshot — never add undescribed changes."
             } : {}),
             outputSchema: {
@@ -1610,7 +1612,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
 
-        if (store.enhancedContext) {
+        if (store.enhancedContext === 'v2') {
             messages.push({
                 role: 'system',
                 content: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，建立当前帧的完整状态快照：\n1. 场景连续性：当前空间环境、时间段、氛围基调\n2. 衣态追踪：逐件追踪每个角色的衣物状态（穿着/半脱/脱落/损坏），仅文本明确描述的变化才可更新\n3. 体态与位置：角色的体型特征、当前姿势、空间相对位置\n4. 情绪基调：每个角色此刻的核心情绪（严格区分屈辱/恐惧/快感/愤怒/哀求等，不可混淆）\n5. 时间线定位：当前文本的动作处于哪个阶段——即将发生/正在进行/已经完成，Tag须精确匹配该阶段\n6. 动作承接：上一帧→当前帧之间，什么发生了变化，什么保持不变\n核心原则：生成的Tag必须是当前帧状态快照的忠实映射。文本未描述的变化（衣物/体液/动作/情绪升级）一律不添加。\n最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。"
@@ -2652,7 +2654,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                <div id="rbq-sdt-enhanced-context-field" class="st-scene-trigger-field switch" title="开启后，将在单次提取中强制模型先归纳前情（场景/动作连贯性），再生成最终 JSON。可能消耗更多 token，但大幅提升连贯性。"><span>启用前情增强分析</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enhanced-context" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V1: payload 字段注入英文隐式分析指令。V2: 额外 system prompt 注入中文详细 6 维状态快照分析。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v1">V1 · 隐式分析 (payload)</option><option value="v2">V2 · 状态快照 (system prompt)</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -2710,7 +2712,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         document.getElementById('rbq-sdt-mode').value = store.mode;
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
-        document.getElementById('rbq-sdt-enhanced-context').checked = !!store.enhancedContext;
+        // Backward compat: boolean true → 'v2'
+        const ecVal = store.enhancedContext === true ? 'v2' : (store.enhancedContext || 'off');
+        document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
@@ -2740,7 +2744,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         document.getElementById('rbq-sdt-system-prompt-version').textContent = promptVersionText;
         updateProviderVisibility();
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
-        bindSwitch('rbq-sdt-enhanced-context-field', 'rbq-sdt-enhanced-context');
+        // enhanced-context is now a <select>, no bindSwitch needed
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
@@ -2777,7 +2781,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             s.mode = val('rbq-sdt-mode');
             s.targetRole = val('rbq-sdt-target-role');
             s.contextCount = Math.max(1, Math.min(50, Number(val('rbq-sdt-context-count')) || 5));
-            s.enhancedContext = checked('rbq-sdt-enhanced-context');
+            s.enhancedContext = val('rbq-sdt-enhanced-context') || 'off';
             s.debugToast = checked('rbq-sdt-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');
             s.autoRunTagger = checked('rbq-sdt-autorun');

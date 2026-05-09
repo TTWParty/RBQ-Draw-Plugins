@@ -2301,6 +2301,12 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             if (removedStaleCards > 0) {
                 console.info(`[Smart Draw] 🧹 removed ${removedStaleCards} stale card(s) for message ${messageId}`, { key });
             }
+            // If any card in this message is currently being parsed, don't create new cards
+            const activeParsingCard = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-stage="parsing"]`);
+            if (activeParsingCard) {
+                console.info(`[Smart Draw] ⏳ skipping processMessage for #${messageId} — tagger is active`);
+                return;
+            }
             const hasCurrentCards = hasCardsForBaseKey(container, key);
             if (processedKeys.has(key) && !force) {
                 if (hasCurrentCards) return;

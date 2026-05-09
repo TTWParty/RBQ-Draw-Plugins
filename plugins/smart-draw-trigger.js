@@ -413,9 +413,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         cooldownState: new Map(),
     };
 
-    // Session-level flag: prevents autoRunTagger from firing on page load/refresh.
-    // Only becomes true after we detect a genuine new message (non-streaming completion).
-    let sessionAutoRunReady = false;
+    // Auto-run gating: tracks the chat length baseline per chat key.
+    // autoRunTagger only fires when chat has grown beyond this baseline
+    // AND the message is the latest floor. This prevents auto-parsing on:
+    // - Page refresh (baseline = current length)
+    // - Chat/card switch (baseline reset to current length)
+    // - Historical messages (only latest floor allowed)
+    let autoRunChatBaseline = { chatKey: null, length: Infinity };
 
     // Temp state for passing structured char data to buildNaiV4Payload hook
     let pendingNaiCharData = null;
@@ -438,6 +442,17 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             // Safety timeout: max 120s
             setTimeout(() => { clearInterval(check); resolve(); }, 120000);
         });
+    }
+
+    function shouldAutoRunForMessage(messageId) {
+        // Only auto-run tagger for the LATEST message floor
+        if (!isLatestMessage(messageId)) return false;
+        // Only auto-run if the chat has grown beyond the baseline
+        // (meaning a new message was genuinely generated, not a page load/card switch)
+        const chatLen = RBQ.api.getContext?.()?.chat?.length ?? document.querySelectorAll('.mes[mesid]').length;
+        const chatKey = getChatKey();
+        if (autoRunChatBaseline.chatKey !== chatKey) return false;
+        return chatLen > autoRunChatBaseline.length;
     }
 
     function getStore() {
@@ -2257,6 +2272,10 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const currentChatKey = getChatKey();
         if (currentChatKey && currentChatKey !== '_global' && currentChatKey !== lastChatKey) {
             lastChatKey = currentChatKey;
+            // Reset auto-run baseline when chat changes (card switch, new chat loaded)
+            const chatLen = RBQ.api.getContext?.()?.chat?.length ?? document.querySelectorAll('.mes[mesid]').length;
+            autoRunChatBaseline = { chatKey: currentChatKey, length: chatLen };
+            console.info(`[${PLUGIN_NAME}] 🔄 chat changed → autoRunChatBaseline reset to ${chatLen}`);
             refreshCharacterProfileListUi();
         }
 
@@ -2323,8 +2342,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     setWrapperStage(wrapper, 'generated');
                 } else {
                     setWrapperStage(wrapper, 'ready-generate');
-                    // Only auto-generate if this is a live session (not page refresh restore)
-                    if (store.autoRunGenerate && sessionAutoRunReady) {
+                    // Only auto-generate if this is genuinely a new message
+                    if (store.autoRunGenerate && shouldAutoRunForMessage(messageId)) {
                         await waitForStreamEnd();
                         await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
                     }
@@ -2368,14 +2387,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
         wrapper.dataset.rbqSdtKey = key;
         wrapper.dataset.rbqSdtBaseKey = key;
-        ensureTaggerButtonState(wrapper, (store.autoRunTagger && sessionAutoRunReady) ? '解析中...' : '📷 开始解析/生成 tag');
+        ensureTaggerButtonState(wrapper, (store.autoRunTagger && shouldAutoRunForMessage(messageId)) ? '解析中... (点击停止)' : '📷 开始解析/生成 tag');
         setGenerateButtonState(wrapper, false);
         setWrapperStage(wrapper, 'idle');
         bindWrapperManualRun(wrapper, trigger, messageId, key);
         const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
         if (loader instanceof HTMLElement) loader.style.display = 'none';
 
-        if (store.autoRunTagger && sessionAutoRunReady) {
+        if (store.autoRunTagger && shouldAutoRunForMessage(messageId)) {
             // Wait for SillyTavern to finish streaming before calling tagger
             await waitForStreamEnd();
             inFlight.add(key);
@@ -2910,13 +2929,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);
 
-        // Mark session as ready for auto-run after initial page load settles.
-        // This prevents autoRunTagger from re-triggering on page refresh.
-        // We wait for the initial scan to complete, then enable auto-run for NEW messages only.
+        // Set initial baseline after page load scans complete
         setTimeout(() => {
-            sessionAutoRunReady = true;
-            console.info(`[${PLUGIN_NAME}] ✅ sessionAutoRunReady = true (auto-run tagger now armed for new messages)`);
-        }, 3000);
+            const chatKey = getChatKey();
+            const chatLen = RBQ.api.getContext?.()?.chat?.length ?? document.querySelectorAll('.mes[mesid]').length;
+            autoRunChatBaseline = { chatKey, length: chatLen };
+            console.info(`[${PLUGIN_NAME}] ✅ initial autoRunChatBaseline = ${chatLen} (chat: ${chatKey})`);
+        }, 2500);
     }
 
     waitForPanel();

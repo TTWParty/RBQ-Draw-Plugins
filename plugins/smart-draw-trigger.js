@@ -459,12 +459,23 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!key || inFlight.has(key)) return;
         const trigger = (() => { try { return JSON.parse(wrapper.dataset.rbqSdtTrigger || 'null'); } catch { return null; } })();
         if (!trigger) return;
+
+        // Recompute the key from the current (settled) message text.
+        // The card may have been created during streaming with a different hash.
+        const message = getMessageSnapshot(latest);
+        const currentKey = message ? makeKey(latest, message, trigger.type, trigger.marker || 'auto') : key;
+        if (currentKey !== key) {
+            console.info(`[${PLUGIN_NAME}] 🔑 updating card key: ${key} → ${currentKey}`);
+            wrapper.dataset.rbqSdtKey = currentKey;
+            wrapper.dataset.rbqSdtBaseKey = currentKey;
+        }
+
         console.info(`[${PLUGIN_NAME}] \ud83d\ude80 auto-running tagger for latest message #${latest}`);
-        inFlight.add(key);
+        inFlight.add(currentKey);
         try {
-            await runTaggerForWrapper(wrapper, trigger, latest, key);
+            await runTaggerForWrapper(wrapper, trigger, latest, currentKey);
         } finally {
-            inFlight.delete(key);
+            inFlight.delete(currentKey);
         }
     }
 

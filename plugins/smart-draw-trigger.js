@@ -1977,6 +1977,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         let removed = 0;
         for (const card of getSmartDrawCards(container)) {
             if (isCardForBaseKey(card, baseKey)) continue;
+            // Don't remove cards with an active tagger running
+            if (card._taggerAbort || card.dataset?.rbqSdtStage === 'parsing') continue;
             card.remove();
             removed += 1;
         }

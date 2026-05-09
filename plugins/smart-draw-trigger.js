@@ -63,13 +63,12 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板，**直接引用不改写*
 ⛔ 禁在此处写发型/眼色/体型等 base 特征
 
 **action**（→ char_caption 动态部分，每帧不同）
-角色镜头(多角色时可为单个角色设独立镜头): 视角/区域/远近/焦点(face_focus等)
-绝对位置: in_centers/left_side/right_side/above/below/surrounding
-顺序: 角色镜头 → 绝对位置 → 朝向(facing_viewer) → 基础姿势(standing/sitting/kneeling)+相对位置 → 肢体动作(手/臂+动作+位置+细节) → 行为(含道具时追加道具描述) → 表情(情绪+笑/怒/哀/惊/慌/羞+眼/嘴) → 视线(looking_at_viewer) → 状态 → 微细节
-状态: 体表(sweat/stain/cum) / 损伤(bruise/cut/bandage) / 生理(exhausted/pale_skin/heavy_breathing)
-⚠️ 多角色交互必须用前缀: 施动者 source#动作, 受动者 target#动作, 双方 mutual#动作
-⚠️ 累积状态: 同状态跨图权重 +0.2 递增（如连续出汗 1.2→1.4），换装/清洗/转场重置
-cosplay: 源角色 action 加 source#cosplay；目标服饰角色加 target#cosplay，坐标重叠
+顺序: 朝向(facing_viewer) → 绝对位置(in_centers/left_side/right_side) → 基础姿势(standing/sitting/kneeling) → 肢体动作(手/臂+位置+细节) → 行为(含道具描述) → 表情(情绪+眼/嘴) → 视线(looking_at_viewer) → 状态 → 微细节
+状态: 体表(sweat/cum) / 损伤(bruise/cut/bandage) / 生理(exhausted/pale_skin)
+⚠️ 全局镜头(from_above/cowboy_shot/close-up等)写入 scene，仅 face_focus 等单角色聚焦可写入 action
+⚠️ 多角色交互必须用前缀: source#动作 / target#动作 / mutual#动作
+⚠️ 累积状态: 同状态跨图权重+0.2递增（如出汗1.2→1.4），换装/转场重置
+cosplay: 源角色加 source#cosplay，目标角色加 target#cosplay，坐标重叠
 ⛔ 禁在此处写发型/眼色/体型等 base 特征
 
 **center**（→ 角色位置坐标，5×5 网格 A-E列×1-5行，C3=正中）
@@ -89,9 +88,12 @@ cosplay: 源角色 action 加 source#cosplay；目标服饰角色加 target#cosp
 镜头过滤(图片=静态镜头，不可见元素禁入):
   pov→禁面部/表情(观察者不出镜) | upper_body→禁下身(腿/脚/袜) | lower_body→禁上身(发型/瞳色/表情/罩杯) | from_behind→禁正面表情(回头除外) | cowboy_shot→禁膝下 | 遮挡→禁被遮部位及其服装/特征
 方向语义: "仰头"→head_back,looking_up（不是 looking_down）
-视角选择:
-  pov(主观): 男主以 faceless_male + pov + head_out_of_frame 入 characters（仅身体部位，禁面部），女主带 looking_at_viewer，用 source#/target# 明确施受。视角由摄像机位置定: 男站女蹲→from_above / 男躺女骑→from_below
-  third-person(旁观): 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3
+视角(4种，按剧情选择):
+  ① pov-男主(男主看女主，最常见): scene加pov+视角。女主入characters加looking_at_viewer。无肢体接触→男主不入characters / 有接触→男主以「faceless male, pov, head_out_of_frame」入characters仅写可见身体
+  ② pov-女主(从女主视角看出去): scene加pov+视角。女主不入characters,可见部位(手/胸)写scene。被看者入characters加looking_at_viewer
+  ③ 旁观/窥视(用户看他人互动): 观察者不入characters。互动者各入characters,facing_another。scene酌加voyeurism/peeping
+  ④ 第三人称(客观视角): 所有角色入characters，追加from_side/facing_another/eye_contact，坐标B3↔D3
+  视角由体位推断: 站→from_above / 蹲→from_below / 平视→straight-on / 背后→from_behind
 防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
 
 ══ 角色规则 ══
@@ -125,15 +127,15 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     }]
   }]
 }
-══ 输出（POV·原创角色示例·男主以 faceless_male 入 characters）══
+══ 输出（① pov-男主·原创角色示例·有接触→男主入characters）══
 {
   "segments": [{
-    "scene": "nsfw, sex, hetero, duo, 1boy 1girl, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, high-angle_shot, close-up, dynamic_angle, blurry_background",
+    "scene": "nsfw, sex, hetero, duo, 1boy 1girl, pov, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background",
     "characters": [{
       "name": "Kato (original)",
       "base": "girl, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
       "outfit": "blouse, white_blouse, collared_blouse, 1.2::unbuttoned, open_blouse::, -2::bra::, bare_breasts, nipples, nipple_erection",
-      "action": "from_above, upper_body, face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::source#fellatio, source#handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
+      "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::source#fellatio, source#handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
       "center": "C3",
       "uc": "bra, lower_body, boy"
     }, {

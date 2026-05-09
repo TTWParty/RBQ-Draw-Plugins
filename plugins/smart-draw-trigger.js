@@ -412,8 +412,32 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         cooldownState: new Map(),
     };
 
+    // Session-level flag: prevents autoRunTagger from firing on page load/refresh.
+    // Only becomes true after we detect a genuine new message (non-streaming completion).
+    let sessionAutoRunReady = false;
+
     // Temp state for passing structured char data to buildNaiV4Payload hook
     let pendingNaiCharData = null;
+
+    function isHostStreaming() {
+        // Check if SillyTavern is still streaming output
+        const stopBtn = document.getElementById('stop_generating');
+        if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) return true;
+        const sendBtn = document.getElementById('send_but');
+        if (sendBtn && (sendBtn.style.display === 'none' || window.getComputedStyle(sendBtn).display === 'none')) return true;
+        return false;
+    }
+
+    function waitForStreamEnd() {
+        return new Promise(resolve => {
+            if (!isHostStreaming()) return resolve();
+            const check = setInterval(() => {
+                if (!isHostStreaming()) { clearInterval(check); resolve(); }
+            }, 500);
+            // Safety timeout: max 120s
+            setTimeout(() => { clearInterval(check); resolve(); }, 120000);
+        });
+    }
 
     function getStore() {
         const settings = RBQ.api.getSettings();
@@ -2281,7 +2305,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     setWrapperStage(wrapper, 'generated');
                 } else {
                     setWrapperStage(wrapper, 'ready-generate');
-                    if (store.autoRunTagger && RBQ.api.shouldAutoGenerate()) {
+                    // Only auto-generate if this is a live session (not page refresh restore)
+                    if (store.autoRunTagger && RBQ.api.shouldAutoGenerate() && sessionAutoRunReady) {
+                        await waitForStreamEnd();
                         await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
                     }
                 }
@@ -2331,7 +2357,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
         if (loader instanceof HTMLElement) loader.style.display = 'none';
 
-        if (store.autoRunTagger) {
+        if (store.autoRunTagger && sessionAutoRunReady) {
+            // Wait for SillyTavern to finish streaming before calling tagger
+            await waitForStreamEnd();
             inFlight.add(key);
             try {
                 await runTaggerForWrapper(wrapper, trigger, messageId, key);
@@ -2859,6 +2887,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);
+
+        // Mark session as ready for auto-run after initial page load settles.
+        // This prevents autoRunTagger from re-triggering on page refresh.
+        // We wait for the initial scan to complete, then enable auto-run for NEW messages only.
+        setTimeout(() => {
+            sessionAutoRunReady = true;
+            console.info(`[${PLUGIN_NAME}] ✅ sessionAutoRunReady = true (auto-run tagger now armed for new messages)`);
+        }, 3000);
     }
 
     waitForPanel();

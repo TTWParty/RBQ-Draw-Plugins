@@ -1476,7 +1476,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
             ...(store.enhancedContext ? {
-                contextAnalysisInstructions: "Please implicitly analyze 'recentMessages' to determine the ongoing scene, character relationships, current outfits, and continuous actions, then apply these findings to generate the tags for the 'currentMessage' in the final JSON output. Ensure logical continuity without generating an explicit analysis text."
+                contextAnalysisInstructions: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits. Critically: identify the EXACT temporal moment of 'currentMessage' (imminent/ongoing/completed) and only use tags matching that moment. Never add cum/climax tags to pre-climax scenes."
             } : {}),
             outputSchema: {
                 shouldDraw: 'boolean',
@@ -1549,7 +1549,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (store.enhancedContext) {
             messages.push({
                 role: 'system',
-                content: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析：提取当前连续的场景环境、人物衣态、物理位置以及动作的承接关系。然后，将这些归纳出的连续性前情，自然地融入对 `currentMessage` 的标签生成中，确保最终输出的 JSON 在视觉上与前情完美连贯。注意：你的最终输出依然且只能是符合 outputSchema 格式的 JSON，绝对不可在 JSON 外输出任何思考过程或分析文本。"
+                content: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析：\n1. 连续性提取：场景环境、人物衣态、物理位置、动作承接关系\n2. 时间线定位：精确判断 `currentMessage` 描述的是哪个瞬间——\n   · 即将发生(准备/正对准/还没) → 用 imminent_xxx，禁用完成态Tag(cum/penetration/insertion)\n   · 进行中(正在/不停地/持续) → 用动态Tag(motion_lines/thrusting)\n   · 已完成(射完/结束后/事后) → 用事后Tag(cum/afterglow/exhausted)\n3. 禁止脑补：文本未描述的体液/高潮/动作一律禁入。gangbang≠全员射精, oral≠cum_everywhere, 性暗示≠实际性行为\n将以上分析自然融入标签生成，确保输出的 JSON 在视觉上与前情连贯且精确匹配当前时刻。最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。"
             });
         }
 

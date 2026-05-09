@@ -2121,6 +2121,11 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         button.addEventListener('click', async (event) => {
             event.preventDefault();
             event.stopPropagation();
+            // If tagger is running, abort it instead of starting a new one
+            if (wrapper._taggerAbort) {
+                wrapper._taggerAbort.abort();
+                return;
+            }
             if (inFlight.has(baseKey)) return;
             inFlight.add(baseKey);
             try {
@@ -2171,15 +2176,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!(wrapper instanceof HTMLElement)) return;
         const abortController = new AbortController();
         wrapper._taggerAbort = abortController;
+        setWrapperStage(wrapper, 'parsing');
         const button = ensureTaggerButtonState(wrapper, '解析中... (点击停止)');
-        if (button) {
-            button.disabled = false;
-            button.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                abortController.abort();
-            };
-        }
+        if (button) button.disabled = false;
         try {
             const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
             const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');

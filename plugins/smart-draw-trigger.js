@@ -440,6 +440,12 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     async function triggerAutoRunForLatest() {
         const store = getStore();
         if (!store.autoRunTagger) return;
+        // Re-check: if streaming started again (e.g., brief gap between user send
+        // and assistant generation), abort this trigger
+        if (isHostStreaming()) {
+            console.info(`[${PLUGIN_NAME}] ⏳ streaming active again, skipping auto-run`);
+            return;
+        }
         const latest = getLatestMessageId();
         if (latest == null) return;
         const container = RBQ.api.getMessageTextContainer(latest);

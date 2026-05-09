@@ -1476,7 +1476,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
             ...(store.enhancedContext ? {
-                contextAnalysisInstructions: "Implicitly analyze 'recentMessages' for: (1) scene continuity & character states, (2) EXACT temporal moment (imminent/ongoing/completed → matching tags only), (3) clothing state tracking (only change clothes explicitly described), (4) emotional tone precision (crying≠ahegao), (5) body type fidelity. Never fabricate undescribed clothing changes, fluids, or climax states."
+                contextAnalysisInstructions: "Implicitly analyze 'recentMessages' to extract current state: scene continuity, clothing status per garment, body type, emotional tone, temporal phase (imminent/ongoing/completed), and action progression. Apply these findings to ensure tags accurately reflect the current moment."
             } : {}),
             outputSchema: {
                 shouldDraw: 'boolean',
@@ -1549,7 +1549,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (store.enhancedContext) {
             messages.push({
                 role: 'system',
-                content: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析：\n1. 连续性提取：场景环境、人物衣态、物理位置、动作承接关系\n2. 时间线定位：精确判断 `currentMessage` 描述的是哪个瞬间——\n   · 即将发生(准备/正对准/还没) → 用 imminent_xxx，禁用完成态Tag(cum/penetration/insertion)\n   · 进行中(正在/不停地/持续) → 用动态Tag(motion_lines/thrusting)\n   · 已完成(射完/结束后/事后) → 用事后Tag(cum/afterglow/exhausted)\n3. 衣态锁定：从前情追踪每件衣物的当前状态(穿着/半脱/全脱)。仅文本明确描述的衣物变化才可更新——'掀裙子'≠'脱衬衫'，'拉内裤边'≠'脱掉内裤'\n4. 情绪精确匹配：从文本锁定角色此刻的核心情绪(屈辱/恐惧/快感/愤怒/哀求等)，Tag必须匹配——哭泣哀求→crying,sobbing,tears(禁ahegao/fucked_silly/spoken_heart)；高潮→ahegao,rolling_eyes\n5. 体型忠实：文本描述的体型(丰腴/纤细/矮小等)必须反映在base Tag中——'丰腴臃肿'→chubby,plump,thick_thighs,large_breasts(禁slim/medium_breasts)\n6. 禁止脑补：文本未描述的衣物变化/体液/高潮/动作一律禁入。gangbang≠全员射精, 掀裙≠脱衣, 性暗示≠实际性行为\n将以上分析自然融入标签生成，确保输出的 JSON 在视觉上与前情连贯且精确匹配当前时刻。最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。"
+                content: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，提取以下维度的当前状态：\n1. 场景连续性：当前所处的空间环境、时间段、氛围基调\n2. 衣态追踪：每个角色此刻每件衣物的穿着状态（穿着/半脱/脱落/损坏），仅文本明确描述的变化才更新\n3. 体态与位置：角色的体型特征、当前姿势、相对位置关系\n4. 情绪基调：角色此刻的核心情绪状态（区分屈辱/恐惧/快感/愤怒/哀求等，勿混淆）\n5. 时间线定位：当前文本描述的动作处于哪个阶段（即将发生/正在进行/已经完成），Tag须匹配该阶段\n6. 动作承接：上一帧到当前帧之间发生了什么变化，什么保持不变\n将以上分析自然融入标签生成，确保输出的 JSON 精确匹配当前时刻的实际状态，不添加文本未描述的变化。最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。"
             });
         }
 

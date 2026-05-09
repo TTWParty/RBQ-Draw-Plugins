@@ -413,14 +413,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         cooldownState: new Map(),
     };
 
-    // Auto-run gating: tracks the chat length baseline per chat key.
-    // autoRunTagger only fires when chat has grown beyond this baseline
-    // AND the message is the latest floor. This prevents auto-parsing on:
-    // - Page refresh (baseline = current length)
-    // - Chat/card switch (baseline reset to current length)
-    // - Historical messages (only latest floor allowed)
-    let autoRunChatBaseline = { chatKey: null, length: Infinity };
-
     // Temp state for passing structured char data to buildNaiV4Payload hook
     let pendingNaiCharData = null;
 
@@ -433,35 +425,50 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return false;
     }
 
-    function waitForStreamEnd() {
-        return new Promise(resolve => {
-            if (!isHostStreaming()) return resolve();
-            const check = setInterval(() => {
-                if (!isHostStreaming()) { clearInterval(check); resolve(); }
-            }, 500);
-            // Safety timeout: max 120s
-            setTimeout(() => { clearInterval(check); resolve(); }, 120000);
-        });
+    // Streaming state watcher: detects when SillyTavern finishes outputting.
+    // When streaming ends, triggers auto-run tagger on the latest message only.
+    let wasStreaming = false;
+    function startStreamingWatcher() {
+        setInterval(() => {
+            const streaming = isHostStreaming();
+            if (wasStreaming && !streaming) {
+                // Streaming just ended → trigger auto-run for latest message
+                console.info(`[${PLUGIN_NAME}] ✅ streaming ended, triggering auto-run for latest message`);
+                const latest = getLatestMessageId();
+                if (latest != null) {
+                    // Small delay to let DOM settle after streaming ends
+                    setTimeout(() => triggerAutoRunForLatest(), 600);
+                }
+            }
+            wasStreaming = streaming;
+        }, 500);
     }
 
-    function getChatLength() {
+    async function triggerAutoRunForLatest() {
+        const store = getStore();
+        if (!store.autoRunTagger) return;
+        const latest = getLatestMessageId();
+        if (latest == null) return;
+        // Find the wrapper card for the latest message
+        const container = RBQ.api.getMessageTextContainer(latest);
+        if (!(container instanceof HTMLElement)) return;
+        const wrapper = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
+        if (!wrapper) return;
+        // Don't re-run if already parsed (has result cards)
+        if (wrapper.dataset.rbqSdtIsResult === '1') return;
+        const stage = wrapper.dataset.rbqSdtStage;
+        if (stage && stage !== 'idle') return;
+        const key = wrapper.dataset.rbqSdtBaseKey;
+        if (!key || inFlight.has(key)) return;
+        const trigger = (() => { try { return JSON.parse(wrapper.dataset.rbqSdtTrigger || 'null'); } catch { return null; } })();
+        if (!trigger) return;
+        console.info(`[${PLUGIN_NAME}] 🚀 auto-running tagger for latest message #${latest}`);
+        inFlight.add(key);
         try {
-            const ctx = window.SillyTavern?.getContext?.();
-            if (ctx?.chat?.length) return ctx.chat.length;
-        } catch { /* noop */ }
-        return document.querySelectorAll('.mes[mesid]').length;
-    }
-
-    function shouldAutoRunForMessage(messageId) {
-        // Only auto-run tagger for the LATEST message floor
-        if (!isLatestMessage(messageId)) return false;
-        // Only auto-run if the chat has grown beyond the baseline
-        // (meaning a new message was genuinely generated, not a page load/card switch)
-        const chatLen = getChatLength();
-        const chatKey = getChatKey();
-        const allowed = autoRunChatBaseline.chatKey === chatKey && chatLen > autoRunChatBaseline.length;
-        console.info(`[${PLUGIN_NAME}] shouldAutoRun: msgId=${messageId}, chatLen=${chatLen}, baseline=${autoRunChatBaseline.length}, chatKey=${chatKey === autoRunChatBaseline.chatKey ? 'match' : 'MISMATCH'} → ${allowed}`);
-        return allowed;
+            await runTaggerForWrapper(wrapper, trigger, latest, key);
+        } finally {
+            inFlight.delete(key);
+        }
     }
 
     function getStore() {
@@ -2281,10 +2288,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         const currentChatKey = getChatKey();
         if (currentChatKey && currentChatKey !== '_global' && currentChatKey !== lastChatKey) {
             lastChatKey = currentChatKey;
-            // Reset auto-run baseline when chat changes (card switch, new chat loaded)
-            const chatLen = getChatLength();
-            autoRunChatBaseline = { chatKey: currentChatKey, length: chatLen };
-            console.info(`[${PLUGIN_NAME}] 🔄 chat changed → autoRunChatBaseline reset to ${chatLen}`);
             refreshCharacterProfileListUi();
         }
 
@@ -2351,11 +2354,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     setWrapperStage(wrapper, 'generated');
                 } else {
                     setWrapperStage(wrapper, 'ready-generate');
-                    // Only auto-generate if this is genuinely a new message
-                    if (store.autoRunGenerate && shouldAutoRunForMessage(messageId)) {
-                        await waitForStreamEnd();
-                        await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
-                    }
                 }
                 bindWrapperManualRun(wrapper, trigger, messageId, key, item.key);
             }
@@ -2396,23 +2394,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
         wrapper.dataset.rbqSdtKey = key;
         wrapper.dataset.rbqSdtBaseKey = key;
-        ensureTaggerButtonState(wrapper, (store.autoRunTagger && shouldAutoRunForMessage(messageId)) ? '解析中... (点击停止)' : '📷 开始解析/生成 tag');
+        ensureTaggerButtonState(wrapper, '📷 开始解析/生成 tag');
         setGenerateButtonState(wrapper, false);
         setWrapperStage(wrapper, 'idle');
         bindWrapperManualRun(wrapper, trigger, messageId, key);
         const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
         if (loader instanceof HTMLElement) loader.style.display = 'none';
-
-        if (store.autoRunTagger && shouldAutoRunForMessage(messageId)) {
-            // Wait for SillyTavern to finish streaming before calling tagger
-            await waitForStreamEnd();
-            inFlight.add(key);
-            try {
-                await runTaggerForWrapper(wrapper, trigger, messageId, key);
-            } finally {
-                inFlight.delete(key);
-            }
-        }
+        // Auto-run is handled by the streaming watcher (triggerAutoRunForLatest),
+        // NOT here. processMessage only creates cards.
     }
 
     function scheduleProcess(messageId, options = {}) {
@@ -2937,14 +2926,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);
-
-        // Set initial baseline after page load scans complete
-        setTimeout(() => {
-            const chatKey = getChatKey();
-            const chatLen = getChatLength();
-            autoRunChatBaseline = { chatKey, length: chatLen };
-            console.info(`[${PLUGIN_NAME}] ✅ initial autoRunChatBaseline = ${chatLen} (chat: ${chatKey})`);
-        }, 2500);
+        // Start the streaming watcher for auto-run
+        startStreamingWatcher();
     }
 
     waitForPanel();

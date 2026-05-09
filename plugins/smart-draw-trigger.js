@@ -1824,6 +1824,33 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return wrapper;
     }
 
+    function getSmartDrawCards(container) {
+        if (!(container instanceof HTMLElement)) return [];
+        return Array.from(container.querySelectorAll(`.${CARD_CLASS}`)).filter(card => card instanceof HTMLElement);
+    }
+
+    function isCardForBaseKey(card, baseKey) {
+        if (!(card instanceof HTMLElement) || !baseKey) return false;
+        const cardBaseKey = String(card.dataset.rbqSdtBaseKey || '').trim();
+        if (cardBaseKey) return cardBaseKey === baseKey;
+        const cardKey = String(card.dataset.rbqSdtKey || '').trim();
+        return cardKey === baseKey || cardKey.startsWith(`${baseKey}-`);
+    }
+
+    function hasCardsForBaseKey(container, baseKey) {
+        return getSmartDrawCards(container).some(card => isCardForBaseKey(card, baseKey));
+    }
+
+    function removeStaleCards(container, baseKey) {
+        let removed = 0;
+        for (const card of getSmartDrawCards(container)) {
+            if (isCardForBaseKey(card, baseKey)) continue;
+            card.remove();
+            removed += 1;
+        }
+        return removed;
+    }
+
     function setWrapperLoading(wrapper, text) {
         const button = wrapper?.querySelector?.('.st-scene-trigger-generate');
         const loader = wrapper?.querySelector?.('.st-scene-trigger-inline-loader');
@@ -2120,16 +2147,25 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!trigger) return;
         const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
         if (force) processedKeys.delete(key);
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (container instanceof HTMLElement) {
+            const removedStaleCards = removeStaleCards(container, key);
+            if (removedStaleCards > 0) {
+                console.info(`[Smart Draw] 🧹 removed ${removedStaleCards} stale card(s) for message ${messageId}`, { key });
+            }
+            const hasCurrentCards = hasCardsForBaseKey(container, key);
+            if (processedKeys.has(key) && !force) {
+                if (hasCurrentCards) return;
+                processedKeys.delete(key);
+                console.info(`[Smart Draw] ♻️ cards missing for processed key, restoring from cache`, { messageId, key });
+            }
+            if (hasCurrentCards && !force) {
+                processedKeys.add(key);
+                return;
+            }
+        }
         if (processedKeys.has(key)) return;
         if (inFlight.has(key)) return;
-
-        // Guard: if this message already has Smart Draw cards (from a previous run with a different key hash),
-        // don't create duplicate placeholders. DOM mutations can change the hash.
-        const container = RBQ.api.getMessageTextContainer(messageId);
-        if (container instanceof HTMLElement && container.querySelector(`.${CARD_CLASS}`) && !force) {
-            processedKeys.add(key);
-            return;
-        }
 
         const cached = store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
@@ -2184,6 +2220,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 };
                 const reparseWrapper = insertCard(messageId, trigger, reparsePlaceholder, reparseKey);
                 if (reparseWrapper instanceof HTMLElement) {
+                    reparseWrapper.dataset.rbqSdtBaseKey = key;
                     ensureTaggerButtonState(reparseWrapper, '🔄 重新解析/刷新 tag');
                     setGenerateButtonState(reparseWrapper, false);
                     setWrapperStage(reparseWrapper, 'ready-generate');

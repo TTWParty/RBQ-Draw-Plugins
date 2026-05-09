@@ -2597,7 +2597,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V21-强一致性版</option><option value="storyboarder">V20-POV增强版</option><option value="classic">V19-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V22-完整版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

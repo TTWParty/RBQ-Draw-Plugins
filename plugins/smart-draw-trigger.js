@@ -444,15 +444,24 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         });
     }
 
+    function getChatLength() {
+        try {
+            const ctx = window.SillyTavern?.getContext?.();
+            if (ctx?.chat?.length) return ctx.chat.length;
+        } catch { /* noop */ }
+        return document.querySelectorAll('.mes[mesid]').length;
+    }
+
     function shouldAutoRunForMessage(messageId) {
         // Only auto-run tagger for the LATEST message floor
         if (!isLatestMessage(messageId)) return false;
         // Only auto-run if the chat has grown beyond the baseline
         // (meaning a new message was genuinely generated, not a page load/card switch)
-        const chatLen = RBQ.api.getContext?.()?.chat?.length ?? document.querySelectorAll('.mes[mesid]').length;
+        const chatLen = getChatLength();
         const chatKey = getChatKey();
-        if (autoRunChatBaseline.chatKey !== chatKey) return false;
-        return chatLen > autoRunChatBaseline.length;
+        const allowed = autoRunChatBaseline.chatKey === chatKey && chatLen > autoRunChatBaseline.length;
+        console.info(`[${PLUGIN_NAME}] shouldAutoRun: msgId=${messageId}, chatLen=${chatLen}, baseline=${autoRunChatBaseline.length}, chatKey=${chatKey === autoRunChatBaseline.chatKey ? 'match' : 'MISMATCH'} → ${allowed}`);
+        return allowed;
     }
 
     function getStore() {
@@ -2273,7 +2282,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (currentChatKey && currentChatKey !== '_global' && currentChatKey !== lastChatKey) {
             lastChatKey = currentChatKey;
             // Reset auto-run baseline when chat changes (card switch, new chat loaded)
-            const chatLen = RBQ.api.getContext?.()?.chat?.length ?? document.querySelectorAll('.mes[mesid]').length;
+            const chatLen = getChatLength();
             autoRunChatBaseline = { chatKey: currentChatKey, length: chatLen };
             console.info(`[${PLUGIN_NAME}] 🔄 chat changed → autoRunChatBaseline reset to ${chatLen}`);
             refreshCharacterProfileListUi();
@@ -2932,7 +2941,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         // Set initial baseline after page load scans complete
         setTimeout(() => {
             const chatKey = getChatKey();
-            const chatLen = RBQ.api.getContext?.()?.chat?.length ?? document.querySelectorAll('.mes[mesid]').length;
+            const chatLen = getChatLength();
             autoRunChatBaseline = { chatKey, length: chatLen };
             console.info(`[${PLUGIN_NAME}] ✅ initial autoRunChatBaseline = ${chatLen} (chat: ${chatKey})`);
         }, 2500);

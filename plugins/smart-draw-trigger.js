@@ -2351,7 +2351,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
         wrapper.dataset.rbqSdtKey = key;
         wrapper.dataset.rbqSdtBaseKey = key;
-        ensureTaggerButtonState(wrapper, store.autoRunTagger ? '解析中...' : '📷 开始解析/生成 tag');
+        ensureTaggerButtonState(wrapper, (store.autoRunTagger && sessionAutoRunReady) ? '解析中...' : '📷 开始解析/生成 tag');
         setGenerateButtonState(wrapper, false);
         setWrapperStage(wrapper, 'idle');
         bindWrapperManualRun(wrapper, trigger, messageId, key);

@@ -89,11 +89,11 @@ cosplay: 源角色加 source#cosplay，目标角色加 target#cosplay，坐标�
   pov→禁面部/表情(观察者不出镜) | upper_body→禁下身(腿/脚/袜) | lower_body→禁上身(发型/瞳色/表情/罩杯) | from_behind→禁正面表情(回头除外) | cowboy_shot→禁膝下 | 遮挡→禁被遮部位及其服装/特征
 方向语义: "仰头"→head_back,looking_up（不是 looking_down）
 视角(4种，按剧情选择):
-  ① pov-男主(男主看女主，最常见): scene加pov+视角。女主入characters加looking_at_viewer。无肢体接触→男主不入characters / 有接触→男主以「faceless male, pov, head_out_of_frame」入characters仅写可见身体
-  ② pov-女主(从女主视角看出去): scene加pov+视角。女主不入characters,可见部位(手/胸)写scene。被看者入characters加looking_at_viewer
-  ③ 旁观/窥视(用户看他人互动): 观察者不入characters。互动者各入characters,facing_another。scene酌加voyeurism/peeping
-  ④ 第三人称(客观视角): 所有角色入characters，追加from_side/facing_another/eye_contact，坐标B3↔D3
-  视角由体位推断: 站→from_above / 蹲→from_below / 平视→straight-on / 背后→from_behind
+  ① pov-男主(男主看女主，最常见): 男主=摄像机，⛔禁入characters。scene加pov+视角+男主可见身体(pov_hands/large_penis等)。女主入characters加looking_at_viewer。⛔禁source#/target#(仅1个character)
+  ② pov-女主(从女主眼睛看出去): 女主=摄像机，⛔禁入characters。scene加pov+视角+女主可见部位(pov_hands等)。被看者入characters加looking_at_viewer
+  ③ 旁观/窥视(用户看他人互动): 观察者不出镜不入characters。互动者各入characters用source#/target#绑施受,facing_another。scene酌加voyeurism/peeping
+  ④ 第三人称(客观视角): 所有角色入characters,source#/target#绑施受,追加from_side/facing_another/eye_contact,坐标B3↔D3
+  视角由体位推断: 站看蹲→from_above / 仰视→from_below / 平视→straight-on
 防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
 
 ══ 角色规则 ══
@@ -109,7 +109,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
 优先级(NSFW): 媒介内容 > 表现力峰值 > 情色峰值 > 核心剧情
 优先级(SFW): 媒介内容 > 核心剧情标志 > 表现力峰值
 
-══ 输出（第三人称·同人角色示例）══
+══ 输出（④ 第三人称·同人角色示例）══
 {
   "shouldDraw": true,
   "reason": "中文10~30字",
@@ -127,24 +127,17 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     }]
   }]
 }
-══ 输出（① pov-男主·原创角色示例·有接触→男主入characters）══
+══ 输出（① pov-男主·原创角色示例·男主身体写入scene不入characters）══
 {
   "segments": [{
-    "scene": "nsfw, sex, hetero, duo, 1boy 1girl, pov, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background",
+    "scene": "nsfw, sex, hetero, 1boy 1girl, pov, pov_crotch, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background, 1.2::large_penis::, erection, ejaculation, pov_hands",
     "characters": [{
       "name": "Kato (original)",
       "base": "girl, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
       "outfit": "blouse, white_blouse, collared_blouse, 1.2::unbuttoned, open_blouse::, -2::bra::, bare_breasts, nipples, nipple_erection",
-      "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::source#fellatio, source#handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
+      "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::fellatio, handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
       "center": "C3",
-      "uc": "bra, lower_body, boy"
-    }, {
-      "name": "faceless male",
-      "base": "boy",
-      "outfit": "",
-      "action": "pov, head_out_of_frame, in_down_side, standing, large_penis, erection, ejaculation, pov_hand, grabbing_hair, hand_on_another's_head, target#fellatio, target#handjob",
-      "center": "C4",
-      "uc": "head, surprised, white_hair, girl"
+      "uc": "boy, lower_body, bra, heterochromia"
     }]
   }]
 }`;

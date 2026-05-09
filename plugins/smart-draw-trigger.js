@@ -1558,7 +1558,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return messages;
     }
 
-    async function callOpenAiCompatible(messageId, trigger) {
+    async function callOpenAiCompatible(messageId, trigger, { signal } = {}) {
         const store = getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
@@ -1589,6 +1589,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
         const response = await fetch(url, {
             method: 'POST',
+            signal,
             headers: {
                 'Content-Type': 'application/json',
                 ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
@@ -1608,7 +1609,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return normalized;
     }
 
-    async function callCustomHttp(messageId, trigger) {
+    async function callCustomHttp(messageId, trigger, { signal } = {}) {
         const store = getStore();
         const url = String(store.customUrl || '').trim();
         if (!url) throw new Error('请先填写自定义 HTTP 接口地址');
@@ -1621,6 +1622,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         logTaggerPayload('tagger request body', payload);
         const response = await fetch(url, {
             method: 'POST',
+            signal,
             headers,
             body: JSON.stringify(payload),
         });
@@ -1632,11 +1634,11 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return normalized;
     }
 
-    async function callTagger(messageId, trigger) {
+    async function callTagger(messageId, trigger, { signal } = {}) {
         const store = getStore();
         return store.provider === 'custom'
-            ? callCustomHttp(messageId, trigger)
-            : callOpenAiCompatible(messageId, trigger);
+            ? callCustomHttp(messageId, trigger, { signal })
+            : callOpenAiCompatible(messageId, trigger, { signal });
     }
 
     function visibleTextNodes(root) {
@@ -2145,14 +2147,23 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     async function runTaggerForWrapper(wrapper, trigger, messageId, key) {
         const store = getStore();
         if (!(wrapper instanceof HTMLElement)) return;
-        const button = ensureTaggerButtonState(wrapper, '解析中...');
-        if (button) button.disabled = true;
+        const abortController = new AbortController();
+        wrapper._taggerAbort = abortController;
+        const button = ensureTaggerButtonState(wrapper, '解析中... (点击停止)');
+        if (button) {
+            button.disabled = false;
+            button.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                abortController.abort();
+            };
+        }
         try {
             const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
             const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
             if (loader instanceof HTMLElement) loader.style.display = 'flex';
             if (sub instanceof HTMLElement) sub.textContent = '正在调用 tagger API 解析世界书与提示词...';
-            const result = await callTagger(messageId, trigger);
+            const result = await callTagger(messageId, trigger, { signal: abortController.signal });
             const cacheKey = wrapper.dataset.rbqSdtBaseKey || key;
             store.cache[cacheKey] = {
                 ...result,
@@ -2220,12 +2231,18 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             }
             processedKeys.add(cacheKey);
         } catch (error) {
-            console.error('[Smart Draw Trigger]', error);
-            toastr.error(error.message || String(error), PLUGIN_NAME);
-            ensureTaggerButtonState(wrapper, '重新解析/生成 tag');
+            if (error.name === 'AbortError') {
+                console.info(`[${PLUGIN_NAME}] tagger 解析已被用户停止`);
+                toastr.warning('解析已停止', PLUGIN_NAME);
+            } else {
+                console.error('[Smart Draw Trigger]', error);
+                toastr.error(error.message || String(error), PLUGIN_NAME);
+            }
+            ensureTaggerButtonState(wrapper, '📷 开始解析/生成 tag');
             setGenerateButtonState(wrapper, false);
             setWrapperStage(wrapper, 'idle');
         } finally {
+            delete wrapper._taggerAbort;
             clearWrapperLoading(wrapper);
         }
     }

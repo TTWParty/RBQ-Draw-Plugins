@@ -4,110 +4,145 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 21;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 22;
     const CONSISTENT_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
-1. 只输出合法 JSON，禁 markdown/注释
-2. anchor.text 从 currentMessage.content **逐字复制** 10~40字原文（indexOf 定位，找不到=失败）
+1. 只输出合法 JSON，禁 markdown/注释/解释
+2. anchor.text 从 currentMessage.content **逐字复制** 10~40字原文（indexOf 可定位，找不到=失败）
 3. 纯对话/独白无视觉变化 → shouldDraw:false
-4. Tag 必须是 Danbooru 标准 tag（下划线连接）
+4. Tag 使用 Danbooru 英文标准
 
 ══ Tag 规范 ══
-权重: \`n::tag::\`（1.1~2 强调/0.1~0.9 弱化），\`{tag}\` 轻度增强
+权重: \`n::tag::\` 或 \`n::tag1,tag2::\`
+| 类型 | 范围 | 适用 |
+| 强调 | 1.1~2 | 同人角色姓名/关键穿搭/核心动作/低频Tag |
+| 弱化 | 0.1~0.9 | 远景/遮挡/次要元素 |
+| 轻增 | {tag} | 轻度强调 |
+| 反向 | -1~-4 | 禁止出现的元素，代替 no_xxx（如 -2::bra:: 代替 no_bra）|
 排序: 画面占比/重要性降序，关联 tag 相邻
-拆解: 复合→独立 tag（害羞→shy,blush；月下→moonlit,night）
-配额: 总量 70~100 tag（scene 18~25, 单主角 35~50, 双主角各 20~25）
-lorebook: payload.lorebook 含 Tag 模板库，匹配到的 tag **直接引用不改写**
-微细节: 配额有余时按优先级补充——即时反馈(trembling,splash) > 主体标志(hair_ornament) > 氛围渲染(光影/粒子) > 细节补全
+通用调整因素: 视觉占比/特征显著度/动作幅度/累积状态/空间远近
+拆解: 复合→独立 tag（害羞→shy,blush；月下→moonlit,night）。专词/高频关联词不拆(hanfu_girl)
+配额: 总量 70~100 tag（scene 18~25, 单主角 35~50, 双主角各 20~25, 配角≤15%）
+  节余回收: 视角/遮挡省下的额度→补充微细节
+lorebook: payload.lorebook 含匹配到的 Tag 模板，**直接引用不改写**
+微细节(配额有余时补 5~15 tag): 即时反馈(trembling,splash) > 主体标志(hair_ornament) > 氛围渲染(光影/粒子) > 细节补全
 
-══ 字段与 Tag 顺序 ══
+══ 字段规范 ══
 
 **scene**（→ base_caption，全角色共享）
-顺序: 分级(nsfw) → 主题 → 关系(hetero/yuri) → 人数(1boy 1girl) → 场景环境 → 光影 → 全局镜头(视角/远近/角度/构图)
-⛔ 禁 quality tag（由预设处理）⛔ 禁单角色动作 tag
-⚠️ pov 模式: 男主身体部位(large_penis, veiny_penis 等)写入 scene 作为环境道具
+顺序: 分级(nsfw/sfw) → 主题(exhibitionism等) → 关系(hetero/yuri/solo) → 人数(1boy 1girl) → 背景环境 → 光影 → 全局镜头
+⛔ 禁 quality tag（由系统预设处理）⛔ 禁单角色动作/外貌 tag
+背景: 现实→空间(室内外+地点+周边物+细节)+氛围(时间/天气/季节/风格) | 抽象→UI/排版/底色/特效/符号 | 混合→现实+抽象叠加
+光影: 可见光源写实物(sun,lantern) / 不可见写效果(warm_lighting,soft_light) / 方向(backlighting/sidelighting/toplighting) / 阴影(cast_shadow,dramatic_shadow)
+全局镜头: 视角/区域/远近/透视/焦点/角度/构图（连续生图须轮换镜头维度）
+  区域限制: 1~2人→任意 | 3人→cowboy_shot,禁close-up | 4+人→full_body/wide_shot,禁close-up/cowboy
+⚠️ pov 模式: 男主身体部位(large_penis等)写入男主 character 的 action 中，scene 仅放全局镜头(pov,from_above等)
+媒介嵌套(角色经媒介间接呈现): 物品出镜→Scene:photo_(object),角色加in_photo | 抽象不出镜→禁物品Tag,用视觉覆盖(text,chat_log,livestream)
+
+**name**（→ 角色身份键，用于记忆匹配与 Tag 注入）
+⚠️ 插件会自动将 name 作为核心身份 Tag 注入最终提示词，必须精确填写！
+  同人角色 → 英文名 (作品英文名)，如 "Fujiwara Chika (Kaguya-sama: Love Is War)"
+  原创角色 → 英文译名 (original)，如 "Kato (original)"
+  配角 → "faceless male" / "faceless female"
+⛔ 禁填中文名 ⛔ 禁省略作品名/original后缀 ⛔ 禁在 base 中重复填写姓名
 
 **base**（→ char_caption 外貌防伪码，跨图绝对锁定不变）
-必须穷举：girl/boy(不带数字) → 年龄段(teenager/mature_female等) → 发长+发型(双马尾/单马尾等)+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes等) → 胸围(flat_chest/large_breasts等) → 体格(petite/tall等) → 肤色 → 标志修饰(痣/疤)。缺失则根据设定推断。⚠️ 绝对禁止遗漏任何维度！
+顺序: girl/boy(不带数字) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
+⚠️ 穷举所有维度，缺失则推断！遗漏任何维度=角色变脸！
+⚠️ 原创角色差异化: 基本特征之外追加 5~10 专属 Tag（标志性发型/异色瞳/专属配饰/身体特征）作为视觉防伪码
+⛔ 禁在此处写服装/动作/表情——属于 outfit/action，混入会污染记忆
 
 **outfit**（→ char_caption 服装部分，随场景变化）
-顺序: 主要服装(款式+颜色+细节) → 次要服装/配饰 → 穿着状态(open/off/half-off) → 裸露部位+细节
-⚠️ 服装定义要拆到每个部件（dark_blue_blazer, white_collared_shirt, red_ribbon 而非模糊的 school_uniform）
-⚠️ 绝对禁止在此处描写发型、眼色、体型等属于 base 的特征，防止污染打架！
+顺序: 主要服装(款式+颜色+细节[材质/图案/装饰]) → 次要服装/配饰(款式+颜色) → 穿着状态(open/off_shoulder/half-off/lifted) → 衣物损耗 → 裸露部位+细节
+⚠️ 拆到部件级: dark_blue_blazer, white_collared_shirt, red_ribbon（禁 school_uniform 等模糊总称）
+衣物损耗(可选): torn_clothes/ripped/stained/wet_clothes
+透视/湿透: visible_through_[x], see-through_[x], covered_[x]
+裸露梯度: 无裸露 / 微裸露 / 胸裸(-n::bra::,bare_breasts) / 下体裸(-n::panties::,pussy) / 仅腿覆盖 / 全裸(nude)
+持有道具(可选): 道具描述+细节（magic_staff,black_magic_staff,glowing_red_gem）
+⛔ 禁在此处写发型/眼色/体型等 base 特征
 
 **action**（→ char_caption 动态部分，每帧不同）
-顺序: 朝向(facing_viewer) → 基础动作/姿势 → 肢体动作 → 表情 → 视线 → 体液/状态(sweat/cum) → 微细节
-⚠️ 多角色交互用 source#/target#/mutual# 前缀明确施受关系
-⚠️ 绝对禁止在此处描写发型、眼色、体型等属于 base 的特征，防止污染打架！
+角色镜头(多角色时可为单个角色设独立镜头): 视角/区域/远近/焦点(face_focus等)
+绝对位置: in_centers/left_side/right_side/above/below/surrounding
+顺序: 角色镜头 → 绝对位置 → 朝向(facing_viewer) → 基础姿势(standing/sitting/kneeling)+相对位置 → 肢体动作(手/臂+动作+位置+细节) → 行为(含道具时追加道具描述) → 表情(情绪+笑/怒/哀/惊/慌/羞+眼/嘴) → 视线(looking_at_viewer) → 状态 → 微细节
+状态: 体表(sweat/stain/cum) / 损伤(bruise/cut/bandage) / 生理(exhausted/pale_skin/heavy_breathing)
+⚠️ 多角色交互必须用前缀: 施动者 source#动作, 受动者 target#动作, 双方 mutual#动作
+⚠️ 累积状态: 同状态跨图权重 +0.2 递增（如连续出汗 1.2→1.4），换装/清洗/转场重置
+cosplay: 源角色 action 加 source#cosplay；目标服饰角色加 target#cosplay，坐标重叠
+⛔ 禁在此处写发型/眼色/体型等 base 特征
 
-**center**（→ 角色位置坐标，A1-E5 网格）
-**多角色必须分开坐标**，仅亲密接触(拥抱/亲吻)可重叠
-常用: 单人C3 / 并排B3+D3 / 站+躺C2+C4 / 骑乘C2+C4
+**center**（→ 角色位置坐标，5×5 网格 A-E列×1-5行，C3=正中）
+单人: C3 | 并排: B3↔D3 | 站+躺/骑乘: C2↔C4
+多角色必须分开坐标，仅亲密接触(拥抱/亲吻)可重叠
+配角聚合: ≤2各自坐标; >2 同类坐标差≤2格可合并1个 character 条目
 
-**uc**（→ 角色负面提示词）
-跨角色防污染: Char1 的 发色/瞳色/表情/服装 → 写入 Char2 uc
+**uc**（→ 角色负面提示词，防幻觉与跨角色污染）
+常规排除: 当前不应出现的元素（无胸罩→bra; 全裸→clothes）
+跨角色防污染: Char1 发色/瞳色/表情/服装 → 写入 Char2 uc（防特征串台）
+  情绪: Char1 happy ↔ Char2 uc:happy | 发色: Char1 red_hair ↔ Char2 uc:red_hair
 防色偏: 添加 heterochromia + 排除该角色不应有的颜色
 
 ══ 核心原则 ══
-真实: 文本有述→直用；无述→上文补全；冲突→文本优先。**禁止虚构**未描述内容
+真实: 文本有述→直用；无述→上文推断补全；冲突→文本优先。禁止虚构
 主次: 主角详述占主导配额；配角简述聚焦互动；路人剔除
-镜头: 图片=静态镜头，不可见元素禁入：
-  upper_body→禁下身 | from_behind→禁正面表情 | cowboy_shot→禁膝下 | 遮挡→禁被遮部位
-方向: 原文"仰头"→head_back,looking_up（不是 looking_down）
+镜头过滤(图片=静态镜头，不可见元素禁入):
+  pov→禁面部/表情(观察者不出镜) | upper_body→禁下身(腿/脚/袜) | lower_body→禁上身(发型/瞳色/表情/罩杯) | from_behind→禁正面表情(回头除外) | cowboy_shot→禁膝下 | 遮挡→禁被遮部位及其服装/特征
+方向语义: "仰头"→head_back,looking_up（不是 looking_down）
 视角选择:
-  pov=主观: 男主=摄像机，**禁止**放入 characters。男主身体写入 scene。女主带 looking_at_viewer + 动作词(handjob/fellatio等)。禁 source#/target#。视角由摄像机位置定: 男主站女主蹲→from_above / 男主躺女主骑→from_below
-  third-person=旁观: 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3
+  pov(主观): 男主以 faceless_male + pov + head_out_of_frame 入 characters（仅身体部位，禁面部），女主带 looking_at_viewer，用 source#/target# 明确施受。视角由摄像机位置定: 男站女蹲→from_above / 男躺女骑→from_below
+  third-person(旁观): 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3
 防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
 
 ══ 角色规则 ══
-DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更时更新
+DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述变化时永久更新；镜头不可见时临时过滤（不改DNA）
+种族: 人形(≥60%)→girl/boy; 非人(<50%)→no_humans; 模糊→other
 多女: 仅 yuri/协同场景；其他默认单女
-配角聚合: ≤2 各自坐标；>2 同类可合并 1 个 Char 槽
-种族: 人形→girl/boy；非人→no humans
+无角色: 道具/建筑为主体，占1个 character 条目
 
 ══ 分镜 ══
 断裂点: 空间转换/动作突变/情绪高潮
 数量: 单消息 1~3 张，均匀分布，禁文末堆积
 短文(<100字)/纯对话 → 0~1 张
 优先级(NSFW): 媒介内容 > 表现力峰值 > 情色峰值 > 核心剧情
+优先级(SFW): 媒介内容 > 核心剧情标志 > 表现力峰值
 
-══ 输出（第三人称示例）══
+══ 输出（第三人称·同人角色示例）══
 {
   "shouldDraw": true,
   "reason": "中文10~30字",
   "segments": [{
     "label": "5~15字中文",
     "anchor": {"text": "逐字复制原文"},
-    "scene": "nsfw, sex, hetero, 1boy 1girl, indoor, living_room, night, dim_lighting, warm_lighting, from_below, depth_of_field",
+    "scene": "nsfw, exhibitionism, solo, outdoors, alley, brick_wall, wet, late_at_night, pink_neon_light, toplighting, cast_shadows, third-person_view, from_front, low-angle_shot, cowboy_shot, dutch_angle, depth_of_field",
     "characters": [{
-      "name": "角色名",
-      "base": "girl, teenager, long_hair, straight_hair, brown_hair, blunt_bangs, light_brown_eyes, tareme, large_breasts, slim, mole_under_eye",
-      "outfit": "1.2::pink_chiffon_blouse::, open_clothes, {black_lace_bra}, no_panties, pussy",
-      "action": "facing_viewer, cowgirl_position, girl_on_top, 1.3::source#sex, source#vaginal::, straddling, head_back, open_mouth, panting, bouncing_breasts, 1.2::sweat::, trembling, motion_lines",
-      "center": "C2",
-      "uc": "boy, short_hair, black_hair, heterochromia"
-    }, {
-      "name": "角色名2",
-      "base": "boy, mature_male, short_hair, black_hair, small_eyes, flat_chest, tall, muscular",
-      "outfit": "shirtless",
-      "action": "lying, 1.3::target#sex, target#vaginal::, large_penis, hands_on_another's_hips, looking_up",
-      "center": "C4",
-      "uc": "girl, brown_hair, breasts, long_hair"
+      "name": "Fujiwara Chika (Kaguya-sama: Love Is War)",
+      "base": "girl, bishoujo, long_hair, pink_hair, hair_ribbon, black_bow, blue_eyes, large_breasts, heavy_breasts, glistening_skin",
+      "outfit": "serafuku, pink_serafuku, white_sailor_collar, crop_top, wet_clothes, 1.2::see-through_shirt::, visible_through_clothes, bra, pink_lace_bra, skirt, pink_micro_skirt, pleated_skirt, -2::panties::, pussy, clitoris, thighhighs, white_thighhighs",
+      "action": "in_centers, looking_at_viewer, facing_viewer, 1.2::standing, against_wall::, head_back, 1.4::fingering, masturbation::, one_hand, fingers_in_own_pussy, female_ejaculation, 1.3::splashing_fluids::, other_hand, 1.3::grasping_breast::, hand_on_own_breast, aroused, ahegao, blush, rolling_eyes, tears, open_mouth, drooling, 1.2::steaming_body, sweat::, trembling, spasm, motion_lines",
+      "center": "C3",
+      "uc": "completely_nude, nipples, shoes, foot"
     }]
   }]
 }
-══ 输出（POV 示例·男主不入 characters）══
+══ 输出（POV·原创角色示例·男主以 faceless_male 入 characters）══
 {
   "segments": [{
-    "scene": "nsfw, hetero, 1boy 1girl, pov, pov_crotch, from_above, indoor, infirmary, close-up, 1.2::large_penis::, veiny_penis, pre-cum",
+    "scene": "nsfw, sex, hetero, duo, 1boy 1girl, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, high-angle_shot, close-up, dynamic_angle, blurry_background",
     "characters": [{
-      "name": "角色名",
-      "base": "girl, young_adult, long_hair, wavy_hair, brown_hair, fox_eyes, tsurime, large_breasts, thick_thighs",
-      "outfit": "1.2::lab_coat::, open_coat, floral_print_camisole, cleavage, 1.2::facial::, cum_on_face",
-      "action": "facing_viewer, looking_up, holding_penis, 1.3::handjob::, seductive_smile, parted_lips, tongue_out, squatting",
+      "name": "Kato (original)",
+      "base": "girl, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
+      "outfit": "blouse, white_blouse, collared_blouse, 1.2::unbuttoned, open_blouse::, -2::bra::, bare_breasts, nipples, nipple_erection",
+      "action": "from_above, upper_body, face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::source#fellatio, source#handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
       "center": "C3",
-      "uc": "boy, black_hair, heterochromia"
+      "uc": "bra, lower_body, boy"
+    }, {
+      "name": "faceless male",
+      "base": "boy",
+      "outfit": "",
+      "action": "pov, head_out_of_frame, in_down_side, standing, large_penis, erection, ejaculation, pov_hand, grabbing_hair, hand_on_another's_head, target#fellatio, target#handjob",
+      "center": "C4",
+      "uc": "head, surprised, white_hair, girl"
     }]
   }]
 }`;
@@ -307,9 +342,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 }`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        consistent: { label: 'V21-强一致性版', prompt: CONSISTENT_SYSTEM_PROMPT },
-        storyboarder: { label: 'V20-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
-        classic: { label: 'V19-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
+        consistent: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT },
+        storyboarder: { label: 'V21-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'consistent';
@@ -462,14 +497,31 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 
     function getCharacterProfile(name) {
         const profiles = getCharacterProfiles();
-        const key = String(name || '').trim().toLowerCase();
-        return key ? (profiles[key] || null) : null;
+        const rawKey = String(name || '').trim().toLowerCase();
+        if (!rawKey) return null;
+        if (profiles[rawKey]) return profiles[rawKey];
+        
+        // 模糊匹配：忽略括号内的内容（防止 LLM 时而带 (original) 时而不带导致记忆断裂）
+        const strippedKey = rawKey.replace(/\([^)]*\)/g, '').trim();
+        if (strippedKey && profiles[strippedKey]) return profiles[strippedKey];
+        
+        const match = Object.keys(profiles).find(k => k.replace(/\([^)]*\)/g, '').trim() === strippedKey);
+        return match ? profiles[match] : null;
     }
 
     function updateCharacterProfile(name, baseTags, outfitTags) {
         const profiles = getCharacterProfiles();
-        const key = String(name || '').trim().toLowerCase();
-        if (!key) return;
+        const rawKey = String(name || '').trim().toLowerCase();
+        if (!rawKey) return;
+
+        // 查找是否已有模糊匹配的记录
+        let key = rawKey;
+        if (!profiles[rawKey]) {
+            const strippedKey = rawKey.replace(/\([^)]*\)/g, '').trim();
+            const match = Object.keys(profiles).find(k => k.replace(/\([^)]*\)/g, '').trim() === strippedKey);
+            if (match) key = match;
+        }
+
         const existing = profiles[key];
         if (existing) {
             // Only update outfit if provided; base is immutable once set
@@ -542,19 +594,35 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     }
 
     /**
+     * Auto-weight character name for NAI prompt injection.
+     * 同人角色 (has source work in parens, not "(original)") get 1.5:: weight boost.
+     */
+    function weightCharacterName(name) {
+        if (!name) return '';
+        const hasParens = /\([^)]+\)/.test(name);
+        const isOriginal = /\(original\)/i.test(name);
+        // 同人角色: has source work → weight boost for NAI recognition
+        if (hasParens && !isOriginal) {
+            return `1.5::${name}::`;
+        }
+        return name;
+    }
+
+    /**
      * Merge character memory with LLM output.
      * @returns {string} Final merged caption for char_caption
      */
     function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
         const store = getStore();
         const chatKey = getChatKey();
+        const weightedName = weightCharacterName(name);
 
         debugInfo(`角色「${name}」LLM 输出: base="${(llmBase || '').slice(0, 40)}", outfit="${(llmOutfit || '').slice(0, 40)}", action="${(llmAction || '').slice(0, 40)}"`);
         debugInfo(`角色记忆状态: ${store.characterMemoryEnabled ? '✅ 启用' : '❌ 禁用'}, chatKey="${chatKey}"`);
 
         if (!store.characterMemoryEnabled) {
             // No memory: fallback to old behavior (appearance + all LLM tags)
-            const allLlmTags = [llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
+            const allLlmTags = [weightedName, llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
             return [appearanceTags, allLlmTags].filter(Boolean).join(', ');
         }
 
@@ -568,19 +636,30 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
             if (llmOutfit) updateCharacterProfile(name, null, llmOutfit);
             debugInfo(`角色记忆复用「${name}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
-            // First time: learn from LLM and store
-            finalBase = llmBase || '';
+            // First time: learn from LLM and store (store clean name, not weighted)
+            finalBase = [name, llmBase].filter(Boolean).join(', ');
             finalOutfit = llmOutfit || '';
             if (finalBase && name) {
                 updateCharacterProfile(name, finalBase, finalOutfit);
             } else if (!finalBase && name) {
-                debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V16 且 LLM 支持 base/outfit/action 拆分`);
+                debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
             }
         }
 
-        // Merge: appearance(lorebook) + base + outfit + action
-        const weightedBase = (store.systemPromptPreset === 'consistent' && finalBase) ? '{' + finalBase + '}' : finalBase;
-        return [appearanceTags, weightedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
+        // Build weighted base for NAI: apply name weight + memory base
+        // For 同人 characters with stored memory, re-apply name weight to the stored base
+        let displayBase = finalBase;
+        if (profile && name) {
+            // Stored base already contains the clean name; replace with weighted version
+            const cleanName = name;
+            if (displayBase.startsWith(cleanName)) {
+                displayBase = weightedName + displayBase.slice(cleanName.length);
+            }
+        }
+
+        // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
+        const wrappedBase = (store.systemPromptPreset === 'consistent' && displayBase) ? '{' + displayBase + '}' : displayBase;
+        return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
     function ensureLorebookStore() {
@@ -1174,9 +1253,13 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     const SDT_COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
     const SDT_ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
     function sdtParseCoord(coordStr) {
-        const s = (coordStr || '').trim().toUpperCase();
-        const col = s.charAt(0), row = s.charAt(1);
-        if (SDT_COL_MAP[col] != null && SDT_ROW_MAP[row] != null) return { x: SDT_COL_MAP[col], y: SDT_ROW_MAP[row] };
+        const s = String(coordStr || '').trim().toUpperCase();
+        const match = s.match(/([A-E])([1-5])/);
+        if (match) {
+            const col = match[1];
+            const row = match[2];
+            return { x: SDT_COL_MAP[col], y: SDT_ROW_MAP[row] };
+        }
         return { x: 0.5, y: 0.5 };
     }
 

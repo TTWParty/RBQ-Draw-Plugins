@@ -88,11 +88,10 @@ cosplay: 源角色加 source#cosplay，目标角色加 target#cosplay，坐标�
 镜头过滤(图片=静态镜头，不可见元素禁入):
   pov→禁面部/表情(观察者不出镜) | upper_body→禁下身(腿/脚/袜) | lower_body→禁上身(发型/瞳色/表情/罩杯) | from_behind→禁正面表情(回头除外) | cowboy_shot→禁膝下 | 遮挡→禁被遮部位及其服装/特征
 方向语义: "仰头"→head_back,looking_up（不是 looking_down）
-视角(4种，按剧情选择):
-  ① pov-男主(男主看女主，最常见): 男主=摄像机，⛔禁入characters。scene加pov+视角+男主可见身体(pov_hands/large_penis等)。女主入characters加looking_at_viewer。⛔禁source#/target#(仅1个character)
-  ② pov-女主(从女主眼睛看出去): 女主=摄像机，⛔禁入characters。scene加pov+视角+女主可见部位(pov_hands等)。被看者入characters加looking_at_viewer
-  ③ 旁观/窥视(用户看他人互动): 观察者不出镜不入characters。互动者各入characters用source#/target#绑施受,facing_another。scene酌加voyeurism/peeping
-  ④ 第三人称(客观视角): 所有角色入characters,source#/target#绑施受,追加from_side/facing_another/eye_contact,坐标B3↔D3
+视角(3种，按剧情选择):
+  ① pov(主观视角): 摄像机角色(通常是用户/男主)⛔禁入characters，可见身体写scene(pov_hands/large_penis等)。被看的角色入characters加looking_at_viewer。多个被看角色间可用source#/target#互绑
+  ② 旁观/窥视(用户看他人互动): 观察者不出镜不入characters。互动者各入characters用source#/target#绑施受,facing_another。scene酌加voyeurism/peeping
+  ③ 第三人称(客观视角): 所有角色入characters,source#/target#绑施受,追加from_side/facing_another/eye_contact,坐标B3↔D3
   视角由体位推断: 站看蹲→from_above / 仰视→from_below / 平视→straight-on
 防偷懒: 配额不足则补微细节，复合概念碎片化，连续生图轮换镜头维度
 
@@ -109,7 +108,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
 优先级(NSFW): 媒介内容 > 表现力峰值 > 情色峰值 > 核心剧情
 优先级(SFW): 媒介内容 > 核心剧情标志 > 表现力峰值
 
-══ 输出（④ 第三人称·同人角色示例）══
+══ 输出（③ 第三人称·同人角色示例）══
 {
   "shouldDraw": true,
   "reason": "中文10~30字",
@@ -127,7 +126,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     }]
   }]
 }
-══ 输出（① pov-男主·原创角色示例·男主身体写入scene不入characters）══
+══ 输出（① pov·原创角色示例·摄像机角色身体写入scene不入characters）══
 {
   "segments": [{
     "scene": "nsfw, sex, hetero, 1boy 1girl, pov, pov_crotch, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background, 1.2::large_penis::, erection, ejaculation, pov_hands",

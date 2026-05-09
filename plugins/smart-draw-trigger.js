@@ -417,7 +417,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     let pendingNaiCharData = null;
 
     function isHostStreaming() {
-        // Check if SillyTavern is still streaming output
         const stopBtn = document.getElementById('stop_generating');
         if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) return true;
         const sendBtn = document.getElementById('send_but');
@@ -425,20 +424,14 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         return false;
     }
 
-    // Streaming state watcher: detects when SillyTavern finishes outputting.
-    // When streaming ends, triggers auto-run tagger on the latest message only.
+    // Streaming state watcher: fires triggerAutoRunForLatest() when output ends.
     let wasStreaming = false;
     function startStreamingWatcher() {
         setInterval(() => {
             const streaming = isHostStreaming();
             if (wasStreaming && !streaming) {
-                // Streaming just ended → trigger auto-run for latest message
-                console.info(`[${PLUGIN_NAME}] ✅ streaming ended, triggering auto-run for latest message`);
-                const latest = getLatestMessageId();
-                if (latest != null) {
-                    // Small delay to let DOM settle after streaming ends
-                    setTimeout(() => triggerAutoRunForLatest(), 600);
-                }
+                console.info(`[${PLUGIN_NAME}] \u2705 streaming ended, scheduling auto-run for latest message`);
+                setTimeout(() => triggerAutoRunForLatest(), 600);
             }
             wasStreaming = streaming;
         }, 500);
@@ -449,12 +442,10 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!store.autoRunTagger) return;
         const latest = getLatestMessageId();
         if (latest == null) return;
-        // Find the wrapper card for the latest message
         const container = RBQ.api.getMessageTextContainer(latest);
         if (!(container instanceof HTMLElement)) return;
         const wrapper = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
         if (!wrapper) return;
-        // Don't re-run if already parsed (has result cards)
         if (wrapper.dataset.rbqSdtIsResult === '1') return;
         const stage = wrapper.dataset.rbqSdtStage;
         if (stage && stage !== 'idle') return;
@@ -462,7 +453,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         if (!key || inFlight.has(key)) return;
         const trigger = (() => { try { return JSON.parse(wrapper.dataset.rbqSdtTrigger || 'null'); } catch { return null; } })();
         if (!trigger) return;
-        console.info(`[${PLUGIN_NAME}] 🚀 auto-running tagger for latest message #${latest}`);
+        console.info(`[${PLUGIN_NAME}] \ud83d\ude80 auto-running tagger for latest message #${latest}`);
         inFlight.add(key);
         try {
             await runTaggerForWrapper(wrapper, trigger, latest, key);
@@ -2354,6 +2345,9 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                     setWrapperStage(wrapper, 'generated');
                 } else {
                     setWrapperStage(wrapper, 'ready-generate');
+                    if (store.autoRunGenerate) {
+                        await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
+                    }
                 }
                 bindWrapperManualRun(wrapper, trigger, messageId, key, item.key);
             }
@@ -2400,8 +2394,8 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         bindWrapperManualRun(wrapper, trigger, messageId, key);
         const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
         if (loader instanceof HTMLElement) loader.style.display = 'none';
-        // Auto-run is handled by the streaming watcher (triggerAutoRunForLatest),
-        // NOT here. processMessage only creates cards.
+        // Auto-run is driven by the streaming watcher (triggerAutoRunForLatest),
+        // NOT here. processMessage only creates/restores cards.
     }
 
     function scheduleProcess(messageId, options = {}) {
@@ -2637,7 +2631,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
                 <div id="rbq-sdt-enhanced-context-field" class="st-scene-trigger-field switch" title="开启后，将在单次提取中强制模型先归纳前情（场景/动作连贯性），再生成最终 JSON。可能消耗更多 token，但大幅提升连贯性。"><span>启用前情增强分析</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enhanced-context" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -2926,7 +2920,6 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);
-        // Start the streaming watcher for auto-run
         startStreamingWatcher();
     }
 

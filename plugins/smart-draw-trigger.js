@@ -37,7 +37,7 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板，**直接引用不改写*
 光影: 可见光源写实物(sun,lantern) / 不可见写效果(warm_lighting,soft_light) / 方向(backlighting/sidelighting/toplighting) / 阴影(cast_shadow,dramatic_shadow)
 全局镜头: 视角/区域/远近/透视/焦点/角度/构图（连续生图须轮换镜头维度）
   区域限制: 1~2人→任意 | 3人→cowboy_shot,禁close-up | 4+人→full_body/wide_shot,禁close-up/cowboy
-⚠️ pov 模式: 男主身体部位(large_penis等)写入男主 character 的 action 中，scene 仅放全局镜头(pov,from_above等)
+⚠️ pov 模式: 摄像机角色不入characters，其可见身体(pov_hands/large_penis等)写入 scene
 媒介嵌套(角色经媒介间接呈现): 物品出镜→Scene:photo_(object),角色加in_photo | 抽象不出镜→禁物品Tag,用视觉覆盖(text,chat_log,livestream)
 
 **name**（→ 角色身份键，用于记忆匹配与 Tag 注入）
@@ -72,9 +72,9 @@ cosplay: 源角色加 source#cosplay，目标角色加 target#cosplay，坐标�
 ⛔ 禁在此处写发型/眼色/体型等 base 特征
 
 **center**（→ 角色位置坐标，5×5 网格 A-E列×1-5行，C3=正中）
-单人: C3 | 并排: B3↔D3 | 站+躺/骑乘: C2↔C4
-多角色必须分开坐标，仅亲密接触(拥抱/亲吻)可重叠
-配角聚合: ≤2各自坐标; >2 同类坐标差≤2格可合并1个 character 条目
+常用参考: 单人C3 / 并排B3+D3 / 站+躺C2+C4 / 骑乘C2+C4，按实际构图灵活选择
+多角色须分开坐标，仅亲密接触(拥抱/亲吻)可重叠
+配角聚合: ≤2各自坐标; >2 同类可合并
 
 **uc**（→ 角色负面提示词，防幻觉与跨角色污染）
 常规排除: 当前不应出现的元素（无胸罩→bra; 全裸→clothes）

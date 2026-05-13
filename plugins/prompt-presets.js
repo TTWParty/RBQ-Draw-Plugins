@@ -481,18 +481,23 @@
         s.negative = '';
         save();
 
-        // Hide the DOM fields
+        // Hide the DOM fields AND clear their values (prevents saveFromModal from restoring old data)
         ['st-scene-trigger-modal-prefix', 'st-scene-trigger-modal-suffix', 'st-scene-trigger-modal-negative'].forEach(id => {
             const el = document.getElementById(id);
-            if (el?.closest('label')) el.closest('label').style.display = 'none';
+            if (el) {
+                el.value = '';
+                if (el.closest('label')) el.closest('label').style.display = 'none';
+            }
         });
     }
 
-    // Run on load and re-run periodically (in case modal reopens and re-renders)
+    // Run on load and re-run periodically (in case modal reopens and syncUi refills hidden inputs)
     neutralizeBuiltinFields();
     setInterval(() => {
         const el = document.getElementById('st-scene-trigger-modal-prefix');
-        if (el?.closest('label')?.style.display !== 'none') neutralizeBuiltinFields();
+        if (!el) return;
+        // Re-neutralize if label became visible again OR if syncUi refilled the hidden input
+        if (el.closest('label')?.style.display !== 'none' || el.value) neutralizeBuiltinFields();
     }, 2000);
 
     console.info('📋 Prompt Presets plugin loaded');

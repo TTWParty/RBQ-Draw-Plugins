@@ -458,5 +458,42 @@
         console.info('[Prompt Presets] UI mounted');
     });
 
+    // ── Neutralize built-in prefix/suffix/negative ─────────────
+    // The host extension has its own prefix/suffix/negative fields that overlap
+    // with this plugin's functionality. When this plugin is active, hide those
+    // fields and clear their values so they don't double-up with preset hooks.
+    function neutralizeBuiltinFields() {
+        const s = RBQ.api.getSettings();
+        const store = getStore();
+
+        // Back up original values (once) so they're not lost forever
+        if (!store._builtinBackup) {
+            store._builtinBackup = {
+                prefix: s.prefix || '',
+                suffix: s.suffix || '',
+                negative: s.negative || '',
+            };
+        }
+
+        // Clear the extension's built-in values so its joinPrompt logic becomes a no-op
+        s.prefix = '';
+        s.suffix = '';
+        s.negative = '';
+        save();
+
+        // Hide the DOM fields
+        ['st-scene-trigger-modal-prefix', 'st-scene-trigger-modal-suffix', 'st-scene-trigger-modal-negative'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el?.closest('label')) el.closest('label').style.display = 'none';
+        });
+    }
+
+    // Run on load and re-run periodically (in case modal reopens and re-renders)
+    neutralizeBuiltinFields();
+    setInterval(() => {
+        const el = document.getElementById('st-scene-trigger-modal-prefix');
+        if (el?.closest('label')?.style.display !== 'none') neutralizeBuiltinFields();
+    }, 2000);
+
     console.info('📋 Prompt Presets plugin loaded');
 })(RBQ, jQuery, toastr);

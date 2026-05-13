@@ -108,18 +108,8 @@
         }));
 
         // base_caption = everything that's left after extracting Char/UC segments
-        // We must ALSO preserve whatever other plugins (like Prompt Presets) have already
-        // injected into v4_prompt.caption.base_caption!
-        const existingBase = payload.parameters?.v4_prompt?.caption?.base_caption || '';
-        
-        // If the existing base_caption already has our remaining text, don't duplicate it.
-        // If it's different (e.g. contains presets), merge them.
-        let finalBaseCaption = remaining;
-        if (existingBase && existingBase !== payload.input && !existingBase.includes(remaining)) {
-            finalBaseCaption = [existingBase, remaining].filter(Boolean).join(', ');
-        } else if (existingBase && existingBase.includes(remaining)) {
-            finalBaseCaption = existingBase; // It already contains our scene + other stuff
-        }
+        // This preserves presets, quality tags, scene content, etc.
+        const baseCaption = remaining;
 
         // Existing negative base stays intact
         const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
@@ -127,11 +117,11 @@
             || '';
 
         // Update payload
-        payload.input = finalBaseCaption;
+        payload.input = baseCaption;
 
         payload.parameters.v4_prompt = {
             caption: {
-                base_caption: finalBaseCaption,
+                base_caption: baseCaption,
                 char_captions: charCaptions
             },
             use_coords: true,

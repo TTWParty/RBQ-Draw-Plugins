@@ -35,8 +35,8 @@
     "id": "rbq-multi-char",
     "name": "NAI 多角色模式 (Multi-Char)",
     "description": "适配多种多角色文生图格式。支持 Char1:|centers:C3 和 Character 1 Prompt:|centers:C3 两种格式，自动映射到 NAI V4.5 原生多角色 API。",
-    "version": "1.0.4",
+    "version": "1.0.3",
     "author": "TTWP-09",
-    "main": "plugins/multi-char-composer.js?v=1.0.4"
+    "main": "plugins/multi-char-composer.js?v=1.0.3"
   }
 ]

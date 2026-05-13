@@ -30,12 +30,21 @@
     // Strategy: from the full prompt, EXTRACT Char segments and UC segments.
     // Everything left behind stays as base_caption.
     function parseAndExtract(fullPrompt) {
+        // Normalize alternate prompt formats to canonical form:
+        //   "Character 1 Prompt:" → "Char1:"
+        //   "Character 1 UC:"    → "Char1 UC:"
+        //   "Scene Composition:"  → "Scene:"
+        let normalized = fullPrompt
+            .replace(/Character\s*(\d+)\s*Prompt:/gi, 'Char$1:')
+            .replace(/Character\s*(\d+)\s*UC:/gi, 'Char$1 UC:')
+            .replace(/Scene\s*Composition:/gi, 'Scene:');
+
         // Quick guard: must contain at least one Char with centers
-        if (!/Char\d+:/i.test(fullPrompt) || !/\|centers:/i.test(fullPrompt)) {
+        if (!/Char\d+:/i.test(normalized) || !/\|centers:/i.test(normalized)) {
             return null;
         }
 
-        let remaining = fullPrompt;
+        let remaining = normalized;
         const chars = {};
         const charUCs = {};
 

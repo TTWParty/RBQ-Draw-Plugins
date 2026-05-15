@@ -1,140 +1,20 @@
-(function (RBQ, $, toastr) {
+(function(RBQ, $, toastr) {
     if (!RBQ) return console.error('[Prompt Presets] RBQ Core API missing');
 
     const STORAGE_KEY = '_promptPresets';
-    const MAX_VIBES = 6;
 
     // ── Storage ──
-    function save() { RBQ.api.saveSettings(); }
-    function uid(prefix = 'pp') { return prefix + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
-
-    function sanitizeVibe(item) {
-        if (!item || typeof item !== 'object') return null;
-        const b64 = String(item.b64 || '').trim();
-        const tensor = String(item.tensor || '').trim();
-        if (!b64 && !tensor) return null;
-        return {
-            id: String(item.id || uid('vibe')),
-            name: String(item.name || item.filename || '未命名氛围文件').trim() || '未命名氛围文件',
-            b64,
-            tensor: tensor || null,
-            info: Math.max(0, Math.min(1, Number(item.info) || 1)),
-            strength: Math.max(0, Math.min(1, Number(item.strength) || 0.6)),
-        };
-    }
-
-    function cloneVibes(vibes) {
-        return (Array.isArray(vibes) ? vibes : [])
-            .map(sanitizeVibe)
-            .filter(Boolean)
-            .slice(0, MAX_VIBES)
-            .map(v => ({ ...v }));
-    }
-
-    function sanitizePreset(item) {
-        if (!item || typeof item !== 'object') return null;
-        return {
-            id: String(item.id || uid()),
-            name: String(item.name || '未命名预设').trim() || '未命名预设',
-            positive: String(item.positive || item.positivePrompt || '').trim(),
-            negative: String(item.negative || item.negativePrompt || '').trim(),
-            vibes: cloneVibes(item.vibes),
-        };
-    }
-
-    function formatPresetLabel(preset) {
-        return `${preset?.name || preset?.id || '未命名预设'}`;
-    }
-
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', showFloating: false, presets: [], manualVibes: [] };
-        const store = s[STORAGE_KEY];
-        let mutated = false;
-        if (store.position !== 'append') store.position = 'prepend';
-        store.showFloating = !!store.showFloating;
-        const seenPresetIds = new Set();
-        store.presets = (Array.isArray(store.presets) ? store.presets : []).map(sanitizePreset).filter(Boolean).map((preset) => {
-            if (!preset.id || seenPresetIds.has(preset.id)) {
-                preset.id = uid();
-                mutated = true;
-            }
-            seenPresetIds.add(preset.id);
-            return preset;
-        });
-        if (!Array.isArray(store.manualVibes)) {
-            store.manualVibes = cloneVibes(RBQ.api.getNaiVibes?.() || []);
-            mutated = true;
-        } else {
-            store.manualVibes = cloneVibes(store.manualVibes);
-        }
-        if (!store.presets.some(p => p.id === store.activeId)) {
-            store.activeId = '';
-            mutated = true;
-        }
-        if (mutated) save();
-        return store;
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', presets: [] };
+        return s[STORAGE_KEY];
     }
-
+    function save() { RBQ.api.saveSettings(); }
+    function uid() { return 'pp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
     function getActivePreset() {
         const store = getStore();
         return store.activeId ? store.presets.find(p => p.id === store.activeId) || null : null;
     }
-
-    function readCurrentHostVibes() {
-        return cloneVibes(RBQ.api.getNaiVibes?.() || []);
-    }
-
-    function snapshotCurrentVibesToActivePreset() {
-        const preset = getActivePreset();
-        if (!preset) return null;
-        const vibes = readCurrentHostVibes();
-        preset.vibes = vibes;
-        return vibes;
-    }
-
-    function snapshotCurrentWorkspaceToStore() {
-        const store = getStore();
-        if (store.activeId) {
-            snapshotCurrentVibesToActivePreset();
-        } else {
-            store.manualVibes = readCurrentHostVibes();
-        }
-    }
-
-    function switchActivePreset(nextId) {
-        const store = getStore();
-        snapshotCurrentWorkspaceToStore();
-        store.activeId = String(nextId || '');
-        save();
-        syncSelectedPresetVibesToHost();
-        renderSelect();
-    }
-
-    function syncSelectedPresetVibesToHost() {
-        const preset = getActivePreset();
-        const store = getStore();
-        if (preset) {
-            RBQ.api.setNaiVibes?.(cloneVibes(preset.vibes), { source: 'plugin:preset-sync' });
-        } else {
-            RBQ.api.setNaiVibes?.(cloneVibes(store.manualVibes), { source: 'plugin:preset-sync' });
-        }
-        RBQ.api.refreshNaiVibeUi?.();
-    }
-
-    RBQ.on('naiVibesChanged', (state) => {
-        if (!state || state.source === 'plugin:preset-sync' || state.preciseRefsActive) return state;
-        const store = getStore();
-        const vibes = cloneVibes(state.vibes);
-        if (store.activeId) {
-            const preset = getActivePreset();
-            if (preset) preset.vibes = vibes;
-        } else {
-            store.manualVibes = vibes;
-        }
-        save();
-        return state;
-    });
 
     // ── Join Logic ──
     function joinPrompt(original, presetText, position) {
@@ -143,32 +23,6 @@
         if (!b) return a;
         if (!a) return b;
         return position === 'prepend' ? (b + ', ' + a) : (a + ', ' + b);
-    }
-
-    function applyPresetVibesToNaiPayload(payload, preset) {
-        const vibes = cloneVibes(preset?.vibes);
-        if (!vibes.length || !payload?.parameters) return payload;
-
-        delete payload.parameters.director_reference_images;
-        delete payload.parameters.director_reference_strength_values;
-        delete payload.parameters.director_reference_information_extracted;
-        delete payload.parameters.director_reference_secondary_strength_values;
-        delete payload.parameters.director_reference_descriptions;
-        delete payload.parameters.normalize_reference_strength_multiple;
-
-        payload.parameters.reference_image_multiple = [];
-        payload.parameters.reference_information_extracted_multiple = [];
-        payload.parameters.reference_strength_multiple = [];
-        payload.parameters.uncond_per_vibe = true;
-        payload.parameters.wonky_vibe_correlation = true;
-
-        vibes.forEach((item) => {
-            payload.parameters.reference_image_multiple.push(item.tensor || item.b64);
-            payload.parameters.reference_information_extracted_multiple.push(Number(item.info) || 1);
-            payload.parameters.reference_strength_multiple.push(Number(item.strength) || 0.6);
-        });
-
-        return payload;
     }
 
     // ── Payload Hooks ──
@@ -194,8 +48,7 @@
                 );
             }
         }
-        applyPresetVibesToNaiPayload(payload, preset);
-        console.info('[Prompt Presets] NAI payload modified:', preset.name, 'vibes:', Array.isArray(preset.vibes) ? preset.vibes.length : 0);
+        console.info('[Prompt Presets] NAI payload modified:', preset.name);
         return payload;
     });
 
@@ -267,8 +120,7 @@
             info.style.cssText = 'flex:1;';
             info.innerHTML = '<div style="font-size:13px;font-weight:500;">' + (item.name || item.id) + '</div>'
                 + (item.positive ? '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">正: ' + item.positive.slice(0, 80) + '</div>' : '')
-                + (item.negative ? '<div style="font-size:11px;color:rgba(255,200,200,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">负: ' + item.negative.slice(0, 80) + '</div>' : '')
-                + (item.extraInfo ? '<div style="font-size:11px;color:rgba(180,220,255,0.65);margin-top:2px;">' + item.extraInfo + '</div>' : '');
+                + (item.negative ? '<div style="font-size:11px;color:rgba(255,200,200,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">负: ' + item.negative.slice(0, 80) + '</div>' : '');
             row.append(cb, info);
             listDiv.appendChild(row);
             checkboxes.push(cb);
@@ -298,6 +150,7 @@
 
         dialog.append(header, selectAllRow, listDiv, btnRow);
         overlay.appendChild(dialog);
+        // CRITICAL: stop bubbling from dialog elements too
         overlay.addEventListener('change', (e) => e.stopPropagation());
         overlay.addEventListener('input', (e) => e.stopPropagation());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
@@ -315,14 +168,12 @@
     }
 
     waitForPanel((panel) => {
-        document.getElementById('rbq-prompt-presets-panel')?.remove();
-
         const container = document.createElement('div');
         container.className = 'st-scene-trigger-subpanel';
         container.id = 'rbq-prompt-presets-panel';
         container.innerHTML = `
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-bookmark"></i><span>提示词预设 (Prompt Presets)</span></div>
-            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词；切换预设时会自动联动 NAI 面板中的 Vibe Transfer 配置。</div>
+            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
                     <select id="rbq-pp-select" class="text_pole" data-action="plugin-ignore" style="flex:1; padding: 6px; appearance: auto;"></select>
@@ -363,6 +214,9 @@
             panel.appendChild(container);
         }
 
+        // CRITICAL: Stop change events from bubbling out of our plugin UI
+        // The host modal has a global 'change' listener that calls saveFromModal(),
+        // which would reset the NAI URL to official if triggered from here.
         container.addEventListener('change', (e) => e.stopPropagation());
         container.addEventListener('input', (e) => e.stopPropagation());
 
@@ -374,18 +228,10 @@
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
 
-        function snapshotCurrentEditorToActivePreset() {
-            const preset = getActivePreset();
-            if (!preset) return;
-            preset.name = nameInput.value.trim() || preset.name;
-            preset.positive = posInput.value.trim();
-            preset.negative = negInput.value.trim();
-        }
-
         function syncFloatingMenu() {
             const store = getStore();
             let pMenu = document.getElementById('rbq-pp-floating-wrap');
-
+            
             if (store.showFloating) {
                 if (!pMenu) {
                     pMenu = document.createElement('div');
@@ -393,32 +239,33 @@
                     pMenu.className = 'st-scene-trigger-floating-item';
                     pMenu.style.cssText = 'padding:8px 10px; cursor:default;';
                     pMenu.innerHTML = '<i class="fa-solid fa-bookmark" style="width:14px;"></i><select id="rbq-pp-floating-select" style="background:rgba(0,0,0,0.4);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;flex:1;outline:none;padding:2px 4px;font-size:12px;cursor:pointer;" data-action="plugin-ignore"></select>';
-
+                    
                     const menu = document.getElementById('st-scene-trigger-floating-menu');
                     const divider = menu?.querySelector('.st-scene-trigger-floating-divider');
                     if (menu) {
                         if (divider) menu.insertBefore(pMenu, divider);
                         else menu.appendChild(pMenu);
                     }
-
+                    
                     const fSelect = document.getElementById('rbq-pp-floating-select');
                     if (fSelect) {
                         fSelect.addEventListener('change', (e) => {
-                            snapshotCurrentEditorToActivePreset();
-                            switchActivePreset(e.target.value);
+                            getStore().activeId = e.target.value;
+                            save();
+                            renderSelect();
                         });
                         fSelect.addEventListener('click', e => e.stopPropagation());
                         pMenu.addEventListener('click', e => e.stopPropagation());
                     }
                 }
-
+                
                 const fSelect = document.getElementById('rbq-pp-floating-select');
                 if (fSelect) {
                     fSelect.innerHTML = '<option value="" style="color:#000">-- 不使用预设 --</option>';
                     store.presets.forEach(p => {
                         const opt = document.createElement('option');
                         opt.value = p.id;
-                        opt.textContent = formatPresetLabel(p);
+                        opt.textContent = p.name || p.id;
                         opt.style.color = '#000';
                         fSelect.appendChild(opt);
                     });
@@ -436,7 +283,7 @@
             store.presets.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
-                opt.textContent = formatPresetLabel(p);
+                opt.textContent = p.name || p.id;
                 select.appendChild(opt);
             });
             select.value = store.activeId || '';
@@ -458,8 +305,10 @@
         }
 
         select.addEventListener('change', () => {
-            snapshotCurrentEditorToActivePreset();
-            switchActivePreset(select.value);
+            getStore().activeId = select.value;
+            save();
+            loadEditor();
+            syncFloatingMenu();
         });
 
         posSelect.addEventListener('change', () => {
@@ -478,7 +327,7 @@
             if (!name) return;
             const store = getStore();
             const id = uid();
-            store.presets.push({ id, name, positive: '', negative: '', vibes: [] });
+            store.presets.push({ id, name, positive: '', negative: '' });
             store.activeId = id;
             save();
             renderSelect();
@@ -491,7 +340,6 @@
             preset.name = nameInput.value.trim() || preset.name;
             preset.positive = posInput.value.trim();
             preset.negative = negInput.value.trim();
-            preset.vibes = readCurrentHostVibes();
             save();
             renderSelect();
             toastr.success('预设已保存: ' + preset.name);
@@ -513,23 +361,17 @@
         document.getElementById('rbq-pp-export').addEventListener('click', () => {
             const store = getStore();
             if (!store.presets.length) return toastr.warning('没有可导出的预设');
-            showCheckboxDialog('选择要导出的预设', store.presets.map((item) => ({
-                ...item,
-                extraInfo: item.vibes?.length ? `绑定 ${item.vibes.length} 个 Vibe 文件` : '未绑定 Vibe 文件',
-            })), (selectedIds) => {
+            showCheckboxDialog('选择要导出的预设', store.presets, (selectedIds) => {
                 const selected = store.presets.filter(p => selectedIds.includes(p.id));
                 if (!selected.length) return toastr.warning('未选择任何预设');
+                // Export in compatible format (positivePrompt / negativePrompt)
                 const exportData = selected.map((p, idx) => ({
-                    id: p.id,
                     name: p.name,
-                    positive: p.positive || '',
-                    negative: p.negative || '',
                     positivePrompt: p.positive || '',
                     negativePrompt: p.negative || '',
                     sequence: idx,
                     referenceImage: null,
                     thumbnail: null,
-                    vibes: cloneVibes(p.vibes),
                 }));
                 const data = JSON.stringify(exportData, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
@@ -558,30 +400,27 @@
                 const text = await file.text();
                 const imported = JSON.parse(text);
                 if (!Array.isArray(imported)) throw new Error('格式错误：文件内容应为数组');
-                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt || (Array.isArray(item.vibes) && item.vibes.length));
+                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt);
                 if (!candidates.length) throw new Error('文件中没有有效的预设');
 
-                const displayItems = candidates.map((item) => {
-                    const preset = sanitizePreset(item);
-                    return {
-                        ...preset,
-                        extraInfo: preset.vibes.length ? `绑定 ${preset.vibes.length} 个 Vibe 文件` : '未绑定 Vibe 文件',
-                    };
-                }).filter(Boolean);
+                // Normalize items - support both formats:
+                // Plugin native: { positive, negative }
+                // External compat: { positivePrompt, negativePrompt, sequence, referenceImage, thumbnail }
+                const displayItems = candidates.map((item, idx) => ({
+                    id: item.id || uid(),
+                    name: item.name || '未命名预设',
+                    positive: item.positive || item.positivePrompt || '',
+                    negative: item.negative || item.negativePrompt || '',
+                }));
 
                 showCheckboxDialog('选择要导入的预设 (' + file.name + ')', displayItems, (selectedIds) => {
                     const store = getStore();
                     let count = 0;
                     for (const item of displayItems) {
                         if (!selectedIds.includes(item.id)) continue;
+                        // Avoid duplicate IDs
                         if (store.presets.some(p => p.id === item.id)) item.id = uid();
-                        store.presets.push({
-                            id: item.id,
-                            name: item.name,
-                            positive: item.positive,
-                            negative: item.negative,
-                            vibes: cloneVibes(item.vibes),
-                        });
+                        store.presets.push(item);
                         count++;
                     }
                     save();
@@ -598,17 +437,16 @@
         document.getElementById('rbq-pp-batch-delete').addEventListener('click', () => {
             const store = getStore();
             if (!store.presets.length) return toastr.warning('没有任何预设可删除');
-            showCheckboxDialog('选择要删除的预设 (警告：操作不可逆)', store.presets.map((item) => ({
-                ...item,
-                extraInfo: item.vibes?.length ? `绑定 ${item.vibes.length} 个 Vibe 文件` : '未绑定 Vibe 文件',
-            })), (selectedIds) => {
+            showCheckboxDialog('选择要删除的预设 (警告：操作不可逆)', store.presets, (selectedIds) => {
                 if (!selectedIds.length) return toastr.warning('未选择任何预设');
                 if (!window.confirm(`确定要永久删除这 ${selectedIds.length} 个预设吗？`)) return;
-
+                
+                // If active preset is getting deleted, clear activeId
                 if (selectedIds.includes(store.activeId)) {
                     store.activeId = '';
                 }
-
+                
+                // Filter out the deleted ones
                 store.presets = store.presets.filter(p => !selectedIds.includes(p.id));
                 save();
                 renderSelect();
@@ -617,15 +455,18 @@
         });
 
         renderSelect();
-        syncSelectedPresetVibesToHost();
         console.info('[Prompt Presets] UI mounted');
     });
 
     // ── Neutralize built-in prefix/suffix/negative ─────────────
+    // The host extension has its own prefix/suffix/negative fields that overlap
+    // with this plugin's functionality. When this plugin is active, hide those
+    // fields and clear their values so they don't double-up with preset hooks.
     function neutralizeBuiltinFields() {
         const s = RBQ.api.getSettings();
         const store = getStore();
 
+        // Back up original values (once) so they're not lost forever
         if (!store._builtinBackup) {
             store._builtinBackup = {
                 prefix: s.prefix || '',
@@ -634,11 +475,13 @@
             };
         }
 
+        // Clear the extension's built-in values so its joinPrompt logic becomes a no-op
         s.prefix = '';
         s.suffix = '';
         s.negative = '';
         save();
 
+        // Hide the DOM fields AND clear their values (prevents saveFromModal from restoring old data)
         ['st-scene-trigger-modal-prefix', 'st-scene-trigger-modal-suffix', 'st-scene-trigger-modal-negative'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -648,10 +491,12 @@
         });
     }
 
+    // Run on load and re-run periodically (in case modal reopens and syncUi refills hidden inputs)
     neutralizeBuiltinFields();
     setInterval(() => {
         const el = document.getElementById('st-scene-trigger-modal-prefix');
         if (!el) return;
+        // Re-neutralize if label became visible again OR if syncUi refilled the hidden input
         if (el.closest('label')?.style.display !== 'none' || el.value) neutralizeBuiltinFields();
     }, 2000);
 

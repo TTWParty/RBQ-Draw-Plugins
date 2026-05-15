@@ -43,17 +43,21 @@
     }
 
     function formatPresetLabel(preset) {
-        const vibeCount = Array.isArray(preset?.vibes) ? preset.vibes.length : 0;
-        return `${preset.name || preset.id}${vibeCount ? ` · Vibe ${vibeCount}` : ''}`;
+        return `${preset?.name || preset?.id || '未命名预设'}`;
     }
 
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', showFloating: false, presets: [] };
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', showFloating: false, presets: [], manualVibes: [] };
         const store = s[STORAGE_KEY];
         if (store.position !== 'append') store.position = 'prepend';
         store.showFloating = !!store.showFloating;
         store.presets = (Array.isArray(store.presets) ? store.presets : []).map(sanitizePreset).filter(Boolean);
+        if (!Array.isArray(store.manualVibes)) {
+            store.manualVibes = cloneVibes(RBQ.api.getNaiVibes?.() || []);
+        } else {
+            store.manualVibes = cloneVibes(store.manualVibes);
+        }
         if (!store.presets.some(p => p.id === store.activeId)) store.activeId = '';
         return store;
     }
@@ -62,6 +66,31 @@
         const store = getStore();
         return store.activeId ? store.presets.find(p => p.id === store.activeId) || null : null;
     }
+
+    function syncSelectedPresetVibesToHost() {
+        const preset = getActivePreset();
+        const store = getStore();
+        if (preset) {
+            RBQ.api.setNaiVibes?.(cloneVibes(preset.vibes), { source: 'plugin:preset-sync' });
+        } else {
+            RBQ.api.setNaiVibes?.(cloneVibes(store.manualVibes), { source: 'plugin:preset-sync' });
+        }
+        RBQ.api.refreshNaiVibeUi?.();
+    }
+
+    RBQ.on('naiVibesChanged', (state) => {
+        if (!state || state.source === 'plugin:preset-sync' || state.preciseRefsActive) return state;
+        const store = getStore();
+        const vibes = cloneVibes(state.vibes);
+        if (store.activeId) {
+            const preset = getActivePreset();
+            if (preset) preset.vibes = vibes;
+        } else {
+            store.manualVibes = vibes;
+        }
+        save();
+        return state;
+    });
 
     // ── Join Logic ──
     function joinPrompt(original, presetText, position) {
@@ -157,55 +186,6 @@
         return payload;
     });
 
-    function fileToBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    }
-
-    async function parseVibeFile(file) {
-        if (/\.naiv4vibe$|\.json$/i.test(file.name)) {
-            const data = JSON.parse(await file.text());
-            if (data.identifier !== 'novelai-vibe-transfer') {
-                throw new Error('无效的 .naiv4vibe 文件格式');
-            }
-
-            let encoding = null;
-            if (data.encodings) {
-                for (const modelKey in data.encodings) {
-                    for (const hashKey in data.encodings[modelKey]) {
-                        const encObj = data.encodings[modelKey][hashKey];
-                        if (encObj?.encoding) {
-                            encoding = encObj;
-                            break;
-                        }
-                    }
-                    if (encoding) break;
-                }
-            }
-
-            if (!encoding?.encoding) {
-                throw new Error('未在 .naiv4vibe 文件中找到有效特征数据');
-            }
-
-            return sanitizeVibe({
-                name: file.name,
-                b64: String(data.image || data.thumbnail || '').replace(/^data:image\/[^;]+;base64,/, ''),
-                tensor: encoding.encoding,
-                info: encoding.params?.information_extracted || 1,
-                strength: encoding.params?.reference_strength || 0.6,
-            });
-        }
-
-        return sanitizeVibe({
-            name: file.name,
-            b64: await fileToBase64(file),
-        });
-    }
-
     // ── Checkbox Dialog ──
     function showCheckboxDialog(title, items, onConfirm) {
         const overlay = document.createElement('div');
@@ -296,7 +276,7 @@
         container.id = 'rbq-prompt-presets-panel';
         container.innerHTML = `
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-bookmark"></i><span>提示词预设 (Prompt Presets)</span></div>
-            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词；也可以把多组 Vibe 文件绑定到同一个预设里一起切换。</div>
+            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词；切换预设时会自动联动 NAI 面板中的 Vibe Transfer 配置。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
                     <select id="rbq-pp-select" class="text_pole" data-action="plugin-ignore" style="flex:1; padding: 6px; appearance: auto;"></select>
@@ -311,16 +291,6 @@
                     <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用"></label>
                     <label class="st-scene-trigger-field wide"><span>正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
                     <label class="st-scene-trigger-field wide"><span>负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
-                    <div class="st-scene-trigger-field wide">
-                        <span>Vibe Transfer 氛围文件</span>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                            <button id="rbq-pp-vibe-add" class="menu_button" data-action="plugin-ignore" type="button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-images"></i> 添加氛围图 / .naiv4vibe</button>
-                            <span id="rbq-pp-vibe-status" style="font-size:12px; color:rgba(255,255,255,0.65);"></span>
-                        </div>
-                        <div id="rbq-pp-vibe-deck" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
-                        <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px;">每个预设最多保存 6 个氛围文件。切换提示词预设时，会一并切换绑定的 Vibe 文件。</div>
-                        <input id="rbq-pp-vibe-file" type="file" accept="image/*,.naiv4vibe,application/json" multiple hidden>
-                    </div>
                 </div>
                 <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
                     <button id="rbq-pp-save" class="menu_button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
@@ -357,10 +327,6 @@
         const nameInput = document.getElementById('rbq-pp-name');
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
-        const vibeAddBtn = document.getElementById('rbq-pp-vibe-add');
-        const vibeStatus = document.getElementById('rbq-pp-vibe-status');
-        const vibeDeck = document.getElementById('rbq-pp-vibe-deck');
-        const vibeFileInput = document.getElementById('rbq-pp-vibe-file');
 
         function syncFloatingMenu() {
             const store = getStore();
@@ -410,50 +376,6 @@
             }
         }
 
-        function renderVibeEditor(preset) {
-            if (!(vibeDeck instanceof HTMLElement) || !(vibeStatus instanceof HTMLElement) || !(vibeAddBtn instanceof HTMLButtonElement)) return;
-            vibeDeck.innerHTML = '';
-
-            if (!preset) {
-                vibeStatus.textContent = '请选择或新建一个预设后，再为它绑定氛围文件。';
-                vibeAddBtn.disabled = true;
-                return;
-            }
-
-            const vibes = Array.isArray(preset.vibes) ? preset.vibes : [];
-            vibeAddBtn.disabled = vibes.length >= MAX_VIBES;
-            vibeStatus.textContent = vibes.length
-                ? `当前已绑定 ${vibes.length}/${MAX_VIBES} 个氛围文件。切换此预设时会自动应用。`
-                : '当前预设未绑定氛围文件。';
-
-            vibes.forEach((item) => {
-                const card = document.createElement('div');
-                card.dataset.vibeId = item.id;
-                card.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);';
-                card.innerHTML = `
-                    <div style="display:flex;gap:8px;align-items:flex-start;">
-                        ${item.b64
-                        ? `<img src="data:image/png;base64,${item.b64}" alt="vibe" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:#111;">`
-                        : `<div style="width:64px;height:64px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;background:#111;color:rgba(255,255,255,0.45);font-size:11px;text-align:center;padding:4px;">无预览</div>`}
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name || item.id}</div>
-                            <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px;">${item.tensor ? '已包含 Vibe 特征' : '仅原图，生成时由后端处理'}</div>
-                        </div>
-                        <button class="menu_button" type="button" data-action="remove-vibe" data-id="${item.id}" style="font-size:12px;padding:4px 8px;color:#ff6666;"><i class="fa-solid fa-xmark"></i></button>
-                    </div>
-                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
-                        <span>强度 <em>${item.strength}</em></span>
-                        <input type="range" min="0" max="1" step="0.01" value="${item.strength}" data-action="vibe-strength" data-id="${item.id}">
-                    </label>
-                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
-                        <span>信息提取 <em>${item.info}</em></span>
-                        <input type="range" min="0" max="1" step="0.01" value="${item.info}" data-action="vibe-info" data-id="${item.id}">
-                    </label>
-                `;
-                vibeDeck.appendChild(card);
-            });
-        }
-
         function renderSelect() {
             const store = getStore();
             floatingCheckbox.checked = !!store.showFloating;
@@ -480,12 +402,16 @@
             } else {
                 editor.style.display = 'none';
             }
-            renderVibeEditor(preset);
         }
 
         select.addEventListener('change', () => {
-            getStore().activeId = select.value;
+            const store = getStore();
+            if (!store.activeId) {
+                store.manualVibes = cloneVibes(RBQ.api.getNaiVibes?.() || []);
+            }
+            store.activeId = select.value;
             save();
+            syncSelectedPresetVibesToHost();
             loadEditor();
             syncFloatingMenu();
         });
@@ -499,71 +425,6 @@
             getStore().showFloating = floatingCheckbox.checked;
             save();
             syncFloatingMenu();
-        });
-
-        vibeAddBtn?.addEventListener('click', () => {
-            const preset = getActivePreset();
-            if (!preset) return toastr.warning('请先选择或新建一个预设');
-            vibeFileInput?.click();
-        });
-
-        vibeFileInput?.addEventListener('change', async (e) => {
-            const preset = getActivePreset();
-            const files = Array.from(e.target.files || []);
-            e.target.value = '';
-            if (!preset || !files.length) return;
-
-            let added = 0;
-            try {
-                for (const file of files) {
-                    if (preset.vibes.length >= MAX_VIBES) break;
-                    const vibe = await parseVibeFile(file);
-                    if (!vibe) continue;
-                    preset.vibes.push(vibe);
-                    added++;
-                }
-                if (!added) {
-                    if (preset.vibes.length >= MAX_VIBES) {
-                        toastr.warning(`单个预设最多只能保存 ${MAX_VIBES} 个氛围文件`);
-                    }
-                    return;
-                }
-                save();
-                renderSelect();
-                toastr.success(`已添加 ${added} 个氛围文件到预设：${preset.name}`);
-            } catch (err) {
-                toastr.error('氛围文件导入失败: ' + (err.message || String(err)));
-            }
-        });
-
-        vibeDeck?.addEventListener('click', (event) => {
-            const target = event.target.closest('[data-action="remove-vibe"]');
-            if (!target) return;
-            const preset = getActivePreset();
-            if (!preset) return;
-            preset.vibes = preset.vibes.filter(v => v.id !== target.dataset.id);
-            save();
-            renderSelect();
-        });
-
-        vibeDeck?.addEventListener('input', (event) => {
-            const target = event.target;
-            if (!(target instanceof HTMLInputElement)) return;
-            const preset = getActivePreset();
-            if (!preset) return;
-            const item = preset.vibes.find(v => v.id === target.dataset.id);
-            if (!item) return;
-
-            if (target.dataset.action === 'vibe-strength') {
-                item.strength = Math.max(0, Math.min(1, Number(target.value) || 0.6));
-            } else if (target.dataset.action === 'vibe-info') {
-                item.info = Math.max(0, Math.min(1, Number(target.value) || 1));
-            } else {
-                return;
-            }
-
-            target.closest('label')?.querySelector('em')?.replaceChildren(document.createTextNode(target.value));
-            save();
         });
 
         document.getElementById('rbq-pp-new').addEventListener('click', () => {
@@ -710,6 +571,7 @@
         });
 
         renderSelect();
+        syncSelectedPresetVibesToHost();
         console.info('[Prompt Presets] UI mounted');
     });
 

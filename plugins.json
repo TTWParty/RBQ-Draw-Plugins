@@ -10,10 +10,10 @@
   {
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
-    "description": "保存常用的正面/负面提示词组合为预设，生图时自动拼接到主提示词的前面或后面。支持添加、编辑、删除、选择性导入导出。",
-    "version": "1.2.6",
+    "description": "保存常用的正面/负面提示词组合为预设，生图时自动拼接到主提示词的前面或后面。支持添加、编辑、删除、选择性导入导出，并可在保存时附带保存当前 Vibe 状态。",
+    "version": "1.2.7",
     "author": "TTWP-09",
-    "main": "plugins/prompt-presets.js?v=1.2.6"
+    "main": "plugins/prompt-presets.js?v=1.2.7"
   },
   {
     "id": "rbq-png-metadata",

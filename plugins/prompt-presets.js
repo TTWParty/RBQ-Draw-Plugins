@@ -1,4 +1,4 @@
-(function(RBQ, $, toastr) {
+(function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[Prompt Presets] RBQ Core API missing');
 
     const STORAGE_KEY = '_promptPresets';
@@ -14,6 +14,84 @@
     function getActivePreset() {
         const store = getStore();
         return store.activeId ? store.presets.find(p => p.id === store.activeId) || null : null;
+    }
+
+    function getCurrentNaiVibes() {
+        return Array.isArray(RBQ.api.getNaiVibes?.()) ? RBQ.api.getNaiVibes() : [];
+    }
+
+    function compactVibeEntry(item) {
+        if (!item || typeof item !== 'object') return null;
+        const tensor = String(item.tensor || '').trim();
+        const b64 = String(item.b64 || '').trim();
+        if (!tensor && !b64) return null;
+        return {
+            id: String(item.id || uid()),
+            tensor: tensor || null,
+            b64,
+            info: Math.max(0, Math.min(1, Number(item.info) || 1)),
+            strength: Math.max(0, Math.min(1, Number(item.strength) || 0.6)),
+        };
+    }
+
+    function snapshotNaiVibes(mode = 'full') {
+        const vibes = getCurrentNaiVibes();
+        return vibes.map((item) => {
+            const base = compactVibeEntry(item);
+            if (!base) return null;
+            if (mode === 'compact') {
+                return {
+                    id: base.id,
+                    tensor: base.tensor,
+                    b64: '',
+                    info: base.info,
+                    strength: base.strength,
+                };
+            }
+            return base;
+        }).filter(Boolean).slice(0, 6);
+    }
+
+    function restorePresetVibesToHost(preset) {
+        const vibes = Array.isArray(preset?.vibes) ? preset.vibes : [];
+        RBQ.api.setNaiVibes?.(vibes, { source: 'plugin:preset-restore' });
+        RBQ.api.refreshNaiVibeUi?.();
+    }
+
+    function showVibeSaveDialog(onSelect) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);';
+        const dialog = document.createElement('div');
+        dialog.style.cssText = 'background:#1e1e2e;border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:16px;min-width:320px;max-width:520px;display:flex;flex-direction:column;gap:12px;color:#fff;box-shadow:0 12px 40px rgba(0,0,0,0.5);';
+        dialog.innerHTML = `
+            <div style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;">
+                <i class="fa-solid fa-box-archive"></i>
+                <span>保存氛围文件状态</span>
+            </div>
+            <div style="font-size:13px;color:rgba(255,255,255,0.72);line-height:1.6;">
+                当前 NAI 面板里检测到氛围文件。请选择保存方式：
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="rbq-pp-save-compact" class="menu_button" type="button" style="flex:1;min-width:150px;">
+                    <i class="fa-solid fa-minimize"></i> 压缩保存
+                </button>
+                <button id="rbq-pp-save-full" class="menu_button" type="button" style="flex:1;min-width:150px;">
+                    <i class="fa-solid fa-floppy-disk"></i> 完整保存
+                </button>
+            </div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.52);line-height:1.6;">
+                压缩保存：优先保留 tensor、strength、info，不保留大图 base64；完整保存：保留当前全部可用数据，体积更大。
+            </div>
+            <div style="display:flex;justify-content:flex-end;">
+                <button id="rbq-pp-save-cancel" class="menu_button" type="button" style="font-size:12px;padding:4px 14px;">取消</button>
+            </div>
+        `;
+        overlay.appendChild(dialog);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        dialog.querySelector('#rbq-pp-save-compact')?.addEventListener('click', () => { overlay.remove(); onSelect('compact'); });
+        dialog.querySelector('#rbq-pp-save-full')?.addEventListener('click', () => { overlay.remove(); onSelect('full'); });
+        dialog.querySelector('#rbq-pp-save-cancel')?.addEventListener('click', () => overlay.remove());
+        document.body.appendChild(overlay);
     }
 
     // ── Join Logic ──
@@ -231,7 +309,7 @@
         function syncFloatingMenu() {
             const store = getStore();
             let pMenu = document.getElementById('rbq-pp-floating-wrap');
-            
+
             if (store.showFloating) {
                 if (!pMenu) {
                     pMenu = document.createElement('div');
@@ -239,14 +317,14 @@
                     pMenu.className = 'st-scene-trigger-floating-item';
                     pMenu.style.cssText = 'padding:8px 10px; cursor:default;';
                     pMenu.innerHTML = '<i class="fa-solid fa-bookmark" style="width:14px;"></i><select id="rbq-pp-floating-select" style="background:rgba(0,0,0,0.4);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;flex:1;outline:none;padding:2px 4px;font-size:12px;cursor:pointer;" data-action="plugin-ignore"></select>';
-                    
+
                     const menu = document.getElementById('st-scene-trigger-floating-menu');
                     const divider = menu?.querySelector('.st-scene-trigger-floating-divider');
                     if (menu) {
                         if (divider) menu.insertBefore(pMenu, divider);
                         else menu.appendChild(pMenu);
                     }
-                    
+
                     const fSelect = document.getElementById('rbq-pp-floating-select');
                     if (fSelect) {
                         fSelect.addEventListener('change', (e) => {
@@ -258,7 +336,7 @@
                         pMenu.addEventListener('click', e => e.stopPropagation());
                     }
                 }
-                
+
                 const fSelect = document.getElementById('rbq-pp-floating-select');
                 if (fSelect) {
                     fSelect.innerHTML = '<option value="" style="color:#000">-- 不使用预设 --</option>';
@@ -307,6 +385,13 @@
         select.addEventListener('change', () => {
             getStore().activeId = select.value;
             save();
+            const preset = getActivePreset();
+            if (preset) {
+                restorePresetVibesToHost(preset);
+            } else {
+                RBQ.api.setNaiVibes?.([], { source: 'plugin:preset-clear' });
+                RBQ.api.refreshNaiVibeUi?.();
+            }
             loadEditor();
             syncFloatingMenu();
         });
@@ -340,6 +425,17 @@
             preset.name = nameInput.value.trim() || preset.name;
             preset.positive = posInput.value.trim();
             preset.negative = negInput.value.trim();
+            const vibes = getCurrentNaiVibes();
+            if (vibes.length > 0) {
+                showVibeSaveDialog((mode) => {
+                    preset.vibes = snapshotNaiVibes(mode);
+                    save();
+                    renderSelect();
+                    toastr.success('预设已保存: ' + preset.name);
+                });
+                return;
+            }
+            preset.vibes = [];
             save();
             renderSelect();
             toastr.success('预设已保存: ' + preset.name);
@@ -366,12 +462,14 @@
                 if (!selected.length) return toastr.warning('未选择任何预设');
                 // Export in compatible format (positivePrompt / negativePrompt)
                 const exportData = selected.map((p, idx) => ({
+                    id: p.id,
                     name: p.name,
                     positivePrompt: p.positive || '',
                     negativePrompt: p.negative || '',
                     sequence: idx,
                     referenceImage: null,
                     thumbnail: null,
+                    vibes: Array.isArray(p.vibes) ? p.vibes : [],
                 }));
                 const data = JSON.stringify(exportData, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
@@ -400,7 +498,7 @@
                 const text = await file.text();
                 const imported = JSON.parse(text);
                 if (!Array.isArray(imported)) throw new Error('格式错误：文件内容应为数组');
-                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt);
+                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt || (Array.isArray(item.vibes) && item.vibes.length));
                 if (!candidates.length) throw new Error('文件中没有有效的预设');
 
                 // Normalize items - support both formats:
@@ -411,6 +509,7 @@
                     name: item.name || '未命名预设',
                     positive: item.positive || item.positivePrompt || '',
                     negative: item.negative || item.negativePrompt || '',
+                    vibes: Array.isArray(item.vibes) ? item.vibes.map(compactVibeEntry).filter(Boolean).slice(0, 6) : [],
                 }));
 
                 showCheckboxDialog('选择要导入的预设 (' + file.name + ')', displayItems, (selectedIds) => {
@@ -440,12 +539,12 @@
             showCheckboxDialog('选择要删除的预设 (警告：操作不可逆)', store.presets, (selectedIds) => {
                 if (!selectedIds.length) return toastr.warning('未选择任何预设');
                 if (!window.confirm(`确定要永久删除这 ${selectedIds.length} 个预设吗？`)) return;
-                
+
                 // If active preset is getting deleted, clear activeId
                 if (selectedIds.includes(store.activeId)) {
                     store.activeId = '';
                 }
-                
+
                 // Filter out the deleted ones
                 store.presets = store.presets.filter(p => !selectedIds.includes(p.id));
                 save();

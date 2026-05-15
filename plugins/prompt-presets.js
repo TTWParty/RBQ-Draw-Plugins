@@ -301,6 +301,8 @@
     }
 
     waitForPanel((panel) => {
+        document.getElementById('rbq-prompt-presets-panel')?.remove();
+
         const container = document.createElement('div');
         container.className = 'st-scene-trigger-subpanel';
         container.id = 'rbq-prompt-presets-panel';
@@ -358,6 +360,14 @@
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
 
+        function snapshotCurrentEditorToActivePreset() {
+            const preset = getActivePreset();
+            if (!preset) return;
+            preset.name = nameInput.value.trim() || preset.name;
+            preset.positive = posInput.value.trim();
+            preset.negative = negInput.value.trim();
+        }
+
         function syncFloatingMenu() {
             const store = getStore();
             let pMenu = document.getElementById('rbq-pp-floating-wrap');
@@ -380,6 +390,7 @@
                     const fSelect = document.getElementById('rbq-pp-floating-select');
                     if (fSelect) {
                         fSelect.addEventListener('change', (e) => {
+                            snapshotCurrentEditorToActivePreset();
                             switchActivePreset(e.target.value);
                         });
                         fSelect.addEventListener('click', e => e.stopPropagation());
@@ -433,6 +444,7 @@
         }
 
         select.addEventListener('change', () => {
+            snapshotCurrentEditorToActivePreset();
             switchActivePreset(select.value);
         });
 

@@ -1,16 +1,63 @@
-(function(RBQ, $, toastr) {
+(function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[Prompt Presets] RBQ Core API missing');
 
     const STORAGE_KEY = '_promptPresets';
+    const MAX_VIBES = 6;
 
     // ── Storage ──
+    function save() { RBQ.api.saveSettings(); }
+    function uid(prefix = 'pp') { return prefix + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+    function sanitizeVibe(item) {
+        if (!item || typeof item !== 'object') return null;
+        const b64 = String(item.b64 || '').trim();
+        const tensor = String(item.tensor || '').trim();
+        if (!b64 && !tensor) return null;
+        return {
+            id: String(item.id || uid('vibe')),
+            name: String(item.name || item.filename || '未命名氛围文件').trim() || '未命名氛围文件',
+            b64,
+            tensor: tensor || null,
+            info: Math.max(0, Math.min(1, Number(item.info) || 1)),
+            strength: Math.max(0, Math.min(1, Number(item.strength) || 0.6)),
+        };
+    }
+
+    function cloneVibes(vibes) {
+        return (Array.isArray(vibes) ? vibes : [])
+            .map(sanitizeVibe)
+            .filter(Boolean)
+            .slice(0, MAX_VIBES)
+            .map(v => ({ ...v }));
+    }
+
+    function sanitizePreset(item) {
+        if (!item || typeof item !== 'object') return null;
+        return {
+            id: String(item.id || uid()),
+            name: String(item.name || '未命名预设').trim() || '未命名预设',
+            positive: String(item.positive || item.positivePrompt || '').trim(),
+            negative: String(item.negative || item.negativePrompt || '').trim(),
+            vibes: cloneVibes(item.vibes),
+        };
+    }
+
+    function formatPresetLabel(preset) {
+        const vibeCount = Array.isArray(preset?.vibes) ? preset.vibes.length : 0;
+        return `${preset.name || preset.id}${vibeCount ? ` · Vibe ${vibeCount}` : ''}`;
+    }
+
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', presets: [] };
-        return s[STORAGE_KEY];
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', showFloating: false, presets: [] };
+        const store = s[STORAGE_KEY];
+        if (store.position !== 'append') store.position = 'prepend';
+        store.showFloating = !!store.showFloating;
+        store.presets = (Array.isArray(store.presets) ? store.presets : []).map(sanitizePreset).filter(Boolean);
+        if (!store.presets.some(p => p.id === store.activeId)) store.activeId = '';
+        return store;
     }
-    function save() { RBQ.api.saveSettings(); }
-    function uid() { return 'pp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
     function getActivePreset() {
         const store = getStore();
         return store.activeId ? store.presets.find(p => p.id === store.activeId) || null : null;
@@ -23,6 +70,32 @@
         if (!b) return a;
         if (!a) return b;
         return position === 'prepend' ? (b + ', ' + a) : (a + ', ' + b);
+    }
+
+    function applyPresetVibesToNaiPayload(payload, preset) {
+        const vibes = cloneVibes(preset?.vibes);
+        if (!vibes.length || !payload?.parameters) return payload;
+
+        delete payload.parameters.director_reference_images;
+        delete payload.parameters.director_reference_strength_values;
+        delete payload.parameters.director_reference_information_extracted;
+        delete payload.parameters.director_reference_secondary_strength_values;
+        delete payload.parameters.director_reference_descriptions;
+        delete payload.parameters.normalize_reference_strength_multiple;
+
+        payload.parameters.reference_image_multiple = [];
+        payload.parameters.reference_information_extracted_multiple = [];
+        payload.parameters.reference_strength_multiple = [];
+        payload.parameters.uncond_per_vibe = true;
+        payload.parameters.wonky_vibe_correlation = true;
+
+        vibes.forEach((item) => {
+            payload.parameters.reference_image_multiple.push(item.tensor || item.b64);
+            payload.parameters.reference_information_extracted_multiple.push(Number(item.info) || 1);
+            payload.parameters.reference_strength_multiple.push(Number(item.strength) || 0.6);
+        });
+
+        return payload;
     }
 
     // ── Payload Hooks ──
@@ -48,7 +121,8 @@
                 );
             }
         }
-        console.info('[Prompt Presets] NAI payload modified:', preset.name);
+        applyPresetVibesToNaiPayload(payload, preset);
+        console.info('[Prompt Presets] NAI payload modified:', preset.name, 'vibes:', Array.isArray(preset.vibes) ? preset.vibes.length : 0);
         return payload;
     });
 
@@ -82,6 +156,55 @@
         console.info('[Prompt Presets] ComfyUI workflow modified:', preset.name);
         return payload;
     });
+
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function parseVibeFile(file) {
+        if (/\.naiv4vibe$|\.json$/i.test(file.name)) {
+            const data = JSON.parse(await file.text());
+            if (data.identifier !== 'novelai-vibe-transfer') {
+                throw new Error('无效的 .naiv4vibe 文件格式');
+            }
+
+            let encoding = null;
+            if (data.encodings) {
+                for (const modelKey in data.encodings) {
+                    for (const hashKey in data.encodings[modelKey]) {
+                        const encObj = data.encodings[modelKey][hashKey];
+                        if (encObj?.encoding) {
+                            encoding = encObj;
+                            break;
+                        }
+                    }
+                    if (encoding) break;
+                }
+            }
+
+            if (!encoding?.encoding) {
+                throw new Error('未在 .naiv4vibe 文件中找到有效特征数据');
+            }
+
+            return sanitizeVibe({
+                name: file.name,
+                b64: String(data.image || data.thumbnail || '').replace(/^data:image\/[^;]+;base64,/, ''),
+                tensor: encoding.encoding,
+                info: encoding.params?.information_extracted || 1,
+                strength: encoding.params?.reference_strength || 0.6,
+            });
+        }
+
+        return sanitizeVibe({
+            name: file.name,
+            b64: await fileToBase64(file),
+        });
+    }
 
     // ── Checkbox Dialog ──
     function showCheckboxDialog(title, items, onConfirm) {
@@ -120,7 +243,8 @@
             info.style.cssText = 'flex:1;';
             info.innerHTML = '<div style="font-size:13px;font-weight:500;">' + (item.name || item.id) + '</div>'
                 + (item.positive ? '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">正: ' + item.positive.slice(0, 80) + '</div>' : '')
-                + (item.negative ? '<div style="font-size:11px;color:rgba(255,200,200,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">负: ' + item.negative.slice(0, 80) + '</div>' : '');
+                + (item.negative ? '<div style="font-size:11px;color:rgba(255,200,200,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">负: ' + item.negative.slice(0, 80) + '</div>' : '')
+                + (item.extraInfo ? '<div style="font-size:11px;color:rgba(180,220,255,0.65);margin-top:2px;">' + item.extraInfo + '</div>' : '');
             row.append(cb, info);
             listDiv.appendChild(row);
             checkboxes.push(cb);
@@ -150,7 +274,6 @@
 
         dialog.append(header, selectAllRow, listDiv, btnRow);
         overlay.appendChild(dialog);
-        // CRITICAL: stop bubbling from dialog elements too
         overlay.addEventListener('change', (e) => e.stopPropagation());
         overlay.addEventListener('input', (e) => e.stopPropagation());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
@@ -173,7 +296,7 @@
         container.id = 'rbq-prompt-presets-panel';
         container.innerHTML = `
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-bookmark"></i><span>提示词预设 (Prompt Presets)</span></div>
-            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
+            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词；也可以把多组 Vibe 文件绑定到同一个预设里一起切换。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
                     <select id="rbq-pp-select" class="text_pole" data-action="plugin-ignore" style="flex:1; padding: 6px; appearance: auto;"></select>
@@ -188,6 +311,16 @@
                     <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用"></label>
                     <label class="st-scene-trigger-field wide"><span>正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
                     <label class="st-scene-trigger-field wide"><span>负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
+                    <div class="st-scene-trigger-field wide">
+                        <span>Vibe Transfer 氛围文件</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                            <button id="rbq-pp-vibe-add" class="menu_button" data-action="plugin-ignore" type="button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-images"></i> 添加氛围图 / .naiv4vibe</button>
+                            <span id="rbq-pp-vibe-status" style="font-size:12px; color:rgba(255,255,255,0.65);"></span>
+                        </div>
+                        <div id="rbq-pp-vibe-deck" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
+                        <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px;">每个预设最多保存 6 个氛围文件。切换提示词预设时，会一并切换绑定的 Vibe 文件。</div>
+                        <input id="rbq-pp-vibe-file" type="file" accept="image/*,.naiv4vibe,application/json" multiple hidden>
+                    </div>
                 </div>
                 <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
                     <button id="rbq-pp-save" class="menu_button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
@@ -214,9 +347,6 @@
             panel.appendChild(container);
         }
 
-        // CRITICAL: Stop change events from bubbling out of our plugin UI
-        // The host modal has a global 'change' listener that calls saveFromModal(),
-        // which would reset the NAI URL to official if triggered from here.
         container.addEventListener('change', (e) => e.stopPropagation());
         container.addEventListener('input', (e) => e.stopPropagation());
 
@@ -227,11 +357,15 @@
         const nameInput = document.getElementById('rbq-pp-name');
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
+        const vibeAddBtn = document.getElementById('rbq-pp-vibe-add');
+        const vibeStatus = document.getElementById('rbq-pp-vibe-status');
+        const vibeDeck = document.getElementById('rbq-pp-vibe-deck');
+        const vibeFileInput = document.getElementById('rbq-pp-vibe-file');
 
         function syncFloatingMenu() {
             const store = getStore();
             let pMenu = document.getElementById('rbq-pp-floating-wrap');
-            
+
             if (store.showFloating) {
                 if (!pMenu) {
                     pMenu = document.createElement('div');
@@ -239,14 +373,14 @@
                     pMenu.className = 'st-scene-trigger-floating-item';
                     pMenu.style.cssText = 'padding:8px 10px; cursor:default;';
                     pMenu.innerHTML = '<i class="fa-solid fa-bookmark" style="width:14px;"></i><select id="rbq-pp-floating-select" style="background:rgba(0,0,0,0.4);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;flex:1;outline:none;padding:2px 4px;font-size:12px;cursor:pointer;" data-action="plugin-ignore"></select>';
-                    
+
                     const menu = document.getElementById('st-scene-trigger-floating-menu');
                     const divider = menu?.querySelector('.st-scene-trigger-floating-divider');
                     if (menu) {
                         if (divider) menu.insertBefore(pMenu, divider);
                         else menu.appendChild(pMenu);
                     }
-                    
+
                     const fSelect = document.getElementById('rbq-pp-floating-select');
                     if (fSelect) {
                         fSelect.addEventListener('change', (e) => {
@@ -258,14 +392,14 @@
                         pMenu.addEventListener('click', e => e.stopPropagation());
                     }
                 }
-                
+
                 const fSelect = document.getElementById('rbq-pp-floating-select');
                 if (fSelect) {
                     fSelect.innerHTML = '<option value="" style="color:#000">-- 不使用预设 --</option>';
                     store.presets.forEach(p => {
                         const opt = document.createElement('option');
                         opt.value = p.id;
-                        opt.textContent = p.name || p.id;
+                        opt.textContent = formatPresetLabel(p);
                         opt.style.color = '#000';
                         fSelect.appendChild(opt);
                     });
@@ -276,6 +410,50 @@
             }
         }
 
+        function renderVibeEditor(preset) {
+            if (!(vibeDeck instanceof HTMLElement) || !(vibeStatus instanceof HTMLElement) || !(vibeAddBtn instanceof HTMLButtonElement)) return;
+            vibeDeck.innerHTML = '';
+
+            if (!preset) {
+                vibeStatus.textContent = '请选择或新建一个预设后，再为它绑定氛围文件。';
+                vibeAddBtn.disabled = true;
+                return;
+            }
+
+            const vibes = Array.isArray(preset.vibes) ? preset.vibes : [];
+            vibeAddBtn.disabled = vibes.length >= MAX_VIBES;
+            vibeStatus.textContent = vibes.length
+                ? `当前已绑定 ${vibes.length}/${MAX_VIBES} 个氛围文件。切换此预设时会自动应用。`
+                : '当前预设未绑定氛围文件。';
+
+            vibes.forEach((item) => {
+                const card = document.createElement('div');
+                card.dataset.vibeId = item.id;
+                card.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);';
+                card.innerHTML = `
+                    <div style="display:flex;gap:8px;align-items:flex-start;">
+                        ${item.b64
+                        ? `<img src="data:image/png;base64,${item.b64}" alt="vibe" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:#111;">`
+                        : `<div style="width:64px;height:64px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;background:#111;color:rgba(255,255,255,0.45);font-size:11px;text-align:center;padding:4px;">无预览</div>`}
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name || item.id}</div>
+                            <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px;">${item.tensor ? '已包含 Vibe 特征' : '仅原图，生成时由后端处理'}</div>
+                        </div>
+                        <button class="menu_button" type="button" data-action="remove-vibe" data-id="${item.id}" style="font-size:12px;padding:4px 8px;color:#ff6666;"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+                        <span>强度 <em>${item.strength}</em></span>
+                        <input type="range" min="0" max="1" step="0.01" value="${item.strength}" data-action="vibe-strength" data-id="${item.id}">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+                        <span>信息提取 <em>${item.info}</em></span>
+                        <input type="range" min="0" max="1" step="0.01" value="${item.info}" data-action="vibe-info" data-id="${item.id}">
+                    </label>
+                `;
+                vibeDeck.appendChild(card);
+            });
+        }
+
         function renderSelect() {
             const store = getStore();
             floatingCheckbox.checked = !!store.showFloating;
@@ -283,7 +461,7 @@
             store.presets.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
-                opt.textContent = p.name || p.id;
+                opt.textContent = formatPresetLabel(p);
                 select.appendChild(opt);
             });
             select.value = store.activeId || '';
@@ -302,6 +480,7 @@
             } else {
                 editor.style.display = 'none';
             }
+            renderVibeEditor(preset);
         }
 
         select.addEventListener('change', () => {
@@ -322,12 +501,77 @@
             syncFloatingMenu();
         });
 
+        vibeAddBtn?.addEventListener('click', () => {
+            const preset = getActivePreset();
+            if (!preset) return toastr.warning('请先选择或新建一个预设');
+            vibeFileInput?.click();
+        });
+
+        vibeFileInput?.addEventListener('change', async (e) => {
+            const preset = getActivePreset();
+            const files = Array.from(e.target.files || []);
+            e.target.value = '';
+            if (!preset || !files.length) return;
+
+            let added = 0;
+            try {
+                for (const file of files) {
+                    if (preset.vibes.length >= MAX_VIBES) break;
+                    const vibe = await parseVibeFile(file);
+                    if (!vibe) continue;
+                    preset.vibes.push(vibe);
+                    added++;
+                }
+                if (!added) {
+                    if (preset.vibes.length >= MAX_VIBES) {
+                        toastr.warning(`单个预设最多只能保存 ${MAX_VIBES} 个氛围文件`);
+                    }
+                    return;
+                }
+                save();
+                renderSelect();
+                toastr.success(`已添加 ${added} 个氛围文件到预设：${preset.name}`);
+            } catch (err) {
+                toastr.error('氛围文件导入失败: ' + (err.message || String(err)));
+            }
+        });
+
+        vibeDeck?.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-action="remove-vibe"]');
+            if (!target) return;
+            const preset = getActivePreset();
+            if (!preset) return;
+            preset.vibes = preset.vibes.filter(v => v.id !== target.dataset.id);
+            save();
+            renderSelect();
+        });
+
+        vibeDeck?.addEventListener('input', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement)) return;
+            const preset = getActivePreset();
+            if (!preset) return;
+            const item = preset.vibes.find(v => v.id === target.dataset.id);
+            if (!item) return;
+
+            if (target.dataset.action === 'vibe-strength') {
+                item.strength = Math.max(0, Math.min(1, Number(target.value) || 0.6));
+            } else if (target.dataset.action === 'vibe-info') {
+                item.info = Math.max(0, Math.min(1, Number(target.value) || 1));
+            } else {
+                return;
+            }
+
+            target.closest('label')?.querySelector('em')?.replaceChildren(document.createTextNode(target.value));
+            save();
+        });
+
         document.getElementById('rbq-pp-new').addEventListener('click', () => {
             const name = window.prompt('输入新预设名称：');
             if (!name) return;
             const store = getStore();
             const id = uid();
-            store.presets.push({ id, name, positive: '', negative: '' });
+            store.presets.push({ id, name, positive: '', negative: '', vibes: [] });
             store.activeId = id;
             save();
             renderSelect();
@@ -340,6 +584,7 @@
             preset.name = nameInput.value.trim() || preset.name;
             preset.positive = posInput.value.trim();
             preset.negative = negInput.value.trim();
+            preset.vibes = cloneVibes(preset.vibes);
             save();
             renderSelect();
             toastr.success('预设已保存: ' + preset.name);
@@ -361,17 +606,23 @@
         document.getElementById('rbq-pp-export').addEventListener('click', () => {
             const store = getStore();
             if (!store.presets.length) return toastr.warning('没有可导出的预设');
-            showCheckboxDialog('选择要导出的预设', store.presets, (selectedIds) => {
+            showCheckboxDialog('选择要导出的预设', store.presets.map((item) => ({
+                ...item,
+                extraInfo: item.vibes?.length ? `绑定 ${item.vibes.length} 个 Vibe 文件` : '未绑定 Vibe 文件',
+            })), (selectedIds) => {
                 const selected = store.presets.filter(p => selectedIds.includes(p.id));
                 if (!selected.length) return toastr.warning('未选择任何预设');
-                // Export in compatible format (positivePrompt / negativePrompt)
                 const exportData = selected.map((p, idx) => ({
+                    id: p.id,
                     name: p.name,
+                    positive: p.positive || '',
+                    negative: p.negative || '',
                     positivePrompt: p.positive || '',
                     negativePrompt: p.negative || '',
                     sequence: idx,
                     referenceImage: null,
                     thumbnail: null,
+                    vibes: cloneVibes(p.vibes),
                 }));
                 const data = JSON.stringify(exportData, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
@@ -400,27 +651,30 @@
                 const text = await file.text();
                 const imported = JSON.parse(text);
                 if (!Array.isArray(imported)) throw new Error('格式错误：文件内容应为数组');
-                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt);
+                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt || (Array.isArray(item.vibes) && item.vibes.length));
                 if (!candidates.length) throw new Error('文件中没有有效的预设');
 
-                // Normalize items - support both formats:
-                // Plugin native: { positive, negative }
-                // External compat: { positivePrompt, negativePrompt, sequence, referenceImage, thumbnail }
-                const displayItems = candidates.map((item, idx) => ({
-                    id: item.id || uid(),
-                    name: item.name || '未命名预设',
-                    positive: item.positive || item.positivePrompt || '',
-                    negative: item.negative || item.negativePrompt || '',
-                }));
+                const displayItems = candidates.map((item) => {
+                    const preset = sanitizePreset(item);
+                    return {
+                        ...preset,
+                        extraInfo: preset.vibes.length ? `绑定 ${preset.vibes.length} 个 Vibe 文件` : '未绑定 Vibe 文件',
+                    };
+                }).filter(Boolean);
 
                 showCheckboxDialog('选择要导入的预设 (' + file.name + ')', displayItems, (selectedIds) => {
                     const store = getStore();
                     let count = 0;
                     for (const item of displayItems) {
                         if (!selectedIds.includes(item.id)) continue;
-                        // Avoid duplicate IDs
                         if (store.presets.some(p => p.id === item.id)) item.id = uid();
-                        store.presets.push(item);
+                        store.presets.push({
+                            id: item.id,
+                            name: item.name,
+                            positive: item.positive,
+                            negative: item.negative,
+                            vibes: cloneVibes(item.vibes),
+                        });
                         count++;
                     }
                     save();
@@ -437,16 +691,17 @@
         document.getElementById('rbq-pp-batch-delete').addEventListener('click', () => {
             const store = getStore();
             if (!store.presets.length) return toastr.warning('没有任何预设可删除');
-            showCheckboxDialog('选择要删除的预设 (警告：操作不可逆)', store.presets, (selectedIds) => {
+            showCheckboxDialog('选择要删除的预设 (警告：操作不可逆)', store.presets.map((item) => ({
+                ...item,
+                extraInfo: item.vibes?.length ? `绑定 ${item.vibes.length} 个 Vibe 文件` : '未绑定 Vibe 文件',
+            })), (selectedIds) => {
                 if (!selectedIds.length) return toastr.warning('未选择任何预设');
                 if (!window.confirm(`确定要永久删除这 ${selectedIds.length} 个预设吗？`)) return;
-                
-                // If active preset is getting deleted, clear activeId
+
                 if (selectedIds.includes(store.activeId)) {
                     store.activeId = '';
                 }
-                
-                // Filter out the deleted ones
+
                 store.presets = store.presets.filter(p => !selectedIds.includes(p.id));
                 save();
                 renderSelect();
@@ -459,14 +714,10 @@
     });
 
     // ── Neutralize built-in prefix/suffix/negative ─────────────
-    // The host extension has its own prefix/suffix/negative fields that overlap
-    // with this plugin's functionality. When this plugin is active, hide those
-    // fields and clear their values so they don't double-up with preset hooks.
     function neutralizeBuiltinFields() {
         const s = RBQ.api.getSettings();
         const store = getStore();
 
-        // Back up original values (once) so they're not lost forever
         if (!store._builtinBackup) {
             store._builtinBackup = {
                 prefix: s.prefix || '',
@@ -475,13 +726,11 @@
             };
         }
 
-        // Clear the extension's built-in values so its joinPrompt logic becomes a no-op
         s.prefix = '';
         s.suffix = '';
         s.negative = '';
         save();
 
-        // Hide the DOM fields AND clear their values (prevents saveFromModal from restoring old data)
         ['st-scene-trigger-modal-prefix', 'st-scene-trigger-modal-suffix', 'st-scene-trigger-modal-negative'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -491,12 +740,10 @@
         });
     }
 
-    // Run on load and re-run periodically (in case modal reopens and syncUi refills hidden inputs)
     neutralizeBuiltinFields();
     setInterval(() => {
         const el = document.getElementById('st-scene-trigger-modal-prefix');
         if (!el) return;
-        // Re-neutralize if label became visible again OR if syncUi refilled the hidden input
         if (el.closest('label')?.style.display !== 'none' || el.value) neutralizeBuiltinFields();
     }, 2000);
 

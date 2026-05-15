@@ -7,7 +7,27 @@
     function getStore() {
         const s = RBQ.api.getSettings();
         if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', presets: [] };
-        return s[STORAGE_KEY];
+        const store = s[STORAGE_KEY];
+        let mutated = false;
+        const seenIds = new Set();
+        store.presets = (Array.isArray(store.presets) ? store.presets : []).map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            const preset = { ...item };
+            preset.id = String(preset.id || uid());
+            if (seenIds.has(preset.id)) {
+                preset.id = uid();
+                mutated = true;
+            }
+            seenIds.add(preset.id);
+            if (!item.id) mutated = true;
+            return preset;
+        }).filter(Boolean);
+        if (!store.presets.some(p => p.id === store.activeId)) {
+            store.activeId = '';
+            mutated = true;
+        }
+        if (mutated) save();
+        return store;
     }
     function save() { RBQ.api.saveSettings(); }
     function uid() { return 'pp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -246,6 +266,8 @@
     }
 
     waitForPanel((panel) => {
+        document.getElementById('rbq-prompt-presets-panel')?.remove();
+
         const container = document.createElement('div');
         container.className = 'st-scene-trigger-subpanel';
         container.id = 'rbq-prompt-presets-panel';

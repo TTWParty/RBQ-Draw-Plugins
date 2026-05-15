@@ -50,15 +50,29 @@
         const s = RBQ.api.getSettings();
         if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', showFloating: false, presets: [], manualVibes: [] };
         const store = s[STORAGE_KEY];
+        let mutated = false;
         if (store.position !== 'append') store.position = 'prepend';
         store.showFloating = !!store.showFloating;
-        store.presets = (Array.isArray(store.presets) ? store.presets : []).map(sanitizePreset).filter(Boolean);
+        const seenPresetIds = new Set();
+        store.presets = (Array.isArray(store.presets) ? store.presets : []).map(sanitizePreset).filter(Boolean).map((preset) => {
+            if (!preset.id || seenPresetIds.has(preset.id)) {
+                preset.id = uid();
+                mutated = true;
+            }
+            seenPresetIds.add(preset.id);
+            return preset;
+        });
         if (!Array.isArray(store.manualVibes)) {
             store.manualVibes = cloneVibes(RBQ.api.getNaiVibes?.() || []);
+            mutated = true;
         } else {
             store.manualVibes = cloneVibes(store.manualVibes);
         }
-        if (!store.presets.some(p => p.id === store.activeId)) store.activeId = '';
+        if (!store.presets.some(p => p.id === store.activeId)) {
+            store.activeId = '';
+            mutated = true;
+        }
+        if (mutated) save();
         return store;
     }
 

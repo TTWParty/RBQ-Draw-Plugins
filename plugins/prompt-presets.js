@@ -67,6 +67,18 @@
         return store.activeId ? store.presets.find(p => p.id === store.activeId) || null : null;
     }
 
+    function readCurrentHostVibes() {
+        return cloneVibes(RBQ.api.getNaiVibes?.() || []);
+    }
+
+    function snapshotCurrentVibesToActivePreset() {
+        const preset = getActivePreset();
+        if (!preset) return null;
+        const vibes = readCurrentHostVibes();
+        preset.vibes = vibes;
+        return vibes;
+    }
+
     function syncSelectedPresetVibesToHost() {
         const preset = getActivePreset();
         const store = getStore();
@@ -406,8 +418,10 @@
 
         select.addEventListener('change', () => {
             const store = getStore();
-            if (!store.activeId) {
-                store.manualVibes = cloneVibes(RBQ.api.getNaiVibes?.() || []);
+            if (store.activeId) {
+                snapshotCurrentVibesToActivePreset();
+            } else {
+                store.manualVibes = readCurrentHostVibes();
             }
             store.activeId = select.value;
             save();
@@ -445,7 +459,7 @@
             preset.name = nameInput.value.trim() || preset.name;
             preset.positive = posInput.value.trim();
             preset.negative = negInput.value.trim();
-            preset.vibes = cloneVibes(preset.vibes);
+            preset.vibes = readCurrentHostVibes();
             save();
             renderSelect();
             toastr.success('预设已保存: ' + preset.name);

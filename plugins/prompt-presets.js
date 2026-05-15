@@ -79,6 +79,24 @@
         return vibes;
     }
 
+    function snapshotCurrentWorkspaceToStore() {
+        const store = getStore();
+        if (store.activeId) {
+            snapshotCurrentVibesToActivePreset();
+        } else {
+            store.manualVibes = readCurrentHostVibes();
+        }
+    }
+
+    function switchActivePreset(nextId) {
+        const store = getStore();
+        snapshotCurrentWorkspaceToStore();
+        store.activeId = String(nextId || '');
+        save();
+        syncSelectedPresetVibesToHost();
+        renderSelect();
+    }
+
     function syncSelectedPresetVibesToHost() {
         const preset = getActivePreset();
         const store = getStore();
@@ -362,9 +380,7 @@
                     const fSelect = document.getElementById('rbq-pp-floating-select');
                     if (fSelect) {
                         fSelect.addEventListener('change', (e) => {
-                            getStore().activeId = e.target.value;
-                            save();
-                            renderSelect();
+                            switchActivePreset(e.target.value);
                         });
                         fSelect.addEventListener('click', e => e.stopPropagation());
                         pMenu.addEventListener('click', e => e.stopPropagation());
@@ -417,17 +433,7 @@
         }
 
         select.addEventListener('change', () => {
-            const store = getStore();
-            if (store.activeId) {
-                snapshotCurrentVibesToActivePreset();
-            } else {
-                store.manualVibes = readCurrentHostVibes();
-            }
-            store.activeId = select.value;
-            save();
-            syncSelectedPresetVibesToHost();
-            loadEditor();
-            syncFloatingMenu();
+            switchActivePreset(select.value);
         });
 
         posSelect.addEventListener('change', () => {

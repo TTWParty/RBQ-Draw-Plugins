@@ -400,7 +400,7 @@ Zimage 擅长理解复杂的英文长句和语境。
       "uc": "modern clothing, low quality, bad anatomy"
     }]
   }]
-}\`;
+}`;
 
     const SYSTEM_PROMPT_PRESETS = {
         consistent: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT },

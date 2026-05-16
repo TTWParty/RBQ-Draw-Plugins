@@ -335,8 +335,76 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
   }]
 }`;
 
+    const ZIMAGE_NL_PROMPT = `你是专为 Zimage (自然语言模型) 打造的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
+
+══ 铁律 ══
+1. 只输出合法 JSON，禁 markdown/注释/解释
+2. anchor.text 从 currentMessage.content **逐字复制** 10~40字原文（indexOf 可定位，找不到=失败）
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. 提示词必须是流畅、生动、描述性的自然语言英语句子，禁止使用 Danbooru 式逗号堆砌 Tag。
+
+══ 自然语言规范 ══
+Zimage 擅长理解复杂的英文长句和语境。
+- 避免枯燥的罗列，使用动词、形容词和从句构建画面。
+- 描述光影、材质、氛围时使用具象的修辞（如 "Bathed in the warm, golden glow of the afternoon sun" 而非 "warm_lighting, sunset"）。
+- 不要使用权重符号 (如 1.2::tag:: 或 {tag})。
+
+══ 字段规范 ══
+
+**scene**（→ base_caption，全角色共享）
+用一到两句完整的英文描述整个环境、时间、氛围、光影和整体画面风格（如逼真、电影感、赛博朋克等）。
+⚠️ 仅描述环境，不要在此处描述角色的动作和长相。
+示例："A dimly lit cyberpunk alleyway shrouded in neon mist. Rain puddles reflect the vibrant pink and blue signs. The scene is captured in a cinematic, highly detailed photographic style with shallow depth of field."
+
+**name**（→ 角色身份键，用于记忆匹配）
+角色的精确英文标识。原创角色请加 (original)。
+
+**base**（→ char_caption 外貌防伪码，跨图绝对锁定不变）
+用一句话描述角色的基本生理特征：性别、大致年龄、发色发型、眼色、体型体格、肤色、特殊印记等。
+示例："A young slender woman with long flowing silver hair, piercing crimson eyes, and pale skin adorned with a small beauty mark under her left eye."
+
+**outfit**（→ char_caption 服装部分，随场景变化）
+用一句话详细描述角色当前的穿着、材质、款式、受损或裸露状态。
+示例："She is wearing a torn black leather jacket over a white crop top, with distressed denim shorts and thigh-high combat boots. Her clothes are completely soaked."
+
+**action**（→ char_caption 动态部分，每帧不同）
+用一到两句话生动描述角色当前的姿势、表情、视线、正在进行的具体动作以及互动的细节。
+示例："She is looking up directly at the viewer with a flushed, tearful expression, panting heavily. She kneels on the wet ground, her hands tightly gripping a glowing red sword."
+
+**center**（→ 角色位置坐标，5×5 网格 A-E列×1-5行，C3=正中）
+用于 ComfyUI 区域控制（若适用），单人默认 C3，多人请分开如 B3, D3。
+
+**uc**（→ 角色负面提示词，防污染）
+这部分可以保持为简短的单词或短语，以排除不需要的元素。
+示例："boy, glasses, short hair, artifacts, low quality"
+
+══ 核心原则 ══
+真实: 文本有述→直用；无述→上文推断补全；冲突→文本优先。禁止虚构。
+视角: 主观视角 (POV) 时，观察者不作为独立角色写入 characters。
+分镜: 抓重点，单条消息通常只生成 1~2 张高光画面的描述。
+
+══ 输出示例 ══
+{
+  "shouldDraw": true,
+  "reason": "中文10~30字",
+  "segments": [{
+    "label": "5~15字中文",
+    "anchor": {"text": "逐字复制原文"},
+    "scene": "A luxurious medieval tavern illuminated by the warm, flickering glow of a large fireplace. The atmosphere is cozy and slightly hazy with smoke.",
+    "characters": [{
+      "name": "Elora (original)",
+      "base": "A beautiful elven woman in her early twenties with long braided golden hair, emerald green eyes, and a tall, elegant figure.",
+      "outfit": "She is dressed in an ornate emerald green velvet gown with gold embroidery, featuring a plunging neckline.",
+      "action": "She sits gracefully on a wooden stool, leaning forward slightly to lock eyes with the viewer. A soft, alluring smile plays on her lips as she gently holds a wooden mug of ale.",
+      "center": "C3",
+      "uc": "modern clothing, low quality, bad anatomy"
+    }]
+  }]
+}\`;
+
     const SYSTEM_PROMPT_PRESETS = {
         consistent: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT },
+        zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
         storyboarder: { label: 'V21-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
         classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
@@ -1324,11 +1392,25 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
     function getFinalPrompt(obj) {
         if (!obj) return '';
 
-        // Multi-char: base prompt = scene only; characters go via NAI V4 char_captions hook
+        let mode = 'unknown';
+        try { mode = RBQ.api.getSettings().currentMode; } catch(e) {}
+
+        let hasCharPlaceholders = false;
+        if (mode === 'comfyui') {
+            try {
+                const wf = RBQ.api.getSettings().comfyuiWorkflowJson || '';
+                hasCharPlaceholders = /\{\{char\d+(_uc)?\}\}/.test(wf);
+            } catch(e) {}
+        }
+
+        // Multi-char: base prompt = scene only; characters go via hook
         if (getStore().multiCharOutput && Array.isArray(obj.characters) && obj.characters.length > 0) {
-            const scene = obj.scene || '';
-            const standalone = obj.standalone_prompt || '';
-            return [scene, standalone].filter(Boolean).join(', ');
+            // Only strip characters if we are in NAI mode, OR if we are in ComfyUI mode WITH char placeholders.
+            if (mode === 'nai' || (mode === 'comfyui' && hasCharPlaceholders)) {
+                const scene = obj.scene || '';
+                const standalone = obj.standalone_prompt || '';
+                return [scene, standalone].filter(Boolean).join(', ');
+            }
         }
 
         if (obj.prompt) return obj.prompt;
@@ -1413,6 +1495,36 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
         };
 
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
+        pendingNaiCharData = null; // consume
+        return payload;
+    });
+
+    /* ── ComfyUI payload hook: inject char placeholders ── */
+    RBQ.on('buildComfyUiWorkflow', (payload) => {
+        if (!pendingNaiCharData || !getStore().multiCharOutput) return payload;
+        const { characters } = pendingNaiCharData;
+        if (!characters.length) return payload;
+
+        let payloadStr = JSON.stringify(payload);
+        
+        characters.forEach((c, i) => {
+            const charIndex = i + 1;
+            const safeCaption = JSON.stringify(c.caption || '').slice(1, -1);
+            const safeUc = JSON.stringify(c.uc || '').slice(1, -1);
+            payloadStr = payloadStr.split(`{{char${charIndex}}}`).join(safeCaption);
+            payloadStr = payloadStr.split(`{{char${charIndex}_uc}}`).join(safeUc);
+        });
+        
+        // Remove any unused placeholders
+        payloadStr = payloadStr.replace(/\{\{char\d+(_uc)?\}\}/g, '');
+
+        try {
+            payload = JSON.parse(payloadStr);
+            debugInfo(`ComfyUI 角色直注: 注入了 ${characters.length} 个角色变量`);
+        } catch(e) {
+            console.error('[Smart Draw Trigger] Failed to parse ComfyUI workflow after injecting characters', e);
+        }
+        
         pendingNaiCharData = null; // consume
         return payload;
     });

@@ -328,6 +328,28 @@
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
 
+        function applyPresetSelection(nextId) {
+            const store = getStore();
+            store.activeId = String(nextId || '');
+            save();
+
+            // 先同步编辑区与两个选择器，避免后续 Vibe 恢复异常时 UI 停留在旧预设。
+            renderSelect();
+
+            const preset = getActivePreset();
+            try {
+                if (preset) {
+                    restorePresetVibesToHost(preset);
+                } else {
+                    RBQ.api.setNaiVibes?.([], { source: 'plugin:preset-clear' });
+                    RBQ.api.refreshNaiVibeUi?.();
+                }
+            } catch (err) {
+                console.error('[Prompt Presets] Failed to restore preset state:', err);
+                toastr.error('切换预设时恢复氛围图失败: ' + (err?.message || String(err)));
+            }
+        }
+
         function syncFloatingMenu() {
             const store = getStore();
             let pMenu = document.getElementById('rbq-pp-floating-wrap');
@@ -350,9 +372,7 @@
                     const fSelect = document.getElementById('rbq-pp-floating-select');
                     if (fSelect) {
                         fSelect.addEventListener('change', (e) => {
-                            getStore().activeId = e.target.value;
-                            save();
-                            renderSelect();
+                            applyPresetSelection(e.target.value);
                         });
                         fSelect.addEventListener('click', e => e.stopPropagation());
                         pMenu.addEventListener('click', e => e.stopPropagation());
@@ -400,22 +420,15 @@
                 negInput.value = preset.negative || '';
                 editor.style.display = '';
             } else {
+                nameInput.value = '';
+                posInput.value = '';
+                negInput.value = '';
                 editor.style.display = 'none';
             }
         }
 
         select.addEventListener('change', () => {
-            getStore().activeId = select.value;
-            save();
-            const preset = getActivePreset();
-            if (preset) {
-                restorePresetVibesToHost(preset);
-            } else {
-                RBQ.api.setNaiVibes?.([], { source: 'plugin:preset-clear' });
-                RBQ.api.refreshNaiVibeUi?.();
-            }
-            loadEditor();
-            syncFloatingMenu();
+            applyPresetSelection(select.value);
         });
 
         posSelect.addEventListener('change', () => {

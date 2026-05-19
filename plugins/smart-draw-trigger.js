@@ -3121,6 +3121,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div style="font-size:16px;font-weight:600;color:#e0e0e0;">✏️ 手动描述生图</div>
                 <div style="font-size:13px;opacity:.65;line-height:1.5;">输入你想生成的图片场景描述（中英文均可），插件会调用 tagger 将它转化为结构化 tag 并生成图片。</div>
                 <textarea id="rbq-sdt-manual-input" style="width:100%;min-height:120px;background:#2a2a3e;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;color:#e0e0e0;font-size:14px;resize:vertical;outline:none;" placeholder="例：一个穿着白色连衣裙的少女在月光下的花园里起舞..."></textarea>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#c0c0c0;cursor:pointer;"><input id="rbq-sdt-manual-use-context" type="checkbox" ${localStorage.getItem('rbq-sdt-manual-context') !== 'false' ? 'checked' : ''}><span>结合当前聊天上下文（角色、场景、服装状态等）</span></label>
                 <div style="display:flex;gap:10px;justify-content:flex-end;">
                     <button id="rbq-sdt-manual-cancel" class="menu_button" type="button" style="opacity:.7;">取消</button>
                     <button id="rbq-sdt-manual-submit" class="menu_button" type="button" style="background:rgba(100,180,255,.2);border:1px solid rgba(100,180,255,.35);font-weight:600;">🎨 生成</button>
@@ -3161,16 +3162,42 @@ Zimage 擅长理解复杂的英文长句和语境。
                 ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
                 : [{ role: 'system', content: systemPrompt }];
 
+            const useContext = !!document.getElementById('rbq-sdt-manual-use-context')?.checked;
+            localStorage.setItem('rbq-sdt-manual-context', String(useContext));
+
+            // Build context from current chat if enabled
+            let recentMessages = [];
+            let lorebook = [];
+            let latestMessageId = -1;
+            if (useContext) {
+                try {
+                    const chat = RBQ.api.getContext()?.chat || [];
+                    latestMessageId = chat.length - 1;
+                    if (latestMessageId >= 0) {
+                        recentMessages = RBQ.api.getRecentMessages(latestMessageId, store.contextCount).map(item => ({
+                            id: item.id, role: item.is_user ? 'user' : 'assistant', name: item.name, content: item.mes,
+                        }));
+                        const currentMes = chat[latestMessageId]?.mes || '';
+                        lorebook = collectMatchedLorebookEntries(currentMes, recentMessages, latestMessageId)
+                            .map(l => ({ name: l.comment || l.sourceName || '\u89d2\u8272/\u8bbe\u5b9a', keys: l.matchedKeys, tags: String(l.content || '').trim() }));
+                    }
+                } catch (e) {
+                    console.warn('[Smart Draw] failed to gather chat context for manual draw', e);
+                }
+            }
+
             const manualPayload = {
                 mode: 'manual',
                 marker: '',
-                messageId: -1,
+                messageId: latestMessageId,
                 currentMessage: { role: 'user', name: 'Manual Input', content: description },
-                recentMessages: [],
-                lorebook: [],
-                contextCount: 1,
+                recentMessages,
+                lorebook,
+                contextCount: useContext ? (Number(store.contextCount) || 5) : 1,
                 manualMode: true,
-                manualInstruction: '用户手动输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。至少输出 1 个 segment。',
+                manualInstruction: useContext
+                    ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
+                    : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
                 outputSchema: {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',

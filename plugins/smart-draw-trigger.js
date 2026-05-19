@@ -453,6 +453,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         multiCharOutput: false,
         autoRunTagger: false,
         autoRunGenerate: false,
+        minSegments: 0,
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         lorebookEnabled: false,
         lorebookContextDepth: 5,
@@ -1638,6 +1639,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         const lorebook = collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
 
+        const minSeg = Number(store.minSegments) || 0;
+
         const payload = {
             mode: trigger.type,
             marker: trigger.marker || '',
@@ -1651,6 +1654,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
             lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
+            ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。` } : {}),
             ...((ec => {
                 const ecPayloads = {
                     v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits. Critically: identify the EXACT temporal moment of 'currentMessage' (imminent/ongoing/completed) and only use tags matching that moment. Never add cum/climax tags to pre-climax scenes.",
@@ -2592,6 +2596,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             .rbq-sdt-lorebook-meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
             .rbq-sdt-lorebook-meta strong, .rbq-sdt-lorebook-meta small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
             .rbq-sdt-lorebook-actions { display:flex; gap:8px; flex-shrink:0; }
+            .rbq-sdt-sticky-save { position:sticky; top:0; z-index:10; padding:10px 0; background:inherit; }
+            .rbq-sdt-save-btn { width:100%; font-size:14px!important; font-weight:600!important; padding:10px 16px!important; background:rgba(100,180,255,.18)!important; border:1px solid rgba(100,180,255,.35)!important; transition:background .2s; }
+            .rbq-sdt-save-btn:hover { background:rgba(100,180,255,.32)!important; }
         `;
         document.head.append(style);
     }
@@ -2768,6 +2775,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         container.innerHTML = `
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw)</span></div>
             <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。支持 segments[] 多段卡片、anchor.text 精准插入，以及按段落独立自动生图。</div>
+            <div class="rbq-sdt-sticky-save"><button id="rbq-sdt-save" class="menu_button rbq-sdt-save-btn" type="button">💾 保存智能触发器设置</button></div>
             <div class="st-scene-trigger-modal-grid">
                 <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
@@ -2778,6 +2786,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
                 <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
@@ -2798,7 +2807,6 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
-                <button id="rbq-sdt-save" class="menu_button" type="button">保存智能触发器设置</button>
                 <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为所选内置 Prompt</button>
                 <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
@@ -2838,6 +2846,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
         document.getElementById('rbq-sdt-auto-generate').checked = !!store.autoRunGenerate;
+        document.getElementById('rbq-sdt-min-segments').value = store.minSegments || 0;
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
@@ -2905,6 +2914,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.multiCharOutput = checked('rbq-sdt-multichar');
             s.autoRunTagger = checked('rbq-sdt-autorun');
             s.autoRunGenerate = checked('rbq-sdt-auto-generate');
+            s.minSegments = Math.max(0, Math.min(10, Number(val('rbq-sdt-min-segments')) || 0));
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');

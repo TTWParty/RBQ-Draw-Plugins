@@ -454,6 +454,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         autoRunTagger: false,
         autoRunGenerate: false,
         minSegments: 0,
+        manualDrawEnabled: false,
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         lorebookEnabled: false,
         lorebookContextDepth: 5,
@@ -2787,6 +2788,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
+                <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
@@ -2847,6 +2849,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
         document.getElementById('rbq-sdt-auto-generate').checked = !!store.autoRunGenerate;
         document.getElementById('rbq-sdt-min-segments').value = store.minSegments || 0;
+        document.getElementById('rbq-sdt-manual-draw').checked = !!store.manualDrawEnabled;
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
@@ -2877,6 +2880,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-auto-generate-field', 'rbq-sdt-auto-generate');
+        bindSwitch('rbq-sdt-manual-draw-field', 'rbq-sdt-manual-draw');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
         bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
         bindSwitch('rbq-sdt-post-process-field', 'rbq-sdt-post-process-enabled');
@@ -2915,6 +2919,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.autoRunTagger = checked('rbq-sdt-autorun');
             s.autoRunGenerate = checked('rbq-sdt-auto-generate');
             s.minSegments = Math.max(0, Math.min(10, Number(val('rbq-sdt-min-segments')) || 0));
+            s.manualDrawEnabled = checked('rbq-sdt-manual-draw');
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
@@ -3080,8 +3085,162 @@ Zimage 擅长理解复杂的英文长句和语境。
         startStreamingWatcher();
     }
 
+    /* ── 手动描述生图：悬浮球按钮注入 + 弹窗 ── */
+    function injectFloatingManualButton() {
+        const menu = document.getElementById('st-scene-trigger-floating-menu');
+        if (!menu || menu.querySelector('[data-action="sdt-manual-draw"]')) return;
+        const store = getStore();
+        if (!store.manualDrawEnabled) return;
+        const divider = menu.querySelector('.st-scene-trigger-floating-divider');
+        const btn = document.createElement('button');
+        btn.className = 'st-scene-trigger-floating-item';
+        btn.dataset.action = 'sdt-manual-draw';
+        btn.innerHTML = '<i class="fa-solid fa-pen-fancy"></i><span>手动描述生图</span>';
+        if (divider) {
+            menu.insertBefore(btn, divider);
+        } else {
+            menu.appendChild(btn);
+        }
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openManualDrawDialog();
+        });
+    }
+
+    function removeFloatingManualButton() {
+        document.querySelector('[data-action="sdt-manual-draw"]')?.remove();
+    }
+
+    function openManualDrawDialog() {
+        if (document.getElementById('rbq-sdt-manual-draw-overlay')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'rbq-sdt-manual-draw-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
+            <div style="background:#1e1e2e;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;width:min(520px,90vw);max-height:80vh;display:flex;flex-direction:column;gap:14px;box-shadow:0 12px 40px rgba(0,0,0,.5);">
+                <div style="font-size:16px;font-weight:600;color:#e0e0e0;">✏️ 手动描述生图</div>
+                <div style="font-size:13px;opacity:.65;line-height:1.5;">输入你想生成的图片场景描述（中英文均可），插件会调用 tagger 将它转化为结构化 tag 并生成图片。</div>
+                <textarea id="rbq-sdt-manual-input" style="width:100%;min-height:120px;background:#2a2a3e;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;color:#e0e0e0;font-size:14px;resize:vertical;outline:none;" placeholder="例：一个穿着白色连衣裙的少女在月光下的花园里起舞..."></textarea>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button id="rbq-sdt-manual-cancel" class="menu_button" type="button" style="opacity:.7;">取消</button>
+                    <button id="rbq-sdt-manual-submit" class="menu_button" type="button" style="background:rgba(100,180,255,.2);border:1px solid rgba(100,180,255,.35);font-weight:600;">🎨 生成</button>
+                </div>
+                <div id="rbq-sdt-manual-status" style="font-size:12px;opacity:.6;min-height:18px;"></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeManualDrawDialog();
+        });
+        document.getElementById('rbq-sdt-manual-cancel').addEventListener('click', closeManualDrawDialog);
+        document.getElementById('rbq-sdt-manual-submit').addEventListener('click', submitManualDraw);
+        setTimeout(() => document.getElementById('rbq-sdt-manual-input')?.focus(), 100);
+    }
+
+    function closeManualDrawDialog() {
+        document.getElementById('rbq-sdt-manual-draw-overlay')?.remove();
+    }
+
+    async function submitManualDraw() {
+        const input = document.getElementById('rbq-sdt-manual-input');
+        const statusEl = document.getElementById('rbq-sdt-manual-status');
+        const submitBtn = document.getElementById('rbq-sdt-manual-submit');
+        const description = input?.value?.trim();
+        if (!description) {
+            toastr.warning('请输入场景描述', PLUGIN_NAME);
+            return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ tagger 分析中...';
+        statusEl.textContent = '正在调用 tagger API 解析场景描述...';
+        try {
+            const store = getStore();
+            const systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+            const messages = store.geminiJailbreak
+                ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
+                : [{ role: 'system', content: systemPrompt }];
+
+            const manualPayload = {
+                mode: 'manual',
+                marker: '',
+                messageId: -1,
+                currentMessage: { role: 'user', name: 'Manual Input', content: description },
+                recentMessages: [],
+                lorebook: [],
+                contextCount: 1,
+                manualMode: true,
+                manualInstruction: '用户手动输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。至少输出 1 个 segment。',
+                outputSchema: {
+                    shouldDraw: 'boolean', reason: 'string',
+                    segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
+                        characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'string', uc: 'string' }]
+                    }]
+                },
+            };
+
+            messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
+
+            if (store.postProcessEnabled && store.postProcessPrompt) {
+                messages.push({ role: store.postProcessRole === 'system' ? 'system' : 'assistant', content: store.postProcessPrompt });
+            }
+
+            const url = normalizeBaseUrl(store.openaiBaseUrl);
+            if (!url) throw new Error('请先在智能触发器设置中填写 OpenAI 兼容接口 Base URL');
+            if (!store.openaiModel) throw new Error('请先在智能触发器设置中填写模型名称');
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
+                body: JSON.stringify({ model: store.openaiModel, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+            });
+            if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
+            const json = await response.json();
+            const normalized = validateStructuredResult(normalizeTaggerResult(json, []));
+            debugInfo(`手动生图 tagger 结果: ${JSON.stringify(normalized).slice(0, 200)}`);
+
+            if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
+                toastr.warning('tagger 未生成有效分镜', PLUGIN_NAME);
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🎨 生成';
+                statusEl.textContent = '';
+                return;
+            }
+
+            const seg = normalized.segments[0];
+            prepareNaiCharData(seg);
+            const finalPrompt = getFinalPrompt(seg);
+            statusEl.textContent = '正在调用生图 API...';
+            submitBtn.textContent = '⏳ 生图中...';
+
+            const image = await RBQ.api.generateImage(finalPrompt, 'sdt-manual-draw', {}, (progressText) => {
+                statusEl.textContent = progressText;
+            });
+
+            closeManualDrawDialog();
+            toastr.success('手动生图完成！图片已保存到历史记录', PLUGIN_NAME);
+        } catch (error) {
+            toastr.error(error.message || String(error), PLUGIN_NAME);
+            statusEl.textContent = '出错了: ' + (error.message || String(error));
+            submitBtn.disabled = false;
+            submitBtn.textContent = '🎨 生成';
+        }
+    }
+
+    // Watch for floating ball appearance and inject button
+    function watchForFloatingBall() {
+        injectFloatingManualButton();
+        const observer = new MutationObserver(() => {
+            const s = getStore();
+            if (s.manualDrawEnabled) injectFloatingManualButton();
+            else removeFloatingManualButton();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
     waitForPanel();
     observeMessages();
+    watchForFloatingBall();
     // Startup diagnostic: verify persistent data loaded
     try {
         const bootStore = getStore();

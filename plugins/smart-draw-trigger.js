@@ -3157,11 +3157,6 @@ Zimage 擅长理解复杂的英文长句和语境。
         statusEl.textContent = '正在调用 tagger API 解析场景描述...';
         try {
             const store = getStore();
-            const systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-            const messages = store.geminiJailbreak
-                ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
-                : [{ role: 'system', content: systemPrompt }];
-
             const useContext = !!document.getElementById('rbq-sdt-manual-use-context')?.checked;
             localStorage.setItem('rbq-sdt-manual-context', String(useContext));
 
@@ -3182,15 +3177,17 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
 
-            // Lorebook always active — match against user description + chat context
-            let lorebook = [];
+            // Lorebook always active
+            let rawLorebooks = [];
             try {
                 const matchText = description + (recentMessages.length ? '\n' + recentMessages.map(m => m.content).join('\n') : '');
-                lorebook = collectMatchedLorebookEntries(matchText, recentMessages, latestMessageId >= 0 ? latestMessageId : 0)
-                    .map(l => ({ name: l.comment || l.sourceName || '\u89d2\u8272/\u8bbe\u5b9a', keys: l.matchedKeys, tags: String(l.content || '').trim() }));
+                rawLorebooks = collectMatchedLorebookEntries(matchText, recentMessages, latestMessageId >= 0 ? latestMessageId : 0);
             } catch (e) {
                 console.warn('[Smart Draw] failed to gather lorebook for manual draw', e);
             }
+            const lorebook = rawLorebooks.map(l => ({ name: l.comment || l.sourceName || '\u89d2\u8272/\u8bbe\u5b9a', keys: l.matchedKeys, tags: String(l.content || '').trim() }));
+
+            const minSeg = Number(store.minSegments) || 0;
 
             const manualPayload = {
                 mode: 'manual',
@@ -3200,10 +3197,20 @@ Zimage 擅长理解复杂的英文长句和语境。
                 recentMessages,
                 lorebook,
                 contextCount: useContext ? (Number(store.contextCount) || 5) : 1,
+                ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `\u672c\u6b21\u8bf7\u6c42\u8981\u6c42\u81f3\u5c11\u751f\u6210 ${minSeg} \u4e2a segment \u5206\u955c\u3002` } : {}),
                 manualMode: true,
                 manualInstruction: useContext
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
+                ...((ec => {
+                    const ecPayloads = {
+                        v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits.",
+                        v5: "Build a state snapshot from the user description and any provided context.",
+                        v6: "FRAME-SYNC: Reconstruct character states from context and user description.",
+                        v7: "SCENE-AWARE ANALYSIS: Apply the full three-layer analysis chain to the user's description.",
+                    };
+                    return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
+                })(store.enhancedContext)),
                 outputSchema: {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -3212,51 +3219,102 @@ Zimage 擅长理解复杂的英文长句和语境。
                 },
             };
 
+            logTaggerPayload('manual draw request', manualPayload);
+
+            // Build messages exactly like callOpenAiCompatible / callCustomHttp
+            const systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+            const messages = store.geminiJailbreak
+                ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
+                : [{ role: 'system', content: systemPrompt }];
+
+            // Enhanced context system prompts (same as normal flow)
+            if (['v5','v6','v7','v8'].includes(store.enhancedContext)) {
+                const ecPrompts = {
+                    v5: "\u3010\u524d\u60c5\u589e\u5f3a\u5206\u6790\u6307\u4ee4\u3011\n\u5728\u5904\u7406 user \u4f20\u5165\u7684 payload \u65f6\uff0c\u4f60\u5fc5\u987b\u9996\u5148\u5728\u8111\u5185\u5bf9 `recentMessages` \u8fdb\u884c\u9690\u5f0f\u5206\u6790\uff0c\u5efa\u7acb\u5f53\u524d\u5e27\u7684\u5b8c\u6574\u72b6\u6001\u5feb\u7167\u3002\u6838\u5fc3\u539f\u5219\uff1a\u751f\u6210\u7684Tag\u5fc5\u987b\u662f\u5f53\u524d\u5e27\u72b6\u6001\u5feb\u7167\u7684\u5fe0\u5b9e\u6620\u5c04\u3002",
+                    v6: "\u3010\u5e27\u540c\u6b65\u5206\u6790\u3011\n\u5728\u8f93\u51fa JSON \u524d\uff0c\u5148\u5728\u8111\u5185\u5b8c\u6210\u72b6\u6001\u7ee7\u627f\u3001\u5f53\u524d\u5e27\u5b9a\u4f4d\u3001\u60c5\u7eea\u72ec\u7acb\u3001\u7a7a\u95f4\u611f\u3001\u52a8\u4f5c\u7c92\u5ea6\u7b49\u5206\u6790\u3002",
+                    v7: "\u3010\u573a\u666f\u611f\u77e5\u5206\u6790 v7\u3011\n\u6309\u4e09\u5c42\u6d41\u6c34\u7ebf\u5b8c\u6210\u5206\u6790\uff1a\u573a\u666f\u9009\u53d6\u3001\u5e27\u91cd\u5efa\u3001\u89c6\u89d2\u51b3\u7b56\u3002",
+                    v8: "\u3010\u7efc\u5408\u63a8\u7406\u5206\u6790 v8\u3011\n\u8bf7\u8fdb\u884c\u4e00\u6bb5\u8fde\u8d2f\u7684\u601d\u7ef4\u94fe\u7efc\u5408\u5206\u6790\uff1a\u5224\u65ad\u751f\u56fe\u4ef7\u503c\u3001\u6574\u4f53\u91cd\u6784\u753b\u9762\u3001\u51b3\u5b9a\u753b\u9762\u89c6\u89d2\u3002",
+                };
+                if (ecPrompts[store.enhancedContext]) {
+                    messages.push({ role: 'system', content: ecPrompts[store.enhancedContext] });
+                }
+            }
+
             messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
 
             if (store.postProcessEnabled && store.postProcessPrompt) {
                 messages.push({ role: store.postProcessRole === 'system' ? 'system' : 'assistant', content: store.postProcessPrompt });
             }
 
-            const url = normalizeBaseUrl(store.openaiBaseUrl);
-            if (!url) throw new Error('请先在智能触发器设置中填写 OpenAI 兼容接口 Base URL');
-            if (!store.openaiModel) throw new Error('请先在智能触发器设置中填写模型名称');
+            // Call tagger via the correct provider (OpenAI or Custom HTTP)
+            let json;
+            if (store.provider === 'custom') {
+                const customUrl = String(store.customUrl || '').trim();
+                if (!customUrl) throw new Error('\u8bf7\u5148\u586b\u5199\u81ea\u5b9a\u4e49 HTTP \u63a5\u53e3\u5730\u5740');
+                const headers = { 'Content-Type': 'application/json' };
+                if (store.customApiKey) {
+                    const headerName = store.customApiKeyHeader || 'Authorization';
+                    headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
+                }
+                const response = await fetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
+                if (!response.ok) throw new Error(`\u81ea\u5b9a\u4e49 tagger \u8bf7\u6c42\u5931\u8d25: HTTP ${response.status}`);
+                json = await response.json();
+            } else {
+                const url = normalizeBaseUrl(store.openaiBaseUrl);
+                if (!url) throw new Error('\u8bf7\u5148\u586b\u5199 OpenAI \u517c\u5bb9\u63a5\u53e3 Base URL');
+                if (!store.openaiModel) throw new Error('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u540d\u79f0');
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
+                    body: JSON.stringify({ model: store.openaiModel, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+                });
+                if (!response.ok) throw new Error(`tagger API \u8bf7\u6c42\u5931\u8d25: HTTP ${response.status}`);
+                json = await response.json();
+            }
 
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                body: JSON.stringify({ model: store.openaiModel, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
-            });
-            if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
-            const json = await response.json();
-            const normalized = validateStructuredResult(normalizeTaggerResult(json, []));
-            debugInfo(`手动生图 tagger 结果: ${JSON.stringify(normalized).slice(0, 200)}`);
+            // Normalize with lorebook (same as normal flow — applies character memory)
+            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
+            logTaggerPayload('manual draw tagger result', normalized);
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
-                toastr.warning('tagger 未生成有效分镜', PLUGIN_NAME);
+                toastr.warning('tagger \u672a\u751f\u6210\u6709\u6548\u5206\u955c', PLUGIN_NAME);
                 submitBtn.disabled = false;
-                submitBtn.textContent = '🎨 生成';
+                submitBtn.textContent = '\ud83c\udfa8 \u751f\u6210';
                 statusEl.textContent = '';
                 return;
             }
 
-            const seg = normalized.segments[0];
-            prepareNaiCharData(seg);
-            const finalPrompt = getFinalPrompt(seg);
-            statusEl.textContent = '正在调用生图 API...';
-            submitBtn.textContent = '⏳ 生图中...';
+            // Generate ALL segments, not just the first
+            const segments = normalized.segments;
+            statusEl.textContent = `\u6b63\u5728\u751f\u6210 ${segments.length} \u5f20\u56fe\u7247...`;
+            submitBtn.textContent = '\u23f3 \u751f\u56fe\u4e2d...';
+            let successCount = 0;
 
-            const image = await RBQ.api.generateImage(finalPrompt, 'sdt-manual-draw', {}, (progressText) => {
-                statusEl.textContent = progressText;
-            });
+            for (let i = 0; i < segments.length; i++) {
+                const seg = segments[i];
+                statusEl.textContent = `\u6b63\u5728\u751f\u6210\u7b2c ${i + 1}/${segments.length} \u5f20...`;
+                prepareNaiCharData(seg);
+                const finalPrompt = getFinalPrompt(seg);
+                try {
+                    await RBQ.api.generateImage(finalPrompt, 'sdt-manual-draw', {}, (progressText) => {
+                        statusEl.textContent = `[${i + 1}/${segments.length}] ${progressText}`;
+                    });
+                    successCount++;
+                } catch (imgErr) {
+                    console.error(`[Smart Draw] manual draw segment ${i + 1} failed`, imgErr);
+                    toastr.error(`\u7b2c ${i + 1} \u5f20\u751f\u56fe\u5931\u8d25: ${imgErr.message}`, PLUGIN_NAME);
+                }
+            }
 
             closeManualDrawDialog();
-            toastr.success('手动生图完成！图片已保存到历史记录', PLUGIN_NAME);
+            if (successCount > 0) {
+                toastr.success(`\u624b\u52a8\u751f\u56fe\u5b8c\u6210\uff01\u6210\u529f ${successCount}/${segments.length} \u5f20\uff0c\u5df2\u4fdd\u5b58\u5230\u5386\u53f2\u8bb0\u5f55`, PLUGIN_NAME);
+            }
         } catch (error) {
             toastr.error(error.message || String(error), PLUGIN_NAME);
-            statusEl.textContent = '出错了: ' + (error.message || String(error));
+            statusEl.textContent = '\u51fa\u9519\u4e86: ' + (error.message || String(error));
             submitBtn.disabled = false;
-            submitBtn.textContent = '🎨 生成';
+            submitBtn.textContent = '\ud83c\udfa8 \u751f\u6210';
         }
     }
 

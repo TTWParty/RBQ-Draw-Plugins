@@ -3167,7 +3167,6 @@ Zimage 擅长理解复杂的英文长句和语境。
 
             // Build context from current chat if enabled
             let recentMessages = [];
-            let lorebook = [];
             let latestMessageId = -1;
             if (useContext) {
                 try {
@@ -3177,13 +3176,20 @@ Zimage 擅长理解复杂的英文长句和语境。
                         recentMessages = RBQ.api.getRecentMessages(latestMessageId, store.contextCount).map(item => ({
                             id: item.id, role: item.is_user ? 'user' : 'assistant', name: item.name, content: item.mes,
                         }));
-                        const currentMes = chat[latestMessageId]?.mes || '';
-                        lorebook = collectMatchedLorebookEntries(currentMes, recentMessages, latestMessageId)
-                            .map(l => ({ name: l.comment || l.sourceName || '\u89d2\u8272/\u8bbe\u5b9a', keys: l.matchedKeys, tags: String(l.content || '').trim() }));
                     }
                 } catch (e) {
                     console.warn('[Smart Draw] failed to gather chat context for manual draw', e);
                 }
+            }
+
+            // Lorebook always active — match against user description + chat context
+            let lorebook = [];
+            try {
+                const matchText = description + (recentMessages.length ? '\n' + recentMessages.map(m => m.content).join('\n') : '');
+                lorebook = collectMatchedLorebookEntries(matchText, recentMessages, latestMessageId >= 0 ? latestMessageId : 0)
+                    .map(l => ({ name: l.comment || l.sourceName || '\u89d2\u8272/\u8bbe\u5b9a', keys: l.matchedKeys, tags: String(l.content || '').trim() }));
+            } catch (e) {
+                console.warn('[Smart Draw] failed to gather lorebook for manual draw', e);
             }
 
             const manualPayload = {

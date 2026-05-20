@@ -1031,6 +1031,22 @@ Zimage 擅长理解复杂的英文长句和语境。
         return `${base}/models`;
     }
 
+    function checkUrlSafety(url) {
+        if (!url) return;
+        if (window.location.protocol === 'https:' && String(url).startsWith('http://')) {
+            let hostname = '';
+            try {
+                hostname = new URL(url).hostname;
+            } catch (e) {
+                const match = String(url).match(/^http:\/\/([^:/]+)/);
+                if (match) hostname = match[1];
+            }
+            if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '[::1]') {
+                throw new Error(`[Mixed Content] 当前网页为 HTTPS，但配置的 API 为 HTTP (${url})。浏览器已安全拦截。请改用 HTTPS 接口地址，或使用 HTTP 协议访问当前网页。`);
+            }
+        }
+    }
+
     function logTaggerPayload(label, data) {
         if (!getStore().debugToast) return;
         console.info(`[${PLUGIN_NAME}] ${label}:`, typeof data === 'string' ? data : JSON.parse(JSON.stringify(data)));
@@ -1725,6 +1741,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         if (!store.openaiModel) throw new Error('请先填写模型名称');
+        checkUrlSafety(url);
         const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
 
@@ -1778,6 +1795,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         const url = String(store.customUrl || '').trim();
         if (!url) throw new Error('请先填写自定义 HTTP 接口地址');
+        checkUrlSafety(url);
         const headers = { 'Content-Type': 'application/json' };
         if (store.customApiKey) {
             const headerName = store.customApiKeyHeader || 'Authorization';
@@ -2732,6 +2750,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const url = normalizeModelsUrl(baseUrl);
         if (!url) return toastr.warning('请先填写 OpenAI Base URL', PLUGIN_NAME);
         try {
+            checkUrlSafety(url);
             if (button instanceof HTMLButtonElement) {
                 button.disabled = true;
                 button.textContent = '刷新中...';
@@ -2942,6 +2961,13 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
             save();
             toastr.success('智能生图触发器设置已保存', PLUGIN_NAME);
+            if (window.location.protocol === 'https:') {
+                const isOpenaiInsecure = s.provider === 'openai' && s.openaiBaseUrl.startsWith('http://') && !s.openaiBaseUrl.includes('localhost') && !s.openaiBaseUrl.includes('127.0.0.1') && !s.openaiBaseUrl.includes('[::1]');
+                const isCustomInsecure = s.provider === 'custom' && s.customUrl.startsWith('http://') && !s.customUrl.includes('localhost') && !s.customUrl.includes('127.0.0.1') && !s.customUrl.includes('[::1]');
+                if (isOpenaiInsecure || isCustomInsecure) {
+                    toastr.warning('检测到您在 HTTPS 环境下配置了不安全的 HTTP API 接口，这可能会被浏览器拦截导致请求失败。建议改用 HTTPS 接口或使用 HTTP 协议访问网页。', PLUGIN_NAME, { timeOut: 8000 });
+                }
+            }
             scanLatestVisible();
         };
         document.getElementById('rbq-sdt-reset-system-prompt').onclick = () => {
@@ -3251,6 +3277,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (store.provider === 'custom') {
                 const customUrl = String(store.customUrl || '').trim();
                 if (!customUrl) throw new Error('\u8bf7\u5148\u586b\u5199\u81ea\u5b9a\u4e49 HTTP \u63a5\u53e3\u5730\u5740');
+                checkUrlSafety(customUrl);
                 const headers = { 'Content-Type': 'application/json' };
                 if (store.customApiKey) {
                     const headerName = store.customApiKeyHeader || 'Authorization';
@@ -3263,6 +3290,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const url = normalizeBaseUrl(store.openaiBaseUrl);
                 if (!url) throw new Error('\u8bf7\u5148\u586b\u5199 OpenAI \u517c\u5bb9\u63a5\u53e3 Base URL');
                 if (!store.openaiModel) throw new Error('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u540d\u79f0');
+                checkUrlSafety(url);
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },

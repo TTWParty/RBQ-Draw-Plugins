@@ -337,7 +337,7 @@
         throw new Error('图片中没有检测到支持的生图元数据 (SD / NovelAI / ComfyUI)');
     }
 
-    function showMetadataModal(parsed) {
+    function showMetadataModal(parsed, isSimple = false) {
         if (!document.getElementById('rbq-nai-modal-style')) {
             const style = document.createElement('style');
             style.id = 'rbq-nai-modal-style';
@@ -463,11 +463,18 @@
             return box;
         };
 
+        const titleText = isSimple && parsed.source === 'NovelAI' 
+            ? 'NAI 数据提取结果' 
+            : `PNG 信息提取结果 (${parsed.source})`;
+        const headerIcon = isSimple && parsed.source === 'NovelAI'
+            ? 'fa-photo-film'
+            : 'fa-wand-magic-sparkles';
+
         const headerHTML = document.createElement('div');
         headerHTML.className = 'rbq-extractor-header';
         headerHTML.innerHTML = `
             <div class="rbq-extractor-title">
-                <i class="fa-solid fa-wand-magic-sparkles" style="color:#ff99cc;"></i> PNG 信息提取结果 (${parsed.source})
+                <i class="fa-solid ${headerIcon}" style="color:#ff99cc;"></i> ${titleText}
             </div>
             <button class="menu_button st-scene-trigger-icon-button rbq-extractor-close"><i class="fa-solid fa-xmark"></i></button>
         `;
@@ -483,30 +490,46 @@
         subtitle.innerHTML = '提示：如需复用，请手动点击一键复制然后粘贴至输入框。';
         bodyDiv.appendChild(subtitle);
 
+        const negTitle = isSimple && parsed.source === 'NovelAI'
+            ? '反向提示词 (Undesired Content)'
+            : '反向提示词 (Negative)';
+
         const fields = [
             createField('正向提示词 (Prompt)', parsed.prompt),
-            createField('反向提示词 (Negative)', parsed.negative)
+            createField(negTitle, parsed.negative)
         ];
         fields.forEach(f => f && bodyDiv.appendChild(f));
 
         const grid = document.createElement('div');
         grid.className = 'rbq-extractor-grid';
-        const smallFields = [
-            createField('模型 (Model)', parsed.model),
-            createField('种子 (Seed)', parsed.seed),
-            createField('尺寸 (Size)', parsed.size),
-            createField('步数 (Steps)', parsed.steps),
-            createField('采样器 (Sampler)', parsed.sampler),
-            createField('CFG Scale', parsed.cfg),
-            createField('SMEA', parsed.smea),
-            createField('CFG Rescale', parsed.cfg_rescale),
-            createField('噪声调度 (Scheduler)', parsed.noise_schedule || parsed.scheduler),
-            createField('UC强度 (Uncond Scale)', parsed.uncond_scale),
-            createField('Variety+', parsed.variety_plus),
-            createField('Clip Skip', parsed.clip_skip),
-            createField('去噪强度 (Denoise)', parsed.denoise),
-            createField('参考图 (Vibe)', parsed.vibe_info)
-        ];
+        
+        let smallFields = [];
+        if (isSimple) {
+            smallFields = [
+                createField('种子 (Seed)', parsed.seed),
+                createField('尺寸 (Size)', parsed.size),
+                createField('步数 (Steps)', parsed.steps),
+                createField('CFG (Scale)', parsed.cfg),
+                createField('采样器 (Sampler)', parsed.sampler)
+            ];
+        } else {
+            smallFields = [
+                createField('模型 (Model)', parsed.model),
+                createField('种子 (Seed)', parsed.seed),
+                createField('尺寸 (Size)', parsed.size),
+                createField('步数 (Steps)', parsed.steps),
+                createField('采样器 (Sampler)', parsed.sampler),
+                createField('CFG Scale', parsed.cfg),
+                createField('SMEA', parsed.smea),
+                createField('CFG Rescale', parsed.cfg_rescale),
+                createField('噪声调度 (Scheduler)', parsed.noise_schedule || parsed.scheduler),
+                createField('UC强度 (Uncond Scale)', parsed.uncond_scale),
+                createField('Variety+', parsed.variety_plus),
+                createField('Clip Skip', parsed.clip_skip),
+                createField('去噪强度 (Denoise)', parsed.denoise),
+                createField('参考图 (Vibe)', parsed.vibe_info)
+            ];
+        }
         smallFields.forEach(f => f && grid.appendChild(f));
         if (grid.children.length > 0) bodyDiv.appendChild(grid);
 
@@ -522,7 +545,7 @@
     async function handleExtract(imgUrl) {
         if (!imgUrl) return toastr.warning('无法获取图片地址');
         try {
-            toastr.info('正在解析图片元数据...', 'PNG 提取器');
+            toastr.info('正在解析图片元数据...', 'NAI 提取器');
             const res = await fetch(imgUrl);
             const blob = await res.blob();
 
@@ -530,7 +553,11 @@
             const metadata = readPngMetadata(arrayBuffer);
             const parsed = parseImageMetadata(metadata);
 
-            toastr.success('成功提取并解析图片元数据！');
+            if (parsed.source === 'NovelAI') {
+                toastr.success('成功提取并解析 NAI 元数据！');
+            } else {
+                toastr.success(`成功提取并解析 ${parsed.source} 元数据！`);
+            }
             showMetadataModal(parsed);
 
         } catch (err) {

@@ -337,6 +337,42 @@
         throw new Error('图片中没有检测到支持的生图元数据 (SD / NovelAI / ComfyUI)');
     }
 
+    function extractMultiCharInfo(parsed) {
+        if (!parsed || !parsed.raw) return null;
+        const v4Prompt = parsed.raw.v4_prompt;
+        if (!v4Prompt || !v4Prompt.caption) return null;
+        const charCaptions = v4Prompt.caption.char_captions || [];
+        if (charCaptions.length === 0) return null;
+
+        const v4NegPrompt = parsed.raw.v4_negative_prompt;
+        const negCharCaptions = (v4NegPrompt && v4NegPrompt.caption && v4NegPrompt.caption.char_captions) || [];
+
+        const basePrompt = v4Prompt.caption.base_caption || '';
+        const baseNegative = (v4NegPrompt && v4NegPrompt.caption && v4NegPrompt.caption.base_caption) || '';
+
+        const characters = charCaptions.map((char, index) => {
+            const prompt = char.char_caption || '';
+            const negative = (negCharCaptions[index] && negCharCaptions[index].char_caption) || '';
+            let coord = '';
+            if (char.centers && char.centers.length > 0) {
+                const center = char.centers[0];
+                coord = getGridCoord(center.x, center.y);
+            }
+            return {
+                index: index + 1,
+                prompt,
+                negative,
+                coord
+            };
+        });
+
+        return {
+            basePrompt,
+            baseNegative,
+            characters
+        };
+    }
+
     function detectPreset(parsed) {
         if (!parsed || !parsed.prompt) return null;
         
@@ -513,6 +549,58 @@
                         min-height: 32px;
                     }
                 }
+                .rbq-extractor-multi-char-container {
+                    display: none;
+                    margin-bottom: 16px;
+                    background: rgba(0, 0, 0, 0.25);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 8px;
+                    padding: 12px;
+                }
+                .rbq-extractor-multi-char-item {
+                    border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+                    padding-bottom: 10px;
+                    margin-bottom: 10px;
+                }
+                .rbq-extractor-multi-char-item:last-child {
+                    border-bottom: none;
+                    padding-bottom: 0;
+                    margin-bottom: 0;
+                }
+                .rbq-extractor-multi-char-item-title {
+                    font-size: 13px;
+                    font-weight: bold;
+                    color: var(--mode-accent, #ff7aa8);
+                    margin-bottom: 6px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .rbq-extractor-multi-char-item-row {
+                    margin-top: 6px;
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 8px;
+                    border-radius: 6px;
+                    font-size: 12.5px;
+                    border: 1px solid rgba(255, 255, 255, 0.03);
+                }
+                .rbq-extractor-multi-char-item-row-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 11px;
+                    color: rgba(255, 255, 255, 0.4);
+                    margin-bottom: 4px;
+                    gap: 8px;
+                }
+                .rbq-extractor-multi-char-item-row-content {
+                    word-break: break-all;
+                    white-space: pre-wrap;
+                    font-family: var(--font-family, monospace);
+                    max-height: 80px;
+                    overflow-y: auto;
+                    color: #eee;
+                }
             `;
             document.head.appendChild(style);
         }
@@ -584,6 +672,97 @@
         subtitle.className = 'rbq-extractor-subtitle';
         subtitle.innerHTML = '提示：如需复用，请手动点击一键复制然后粘贴至输入框。';
         bodyDiv.appendChild(subtitle);
+
+        const multiCharInfo = extractMultiCharInfo(parsed);
+        if (multiCharInfo) {
+            const btn = document.createElement('button');
+            btn.className = 'menu_button rbq-extractor-multi-char-btn';
+            btn.style.cssText = 'background: var(--mode-accent, #ff7aa8); color: #fff; margin-bottom: 12px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; border: none; height: 36px; border-radius: 8px; cursor: pointer;';
+            btn.innerHTML = '<i class="fa-solid fa-users"></i> 查看多角色提示词';
+
+            const container = document.createElement('div');
+            container.className = 'rbq-extractor-multi-char-container';
+
+            let charHtml = `
+                <div class="rbq-extractor-multi-char-item">
+                    <div class="rbq-extractor-multi-char-item-title">
+                        <i class="fa-solid fa-mountain-sun"></i> 场景/背景 (Base)
+                    </div>
+                    ${multiCharInfo.basePrompt ? `
+                        <div class="rbq-extractor-multi-char-item-row">
+                            <div class="rbq-extractor-multi-char-item-row-header">
+                                <span>正向提示词</span>
+                                <button class="menu_button rbq-extractor-copy-btn sub-copy" style="font-size:10px; padding:2px 6px; min-height:18px;" data-text="${multiCharInfo.basePrompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                            </div>
+                            <div class="rbq-extractor-multi-char-item-row-content">${multiCharInfo.basePrompt}</div>
+                        </div>
+                    ` : ''}
+                    ${multiCharInfo.baseNegative ? `
+                        <div class="rbq-extractor-multi-char-item-row">
+                            <div class="rbq-extractor-multi-char-item-row-header">
+                                <span>反向提示词 (UC)</span>
+                                <button class="menu_button rbq-extractor-copy-btn sub-copy" style="font-size:10px; padding:2px 6px; min-height:18px;" data-text="${multiCharInfo.baseNegative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                            </div>
+                            <div class="rbq-extractor-multi-char-item-row-content">${multiCharInfo.baseNegative}</div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            multiCharInfo.characters.forEach(char => {
+                charHtml += `
+                    <div class="rbq-extractor-multi-char-item">
+                        <div class="rbq-extractor-multi-char-item-title">
+                            <i class="fa-solid fa-user-tag"></i> 角色 ${char.index} ${char.coord ? `[位置: ${char.coord}]` : ''}
+                        </div>
+                        ${char.prompt ? `
+                            <div class="rbq-extractor-multi-char-item-row">
+                                <div class="rbq-extractor-multi-char-item-row-header">
+                                    <span>角色正向提示词</span>
+                                    <button class="menu_button rbq-extractor-copy-btn sub-copy" style="font-size:10px; padding:2px 6px; min-height:18px;" data-text="${char.prompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                                </div>
+                                <div class="rbq-extractor-multi-char-item-row-content">${char.prompt}</div>
+                            </div>
+                        ` : ''}
+                        ${char.negative ? `
+                            <div class="rbq-extractor-multi-char-item-row">
+                                <div class="rbq-extractor-multi-char-item-row-header">
+                                    <span>角色反向提示词 (UC)</span>
+                                    <button class="menu_button rbq-extractor-copy-btn sub-copy" style="font-size:10px; padding:2px 6px; min-height:18px;" data-text="${char.negative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                                </div>
+                                <div class="rbq-extractor-multi-char-item-row-content">${char.negative}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            container.innerHTML = charHtml;
+
+            btn.onclick = () => {
+                const isVisible = container.style.display === 'block';
+                container.style.display = isVisible ? 'none' : 'block';
+                btn.innerHTML = isVisible 
+                    ? '<i class="fa-solid fa-users"></i> 查看多角色提示词' 
+                    : '<i class="fa-solid fa-chevron-up"></i> 收起多角色提示词';
+            };
+
+            container.querySelectorAll('.sub-copy').forEach(copyBtn => {
+                copyBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const text = copyBtn.getAttribute('data-text');
+                    navigator.clipboard.writeText(text).then(() => {
+                        const old = copyBtn.innerHTML;
+                        copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> 成功';
+                        copyBtn.style.color = '#88ff88';
+                        setTimeout(() => { copyBtn.innerHTML = old; copyBtn.style.color = '#fff'; }, 2000);
+                    });
+                };
+            });
+
+            bodyDiv.appendChild(btn);
+            bodyDiv.appendChild(container);
+        }
 
         const negTitle = isSimple && parsed.source === 'NovelAI'
             ? '反向提示词 (Undesired Content)'
@@ -855,11 +1034,89 @@
             }
         }
 
+        const multiCharInfo = extractMultiCharInfo(parsed);
+        let multiCharBtnHtml = '';
+        if (multiCharInfo) {
+            multiCharBtnHtml = `
+                <button class="st-scene-trigger-inspector-btn rbq-inspector-multi-char-btn" style="background: var(--mode-accent, #ff7aa8); color: #fff; margin-bottom: 12px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; font-weight: bold; border-radius: 6px; border: none; cursor: pointer;">
+                    <i class="fa-solid fa-users"></i> 查看多角色提示词
+                </button>
+                <div class="st-scene-trigger-inspector-multi-char-container">
+                    <div class="st-scene-trigger-inspector-multi-char-item">
+                        <div class="st-scene-trigger-inspector-multi-char-item-title">
+                            <i class="fa-solid fa-mountain-sun"></i> 场景/背景 (Base)
+                        </div>
+                        ${multiCharInfo.basePrompt ? `
+                            <div class="st-scene-trigger-inspector-multi-char-item-row">
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-header">
+                                    <span>正向提示词</span>
+                                    <div class="st-scene-trigger-inspector-field-actions">
+                                        <button class="st-scene-trigger-inspector-btn btn-import-test" data-import="${multiCharInfo.basePrompt.replace(/"/g, '&quot;')}"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入</button>
+                                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${multiCharInfo.basePrompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i></button>
+                                    </div>
+                                </div>
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-content">${multiCharInfo.basePrompt}</div>
+                            </div>
+                        ` : ''}
+                        ${multiCharInfo.baseNegative ? `
+                            <div class="st-scene-trigger-inspector-multi-char-item-row">
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-header">
+                                    <span>反向提示词 (UC)</span>
+                                    <div class="st-scene-trigger-inspector-field-actions">
+                                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${multiCharInfo.baseNegative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i></button>
+                                    </div>
+                                </div>
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-content">${multiCharInfo.baseNegative}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+            `;
+
+            multiCharInfo.characters.forEach(char => {
+                multiCharBtnHtml += `
+                    <div class="st-scene-trigger-inspector-multi-char-item">
+                        <div class="st-scene-trigger-inspector-multi-char-item-title">
+                            <i class="fa-solid fa-user-tag"></i> 角色 ${char.index} ${char.coord ? `[位置: ${char.coord}]` : ''}
+                        </div>
+                        ${char.prompt ? `
+                            <div class="st-scene-trigger-inspector-multi-char-item-row">
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-header">
+                                    <span>角色正向提示词</span>
+                                    <div class="st-scene-trigger-inspector-field-actions">
+                                        <button class="st-scene-trigger-inspector-btn btn-import-test" data-import="${char.prompt.replace(/"/g, '&quot;')}"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入</button>
+                                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${char.prompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i></button>
+                                    </div>
+                                </div>
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-content">${char.prompt}</div>
+                            </div>
+                        ` : ''}
+                        ${char.negative ? `
+                            <div class="st-scene-trigger-inspector-multi-char-item-row">
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-header">
+                                    <span>角色反向提示词 (UC)</span>
+                                    <div class="st-scene-trigger-inspector-field-actions">
+                                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${char.negative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i></button>
+                                    </div>
+                                </div>
+                                <div class="st-scene-trigger-inspector-multi-char-item-row-content">${char.negative}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            multiCharBtnHtml += `
+                </div>
+            `;
+        }
+
         container.innerHTML = `
             <div class="st-scene-trigger-inspector-result-title">
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                 <span>解析结果 (${parsed.source})</span>
             </div>
+
+            ${multiCharBtnHtml}
 
             ${promptSection}
 
@@ -869,6 +1126,20 @@
                 </div>
             ` : ''}
         `;
+
+        if (multiCharInfo) {
+            const toggleBtn = container.querySelector('.rbq-inspector-multi-char-btn');
+            const subContainer = container.querySelector('.st-scene-trigger-inspector-multi-char-container');
+            if (toggleBtn && subContainer) {
+                toggleBtn.addEventListener('click', () => {
+                    const isVisible = subContainer.style.display === 'block';
+                    subContainer.style.display = isVisible ? 'none' : 'block';
+                    toggleBtn.innerHTML = isVisible
+                        ? '<i class="fa-solid fa-users"></i> 查看多角色提示词'
+                        : '<i class="fa-solid fa-chevron-up"></i> 收起多角色提示词';
+                });
+            }
+        }
 
         // Bind copy events
         container.querySelectorAll('.btn-copy').forEach(btn => {
@@ -1045,6 +1316,58 @@
                   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
                   gap: 8px;
                   margin-bottom: 12px;
+                }
+                .st-scene-trigger-inspector-multi-char-container {
+                  display: none;
+                  margin-bottom: 12px;
+                  background: rgba(255, 255, 255, 0.01);
+                  border: 1px solid rgba(255, 255, 255, 0.05);
+                  border-radius: 8px;
+                  padding: 8px;
+                }
+                .st-scene-trigger-inspector-multi-char-item {
+                  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+                  padding-bottom: 8px;
+                  margin-bottom: 8px;
+                }
+                .st-scene-trigger-inspector-multi-char-item:last-child {
+                  border-bottom: none;
+                  padding-bottom: 0;
+                  margin-bottom: 0;
+                }
+                .st-scene-trigger-inspector-multi-char-item-title {
+                  font-size: 12px;
+                  font-weight: bold;
+                  color: var(--mode-accent, #ff7aa8);
+                  margin-bottom: 4px;
+                  display: flex;
+                  align-items: center;
+                  gap: 4px;
+                }
+                .st-scene-trigger-inspector-multi-char-item-row {
+                  margin-top: 4px;
+                  background: rgba(0, 0, 0, 0.15);
+                  padding: 6px;
+                  border-radius: 6px;
+                  font-size: 11.5px;
+                  border: 1px solid rgba(255, 255, 255, 0.02);
+                }
+                .st-scene-trigger-inspector-multi-char-item-row-header {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  font-size: 10px;
+                  color: rgba(255, 255, 255, 0.4);
+                  margin-bottom: 2px;
+                  gap: 6px;
+                }
+                .st-scene-trigger-inspector-multi-char-item-row-content {
+                  word-break: break-all;
+                  white-space: pre-wrap;
+                  font-family: var(--font-family, monospace);
+                  max-height: 60px;
+                  overflow-y: auto;
+                  color: #ddd;
                 }
             `;
             document.head.appendChild(style);

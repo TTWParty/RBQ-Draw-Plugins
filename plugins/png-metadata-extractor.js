@@ -69,36 +69,203 @@
         return result.trim();
     }
 
-    function formatNaiData(data) {
-        let promptStr = '';
-        if (data.v4_prompt) {
-            promptStr = reconstructV4Prompt(data.v4_prompt);
-        } else {
-            promptStr = data.prompt || '';
+    function readPngMetadata(arrayBuffer) {
+        const dataView = new DataView(arrayBuffer);
+        if (dataView.getUint32(0) !== 0x89504E47 || dataView.getUint32(4) !== 0x0D0A1A0A) {
+            throw new Error('该图片不是 PNG 格式');
         }
 
-        let negativeStr = '';
-        if (data.v4_negative_prompt) {
-            negativeStr = reconstructV4NegativePrompt(data.v4_negative_prompt);
-        } else {
-            negativeStr = data.uc || '';
-        }
+        let offset = 8;
+        const metadata = {};
 
-        return {
-            prompt: promptStr,
-            negative: negativeStr,
-            seed: data.seed ? String(data.seed) : '',
-            steps: data.steps ? String(data.steps) : '',
-            sampler: data.sampler || '',
-            cfg: data.scale ? String(data.scale) : '',
-            size: (data.width && data.height) ? `${data.width}x${data.height}` : '',
-            raw: data
-        };
+        while (offset < dataView.byteLength) {
+            const length = dataView.getUint32(offset);
+            const type = String.fromCharCode(
+                dataView.getUint8(offset + 4),
+                dataView.getUint8(offset + 5),
+                dataView.getUint8(offset + 6),
+                dataView.getUint8(offset + 7)
+            );
+
+            if (type === 'tEXt' || type === 'iTXt') {
+                const chunkData = new Uint8Array(arrayBuffer, offset + 8, length);
+                const text = new TextDecoder().decode(chunkData);
+                
+                const nullIdx = text.indexOf('\0');
+                if (nullIdx !== -1) {
+                    const key = text.slice(0, nullIdx);
+                    let value = text.slice(nullIdx + 1);
+                    if (type === 'iTXt') {
+                        const jsonStart = text.indexOf('{');
+                        if (jsonStart !== -1) {
+                            value = text.slice(jsonStart);
+                        }
+                    }
+                    metadata[key] = value;
+                }
+            }
+            offset += length + 12;
+        }
+        return metadata;
     }
 
-    function showMetadataModal(dataObj) {
-        const meta = formatNaiData(dataObj);
+    function parseImageMetadata(metadata) {
+        // 1. NovelAI Format
+        let rawJson = null;
+        if (metadata['Description']) {
+            try { rawJson = JSON.parse(metadata['Description']); } catch(e) {}
+        }
+        if (!rawJson && metadata['Comment']) {
+            try { rawJson = JSON.parse(metadata['Comment']); } catch(e) {}
+        }
 
+        if (rawJson && (rawJson.prompt || rawJson.v4_prompt)) {
+            let promptStr = '';
+            if (rawJson.v4_prompt) {
+                promptStr = reconstructV4Prompt(rawJson.v4_prompt);
+            } else {
+                promptStr = rawJson.prompt || '';
+            }
+
+            let negativeStr = '';
+            if (rawJson.v4_negative_prompt) {
+                negativeStr = reconstructV4NegativePrompt(rawJson.v4_negative_prompt);
+            } else {
+                negativeStr = rawJson.uc || '';
+            }
+
+            return {
+                source: 'NovelAI',
+                prompt: promptStr,
+                negative: negativeStr,
+                seed: rawJson.seed ? String(rawJson.seed) : '',
+                steps: rawJson.steps ? String(rawJson.steps) : '',
+                sampler: rawJson.sampler || '',
+                cfg: rawJson.scale ? String(rawJson.scale) : '',
+                size: (rawJson.width && rawJson.height) ? `${rawJson.width}x${rawJson.height}` : '',
+                raw: rawJson
+            };
+        }
+
+        // 2. Stable Diffusion (A1111) Format
+        if (metadata['parameters']) {
+            const raw = metadata['parameters'];
+            let prompt = '';
+            let negative = '';
+            let seed = '';
+            let steps = '';
+            let sampler = '';
+            let cfg = '';
+            let size = '';
+
+            const lines = raw.split('\n');
+            let mode = 'prompt';
+            const promptLines = [];
+            const negativeLines = [];
+            let infoLine = '';
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('Negative prompt:')) {
+                    mode = 'negative';
+                    negativeLines.push(line.replace('Negative prompt:', '').trim());
+                } else if (line.match(/Steps:\s*\d+/i)) {
+                    infoLine = line;
+                    break;
+                } else {
+                    if (mode === 'prompt') {
+                        promptLines.push(line);
+                    } else if (mode === 'negative') {
+                        negativeLines.push(line);
+                    }
+                }
+            }
+
+            prompt = promptLines.join('\n').trim();
+            negative = negativeLines.join('\n').trim();
+
+            if (infoLine) {
+                const parts = infoLine.split(',');
+                parts.forEach(part => {
+                    const [k, v] = part.split(':').map(s => s.trim());
+                    if (!k || !v) return;
+                    const lowerK = k.toLowerCase();
+                    if (lowerK === 'steps') steps = v;
+                    else if (lowerK === 'sampler') sampler = v;
+                    else if (lowerK === 'cfg scale') cfg = v;
+                    else if (lowerK === 'seed') seed = v;
+                    else if (lowerK === 'size') size = v;
+                });
+            }
+
+            return {
+                source: 'Stable Diffusion',
+                prompt,
+                negative,
+                seed,
+                steps,
+                sampler,
+                cfg,
+                size,
+                raw
+            };
+        }
+
+        // 3. ComfyUI Format
+        if (metadata['prompt']) {
+            try {
+                const promptGraph = JSON.parse(metadata['prompt']);
+                let prompt = '';
+                let negative = '';
+                let seed = '';
+                let steps = '';
+                let sampler = '';
+                let cfg = '';
+                let size = '';
+
+                for (const nodeId in promptGraph) {
+                    const node = promptGraph[nodeId];
+                    if (node.class_type === 'CLIPTextEncode') {
+                        const text = node.inputs?.text;
+                        if (text && typeof text === 'string') {
+                            if (text.toLowerCase().includes('easynegative') || text.toLowerCase().includes('nsfw') || text.toLowerCase().includes('worst quality') || text.toLowerCase().includes('bad anatomy')) {
+                                negative = text;
+                            } else {
+                                prompt = text;
+                            }
+                        }
+                    } else if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') {
+                        if (node.inputs) {
+                            if (node.inputs.seed != null) seed = String(node.inputs.seed);
+                            if (node.inputs.steps != null) steps = String(node.inputs.steps);
+                            if (node.inputs.cfg != null) cfg = String(node.inputs.cfg);
+                            if (node.inputs.sampler_name != null) sampler = String(node.inputs.sampler_name);
+                        }
+                    } else if (node.class_type === 'EmptyLatentImage') {
+                        if (node.inputs && node.inputs.width && node.inputs.height) {
+                            size = `${node.inputs.width}x${node.inputs.height}`;
+                        }
+                    }
+                }
+
+                return {
+                    source: 'ComfyUI',
+                    prompt,
+                    negative,
+                    seed,
+                    steps,
+                    sampler,
+                    cfg,
+                    size,
+                    raw: promptGraph
+                };
+            } catch(e) {}
+        }
+
+        throw new Error('图片中没有检测到支持的生图元数据 (SD / NovelAI / ComfyUI)');
+    }
+
+    function showMetadataModal(parsed) {
         if (!document.getElementById('rbq-nai-modal-style')) {
             const style = document.createElement('style');
             style.id = 'rbq-nai-modal-style';
@@ -114,8 +281,6 @@
                 .rbq-extractor-dialog {
                     background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); 
                     border-radius: 12px; width: 100%; max-width: 500px;
-                    /* Use max-height with padding accounted for, and fallback for older browsers */
-                    max-height: calc(100vh - env(safe-area-inset-top, 16px) - env(safe-area-inset-bottom, 16px) - 32px);
                     max-height: calc(min(100dvh, 100vh) - env(safe-area-inset-top, 16px) - env(safe-area-inset-bottom, 16px) - 32px);
                     color: #eee;
                     box-shadow: 0 16px 40px rgba(0,0,0,0.5);
@@ -168,19 +333,16 @@
                 .rbq-extractor-grid {
                     display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom: 12px;
                 }
-                /* Mobile optimization */
                 @media (max-width: 480px) {
                     .rbq-extractor-overlay {
-                        /* Force top alignment on mobile to prevent center-flex from pushing content out of view if it's too tall */
                         align-items: flex-start;
-                        /* Extra padding top to ensure it clears dynamic status bars if env() fails */
                         padding-top: max(env(safe-area-inset-top, 16px), 24px); 
                     }
                     .rbq-extractor-grid {
-                        grid-template-columns: 1fr; /* Force single column on narrow screens to prevent crushing */
+                        grid-template-columns: 1fr;
                     }
                     .rbq-extractor-copy-btn {
-                        padding: 8px 12px; /* Slightly larger touch target */
+                        padding: 8px 12px;
                         min-height: 32px;
                     }
                 }
@@ -210,9 +372,6 @@
             btn.className = 'menu_button rbq-extractor-copy-btn';
             btn.innerHTML = '<i class="fa-regular fa-copy"></i> 复制';
 
-            btn.addEventListener('touchstart', () => { btn.style.background = 'rgba(255,255,255,0.2)'; }, { passive: true });
-            btn.addEventListener('touchend', () => { btn.style.background = ''; }, { passive: true });
-
             btn.onclick = () => {
                 navigator.clipboard.writeText(content).then(() => {
                     const old = btn.innerHTML;
@@ -236,7 +395,7 @@
         headerHTML.className = 'rbq-extractor-header';
         headerHTML.innerHTML = `
             <div class="rbq-extractor-title">
-                <i class="fa-solid fa-photo-film" style="color:#ff99cc;"></i> NAI 数据提取结果
+                <i class="fa-solid fa-wand-magic-sparkles" style="color:#ff99cc;"></i> PNG 信息提取结果 (${parsed.source})
             </div>
             <button class="menu_button st-scene-trigger-icon-button rbq-extractor-close"><i class="fa-solid fa-xmark"></i></button>
         `;
@@ -253,19 +412,19 @@
         bodyDiv.appendChild(subtitle);
 
         const fields = [
-            createField('正向提示词 (Prompt)', meta.prompt),
-            createField('反向提示词 (Undesired Content)', meta.negative)
+            createField('正向提示词 (Prompt)', parsed.prompt),
+            createField('反向提示词 (Negative)', parsed.negative)
         ];
         fields.forEach(f => f && bodyDiv.appendChild(f));
 
         const grid = document.createElement('div');
         grid.className = 'rbq-extractor-grid';
         const smallFields = [
-            createField('种子 (Seed)', meta.seed),
-            createField('尺寸 (Size)', meta.size),
-            createField('步数 (Steps)', meta.steps),
-            createField('CFG (Scale)', meta.cfg),
-            createField('采样器 (Sampler)', meta.sampler)
+            createField('种子 (Seed)', parsed.seed),
+            createField('尺寸 (Size)', parsed.size),
+            createField('步数 (Steps)', parsed.steps),
+            createField('采样器 (Sampler)', parsed.sampler),
+            createField('CFG Scale', parsed.cfg)
         ];
         smallFields.forEach(f => f && grid.appendChild(f));
         if (grid.children.length > 0) bodyDiv.appendChild(grid);
@@ -282,56 +441,16 @@
     async function handleExtract(imgUrl) {
         if (!imgUrl) return toastr.warning('无法获取图片地址');
         try {
-            toastr.info('正在解析图片元数据...', 'NAI 提取器');
+            toastr.info('正在解析图片元数据...', 'PNG 提取器');
             const res = await fetch(imgUrl);
             const blob = await res.blob();
 
             const arrayBuffer = await blob.arrayBuffer();
-            const dataView = new DataView(arrayBuffer);
+            const metadata = readPngMetadata(arrayBuffer);
+            const parsed = parseImageMetadata(metadata);
 
-            if (dataView.getUint32(0) !== 0x89504E47 || dataView.getUint32(4) !== 0x0D0A1A0A) {
-                throw new Error('该图片不是无损 PNG 格式。可能已被平台压缩转换为 WebP 或 JPEG，元数据已丢失。');
-            }
-
-            let offset = 8;
-            let foundJson = null;
-
-            while (offset < dataView.byteLength) {
-                const length = dataView.getUint32(offset);
-                const type = String.fromCharCode(
-                    dataView.getUint8(offset + 4),
-                    dataView.getUint8(offset + 5),
-                    dataView.getUint8(offset + 6),
-                    dataView.getUint8(offset + 7)
-                );
-
-                if (type === 'tEXt' || type === 'iTXt') {
-                    const chunkData = new Uint8Array(arrayBuffer, offset + 8, length);
-                    const text = new TextDecoder().decode(chunkData);
-
-                    if (text.startsWith('Description\0') || text.startsWith('Comment\0')) {
-                        const jsonStart = text.indexOf('{');
-                        const jsonEnd = text.lastIndexOf('}');
-                        if (jsonStart !== -1 && jsonEnd !== -1) {
-                            try {
-                                const jsonStr = text.slice(jsonStart, jsonEnd + 1);
-                                foundJson = JSON.parse(jsonStr);
-                                break;
-                            } catch (e) {
-                                console.warn('[PNG Metadata Extractor] JSON Parse failed in chunk:', e);
-                            }
-                        }
-                    }
-                }
-                offset += length + 12;
-            }
-
-            if (foundJson) {
-                toastr.success('成功提取并解析 NAI 元数据！');
-                showMetadataModal(foundJson);
-            } else {
-                toastr.warning('未检测到有价值的 NAI 元数据。(该图可能已丢失附加信息或并非由 NAI 官方格式直接产出)', '解析失败');
-            }
+            toastr.success('成功提取并解析图片元数据！');
+            showMetadataModal(parsed);
 
         } catch (err) {
             console.error('[PNG Metadata Extractor]', err);
@@ -339,68 +458,349 @@
         }
     }
 
-    // --- UI Poller engine ---
+    function injectToolbarButton(spec, dialog, imgUrl) {
+        if (dialog.querySelector('.rbq-nai-extract-btn')) return;
 
-    function injectToolbarButton(viewerSpec, dialog, imgSrc) {
-        let btn = dialog.querySelector('#rbq-nai-toolbar-btn');
-        if (!btn) {
-            btn = document.createElement('button');
-            btn.id = 'rbq-nai-toolbar-btn';
-            btn.className = viewerSpec.btnClass || '';
-            btn.title = "提取 NAI 参数";
-            btn.type = "button";
-            btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
-
-            // Basic styles to match ST icons, with NAI pink tint
-            btn.style.cssText = 'cursor: pointer; color: #ffb3d9; display: inline-flex; justify-content: center; align-items: center; background: transparent; border: none; transition: filter 0.2s; min-width:40px; min-height:40px;';
-            btn.onmouseenter = () => btn.style.filter = 'brightness(1.5)';
-            btn.onmouseleave = () => btn.style.filter = 'none';
-
-            if (viewerSpec.insertMode === 'custom-absolute') {
-                btn.style.position = 'absolute';
-                btn.style.top = '10px';
-                btn.style.left = '40px';
-                btn.style.padding = '10px';
-                btn.style.fontSize = '20px';
-                btn.style.zIndex = '999999';
-                dialog.appendChild(btn);
-            } else {
-                const toolbar = dialog.querySelector(viewerSpec.toolbarSelector);
-                if (toolbar) {
-                    // Match generic ST icon button scaling if not fancybox/lg
-                    if (viewerSpec.btnClass.includes('menu_button')) {
-                        btn.style.padding = '8px';
-                        btn.style.fontSize = '18px';
-                        btn.style.margin = '0 8px';
-                    }
-                    if (viewerSpec.insertMode === 'prepend') {
-                        toolbar.insertBefore(btn, toolbar.firstChild);
-                    } else {
-                        toolbar.appendChild(btn);
-                    }
-                }
-            }
-        }
+        const toolbar = spec.toolbarSelector ? dialog.querySelector(spec.toolbarSelector) : null;
+        const btn = document.createElement('button');
+        btn.id = 'rbq-nai-gallery-btn';
+        btn.className = `${spec.btnClass || ''} rbq-nai-extract-btn menu_button st-scene-trigger-icon-button`.trim();
+        btn.title = '提取图片信息 (NAI/SD/ComfyUI)';
+        btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
+        btn.style.margin = '0 4px';
+        btn.style.cursor = 'pointer';
 
         btn.onclick = (e) => {
             e.stopPropagation();
-            e.preventDefault();
-            handleExtract(imgSrc);
+            handleExtract(imgUrl);
         };
+
+        if (toolbar) {
+            if (spec.insertMode === 'prepend') {
+                toolbar.insertBefore(btn, toolbar.firstChild);
+            } else {
+                toolbar.appendChild(btn);
+            }
+        } else if (spec.insertMode === 'custom-absolute') {
+            btn.style.position = 'absolute';
+            btn.style.top = '12px';
+            btn.style.right = '60px';
+            btn.style.zIndex = '9999';
+            dialog.appendChild(btn);
+        }
+    }
+
+    // === Prompt Reader Dropzone Injection and Rendering ===
+    function renderInspectorResult(parsed) {
+        const container = document.getElementById('st-scene-trigger-inspector-result');
+        if (!container) return;
+
+        let gridHtml = '';
+        const smallFields = [
+            { label: '种子 (Seed)', value: parsed.seed },
+            { label: '采样器 (Sampler)', value: parsed.sampler },
+            { label: 'CFG (Scale)', value: parsed.cfg },
+            { label: '尺寸 (Size)', value: parsed.size },
+            { label: '步数 (Steps)', value: parsed.steps }
+        ];
+
+        smallFields.forEach(f => {
+            if (!f.value) return;
+            gridHtml += `
+                <div class="st-scene-trigger-inspector-field">
+                    <div class="st-scene-trigger-inspector-field-header">
+                        <span class="st-scene-trigger-inspector-field-name">${f.label}</span>
+                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${f.value.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field-value">${f.value}</div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = `
+            <div class="st-scene-trigger-inspector-result-title">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>解析结果 (${parsed.source})</span>
+            </div>
+
+            ${parsed.prompt ? `
+                <div class="st-scene-trigger-inspector-field">
+                    <div class="st-scene-trigger-inspector-field-header">
+                        <span class="st-scene-trigger-inspector-field-name">正向提示词 (Prompt)</span>
+                        <div class="st-scene-trigger-inspector-field-actions">
+                            <button class="st-scene-trigger-inspector-btn btn-import-test"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入到测试</button>
+                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.prompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                        </div>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field-value">${parsed.prompt}</div>
+                </div>
+            ` : ''}
+
+            ${parsed.negative ? `
+                <div class="st-scene-trigger-inspector-field">
+                    <div class="st-scene-trigger-inspector-field-header">
+                        <span class="st-scene-trigger-inspector-field-name">反向提示词 (Negative UC)</span>
+                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.negative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field-value">${parsed.negative}</div>
+                </div>
+            ` : ''}
+
+            ${gridHtml ? `
+                <div class="st-scene-trigger-inspector-grid">
+                    ${gridHtml}
+                </div>
+            ` : ''}
+        `;
+
+        // Bind copy events
+        container.querySelectorAll('.btn-copy').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const text = btn.getAttribute('data-text');
+                navigator.clipboard.writeText(text).then(() => {
+                    const oldHTML = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                    btn.style.color = '#88ff88';
+                    setTimeout(() => { btn.innerHTML = oldHTML; btn.style.color = ''; }, 1500);
+                });
+            });
+        });
+
+        // Bind import to test prompt event
+        const importBtn = container.querySelector('.btn-import-test');
+        if (importBtn) {
+            importBtn.addEventListener('click', () => {
+                const textarea = document.getElementById('st-scene-trigger-test-prompt');
+                if (textarea) {
+                    textarea.value = parsed.prompt;
+                    toastr.success('已导入至测试提示词输入框', 'Prompt Reader');
+                }
+            });
+        }
+
+        container.style.display = 'block';
+    }
+
+    function handleInspectFile(file) {
+        if (!file.type.startsWith('image/png')) {
+            toastr.warning('只支持无损 PNG 格式的生图进行解析，JPEG/WebP 元数据通常已被平台压缩丢弃。', 'Prompt Reader');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const arrayBuffer = e.target.result;
+                const metadata = readPngMetadata(arrayBuffer);
+                const parsed = parseImageMetadata(metadata);
+                renderInspectorResult(parsed);
+                toastr.success('解析成功！', 'Prompt Reader');
+            } catch (err) {
+                console.error('[Prompt Reader]', err);
+                toastr.error('解析失败: ' + err.message, 'Prompt Reader');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function injectInspectorToTestTab() {
+        const testSection = document.querySelector('section[data-kite-panel="test"]');
+        if (!testSection) return;
+
+        if (document.getElementById('st-scene-trigger-inspector-dropzone')) return;
+
+        if (!document.getElementById('rbq-inspector-styles')) {
+            const style = document.createElement('style');
+            style.id = 'rbq-inspector-styles';
+            style.textContent = `
+                .st-scene-trigger-inspector-dropzone {
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  margin-top: 16px;
+                  padding: 24px;
+                  min-height: 100px;
+                  background: var(--linear-bg-subtle, rgba(255,255,255,0.03));
+                  border-radius: 12px;
+                  border: 1.5px dashed var(--linear-border-standard, rgba(255,255,255,0.1));
+                  cursor: pointer;
+                  transition: border-color 0.25s ease, background-color 0.25s ease, transform 0.2s ease;
+                  user-select: none;
+                  text-align: center;
+                  gap: 8px;
+                }
+                .st-scene-trigger-inspector-dropzone:hover {
+                  border-color: var(--mode-accent, #ff7aa8);
+                  background: rgba(255, 122, 168, 0.04);
+                }
+                .st-scene-trigger-inspector-dropzone.dragover {
+                  border-color: var(--mode-accent, #ff7aa8);
+                  background: rgba(255, 122, 168, 0.08);
+                  transform: scale(1.01);
+                }
+                .st-scene-trigger-inspector-dropzone i {
+                  font-size: 26px;
+                  color: var(--mode-accent, #ff7aa8);
+                  transition: transform 0.2s ease;
+                }
+                .st-scene-trigger-inspector-dropzone:hover i {
+                  transform: translateY(-2px);
+                }
+                .st-scene-trigger-inspector-dropzone span {
+                  font-size: 13px;
+                  color: var(--linear-text-muted, #888);
+                }
+
+                .st-scene-trigger-inspector-result {
+                  margin-top: 18px;
+                  background: rgba(0, 0, 0, 0.15);
+                  border: 1px solid var(--linear-border-standard, rgba(255,255,255,0.1));
+                  border-radius: 12px;
+                  padding: 16px;
+                  box-sizing: border-box;
+                }
+                .st-scene-trigger-inspector-result-title {
+                  font-size: 15px;
+                  font-weight: bold;
+                  color: #f5fbff;
+                  margin-bottom: 12px;
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                }
+                .st-scene-trigger-inspector-result-title i {
+                  color: var(--mode-accent, #ff7aa8);
+                }
+                .st-scene-trigger-inspector-field {
+                  margin-bottom: 12px;
+                  background: rgba(255, 255, 255, 0.02);
+                  padding: 10px 12px;
+                  border-radius: 8px;
+                  border: 1px solid rgba(255, 255, 255, 0.04);
+                }
+                .st-scene-trigger-inspector-field:last-child {
+                  margin-bottom: 0;
+                }
+                .st-scene-trigger-inspector-field-header {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 6px;
+                }
+                .st-scene-trigger-inspector-field-name {
+                  font-size: 12px;
+                  color: var(--linear-text-muted, #888);
+                  font-weight: 600;
+                }
+                .st-scene-trigger-inspector-field-actions {
+                  display: flex;
+                  gap: 6px;
+                }
+                .st-scene-trigger-inspector-btn {
+                  background: rgba(255, 255, 255, 0.06);
+                  border: none;
+                  color: #fff;
+                  padding: 4px 8px;
+                  font-size: 11px;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4px;
+                }
+                .st-scene-trigger-inspector-btn:hover {
+                  background: rgba(255, 255, 255, 0.12);
+                }
+                .st-scene-trigger-inspector-field-value {
+                  font-size: 13.5px;
+                  color: #eee;
+                  word-break: break-all;
+                  white-space: pre-wrap;
+                  max-height: 120px;
+                  overflow-y: auto;
+                  font-family: var(--font-family, monospace);
+                }
+                .st-scene-trigger-inspector-grid {
+                  display: grid;
+                  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                  gap: 8px;
+                  margin-bottom: 12px;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const hr = document.createElement('hr');
+        hr.style.cssText = "margin: 24px 0; border: none; border-top: 1px dashed var(--linear-border-standard, rgba(255,255,255,0.15));";
+        
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'st-scene-trigger-panel-title';
+        titleDiv.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>图片信息解析 (Prompt Reader)</span>';
+        
+        const dropzone = document.createElement('div');
+        dropzone.className = 'st-scene-trigger-inspector-dropzone';
+        dropzone.id = 'st-scene-trigger-inspector-dropzone';
+        dropzone.innerHTML = `
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>拖拽图片至此处，或点击上传解析元数据</span>
+            <input type="file" id="st-scene-trigger-inspector-file" style="display: none;" accept="image/png">
+        `;
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'st-scene-trigger-inspector-result';
+        resultDiv.id = 'st-scene-trigger-inspector-result';
+        resultDiv.style.display = 'none';
+
+        testSection.appendChild(hr);
+        testSection.appendChild(titleDiv);
+        testSection.appendChild(dropzone);
+        testSection.appendChild(resultDiv);
+
+        const fileInput = dropzone.querySelector('#st-scene-trigger-inspector-file');
+        
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleInspectFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files.length > 0) {
+                handleInspectFile(files[0]);
+            }
+        });
     }
 
     function scanAndInject() {
+        injectInspectorToTestTab();
+
         const viewers = [
             {
-                // Custom st-scene-trigger viewer (Image History Modal)
-                dialogId: 'st-scene-trigger-image-viewer',
-                imgSelector: '.st-scene-trigger-viewer-image',
-                toolbarSelector: '.st-scene-trigger-viewer-actions',
-                btnClass: 'menu_button', // Match existing ST buttons
-                insertMode: 'prepend' // Puts it to the left of the download button
+                dialogSelector: '.pswp',
+                imgSelector: '.pswp__zoom-wrap img',
+                toolbarSelector: '.pswp__top-bar',
+                btnClass: 'pswp__button',
+                insertMode: 'prepend'
             },
             {
-                // Fancybox 4 (Modern ST Default)
                 dialogSelector: '.fancybox__container',
                 imgSelector: '.fancybox__image',
                 toolbarSelector: '.fancybox__toolbar__items--right, .fancybox__toolbar',
@@ -408,7 +808,6 @@
                 insertMode: 'prepend'
             },
             {
-                // Fancybox 3
                 dialogSelector: '.fancybox-container',
                 imgSelector: '.fancybox-image',
                 toolbarSelector: '.fancybox-toolbar',
@@ -416,7 +815,6 @@
                 insertMode: 'prepend'
             },
             {
-                // LightGallery
                 dialogSelector: '.lg-container',
                 imgSelector: '.lg-current img.lg-object, .lg-current img.lg-image',
                 toolbarSelector: '.lg-toolbar',
@@ -424,7 +822,6 @@
                 insertMode: 'append'
             },
             {
-                // Classic ST Dialog Fallback
                 dialogId: 'zoom_dialog',
                 imgSelector: '#zoom_img',
                 toolbarSelector: '',
@@ -432,7 +829,6 @@
                 insertMode: 'custom-absolute'
             },
             {
-                // Swipe Dialog Fallback
                 dialogId: 'swipe_zoom_dialog',
                 imgSelector: '#zoom_img',
                 toolbarSelector: '',
@@ -456,14 +852,12 @@
 
             viewerFound = true;
             injectToolbarButton(spec, dialog, activeImg.src);
-            break; // Stop after finding the topmost active viewer
+            break;
         }
 
-        // Clean up any remaining legacy capsule buttons if they stuck around
         const legacyBtn = document.getElementById('rbq-nai-gallery-btn');
-        if (legacyBtn) legacyBtn.remove();
+        if (legacyBtn && !viewerFound) legacyBtn.remove();
 
-        // Clean up chat inline buttons since the user doesn't want them
         const chatBtns = document.querySelectorAll('.rbq-nai-extract-btn');
         chatBtns.forEach(b => {
             const wrapper = b.closest('div[style*="display: block"]');
@@ -475,10 +869,9 @@
         });
     }
 
-    // Inject polling engine unconditionally
     setInterval(scanAndInject, 500);
-    setTimeout(scanAndInject, 100); // Immediate trigger
+    setTimeout(scanAndInject, 100);
 
-    console.info(`📋 ${PLUGIN_NAME} plugin loaded via Toolbar Poller.`);
+    console.info(`📋 ${PLUGIN_NAME} plugin loaded via Toolbar & Dropzone Poller.`);
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

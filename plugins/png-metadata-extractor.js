@@ -134,6 +134,29 @@
                 negativeStr = rawJson.uc || '';
             }
 
+            let model = rawJson.model || '';
+            let smea = '';
+            if (rawJson.sm === true) {
+                smea = rawJson.sm_dyn === true ? '开启 (DYN)' : '开启';
+            } else if (rawJson.sm === false) {
+                smea = '关闭';
+            }
+            let cfg_rescale = rawJson.cfg_rescale != null ? String(rawJson.cfg_rescale) : '';
+            let noise_schedule = rawJson.noise_schedule || '';
+            let uncond_scale = rawJson.uncond_scale != null ? String(rawJson.uncond_scale) : '';
+            let vibe_info = '';
+            if (rawJson.reference_image_multiple && rawJson.reference_image_multiple.length > 0) {
+                const count = rawJson.reference_image_multiple.length;
+                const strengths = rawJson.reference_strength_multiple || [];
+                const extractions = rawJson.reference_information_extracted_multiple || [];
+                vibe_info = `${count}张图 | 强度:[${strengths.join(',')}] | 提取:[${extractions.join(',')}]`;
+            } else if (rawJson.director_reference_images && rawJson.director_reference_images.length > 0) {
+                const count = rawJson.director_reference_images.length;
+                const strengths = rawJson.director_reference_strength_values || [];
+                const extractions = rawJson.director_reference_information_extracted || [];
+                vibe_info = `${count}张(v4) | 强度:[${strengths.join(',')}] | 提取:[${extractions.join(',')}]`;
+            }
+
             return {
                 source: 'NovelAI',
                 prompt: promptStr,
@@ -143,6 +166,12 @@
                 sampler: rawJson.sampler || '',
                 cfg: rawJson.scale ? String(rawJson.scale) : '',
                 size: (rawJson.width && rawJson.height) ? `${rawJson.width}x${rawJson.height}` : '',
+                model,
+                smea,
+                cfg_rescale,
+                noise_schedule,
+                uncond_scale,
+                vibe_info,
                 raw: rawJson
             };
         }
@@ -184,17 +213,28 @@
             prompt = promptLines.join('\n').trim();
             negative = negativeLines.join('\n').trim();
 
+            let model = '';
+            let clip_skip = '';
+            let denoise = '';
+            let scheduler = '';
+
             if (infoLine) {
                 const parts = infoLine.split(',');
                 parts.forEach(part => {
-                    const [k, v] = part.split(':').map(s => s.trim());
-                    if (!k || !v) return;
+                    const colonIdx = part.indexOf(':');
+                    if (colonIdx === -1) return;
+                    const k = part.substring(0, colonIdx).trim();
+                    const v = part.substring(colonIdx + 1).trim();
                     const lowerK = k.toLowerCase();
                     if (lowerK === 'steps') steps = v;
                     else if (lowerK === 'sampler') sampler = v;
                     else if (lowerK === 'cfg scale') cfg = v;
                     else if (lowerK === 'seed') seed = v;
                     else if (lowerK === 'size') size = v;
+                    else if (lowerK === 'model') model = v;
+                    else if (lowerK === 'clip skip') clip_skip = v;
+                    else if (lowerK === 'denoising strength') denoise = v;
+                    else if (lowerK === 'schedule type' || lowerK === 'scheduler') scheduler = v;
                 });
             }
 
@@ -207,6 +247,10 @@
                 sampler,
                 cfg,
                 size,
+                model,
+                clip_skip,
+                denoise,
+                scheduler,
                 raw
             };
         }
@@ -222,6 +266,11 @@
                 let sampler = '';
                 let cfg = '';
                 let size = '';
+
+                let model = '';
+                let clip_skip = '';
+                let denoise = '';
+                let scheduler = '';
 
                 for (const nodeId in promptGraph) {
                     const node = promptGraph[nodeId];
@@ -240,10 +289,21 @@
                             if (node.inputs.steps != null) steps = String(node.inputs.steps);
                             if (node.inputs.cfg != null) cfg = String(node.inputs.cfg);
                             if (node.inputs.sampler_name != null) sampler = String(node.inputs.sampler_name);
+                            if (node.inputs.denoise != null) denoise = String(node.inputs.denoise);
+                            if (node.inputs.scheduler != null) scheduler = String(node.inputs.scheduler);
                         }
                     } else if (node.class_type === 'EmptyLatentImage') {
                         if (node.inputs && node.inputs.width && node.inputs.height) {
                             size = `${node.inputs.width}x${node.inputs.height}`;
+                        }
+                    } else if (node.class_type === 'CheckpointLoaderSimple' || node.class_type === 'CheckpointLoader' || node.class_type === 'SimpleCheckpointLoaderWithName') {
+                        if (node.inputs && node.inputs.ckpt_name) {
+                            model = node.inputs.ckpt_name;
+                        }
+                    } else if (node.class_type === 'CLIPSetUp' || node.class_type === 'CLIPSetLastLayer') {
+                        if (node.inputs && node.inputs.stop_at_layer != null) {
+                            const val = Math.abs(Number(node.inputs.stop_at_layer));
+                            clip_skip = String(val);
                         }
                     }
                 }
@@ -257,6 +317,10 @@
                     sampler,
                     cfg,
                     size,
+                    model,
+                    clip_skip,
+                    denoise,
+                    scheduler,
                     raw: promptGraph
                 };
             } catch(e) {}
@@ -420,11 +484,19 @@
         const grid = document.createElement('div');
         grid.className = 'rbq-extractor-grid';
         const smallFields = [
+            createField('模型 (Model)', parsed.model),
             createField('种子 (Seed)', parsed.seed),
             createField('尺寸 (Size)', parsed.size),
             createField('步数 (Steps)', parsed.steps),
             createField('采样器 (Sampler)', parsed.sampler),
-            createField('CFG Scale', parsed.cfg)
+            createField('CFG Scale', parsed.cfg),
+            createField('SMEA', parsed.smea),
+            createField('CFG Rescale', parsed.cfg_rescale),
+            createField('噪声调度 (Scheduler)', parsed.noise_schedule || parsed.scheduler),
+            createField('UC强度 (Uncond Scale)', parsed.uncond_scale),
+            createField('Clip Skip', parsed.clip_skip),
+            createField('去噪强度 (Denoise)', parsed.denoise),
+            createField('参考图 (Vibe)', parsed.vibe_info)
         ];
         smallFields.forEach(f => f && grid.appendChild(f));
         if (grid.children.length > 0) bodyDiv.appendChild(grid);
@@ -497,11 +569,19 @@
 
         let gridHtml = '';
         const smallFields = [
+            { label: '模型 (Model)', value: parsed.model },
             { label: '种子 (Seed)', value: parsed.seed },
             { label: '采样器 (Sampler)', value: parsed.sampler },
             { label: 'CFG (Scale)', value: parsed.cfg },
             { label: '尺寸 (Size)', value: parsed.size },
-            { label: '步数 (Steps)', value: parsed.steps }
+            { label: '步数 (Steps)', value: parsed.steps },
+            { label: 'SMEA', value: parsed.smea },
+            { label: 'CFG Rescale', value: parsed.cfg_rescale },
+            { label: '噪声调度 (Scheduler)', value: parsed.noise_schedule || parsed.scheduler },
+            { label: 'UC强度 (Uncond Scale)', value: parsed.uncond_scale },
+            { label: 'Clip Skip', value: parsed.clip_skip },
+            { label: '去噪强度 (Denoise)', value: parsed.denoise },
+            { label: '参考图 (Vibe)', value: parsed.vibe_info }
         ];
 
         smallFields.forEach(f => {

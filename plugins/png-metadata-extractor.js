@@ -540,10 +540,17 @@
     }
 
     function injectToolbarButton(spec, dialog, imgUrl) {
-        if (dialog.querySelector('.rbq-nai-extract-btn')) return;
+        let btn = dialog.querySelector('.rbq-nai-extract-btn');
+        if (btn) {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                handleExtract(imgUrl);
+            };
+            return;
+        }
 
         const toolbar = spec.toolbarSelector ? dialog.querySelector(spec.toolbarSelector) : null;
-        const btn = document.createElement('button');
+        btn = document.createElement('button');
         btn.id = 'rbq-nai-gallery-btn';
         btn.className = `${spec.btnClass || ''} rbq-nai-extract-btn menu_button st-scene-trigger-icon-button`.trim();
         btn.title = '提取图片信息 (NAI/SD/ComfyUI)';
@@ -880,6 +887,38 @@
     }
 
     function scanAndInject() {
+        if (!document.getElementById('rbq-gallery-styles')) {
+            const style = document.createElement('style');
+            style.id = 'rbq-gallery-styles';
+            style.textContent = `
+                .pswp__top-bar .rbq-nai-extract-btn {
+                    background: none !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    width: 44px;
+                    height: 44px;
+                    float: right;
+                    font-size: 15px;
+                    color: #fff;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    opacity: 0.75;
+                    transition: opacity 0.2s, color 0.2s;
+                    cursor: pointer;
+                }
+                .pswp__top-bar .rbq-nai-extract-btn:hover {
+                    opacity: 1;
+                    color: #ff99cc;
+                }
+                .pswp__top-bar .rbq-nai-extract-btn i {
+                    color: inherit;
+                    font-size: 15px;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         injectInspectorToTestTab();
 
         const viewers = [
@@ -895,8 +934,8 @@
                 dialogSelector: '.pswp',
                 imgSelector: '.pswp__zoom-wrap img',
                 toolbarSelector: '.pswp__top-bar',
-                btnClass: 'pswp__button',
-                insertMode: 'prepend'
+                btnClass: '',
+                insertMode: 'append'
             },
             {
                 dialogSelector: '.fancybox__container',
@@ -947,6 +986,19 @@
 
             const activeImg = dialog.querySelector(spec.imgSelector);
             if (!activeImg || !activeImg.src) continue;
+
+            // Check if this is a character avatar, user avatar, default avatar, or background image
+            const src = activeImg.src.toLowerCase();
+            if (
+                src.includes('avatar') || 
+                src.includes('character') || 
+                src.includes('background') || 
+                src.includes('/default-')
+            ) {
+                const btn = dialog.querySelector('.rbq-nai-extract-btn');
+                if (btn) btn.remove();
+                continue;
+            }
 
             viewerFound = true;
             injectToolbarButton(spec, dialog, activeImg.src);

@@ -3,10 +3,90 @@
 
     const PLUGIN_NAME = 'PNG Metadata Extractor';
 
+    const COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
+    const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
+
+    function getGridCoord(x, y) {
+        let closestCol = 'C';
+        let minColDist = Infinity;
+        for (const [col, val] of Object.entries(COL_MAP)) {
+            const dist = Math.abs(x - val);
+            if (dist < minColDist) {
+                minColDist = dist;
+                closestCol = col;
+            }
+        }
+        let closestRow = '3';
+        let minRowDist = Infinity;
+        for (const [row, val] of Object.entries(ROW_MAP)) {
+            const dist = Math.abs(y - val);
+            if (dist < minRowDist) {
+                minRowDist = dist;
+                closestRow = row;
+            }
+        }
+        return `${closestCol}${closestRow}`;
+    }
+
+    function reconstructV4Prompt(v4Prompt) {
+        if (!v4Prompt || !v4Prompt.caption) return '';
+        const base = v4Prompt.caption.base_caption || '';
+        const charCaptions = v4Prompt.caption.char_captions || [];
+        if (charCaptions.length === 0) return base;
+
+        let result = base;
+        charCaptions.forEach((char, index) => {
+            const caption = char.char_caption || '';
+            let coordStr = '';
+            if (char.centers && char.centers.length > 0) {
+                const center = char.centers[0];
+                const grid = getGridCoord(center.x, center.y);
+                coordStr = `|centers:${grid}`;
+            }
+            if (result && !result.endsWith(';') && !result.endsWith(',')) {
+                result += ';';
+            }
+            result += ` Char${index + 1}:${caption}${coordStr}`;
+        });
+        return result.trim();
+    }
+
+    function reconstructV4NegativePrompt(v4NegPrompt) {
+        if (!v4NegPrompt || !v4NegPrompt.caption) return '';
+        const base = v4NegPrompt.caption.base_caption || '';
+        const charCaptions = v4NegPrompt.caption.char_captions || [];
+        if (charCaptions.length === 0) return base;
+
+        let result = base;
+        charCaptions.forEach((char, index) => {
+            const caption = char.char_caption || '';
+            if (!caption) return;
+            if (result && !result.endsWith(';') && !result.endsWith(',')) {
+                result += ';';
+            }
+            result += ` Char${index + 1} UC:${caption}`;
+        });
+        return result.trim();
+    }
+
     function formatNaiData(data) {
+        let promptStr = '';
+        if (data.v4_prompt) {
+            promptStr = reconstructV4Prompt(data.v4_prompt);
+        } else {
+            promptStr = data.prompt || '';
+        }
+
+        let negativeStr = '';
+        if (data.v4_negative_prompt) {
+            negativeStr = reconstructV4NegativePrompt(data.v4_negative_prompt);
+        } else {
+            negativeStr = data.uc || '';
+        }
+
         return {
-            prompt: data.prompt || '',
-            negative: data.uc || '',
+            prompt: promptStr,
+            negative: negativeStr,
             seed: data.seed ? String(data.seed) : '',
             steps: data.steps ? String(data.steps) : '',
             sampler: data.sampler || '',

@@ -1,8 +1,8 @@
 /**
- * RBQ-Draw-Plugins Sub-Plugin: Custom Floating Ball Icon (Pink Cat)
- * Version: 1.0.0
+ * RBQ-Draw-Plugins Sub-Plugin: 摸鱼悬浮球 (Slack-off Floating Ball)
+ * Version: 1.0.1
  * Author: TTWP-09
- * Description: 将生图插件的悬浮球样式替换为可爱的粉色猫咪图标，并带有精致的悬停微动画。
+ * Description: 将生图插件的悬浮球样式替换为超可爱的摸鱼猫咪图标，并带有精致的悬停微动画。
  */
 (function() {
     'use strict';
@@ -48,6 +48,6 @@
             }
         `;
         document.head.appendChild(style);
-        console.info('[RBQ Plugin] Custom Floating Icon (Pink Cat) styles loaded.');
+        console.info('[RBQ Plugin] Slack-off Floating Ball (摸鱼悬浮球) styles loaded.');
     }
 })();

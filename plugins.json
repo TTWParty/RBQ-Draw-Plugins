@@ -43,8 +43,8 @@
     "id": "rbq-custom-floating-icon",
     "name": "摸鱼悬浮球",
     "description": "将生图触发器的悬浮球样式替换为超可爱的摸鱼猫咪图标，支持流畅的放大和偏转微动画。",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "TTWP-09",
-    "main": "plugins/custom-floating-icon.js?v=1.0.1"
+    "main": "plugins/custom-floating-icon.js?v=1.0.2"
   }
 ]

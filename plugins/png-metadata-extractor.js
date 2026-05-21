@@ -884,6 +884,14 @@
 
         const viewers = [
             {
+                // Custom st-scene-trigger viewer (Image History Modal)
+                dialogId: 'st-scene-trigger-image-viewer',
+                imgSelector: '.st-scene-trigger-viewer-image',
+                toolbarSelector: '.st-scene-trigger-viewer-actions',
+                btnClass: 'menu_button', // Match existing ST buttons
+                insertMode: 'prepend' // Puts it to the left of the download button
+            },
+            {
                 dialogSelector: '.pswp',
                 imgSelector: '.pswp__zoom-wrap img',
                 toolbarSelector: '.pswp__top-bar',
@@ -948,7 +956,7 @@
         const legacyBtn = document.getElementById('rbq-nai-gallery-btn');
         if (legacyBtn && !viewerFound) legacyBtn.remove();
 
-        const chatBtns = document.querySelectorAll('.rbq-nai-extract-btn');
+        const chatBtns = document.querySelectorAll('#chat .rbq-nai-extract-btn');
         chatBtns.forEach(b => {
             const wrapper = b.closest('div[style*="display: block"]');
             if (wrapper && wrapper.children.length === 1) {

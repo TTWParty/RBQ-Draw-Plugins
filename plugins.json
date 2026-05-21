@@ -38,5 +38,13 @@
     "version": "1.0.3",
     "author": "TTWP-09",
     "main": "plugins/multi-char-composer.js?v=1.0.3"
+  },
+  {
+    "id": "rbq-custom-floating-icon",
+    "name": "可爱猫咪悬浮球 (Custom Floating Icon - Cat)",
+    "description": "将生图触发器的悬浮球样式替换为超可爱的粉色猫咪图标，支持流畅的放大和偏转微动画。",
+    "version": "1.0.0",
+    "author": "TTWP-09",
+    "main": "plugins/custom-floating-icon.js?v=1.0.0"
   }
 ]

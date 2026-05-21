@@ -337,6 +337,101 @@
         throw new Error('图片中没有检测到支持的生图元数据 (SD / NovelAI / ComfyUI)');
     }
 
+    function detectPreset(parsed) {
+        if (!parsed || !parsed.prompt) return null;
+        
+        let settings = null;
+        try {
+            if (typeof RBQ !== 'undefined' && typeof RBQ.api?.getSettings === 'function') {
+                settings = RBQ.api.getSettings();
+            }
+        } catch (e) {
+            console.error('[PNG Metadata Extractor] Failed to get settings for preset detection', e);
+        }
+        
+        if (!settings || !settings._promptPresets) return null;
+        
+        const store = settings._promptPresets;
+        const presets = Array.isArray(store.presets) ? store.presets : [];
+        if (presets.length === 0) return null;
+        
+        const rawPrompt = String(parsed.prompt || '').trim();
+        const rawNegative = String(parsed.negative || '').trim();
+        
+        let bestMatch = null;
+        let bestMatchScore = -1;
+        
+        for (const preset of presets) {
+            const prePos = String(preset.positive || '').trim();
+            const preNeg = String(preset.negative || '').trim();
+            
+            if (!prePos && !preNeg) continue;
+            
+            for (const position of ['prepend', 'append']) {
+                let posMatched = false;
+                let negMatched = false;
+                let currentMainPrompt = rawPrompt;
+                let currentMainNegative = rawNegative;
+                
+                // Check positive prompt match
+                if (prePos) {
+                    if (rawPrompt === prePos) {
+                        posMatched = true;
+                        currentMainPrompt = '';
+                    } else if (position === 'prepend') {
+                        if (rawPrompt.startsWith(prePos + ', ')) {
+                            posMatched = true;
+                            currentMainPrompt = rawPrompt.slice(prePos.length + 2);
+                        }
+                    } else { // position === 'append'
+                        if (rawPrompt.endsWith(', ' + prePos)) {
+                            posMatched = true;
+                            currentMainPrompt = rawPrompt.slice(0, rawPrompt.length - prePos.length - 2);
+                        }
+                    }
+                } else {
+                    posMatched = true;
+                }
+                
+                // Check negative prompt match
+                if (preNeg) {
+                    if (rawNegative === preNeg) {
+                        negMatched = true;
+                        currentMainNegative = '';
+                    } else if (position === 'prepend') {
+                        if (rawNegative.startsWith(preNeg + ', ')) {
+                            negMatched = true;
+                            currentMainNegative = rawNegative.slice(preNeg.length + 2);
+                        }
+                    } else { // position === 'append'
+                        if (rawNegative.endsWith(', ' + preNeg)) {
+                            negMatched = true;
+                            currentMainNegative = rawNegative.slice(0, rawNegative.length - preNeg.length - 2);
+                        }
+                    }
+                } else {
+                    negMatched = true;
+                }
+                
+                if (posMatched && negMatched) {
+                    const score = prePos.length + preNeg.length;
+                    if (score > bestMatchScore) {
+                        bestMatchScore = score;
+                        bestMatch = {
+                            name: preset.name,
+                            mainPrompt: currentMainPrompt,
+                            mainNegative: currentMainNegative,
+                            presetPositive: prePos,
+                            presetNegative: preNeg
+                        };
+                    }
+                }
+            }
+        }
+        
+        return bestMatch;
+    }
+
     function showMetadataModal(parsed, isSimple = false) {
         if (!document.getElementById('rbq-nai-modal-style')) {
             const style = document.createElement('style');
@@ -494,10 +589,25 @@
             ? '反向提示词 (Undesired Content)'
             : '反向提示词 (Negative)';
 
-        const fields = [
-            createField('正向提示词 (Prompt)', parsed.prompt),
-            createField(negTitle, parsed.negative)
-        ];
+        const presetMatch = detectPreset(parsed);
+        const fields = [];
+        if (presetMatch) {
+            fields.push(createField('检测到的提示词预设 (Preset)', presetMatch.name));
+            if (presetMatch.presetPositive) {
+                fields.push(createField('主提示词 (Main Prompt - 已分离预设)', presetMatch.mainPrompt || '(空)'));
+                fields.push(createField('预设正面提示词', presetMatch.presetPositive));
+            }
+            fields.push(createField('正向提示词 (完整)', parsed.prompt));
+            
+            if (presetMatch.presetNegative) {
+                fields.push(createField('主反向提示词 (Main Negative - 已分离预设)', presetMatch.mainNegative || '(空)'));
+                fields.push(createField('预设反向提示词', presetMatch.presetNegative));
+            }
+            fields.push(createField('反向提示词 (完整)', parsed.negative));
+        } else {
+            fields.push(createField('正向提示词 (Prompt)', parsed.prompt));
+            fields.push(createField(negTitle, parsed.negative));
+        }
         fields.forEach(f => f && bodyDiv.appendChild(f));
 
         const grid = document.createElement('div');
@@ -641,34 +751,117 @@
             `;
         });
 
+        const presetMatch = detectPreset(parsed);
+        let promptSection = '';
+        if (presetMatch) {
+            promptSection += `
+                <div class="st-scene-trigger-inspector-field" style="border-left: 3px solid var(--mode-accent, #ff7aa8);">
+                    <div class="st-scene-trigger-inspector-field-header">
+                        <span class="st-scene-trigger-inspector-field-name" style="color: var(--mode-accent, #ff7aa8); font-weight: bold;">检测到提示词预设 (Preset)</span>
+                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${presetMatch.name.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制名称</button>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field-value" style="font-weight: bold; color: var(--mode-accent, #ff7aa8);">${presetMatch.name}</div>
+                </div>
+            `;
+            
+            if (presetMatch.presetPositive) {
+                promptSection += `
+                    <div class="st-scene-trigger-inspector-field">
+                        <div class="st-scene-trigger-inspector-field-header">
+                            <span class="st-scene-trigger-inspector-field-name">主提示词 (Main Prompt - 已分离预设)</span>
+                            <div class="st-scene-trigger-inspector-field-actions">
+                                <button class="st-scene-trigger-inspector-btn btn-import-test" data-import="${presetMatch.mainPrompt.replace(/"/g, '&quot;')}"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入到测试</button>
+                                <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${presetMatch.mainPrompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                            </div>
+                        </div>
+                        <div class="st-scene-trigger-inspector-field-value">${presetMatch.mainPrompt || '(空)'}</div>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field">
+                        <div class="st-scene-trigger-inspector-field-header">
+                            <span class="st-scene-trigger-inspector-field-name">预设正面提示词</span>
+                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${presetMatch.presetPositive.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                        </div>
+                        <div class="st-scene-trigger-inspector-field-value" style="opacity: 0.8;">${presetMatch.presetPositive}</div>
+                    </div>
+                `;
+            }
+            
+            promptSection += `
+                <div class="st-scene-trigger-inspector-field">
+                    <div class="st-scene-trigger-inspector-field-header">
+                        <span class="st-scene-trigger-inspector-field-name">正向提示词 (完整)</span>
+                        <div class="st-scene-trigger-inspector-field-actions">
+                            <button class="st-scene-trigger-inspector-btn btn-import-test-full" data-import="${parsed.prompt.replace(/"/g, '&quot;')}"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入完整提示词</button>
+                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.prompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                        </div>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field-value" style="opacity: 0.7;">${parsed.prompt}</div>
+                </div>
+            `;
+            
+            if (presetMatch.presetNegative) {
+                promptSection += `
+                    <div class="st-scene-trigger-inspector-field">
+                        <div class="st-scene-trigger-inspector-field-header">
+                            <span class="st-scene-trigger-inspector-field-name">主反向提示词 (Main Negative - 已分离预设)</span>
+                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${presetMatch.mainNegative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                        </div>
+                        <div class="st-scene-trigger-inspector-field-value">${presetMatch.mainNegative || '(空)'}</div>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field">
+                        <div class="st-scene-trigger-inspector-field-header">
+                            <span class="st-scene-trigger-inspector-field-name">预设反向提示词</span>
+                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${presetMatch.presetNegative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                        </div>
+                        <div class="st-scene-trigger-inspector-field-value" style="opacity: 0.8;">${presetMatch.presetNegative}</div>
+                    </div>
+                `;
+            }
+            
+            promptSection += `
+                <div class="st-scene-trigger-inspector-field">
+                    <div class="st-scene-trigger-inspector-field-header">
+                        <span class="st-scene-trigger-inspector-field-name">反向提示词 (完整)</span>
+                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.negative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                    </div>
+                    <div class="st-scene-trigger-inspector-field-value" style="opacity: 0.7;">${parsed.negative}</div>
+                </div>
+            `;
+        } else {
+            if (parsed.prompt) {
+                promptSection += `
+                    <div class="st-scene-trigger-inspector-field">
+                        <div class="st-scene-trigger-inspector-field-header">
+                            <span class="st-scene-trigger-inspector-field-name">正向提示词 (Prompt)</span>
+                            <div class="st-scene-trigger-inspector-field-actions">
+                                <button class="st-scene-trigger-inspector-btn btn-import-test" data-import="${parsed.prompt.replace(/"/g, '&quot;')}"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入到测试</button>
+                                <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.prompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                            </div>
+                        </div>
+                        <div class="st-scene-trigger-inspector-field-value">${parsed.prompt}</div>
+                    </div>
+                `;
+            }
+            if (parsed.negative) {
+                promptSection += `
+                    <div class="st-scene-trigger-inspector-field">
+                        <div class="st-scene-trigger-inspector-field-header">
+                            <span class="st-scene-trigger-inspector-field-name">反向提示词 (Negative UC)</span>
+                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.negative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
+                        </div>
+                        <div class="st-scene-trigger-inspector-field-value">${parsed.negative}</div>
+                    </div>
+                `;
+            }
+        }
+
         container.innerHTML = `
             <div class="st-scene-trigger-inspector-result-title">
                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                 <span>解析结果 (${parsed.source})</span>
             </div>
 
-            ${parsed.prompt ? `
-                <div class="st-scene-trigger-inspector-field">
-                    <div class="st-scene-trigger-inspector-field-header">
-                        <span class="st-scene-trigger-inspector-field-name">正向提示词 (Prompt)</span>
-                        <div class="st-scene-trigger-inspector-field-actions">
-                            <button class="st-scene-trigger-inspector-btn btn-import-test"><i class="fa-solid fa-arrow-up-from-bracket"></i> 导入到测试</button>
-                            <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.prompt.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
-                        </div>
-                    </div>
-                    <div class="st-scene-trigger-inspector-field-value">${parsed.prompt}</div>
-                </div>
-            ` : ''}
-
-            ${parsed.negative ? `
-                <div class="st-scene-trigger-inspector-field">
-                    <div class="st-scene-trigger-inspector-field-header">
-                        <span class="st-scene-trigger-inspector-field-name">反向提示词 (Negative UC)</span>
-                        <button class="st-scene-trigger-inspector-btn btn-copy" data-text="${parsed.negative.replace(/"/g, '&quot;')}"><i class="fa-regular fa-copy"></i> 复制</button>
-                    </div>
-                    <div class="st-scene-trigger-inspector-field-value">${parsed.negative}</div>
-                </div>
-            ` : ''}
+            ${promptSection}
 
             ${gridHtml ? `
                 <div class="st-scene-trigger-inspector-grid">
@@ -691,17 +884,17 @@
             });
         });
 
-        // Bind import to test prompt event
-        const importBtn = container.querySelector('.btn-import-test');
-        if (importBtn) {
-            importBtn.addEventListener('click', () => {
+        // Bind import to test prompt events
+        container.querySelectorAll('.btn-import-test, .btn-import-test-full').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const text = btn.getAttribute('data-import');
                 const textarea = document.getElementById('st-scene-trigger-test-prompt');
-                if (textarea) {
-                    textarea.value = parsed.prompt;
+                if (textarea && text !== null) {
+                    textarea.value = text;
                     toastr.success('已导入至测试提示词输入框', 'Prompt Reader');
                 }
             });
-        }
+        });
 
         container.style.display = 'block';
     }

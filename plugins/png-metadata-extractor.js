@@ -144,17 +144,24 @@
             let cfg_rescale = rawJson.cfg_rescale != null ? String(rawJson.cfg_rescale) : '';
             let noise_schedule = rawJson.noise_schedule || '';
             let uncond_scale = rawJson.uncond_scale != null ? String(rawJson.uncond_scale) : '';
+            let variety_plus = rawJson.skip_cfg_above_sigma != null ? '开启' : '';
             let vibe_info = '';
             if (rawJson.reference_image_multiple && rawJson.reference_image_multiple.length > 0) {
                 const count = rawJson.reference_image_multiple.length;
                 const strengths = rawJson.reference_strength_multiple || [];
                 const extractions = rawJson.reference_information_extracted_multiple || [];
-                vibe_info = `${count}张图 | 强度:[${strengths.join(',')}] | 提取:[${extractions.join(',')}]`;
+                vibe_info = `${count}张(风格迁移) | 强度:[${strengths.join(',')}] | 提取:[${extractions.join(',')}]`;
             } else if (rawJson.director_reference_images && rawJson.director_reference_images.length > 0) {
                 const count = rawJson.director_reference_images.length;
                 const strengths = rawJson.director_reference_strength_values || [];
                 const extractions = rawJson.director_reference_information_extracted || [];
-                vibe_info = `${count}张(v4) | 强度:[${strengths.join(',')}] | 提取:[${extractions.join(',')}]`;
+                const types = (rawJson.director_reference_descriptions || []).map(desc => {
+                    const base = desc.caption?.base_caption || '';
+                    if (base === 'character') return '角色';
+                    if (base === 'style') return '画风';
+                    return base;
+                });
+                vibe_info = `${count}张(精准参考) | 类型:[${types.join(',')}] | 强度:[${strengths.join(',')}] | 提取:[${extractions.join(',')}]`;
             }
 
             return {
@@ -171,6 +178,7 @@
                 cfg_rescale,
                 noise_schedule,
                 uncond_scale,
+                variety_plus,
                 vibe_info,
                 raw: rawJson
             };
@@ -494,6 +502,7 @@
             createField('CFG Rescale', parsed.cfg_rescale),
             createField('噪声调度 (Scheduler)', parsed.noise_schedule || parsed.scheduler),
             createField('UC强度 (Uncond Scale)', parsed.uncond_scale),
+            createField('Variety+', parsed.variety_plus),
             createField('Clip Skip', parsed.clip_skip),
             createField('去噪强度 (Denoise)', parsed.denoise),
             createField('参考图 (Vibe)', parsed.vibe_info)
@@ -579,6 +588,7 @@
             { label: 'CFG Rescale', value: parsed.cfg_rescale },
             { label: '噪声调度 (Scheduler)', value: parsed.noise_schedule || parsed.scheduler },
             { label: 'UC强度 (Uncond Scale)', value: parsed.uncond_scale },
+            { label: 'Variety+', value: parsed.variety_plus },
             { label: 'Clip Skip', value: parsed.clip_skip },
             { label: '去噪强度 (Denoise)', value: parsed.denoise },
             { label: '参考图 (Vibe)', value: parsed.vibe_info }

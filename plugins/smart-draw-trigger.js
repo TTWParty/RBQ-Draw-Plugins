@@ -473,6 +473,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         geminiJailbreak: false,
         geminiJailbreakPrompt: DEFAULT_JAILBREAK_PROMPT,
         cache: {},
+        apiTemplates: [],
     };
 
     const pendingTimers = new Map();
@@ -2784,6 +2785,25 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
     }
 
+    function populateApiTemplatesSelect(selectedName) {
+        const select = document.getElementById('rbq-sdt-api-template');
+        if (!select) return;
+        select.innerHTML = '<option value="">-- 选择模板 --</option>';
+        const store = getStore();
+        const templates = store.apiTemplates || [];
+        templates.forEach((tpl) => {
+            const option = document.createElement('option');
+            option.value = tpl.name;
+            option.textContent = tpl.name;
+            select.append(option);
+        });
+        if (selectedName) {
+            select.value = selectedName;
+        } else {
+            select.value = '';
+        }
+    }
+
     function renderSettings(panel) {
         if (document.getElementById('rbq-smart-draw-panel')) return;
         injectStyles();
@@ -2812,6 +2832,22 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
+                <label class="st-scene-trigger-field">
+                    <span>API 预设/模板</span>
+                    <div style="display:flex; gap:6px; align-items:center; width:100%;">
+                        <select id="rbq-sdt-api-template" style="flex:1;">
+                            <option value="">-- 选择模板 --</option>
+                        </select>
+                        <button id="rbq-sdt-delete-api-template" class="menu_button" type="button" style="padding:0 8px; margin:0; height:30px;" title="删除选中的模板"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                </label>
+                <label class="st-scene-trigger-field">
+                    <span>保存当前为新模板</span>
+                    <div style="display:flex; gap:6px; align-items:center; width:100%;">
+                        <input id="rbq-sdt-new-template-name" type="text" placeholder="模板名称" style="flex:1; height:30px;">
+                        <button id="rbq-sdt-save-api-template" class="menu_button" type="button" style="padding:0 12px; margin:0; height:30px;">保存</button>
+                    </div>
+                </label>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
@@ -2887,6 +2923,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-custom-key-header').value = store.customApiKeyHeader;
         document.getElementById('rbq-sdt-custom-key').value = store.customApiKey;
         document.getElementById('rbq-sdt-system-prompt').value = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        populateApiTemplatesSelect();
         const presetLabel = SYSTEM_PROMPT_PRESETS[store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET]?.label || '未知';
         const promptVersionText = store.systemPromptVersion === DEFAULT_SYSTEM_PROMPT_VERSION
             ? `${presetLabel} · v${store.systemPromptVersion}（最新）`
@@ -2921,6 +2958,131 @@ Zimage 擅长理解复杂的英文长句和语境。
             save();
             console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存到 localStorage`);
         });
+
+        // API templates selection/change
+        document.getElementById('rbq-sdt-api-template').addEventListener('change', (event) => {
+            const tplName = event.target.value;
+            if (!tplName) return;
+            const store = getStore();
+            const tpl = (store.apiTemplates || []).find(t => t.name === tplName);
+            if (!tpl) return;
+            
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.value = val !== undefined ? val : '';
+            };
+            const setChecked = (id, checked) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.checked = !!checked;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            };
+
+            if (tpl.provider) setVal('rbq-sdt-provider', tpl.provider);
+            if (tpl.openaiBaseUrl !== undefined) setVal('rbq-sdt-openai-base', tpl.openaiBaseUrl);
+            if (tpl.openaiApiKey !== undefined) setVal('rbq-sdt-openai-key', tpl.openaiApiKey);
+            if (tpl.openaiModel !== undefined) {
+                if (tpl.openaiModels) {
+                    populateModelSelect(tpl.openaiModels, tpl.openaiModel);
+                } else {
+                    populateModelSelect([tpl.openaiModel], tpl.openaiModel);
+                }
+            }
+            if (tpl.customUrl !== undefined) setVal('rbq-sdt-custom-url', tpl.customUrl);
+            if (tpl.customApiKeyHeader !== undefined) setVal('rbq-sdt-custom-key-header', tpl.customApiKeyHeader);
+            if (tpl.customApiKey !== undefined) setVal('rbq-sdt-custom-key', tpl.customApiKey);
+            
+            if (tpl.geminiJailbreak !== undefined) setChecked('rbq-sdt-gemini-jailbreak', tpl.geminiJailbreak);
+            if (tpl.geminiJailbreakPrompt !== undefined) setVal('rbq-sdt-gemini-jailbreak-prompt', tpl.geminiJailbreakPrompt);
+            
+            if (tpl.postProcessEnabled !== undefined) setChecked('rbq-sdt-post-process-enabled', tpl.postProcessEnabled);
+            if (tpl.postProcessRole !== undefined) setVal('rbq-sdt-post-process-role', tpl.postProcessRole);
+            if (tpl.postProcessPrompt !== undefined) setVal('rbq-sdt-post-process-prompt', tpl.postProcessPrompt);
+
+            updateProviderVisibility();
+            
+            // Auto-save the loaded configuration directly to the store
+            const s = getStore();
+            s.provider = tpl.provider;
+            s.openaiBaseUrl = tpl.openaiBaseUrl;
+            s.openaiApiKey = tpl.openaiApiKey;
+            s.openaiModel = tpl.openaiModel;
+            if (tpl.openaiModels) s.openaiModels = tpl.openaiModels;
+            s.customUrl = tpl.customUrl;
+            s.customApiKeyHeader = tpl.customApiKeyHeader;
+            s.customApiKey = tpl.customApiKey;
+            s.geminiJailbreak = tpl.geminiJailbreak;
+            s.geminiJailbreakPrompt = tpl.geminiJailbreakPrompt;
+            s.postProcessEnabled = tpl.postProcessEnabled;
+            s.postProcessRole = tpl.postProcessRole;
+            s.postProcessPrompt = tpl.postProcessPrompt;
+            save();
+
+            toastr.success(`已载入 API 模板：${tplName}`, PLUGIN_NAME);
+        });
+
+        // API templates save
+        document.getElementById('rbq-sdt-save-api-template').onclick = () => {
+            const nameInput = document.getElementById('rbq-sdt-new-template-name');
+            const name = nameInput?.value?.trim();
+            if (!name) {
+                toastr.warning('请输入模板名称', PLUGIN_NAME);
+                return;
+            }
+            const store = getStore();
+            if (!store.apiTemplates) store.apiTemplates = [];
+            
+            const existingIdx = store.apiTemplates.findIndex(t => t.name.toLowerCase() === name.toLowerCase());
+            
+            const newTpl = {
+                name: name,
+                provider: val('rbq-sdt-provider'),
+                openaiBaseUrl: val('rbq-sdt-openai-base').trim(),
+                openaiApiKey: val('rbq-sdt-openai-key').trim(),
+                openaiModel: val('rbq-sdt-openai-model').trim(),
+                openaiModels: store.openaiModels || [],
+                customUrl: val('rbq-sdt-custom-url').trim(),
+                customApiKeyHeader: val('rbq-sdt-custom-key-header').trim() || 'Authorization',
+                customApiKey: val('rbq-sdt-custom-key').trim(),
+                geminiJailbreak: checked('rbq-sdt-gemini-jailbreak'),
+                geminiJailbreakPrompt: val('rbq-sdt-gemini-jailbreak-prompt').trim(),
+                postProcessEnabled: checked('rbq-sdt-post-process-enabled'),
+                postProcessRole: val('rbq-sdt-post-process-role'),
+                postProcessPrompt: val('rbq-sdt-post-process-prompt').trim(),
+            };
+
+            if (existingIdx >= 0) {
+                store.apiTemplates[existingIdx] = newTpl;
+                toastr.success(`已更新已有的 API 模板：${name}`, PLUGIN_NAME);
+            } else {
+                store.apiTemplates.push(newTpl);
+                toastr.success(`已保存新 API 模板：${name}`, PLUGIN_NAME);
+            }
+            
+            save();
+            populateApiTemplatesSelect(name);
+            if (nameInput) nameInput.value = '';
+        };
+
+        // API templates delete
+        document.getElementById('rbq-sdt-delete-api-template').onclick = () => {
+            const select = document.getElementById('rbq-sdt-api-template');
+            const name = select?.value;
+            if (!name) {
+                toastr.warning('请先选择要删除的模板', PLUGIN_NAME);
+                return;
+            }
+            const store = getStore();
+            if (!store.apiTemplates) return;
+            const index = store.apiTemplates.findIndex(t => t.name === name);
+            if (index >= 0) {
+                store.apiTemplates.splice(index, 1);
+                save();
+                populateApiTemplatesSelect('');
+                toastr.success(`已删除 API 模板：${name}`, PLUGIN_NAME);
+            }
+        };
 
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-mode').addEventListener('change', updateProviderVisibility);

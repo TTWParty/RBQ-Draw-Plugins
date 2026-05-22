@@ -1728,7 +1728,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             return [{ role: 'system', content: baseSystem }];
         }
 
-        const roleRegex = /<|(system|user|assistant|model)|>/gi;
+        const roleRegex = /<\|(system|user|assistant|model)\|>/gi;
         if (!roleRegex.test(str)) {
             return [{ role: 'system', content: str + '\n\n' + baseSystem }];
         }
@@ -1741,7 +1741,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         for (let i = 1; i < parts.length; i += 2) {
-            let role = parts[i].toLowerCase();
+            let role = (parts[i] || '').toLowerCase();
             if (role === 'model') role = 'assistant';
             const content = (parts[i + 1] || '').trim();
             if (content) {

@@ -67,6 +67,9 @@
     window.RBQ.api.registerMode(MODE_ID, {
         title: 'Grok 生图',
         subtitle: 'Grok 远程生图模式',
+        endpointLabel: 'Grok 接口地址',
+        keyLabel: 'Grok API Key',
+        modelLabel: 'Grok 生图模型',
         accent: 'free'
     }, async (params) => {
         const { prompt, settings, connection, image, onProgress } = params;

@@ -70,7 +70,42 @@
         endpointLabel: 'Grok 接口地址',
         keyLabel: 'Grok API Key',
         modelLabel: 'Grok 生图模型',
-        accent: 'free'
+        accent: 'free',
+        settingsFields: [
+            {
+                id: 'st-scene-trigger-grok-aspect-ratio',
+                key: 'grokAspectRatio',
+                label: '生图比例 (Aspect Ratio)',
+                type: 'select',
+                default: '1:1',
+                options: [
+                    { value: '1:1', text: '1:1 (正方形)' },
+                    { value: '16:9', text: '16:9 (宽屏)' },
+                    { value: '9:16', text: '9:16 (竖屏)' },
+                    { value: '4:3', text: '4:3 (标准横屏)' },
+                    { value: '3:4', text: '3:4 (标准竖屏)' },
+                    { value: '3:2', text: '3:2 (相片横屏)' },
+                    { value: '2:3', text: '2:3 (相片竖屏)' },
+                    { value: '2:1', text: '2:1 (超宽屏)' },
+                    { value: '1:2', text: '1:2 (超长竖屏)' },
+                    { value: '19.5:9', text: '19.5:9 (全面屏横屏)' },
+                    { value: '9:19.5', text: '9:19.5 (全面屏竖屏)' },
+                    { value: '20:9', text: '20:9 (电影宽屏)' },
+                    { value: '9:20', text: '9:20 (电影长竖屏)' }
+                ]
+            },
+            {
+                id: 'st-scene-trigger-grok-resolution',
+                key: 'grokResolution',
+                label: '画面分辨率 (Resolution)',
+                type: 'select',
+                default: '1k',
+                options: [
+                    { value: '1k', text: '1K (标准清晰度)' },
+                    { value: '2k', text: '2K (超高清 - 消耗更多额度)' }
+                ]
+            }
+        ]
     }, async (params) => {
         const { prompt, settings, connection, image, onProgress } = params;
 

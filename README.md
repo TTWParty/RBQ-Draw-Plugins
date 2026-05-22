@@ -131,16 +131,77 @@ RBQ.api.saveSettings();
 ```javascript
 RBQ.api.registerMode('my-mode', {
   title: 'My Mode',
-  accent: 'custom'
-}, async ({ prompt, settings, onProgress }) => {
+  accent: 'custom',
+  // 可选：自定义设置字段，声明后将在宿主设置面板动态渲染表单控件，并自动隐藏默认常规参数
+  settingsFields: [
+    {
+      id: 'st-scene-trigger-my-select',
+      key: 'mySelectKey',
+      label: '选择选项',
+      type: 'select',
+      default: 'val1',
+      options: [
+        { value: 'val1', text: '选项一' },
+        { value: 'val2', text: '选项二' }
+      ]
+    },
+    {
+      id: 'st-scene-trigger-my-number',
+      key: 'myNumberKey',
+      label: '数值设置',
+      type: 'number',
+      default: 10,
+      min: 1,
+      max: 100,
+      step: 1
+    },
+    {
+      id: 'st-scene-trigger-my-checkbox',
+      key: 'myCheckboxKey',
+      label: '启用功能',
+      type: 'checkbox',
+      default: false
+    },
+    {
+      id: 'st-scene-trigger-my-text',
+      key: 'myTextKey',
+      label: '文本输入',
+      type: 'text',
+      default: '',
+      placeholder: '请输入...'
+    }
+  ]
+}, async ({ prompt, settings, connection, image, onProgress }) => {
   onProgress?.('正在请求自定义后端...');
+  // settings 中可以直接读取声明的字段，如 settings.mySelectKey, settings.myNumberKey
   return { url: 'https://example.com/image.png' };
 });
 ```
 
 - `id`：模式 ID。
-- `meta.title`：显示名称。
-- `generateFn`：返回 `{ url }` 或 `{ blob }`。
+- `meta`：模式元数据定义。
+  - `title`：模式显示名称。
+  - `subtitle`：模式子标题（可选）。
+  - `endpointLabel`：接口地址输入框的提示文本（可选）。
+  - `keyLabel`：API Key 输入框的提示文本（可选）。
+  - `modelLabel`：模型选择下拉框的提示文本（可选）。
+  - `accent`：模式主题高亮色（可选）。
+  - `settingsFields`：自定义设置字段数组（可选）。声明后，宿主设置面板中默认的常规参数（如宽高、步数、CFG、种子等）将自动隐藏，避免 UI 冲突，并动态渲染该数组中定义的控件：
+    - `id`：DOM 元素的 ID，应全局唯一，建议以 `st-scene-trigger-` 作为前缀。
+    - `key`：配置项对应的 Settings Key，用户修改后会保存在宿主配置中，并在 `generateFn` 传入的 `settings` 里直接读取。
+    - `label`：控件前显示的标签文本。
+    - `type`：控件类型，可选 `'select' | 'number' | 'checkbox' | 'text'`。
+    - `default`：字段默认值。
+    - `options`：（仅当 `type` 为 `'select'` 时有效）下拉项数组，每个项为 `{ value, text }`。
+    - `placeholder`：（仅当 `type` 为 `'text'` 时有效）文本占位符。
+    - `min` / `max` / `step`：（仅当 `type` 为 `'number'` 时有效）数值输入限制。
+- `generateFn`：生成回调函数，接收参数对象 `{ prompt, settings, connection, image, onProgress }`：
+  - `prompt`：经处理的生图提示词。
+  - `settings`：全局配置对象，可读取到自定义的 `settingsFields` 字段值。
+  - `connection`：当前连接信息（包含 `url`、`apiKey`、`model` 等）。
+  - `image`：若为图生图或包含背景图的情况，代表源图片信息。
+  - `onProgress`：进度通知回调，可传入 string 以在页面上显示生成进度。
+  - 返回值应为 `{ url: '...' }` 或 `{ blob: BlobObject }`。
 
 ### 消息读取与 UI 渲染 API
 

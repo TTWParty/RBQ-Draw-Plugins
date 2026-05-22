@@ -2832,22 +2832,27 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
-                <label class="st-scene-trigger-field">
-                    <span>API 预设/模板</span>
-                    <div style="display:flex; gap:6px; align-items:center; width:100%;">
-                        <select id="rbq-sdt-api-template" style="flex:1;">
-                            <option value="">-- 选择模板 --</option>
-                        </select>
-                        <button id="rbq-sdt-delete-api-template" class="menu_button" type="button" style="padding:0 8px; margin:0; height:30px;" title="删除选中的模板"><i class="fa-solid fa-trash-can"></i></button>
+                <div class="st-scene-trigger-field wide">
+                    <span style="font-weight: bold; font-size: 14px; opacity: 0.9;">API 预设/模板管理</span>
+                    <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 16px; width: 100%; margin-top: 4px;">
+                        <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px;">
+                            <span style="font-size: 12px; opacity: 0.8;">载入已有模板</span>
+                            <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                                <select id="rbq-sdt-api-template" style="flex: 1; height: 30px; margin: 0;">
+                                    <option value="">-- 选择模板 --</option>
+                                </select>
+                                <button id="rbq-sdt-delete-api-template" class="menu_button" type="button" style="padding: 0 10px; margin: 0; height: 30px; display: flex; align-items: center; justify-content: center;" title="删除选中的模板"><i class="fa-solid fa-trash-can"></i></button>
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px; flex: 1.2; min-width: 240px;">
+                            <span style="font-size: 12px; opacity: 0.8;">另存为新模板</span>
+                            <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                                <input id="rbq-sdt-new-template-name" type="text" placeholder="模板名称" style="flex: 1; height: 30px; margin: 0;">
+                                <button id="rbq-sdt-save-api-template" class="menu_button" type="button" style="padding: 0 14px; margin: 0; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+                            </div>
+                        </div>
                     </div>
-                </label>
-                <label class="st-scene-trigger-field">
-                    <span>保存当前为新模板</span>
-                    <div style="display:flex; gap:6px; align-items:center; width:100%;">
-                        <input id="rbq-sdt-new-template-name" type="text" placeholder="模板名称" style="flex:1; height:30px;">
-                        <button id="rbq-sdt-save-api-template" class="menu_button" type="button" style="padding:0 12px; margin:0; height:30px;">保存</button>
-                    </div>
-                </label>
+                </div>
                 <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>

@@ -51,8 +51,8 @@
     "id": "rbq-grok-draw",
     "name": "Grok 生图插件 (Grok Draw)",
     "description": "支持 Grok 生图模式，在当前模式增加 Grok 选项，调用 Grok Image Edits API 进行免审查的高质量生图。",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "TTWP-09",
-    "main": "plugins/grok-draw.js?v=1.0.0"
+    "main": "plugins/grok-draw.js?v=1.1.0"
   }
 ]

@@ -7,37 +7,6 @@
 
 
 
-    // Helper: Aspect ratio values numerical mapping
-    const RATIO_PRESETS = [
-        { name: "1:1", val: 1.0 },
-        { name: "16:9", val: 16/9 },
-        { name: "9:16", val: 9/16 },
-        { name: "4:3", val: 4/3 },
-        { name: "3:4", val: 3/4 },
-        { name: "3:2", val: 3/2 },
-        { name: "2:3", val: 2/3 },
-        { name: "2:1", val: 2/1 },
-        { name: "1:2", val: 1/2 },
-        { name: "19.5:9", val: 19.5/9 },
-        { name: "9:19.5", val: 9/19.5 },
-        { name: "20:9", val: 20/9 },
-        { name: "9:20", val: 9/20 }
-    ];
-
-    // Helper: Map user width & height to the closest official aspect ratio
-    function matchAspectRatio(width, height) {
-        const userRatio = (width || 1024) / (height || 1024);
-        let best = RATIO_PRESETS[0];
-        let minDiff = Math.abs(userRatio - best.val);
-        for (let i = 1; i < RATIO_PRESETS.length; i++) {
-            const diff = Math.abs(userRatio - RATIO_PRESETS[i].val);
-            if (diff < minDiff) {
-                minDiff = diff;
-                best = RATIO_PRESETS[i];
-            }
-        }
-        return best.name;
-    }
 
     // Helper: Calculate absolute dimensions for canvas background
     function getCanvasDimensions(ratioName, resolution) {
@@ -117,15 +86,14 @@
         const isOfficial = targetUrl.includes('api.x.ai');
 
         if (onProgress) onProgress('正在准备提示词...');
-        // Map Aspect Ratio and Resolution
-        const matchedRatio = matchAspectRatio(image.width, image.height);
+        // Map Aspect Ratio and Resolution directly from settings
+        const matchedRatio = settings.grokAspectRatio || '1:1';
         
         // Use raw prompt directly
         const optimizedPrompt = prompt;
 
-        // Resolution setting
-        const maxEdge = Math.max(image.width || 1024, image.height || 1024);
-        const resolution = maxEdge > 1024 ? '2k' : '1k';
+        // Resolution setting directly from settings
+        const resolution = settings.grokResolution || '1k';
 
         if (onProgress) onProgress('正在生成免密透明底图...');
         // Calculate dimensions and create transparent PNG

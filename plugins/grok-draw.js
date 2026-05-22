@@ -17,174 +17,6 @@
         return Math.abs(hash).toString(16);
     }
 
-    // Dynamic Context Analyzer (DCA)
-    function analyzePersonAttributes(text) {
-        const attrs = {
-            gender: "unknown",
-            ageGroup: "unknown",
-            status: "default",
-        };
-
-        const youngAdultKeywords = [
-            "女主持", "男主持", "解说", "花旦", "主播", "网红", "明星", "歌手", "演员", 
-            "余霜", "周淑怡", "Rita", "青年", "大学生", "小伙", "姑娘", "妹子", "美女", "帅哥", "20岁", "30岁"
-        ];
-        const elderlyKeywords = [
-            "老人", "老太太", "老爷爷", "老奶奶", "大爷", "老汉", "老翁", "老妇", 
-            "退休", "院士", "七旬", "八旬", "九旬", "百岁", "60岁", "70岁", "80岁", "90岁", "老年"
-        ];
-        const childKeywords = [
-            "儿童", "幼儿", "婴儿", "小男孩", "小女孩", "少年", "小学生", "宝宝", "男童", "女童", "10岁", "几岁"
-        ];
-        const middleAgedKeywords = [
-            "中年", "中老年", "40岁", "50岁", "母亲", "父亲", "大叔", "阿姨"
-        ];
-
-        if (youngAdultKeywords.some(kw => text.includes(kw))) {
-            attrs.ageGroup = "young-adult";
-        } else if (elderlyKeywords.some(kw => text.includes(kw))) {
-            attrs.ageGroup = "elderly";
-        } else if (childKeywords.some(kw => text.includes(kw))) {
-            attrs.ageGroup = "child";
-        } else if (middleAgedKeywords.some(kw => text.includes(kw))) {
-            attrs.ageGroup = "middle-aged";
-        }
-
-        const femaleKeywords = ["女", "女孩", "女子", "妇女", "美女", "姑娘", "妹子", "余霜", "周淑怡", "Rita", "老太太", "老奶奶", "大妈", "阿姨"];
-        const maleKeywords = ["男", "男孩", "男子", "帅哥", "大爷", "老汉", "老爷爷", "老翁", "大叔", "老教授", "老科学家"];
-
-        const hasFemale = femaleKeywords.some(kw => text.includes(kw));
-        const hasMale = maleKeywords.some(kw => text.includes(kw));
-
-        if (hasFemale && !hasMale) {
-            attrs.gender = "female";
-        } else if (hasMale && !hasFemale) {
-            attrs.gender = "male";
-        } else if (hasFemale && hasMale) {
-            attrs.gender = "neutral";
-        }
-
-        if (text.includes("发布会") || text.includes("会议") || text.includes("论坛") || text.includes("院士") || text.includes("官方") || text.includes("政务") || text.includes("通报")) {
-            attrs.status = "formal";
-        } else if (text.includes("街拍") || text.includes("生图") || text.includes("私服") || text.includes("日常") || text.includes("生活") || text.includes("帖子")) {
-            attrs.status = "casual";
-        } else if (text.includes("历史") || text.includes("古代") || text.includes("朝代") || text.includes("世纪") || text.includes("传记")) {
-            attrs.status = "historical";
-        }
-
-        return attrs;
-    }
-
-    // Prompt Sanitization and Optimization Pipeline (PSOP)
-    function optimizePromptForGrok(rawPrompt, reqAspectRatio) {
-        let prompt = rawPrompt;
-
-        const cleanReplacements = [
-            [/生图状态引争议/g, ""],
-            [/引争议/g, ""],
-            [/引热议/g, ""],
-            [/热议/g, ""],
-            [/争议/g, ""],
-            [/这还是我们认识的.*吗/g, ""],
-            [/这还是.*吗/g, ""],
-            [/震惊/g, ""],
-            [/吃瓜/g, ""],
-            [/翻车/g, ""],
-            [/带节奏/g, ""],
-            [/爆出/g, ""],
-            [/曝光/g, ""],
-            [/近照/g, ""],
-            [/近照曝光/g, ""],
-            [/网传/g, ""],
-            [/网友/g, ""],
-            [/岁月无情/g, ""],
-            [/面显疲态/g, ""],
-            [/皮肤状态与精修图差异巨大/g, ""],
-            [/被戏称为.*真阿姨.*/g, ""],
-            [/真阿姨/g, ""],
-            [/阿姨/g, ""],
-            [/：/g, " "],
-            [/！/g, " "],
-            [/？/g, " "],
-            [/，/g, " "],
-            [/。/g, " "],
-        ];
-
-        for (const [pattern, replacement] of cleanReplacements) {
-            prompt = prompt.replace(pattern, replacement);
-        }
-
-        prompt = prompt.replace(/\s+/g, " ").trim();
-
-        // Categorize aspect ratio for preset styles
-        let styleGuide = "";
-        const parts = reqAspectRatio.split(':').map(Number);
-        if (parts.length === 2) {
-            const val = parts[0] / parts[1];
-            if (val >= 1.5) {
-                // Wide
-                styleGuide = "Professional wide-angle corporate photography, clear architectural details, modern workspace.";
-            } else if (val <= 0.75) {
-                // Vertical
-                styleGuide = "Candid smartphone photo taken casually, natural lighting, realistic forum attachment style.";
-            } else {
-                // Square/Standard
-                styleGuide = "Clean informative encyclopedia illustration, high-fidelity clear photo, neutral professional background.";
-            }
-        } else {
-            styleGuide = "Clean informative encyclopedia illustration, high-fidelity clear photo, neutral professional background.";
-        }
-
-        const attrs = analyzePersonAttributes(rawPrompt);
-        let subjectGuide = "";
-
-        if (attrs.gender !== "unknown" || attrs.ageGroup !== "unknown") {
-            let genderStr = "person";
-            if (attrs.gender === "female") {
-                genderStr = "woman";
-            } else if (attrs.gender === "male") {
-                genderStr = "man";
-            }
-
-            let ageStr = "";
-            let detailsStr = "";
-            
-            if (attrs.ageGroup === "young-adult") {
-                ageStr = "young (around 25-35 years old)";
-                detailsStr = "attractive, elegant, flawless skin, modern stylish appearance";
-            } else if (attrs.ageGroup === "middle-aged") {
-                ageStr = "middle-aged (around 45-50 years old)";
-                detailsStr = "dignified, natural look, light character lines";
-            } else if (attrs.ageGroup === "elderly") {
-                ageStr = "elderly (around 70-80 years old)";
-                detailsStr = "wise, kind, natural grey hair, visible wrinkles, respectful appearance";
-            } else if (attrs.ageGroup === "child") {
-                ageStr = "young child";
-                detailsStr = "innocent, cheerful expression";
-            }
-
-            let statusStr = "";
-            if (attrs.status === "formal") {
-                statusStr = "wearing professional formal business attire, neat appearance, posing in a professional setting";
-            } else if (attrs.status === "casual") {
-                statusStr = "wearing casual clothes, natural candid expression, captured in a real-world everyday setting";
-            } else if (attrs.status === "historical") {
-                statusStr = "depicted in historical portrait painting or classic photograph style appropriate to their historical era";
-            }
-
-            const isHorror = /sfx|prosthetic|slice|cut|macabre|gothic|blood|horror|decapitated|beheaded|斩首|断头|血腥|暗黑/i.test(rawPrompt);
-            if (isHorror) {
-                detailsStr = "pale skin, empty or haunted expression, suitable for a dark horror setting";
-                statusStr = "depicted in a dark horror realistic style, moody atmospheric lighting";
-            }
-
-            subjectGuide = `Guideline for the subject: If depicting a person, represent them as a ${ageStr} ${genderStr}. They should be ${detailsStr}. ${statusStr}.`;
-        }
-
-        const safetyGuide = "No distorted text, no gibberish writing, no letters inside the image, photorealistic, high quality, 8k resolution.";
-
-        return [styleGuide, `Subject and context: ${prompt}.`, subjectGuide, safetyGuide].filter(Boolean).join(" ");
-    }
 
     // Helper: Aspect ratio values numerical mapping
     const RATIO_PRESETS = [
@@ -295,12 +127,12 @@
 
         const isOfficial = targetUrl.includes('api.x.ai');
 
-        if (onProgress) onProgress('正在清洗并优化提示词...');
+        if (onProgress) onProgress('正在准备提示词...');
         // Map Aspect Ratio and Resolution
         const matchedRatio = matchAspectRatio(image.width, image.height);
         
-        // Optimize prompt
-        const optimizedPrompt = optimizePromptForGrok(prompt, matchedRatio);
+        // Use raw prompt directly
+        const optimizedPrompt = prompt;
 
         // Resolution setting
         const maxEdge = Math.max(image.width || 1024, image.height || 1024);

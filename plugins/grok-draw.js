@@ -5,17 +5,6 @@
 
     console.info("🌸 Grok Image Generation Sub-Plugin Loaded! 🌸");
 
-    // Helper: calculate Sha256 hash (simulating server cache key if needed)
-    function getPromptHash(prompt, aspectRatio, resolution) {
-        let hash = 0;
-        const str = `${prompt.trim()}_${aspectRatio}_${resolution}`;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = (hash << 5) - hash + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-        return Math.abs(hash).toString(16);
-    }
 
 
     // Helper: Aspect ratio values numerical mapping

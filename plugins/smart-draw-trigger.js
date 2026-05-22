@@ -697,14 +697,33 @@ Zimage 擅长理解复杂的英文长句和语境。
             const base = String(profile.baseTags || '').slice(0, 50);
             const outfit = String(profile.currentOutfit || '').slice(0, 50);
             return `
-                <div class="rbq-sdt-lorebook-item" data-char-key="${key}">
-                    <div class="rbq-sdt-lorebook-meta">
-                        <strong>👤 ${profile.displayName || key}</strong>
-                        <small title="${profile.baseTags || ''}">base: ${base}${base.length >= 50 ? '...' : ''}</small>
-                        <small title="${profile.currentOutfit || ''}">outfit: ${outfit}${outfit.length >= 50 ? '...' : ''}</small>
+                <div class="rbq-sdt-lorebook-item" data-char-key="${key}" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                    <!-- Normal View -->
+                    <div class="rbq-sdt-char-view-mode" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%;">
+                        <div class="rbq-sdt-lorebook-meta" style="flex: 1; min-width: 0;">
+                            <strong>👤 ${profile.displayName || key}</strong>
+                            <small title="${profile.baseTags || ''}" style="display: block; opacity: 0.8; font-size: 11px;">base: ${base}${profile.baseTags && profile.baseTags.length >= 50 ? '...' : ''}</small>
+                            <small title="${profile.currentOutfit || ''}" style="display: block; opacity: 0.8; font-size: 11px;">outfit: ${outfit}${profile.currentOutfit && profile.currentOutfit.length >= 50 ? '...' : ''}</small>
+                        </div>
+                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px;">
+                            <button class="menu_button" type="button" data-action="edit-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px;">编辑</button>
+                            <button class="menu_button" type="button" data-action="delete-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px;">删除</button>
+                        </div>
                     </div>
-                    <div class="rbq-sdt-lorebook-actions">
-                        <button class="menu_button" type="button" data-action="delete-char" data-char-key="${key}">删除</button>
+                    <!-- Edit View -->
+                    <div class="rbq-sdt-char-edit-mode" style="display: none; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 11px; opacity: 0.8;">Base Tags (外貌基础特征，如发色瞳色)：</span>
+                            <textarea class="rbq-sdt-char-edit-base" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${profile.baseTags || ''}</textarea>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 11px; opacity: 0.8;">Outfit Tags (当前剧情服装，随自动解析更新)：</span>
+                            <textarea class="rbq-sdt-char-edit-outfit" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${profile.currentOutfit || ''}</textarea>
+                        </div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+                            <button class="menu_button" type="button" data-action="save-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px; background: rgba(100,255,100,0.15) !important;">保存</button>
+                            <button class="menu_button" type="button" data-action="cancel-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px;">取消</button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -2888,9 +2907,35 @@ Zimage 擅长理解复杂的英文长句和语境。
             </div>
             <div class="st-scene-trigger-field wide">
                 <span>已记忆角色档案</span>
-                <div id="rbq-sdt-char-profile-list" class="rbq-sdt-note">${renderCharacterProfileList()}</div>
+                <div id="rbq-sdt-char-profile-list" class="rbq-sdt-note" style="display:flex; flex-direction:column; gap:8px;">${renderCharacterProfileList()}</div>
+            </div>
+            <div id="rbq-sdt-add-char-panel" class="st-scene-trigger-field wide" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px; border: 1px dashed var(--linear-border-standard); padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.01);">
+                <span style="font-weight: bold; font-size: 13px;">手动添加新角色档案</span>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; width: 100%;">
+                    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px;">
+                        <span style="font-size: 11px; opacity: 0.8;">角色代号 (存取Key，小写英文，如 shylily)</span>
+                        <input id="rbq-sdt-new-char-name" type="text" placeholder="例如: shylily" style="height: 30px; margin: 0;">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px;">
+                        <span style="font-size: 11px; opacity: 0.8;">角色显示名称 (如 Lily)</span>
+                        <input id="rbq-sdt-new-char-display" type="text" placeholder="例如: Lily" style="height: 30px; margin: 0;">
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-size: 11px; opacity: 0.8;">Base Tags (外貌基础特征，如发色瞳色)：</span>
+                    <textarea id="rbq-sdt-new-char-base" placeholder="例如: 1girl, blue hair, long hair, green eyes" style="min-height: 40px; margin: 0;"></textarea>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-size: 11px; opacity: 0.8;">Outfit Tags (当前剧情服装，可选)：</span>
+                    <textarea id="rbq-sdt-new-char-outfit" placeholder="例如: white dress, hair ribbon" style="min-height: 40px; margin: 0;"></textarea>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+                    <button id="rbq-sdt-save-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.15) !important;">添加</button>
+                    <button id="rbq-sdt-cancel-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px;">取消</button>
+                </div>
             </div>
             <div class="st-scene-trigger-buttons">
+                <button id="rbq-sdt-add-char-profile-btn" class="menu_button" type="button">手动添加角色</button>
                 <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button">清空所有角色记忆</button>
             </div>
             <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会按 segment 独立自动出图；关闭时只显示“生成图片”按钮。建议让 tagger 返回 anchor.text，以便卡片插入到目标原句后方。</div>
@@ -3223,14 +3268,105 @@ Zimage 擅长理解复杂的英文长句和语境。
             toastr.success('所有角色外貌记忆已清空', PLUGIN_NAME);
         };
         document.getElementById('rbq-sdt-char-profile-list')?.addEventListener('click', (event) => {
-            const button = event.target.closest('[data-action="delete-char"]');
+            const button = event.target.closest('[data-action]');
             if (!(button instanceof HTMLButtonElement)) return;
+            const action = button.dataset.action;
             const key = button.dataset.charKey;
             if (!key) return;
-            deleteCharacterProfile(key);
-            refreshCharacterProfileListUi();
-            toastr.success(`已删除角色记忆：${key}`, PLUGIN_NAME);
+
+            const item = button.closest('.rbq-sdt-lorebook-item');
+            if (!item) return;
+
+            if (action === 'delete-char') {
+                deleteCharacterProfile(key);
+                refreshCharacterProfileListUi();
+                toastr.success(`已删除角色记忆：${key}`, PLUGIN_NAME);
+            } else if (action === 'edit-char') {
+                const viewMode = item.querySelector('.rbq-sdt-char-view-mode');
+                const editMode = item.querySelector('.rbq-sdt-char-edit-mode');
+                if (viewMode) viewMode.style.display = 'none';
+                if (editMode) editMode.style.display = 'flex';
+            } else if (action === 'cancel-char-edit') {
+                const viewMode = item.querySelector('.rbq-sdt-char-view-mode');
+                const editMode = item.querySelector('.rbq-sdt-char-edit-mode');
+                if (viewMode) viewMode.style.display = 'flex';
+                if (editMode) editMode.style.display = 'none';
+            } else if (action === 'save-char-edit') {
+                const baseText = item.querySelector('.rbq-sdt-char-edit-base')?.value || '';
+                const outfitText = item.querySelector('.rbq-sdt-char-edit-outfit')?.value || '';
+                const profiles = getCharacterProfiles();
+                if (profiles[key]) {
+                    profiles[key].baseTags = baseText;
+                    profiles[key].currentOutfit = outfitText;
+                    profiles[key].updatedAt = Date.now();
+                    save();
+                    refreshCharacterProfileListUi();
+                    toastr.success(`已保存角色「${profiles[key].displayName || key}」的外貌编辑`, PLUGIN_NAME);
+                }
+            }
         });
+
+        // Manual character profile add panel toggle
+        const addCharBtn = document.getElementById('rbq-sdt-add-char-profile-btn');
+        const addCharPanel = document.getElementById('rbq-sdt-add-char-panel');
+        if (addCharBtn && addCharPanel) {
+            addCharBtn.onclick = () => {
+                const isHidden = addCharPanel.style.display === 'none';
+                addCharPanel.style.display = isHidden ? 'flex' : 'none';
+            };
+        }
+
+        const cancelNewCharBtn = document.getElementById('rbq-sdt-cancel-new-char');
+        if (cancelNewCharBtn && addCharPanel) {
+            cancelNewCharBtn.onclick = () => {
+                addCharPanel.style.display = 'none';
+                document.getElementById('rbq-sdt-new-char-name').value = '';
+                document.getElementById('rbq-sdt-new-char-display').value = '';
+                document.getElementById('rbq-sdt-new-char-base').value = '';
+                document.getElementById('rbq-sdt-new-char-outfit').value = '';
+            };
+        }
+
+        const saveNewCharBtn = document.getElementById('rbq-sdt-save-new-char');
+        if (saveNewCharBtn && addCharPanel) {
+            saveNewCharBtn.onclick = () => {
+                const nameInput = document.getElementById('rbq-sdt-new-char-name');
+                const displayInput = document.getElementById('rbq-sdt-new-char-display');
+                const baseInput = document.getElementById('rbq-sdt-new-char-base');
+                const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
+
+                const name = nameInput?.value?.trim()?.toLowerCase();
+                const display = displayInput?.value?.trim();
+                const baseTags = baseInput?.value?.trim();
+                const outfitTags = outfitInput?.value?.trim();
+
+                if (!name) {
+                    toastr.warning('请输入角色代号 (Key)', PLUGIN_NAME);
+                    return;
+                }
+
+                updateCharacterProfile(name, baseTags, outfitTags);
+                
+                // If custom displayName was specified, update it
+                if (display) {
+                    const profiles = getCharacterProfiles();
+                    if (profiles[name]) {
+                        profiles[name].displayName = display;
+                        save();
+                    }
+                }
+
+                refreshCharacterProfileListUi();
+                toastr.success(`成功手动添加角色「${display || name}」`, PLUGIN_NAME);
+
+                // Hide and clear
+                addCharPanel.style.display = 'none';
+                nameInput.value = '';
+                if (displayInput) displayInput.value = '';
+                if (baseInput) baseInput.value = '';
+                if (outfitInput) outfitInput.value = '';
+            };
+        }
     }
 
     function waitForPanel() {

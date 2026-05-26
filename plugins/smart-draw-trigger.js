@@ -444,6 +444,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         openaiModel: '',
         openaiModelCustom: '',
         openaiModels: [],
+        injectPresetsToTagger: false,
         customUrl: '',
         customApiKey: '',
         customApiKeyHeader: 'Authorization',
@@ -1718,7 +1719,39 @@ Zimage 擅长理解复杂的英文长句和语境。
             },
         };
 
+        if (store.injectPresetsToTagger) {
+            const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
+            const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
+            if (activePreset) {
+                payload.stylePreset = {
+                    name: activePreset.name || '',
+                    positive: activePreset.positive || '',
+                    negative: activePreset.negative || ''
+                };
+            }
+        }
+
         return { payload, rawLorebooks: lorebook };
+    }
+
+    function getSystemPromptWithPresets(store) {
+        let systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        if (store.injectPresetsToTagger) {
+            const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
+            const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
+            if (activePreset) {
+                const styleInstructions = [];
+                styleInstructions.push(`【重要生图风格预设指示】\n当前用户启用了以下生图提示词风格预设（${activePreset.name || '未命名'}）：`);
+                if (activePreset.positive) {
+                    styleInstructions.push(`- 正面风格特征/预设描述：${activePreset.positive}\n你在输出 JSON 的 scene 字段或角色描述字段时，应当自然地融入或匹配这些风格和画面质感特征（请与你脑内构想的画面内容相融合，而非机械直接复制）。`);
+                }
+                if (activePreset.negative) {
+                    styleInstructions.push(`- 负面排除词：${activePreset.negative}`);
+                }
+                systemPrompt += '\n\n' + styleInstructions.join('\n');
+            }
+        }
+        return systemPrompt;
     }
 
     function parseJailbreakMessages(jailbreakStr, defaultSystemStr) {
@@ -1767,7 +1800,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
 
-        const systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        const systemPrompt = getSystemPromptWithPresets(store);
         const messages = store.geminiJailbreak
             ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
@@ -2845,6 +2878,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <label class="st-scene-trigger-field" title="选择前情增强分析版本。V2: payload 注入时间线定位。V5/V6: 额外 system prompt 注入中文详细分析。V7: 三层分析链。V8: 无条目式综合思维链分析。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v2">V2 · 时间线定位</option><option value="v5">V5 · 状态快照</option><option value="v6">V6 · 帧同步</option><option value="v7">V7 · 场景感知</option><option value="v8">V8 · 综合推理 (推荐)</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
@@ -2954,6 +2988,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
+        document.getElementById('rbq-sdt-inject-presets').checked = !!store.injectPresetsToTagger;
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
         document.getElementById('rbq-sdt-auto-generate').checked = !!store.autoRunGenerate;
         document.getElementById('rbq-sdt-min-segments').value = store.minSegments || 0;
@@ -2988,6 +3023,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         // enhanced-context is now a <select>, no bindSwitch needed
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
+        bindSwitch('rbq-sdt-inject-presets-field', 'rbq-sdt-inject-presets');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-auto-generate-field', 'rbq-sdt-auto-generate');
         bindSwitch('rbq-sdt-manual-draw-field', 'rbq-sdt-manual-draw');
@@ -3050,6 +3086,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (tpl.customApiKey !== undefined) setVal('rbq-sdt-custom-key', tpl.customApiKey);
             
             if (tpl.geminiJailbreak !== undefined) setChecked('rbq-sdt-gemini-jailbreak', tpl.geminiJailbreak);
+            if (tpl.injectPresetsToTagger !== undefined) setChecked('rbq-sdt-inject-presets', tpl.injectPresetsToTagger);
             if (tpl.geminiJailbreakPrompt !== undefined) setVal('rbq-sdt-gemini-jailbreak-prompt', tpl.geminiJailbreakPrompt);
             
             if (tpl.postProcessEnabled !== undefined) setChecked('rbq-sdt-post-process-enabled', tpl.postProcessEnabled);
@@ -3071,6 +3108,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.customApiKey = tpl.customApiKey;
             s.geminiJailbreak = tpl.geminiJailbreak;
             s.geminiJailbreakPrompt = tpl.geminiJailbreakPrompt;
+            s.injectPresetsToTagger = tpl.injectPresetsToTagger !== undefined ? tpl.injectPresetsToTagger : false;
             s.postProcessEnabled = tpl.postProcessEnabled;
             s.postProcessRole = tpl.postProcessRole;
             s.postProcessPrompt = tpl.postProcessPrompt;
@@ -3104,6 +3142,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 customApiKeyHeader: val('rbq-sdt-custom-key-header').trim() || 'Authorization',
                 customApiKey: val('rbq-sdt-custom-key').trim(),
                 geminiJailbreak: checked('rbq-sdt-gemini-jailbreak'),
+                injectPresetsToTagger: checked('rbq-sdt-inject-presets'),
                 geminiJailbreakPrompt: val('rbq-sdt-gemini-jailbreak-prompt').trim(),
                 postProcessEnabled: checked('rbq-sdt-post-process-enabled'),
                 postProcessRole: val('rbq-sdt-post-process-role'),
@@ -3155,6 +3194,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.enhancedContext = val('rbq-sdt-enhanced-context') || 'off';
             s.debugToast = checked('rbq-sdt-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');
+            s.injectPresetsToTagger = checked('rbq-sdt-inject-presets');
             s.autoRunTagger = checked('rbq-sdt-autorun');
             s.autoRunGenerate = checked('rbq-sdt-auto-generate');
             s.minSegments = Math.max(0, Math.min(10, Number(val('rbq-sdt-min-segments')) || 0));
@@ -3557,10 +3597,22 @@ Zimage 擅长理解复杂的英文长句和语境。
                 },
             };
 
+            if (store.injectPresetsToTagger) {
+                const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
+                const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
+                if (activePreset) {
+                    manualPayload.stylePreset = {
+                        name: activePreset.name || '',
+                        positive: activePreset.positive || '',
+                        negative: activePreset.negative || ''
+                    };
+                }
+            }
+
             logTaggerPayload('manual draw request', manualPayload);
 
             // Build messages exactly like callOpenAiCompatible / callCustomHttp
-            const systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+            const systemPrompt = getSystemPromptWithPresets(store);
             const messages = store.geminiJailbreak
                 ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
                 : [{ role: 'system', content: systemPrompt }];

@@ -442,6 +442,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         openaiBaseUrl: '',
         openaiApiKey: '',
         openaiModel: '',
+        openaiModelCustom: '',
         openaiModels: [],
         customUrl: '',
         customApiKey: '',
@@ -1760,7 +1761,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
-        if (!store.openaiModel) throw new Error('请先填写模型名称');
+        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+        if (!modelName) throw new Error('请先填写模型名称');
         checkUrlSafety(url);
         const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
@@ -1797,7 +1799,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
             },
             body: JSON.stringify({
-                model: store.openaiModel,
+                model: modelName,
                 temperature: 0.2,
                 response_format: { type: 'json_object' },
                 messages,
@@ -2876,6 +2878,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
+                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
                 <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词 <button id="rbq-sdt-reset-jailbreak" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-gemini-jailbreak-prompt" placeholder="在此输入用于绕过系统审核的破限词... \n如需构造伪造对话记录 (Few-shot)，可使用 <|system|>, <|user|>, <|assistant|> 作为分隔符。"></textarea></label>
                 <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -2964,6 +2967,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-openai-base').value = store.openaiBaseUrl;
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
         populateModelSelect(store.openaiModels || [], store.openaiModel);
+        document.getElementById('rbq-sdt-openai-model-custom').value = store.openaiModelCustom || '';
         document.getElementById('rbq-sdt-gemini-jailbreak').checked = !!store.geminiJailbreak;
         document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = store.geminiJailbreakPrompt || '';
         document.getElementById('rbq-sdt-post-process-enabled').checked = !!store.postProcessEnabled;
@@ -3039,6 +3043,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                     populateModelSelect([tpl.openaiModel], tpl.openaiModel);
                 }
             }
+            if (tpl.openaiModelCustom !== undefined) setVal('rbq-sdt-openai-model-custom', tpl.openaiModelCustom);
+            else setVal('rbq-sdt-openai-model-custom', '');
             if (tpl.customUrl !== undefined) setVal('rbq-sdt-custom-url', tpl.customUrl);
             if (tpl.customApiKeyHeader !== undefined) setVal('rbq-sdt-custom-key-header', tpl.customApiKeyHeader);
             if (tpl.customApiKey !== undefined) setVal('rbq-sdt-custom-key', tpl.customApiKey);
@@ -3058,6 +3064,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.openaiBaseUrl = tpl.openaiBaseUrl;
             s.openaiApiKey = tpl.openaiApiKey;
             s.openaiModel = tpl.openaiModel;
+            s.openaiModelCustom = tpl.openaiModelCustom || '';
             if (tpl.openaiModels) s.openaiModels = tpl.openaiModels;
             s.customUrl = tpl.customUrl;
             s.customApiKeyHeader = tpl.customApiKeyHeader;
@@ -3091,6 +3098,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 openaiBaseUrl: val('rbq-sdt-openai-base').trim(),
                 openaiApiKey: val('rbq-sdt-openai-key').trim(),
                 openaiModel: val('rbq-sdt-openai-model').trim(),
+                openaiModelCustom: val('rbq-sdt-openai-model-custom').trim(),
                 openaiModels: store.openaiModels || [],
                 customUrl: val('rbq-sdt-custom-url').trim(),
                 customApiKeyHeader: val('rbq-sdt-custom-key-header').trim() || 'Authorization',
@@ -3160,6 +3168,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.openaiBaseUrl = val('rbq-sdt-openai-base').trim();
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();
             s.openaiModel = val('rbq-sdt-openai-model').trim();
+            s.openaiModelCustom = val('rbq-sdt-openai-model-custom').trim();
             s.geminiJailbreak = checked('rbq-sdt-gemini-jailbreak');
             s.geminiJailbreakPrompt = val('rbq-sdt-gemini-jailbreak-prompt').trim();
             s.postProcessEnabled = checked('rbq-sdt-post-process-enabled');
@@ -3592,12 +3601,13 @@ Zimage 擅长理解复杂的英文长句和语境。
             } else {
                 const url = normalizeBaseUrl(store.openaiBaseUrl);
                 if (!url) throw new Error('\u8bf7\u5148\u586b\u5199 OpenAI \u517c\u5bb9\u63a5\u53e3 Base URL');
-                if (!store.openaiModel) throw new Error('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u540d\u79f0');
+                const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+                if (!modelName) throw new Error('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u540d\u79f0');
                 checkUrlSafety(url);
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                    body: JSON.stringify({ model: store.openaiModel, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+                    body: JSON.stringify({ model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
                 });
                 if (!response.ok) throw new Error(`tagger API \u8bf7\u6c42\u5931\u8d25: HTTP ${response.status}`);
                 json = await response.json();

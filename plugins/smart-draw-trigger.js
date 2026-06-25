@@ -536,6 +536,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         characterMemoryEnabled: false,
         characterProfiles: {},
+        injectCharacterCard: true,
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
@@ -881,6 +882,88 @@ Zimage 擅长理解复杂的英文长句和语境。
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
         const wrappedBase = (store.systemPromptPreset === 'consistent' && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
+    }
+
+    function collectCharacterCardInfo() {
+        const store = getStore();
+        if (!store.injectCharacterCard) return [];
+
+        try {
+            const ctx = RBQ.api.getContext();
+            if (!ctx) return [];
+
+            const characters = ctx.characters;
+            if (!Array.isArray(characters)) return [];
+
+            // 确定当前聊天的角色列表
+            const activeChars = [];
+            const groupId = ctx.groupId;
+
+            if (groupId != null && String(groupId).trim() !== '') {
+                for (const char of characters) {
+                    if (char && char.name) {
+                        activeChars.push(char);
+                    }
+                }
+            } else {
+                const char = characters[ctx.characterId];
+                if (char && char.name) {
+                    activeChars.push(char);
+                }
+            }
+
+            const infoList = [];
+
+            for (const char of activeChars) {
+                const name = char.name;
+                const profile = getCharacterProfile(name);
+                if (profile) {
+                    continue;
+                }
+
+                const description = String(char.description || char.data?.description || '').trim();
+
+                const charBookEntries = [];
+                const entries = char.data?.character_book?.entries || char.character_book?.entries;
+                if (Array.isArray(entries)) {
+                    for (const entry of entries) {
+                        const isDisable = entry.disable === true;
+                        const isEnabled = entry.enabled !== false;
+                        if (!isDisable && isEnabled) {
+                            let keys = [];
+                            if (Array.isArray(entry.keys)) {
+                                keys = entry.keys;
+                            } else if (typeof entry.key === 'string') {
+                                keys = entry.key.split(',').map(k => k.trim()).filter(Boolean);
+                            } else if (Array.isArray(entry.key)) {
+                                keys = entry.key;
+                            }
+                            const content = String(entry.content || '').trim();
+                            if (content) {
+                                charBookEntries.push({
+                                    keys,
+                                    content
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if (description || charBookEntries.length > 0) {
+                    debugInfo(`[Smart Draw Trigger] 正在为未建档角色「${name}」收集并准备注入角色卡与世界书信息...`);
+                    infoList.push({
+                        name,
+                        description,
+                        characterBookEntries: charBookEntries
+                    });
+                }
+            }
+
+            return infoList;
+        } catch (e) {
+            console.error('[Smart Draw Trigger] 收集角色卡/世界书信息失败:', e);
+            return [];
+        }
     }
 
     function ensureLorebookStore() {
@@ -1790,6 +1873,11 @@ Zimage 擅长理解复杂的英文长句和语境。
             },
         };
 
+        const cardInfo = collectCharacterCardInfo();
+        if (cardInfo && cardInfo.length > 0) {
+            payload.characterCardInfo = cardInfo;
+        }
+
         if (store.injectPresetsToTagger) {
             const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
             const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
@@ -1805,8 +1893,11 @@ Zimage 擅长理解复杂的英文长句和语境。
         return { payload, rawLorebooks: lorebook };
     }
 
-    function getSystemPromptWithPresets(store) {
+    function getSystemPromptWithPresets(store, hasCardInfo = false) {
         let systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        if (store.injectCharacterCard && hasCardInfo) {
+            systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征（如发色、瞳色、发型、体型、标志性服饰特征等）并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于你脑中的常识和随意猜测。';
+        }
         if (store.injectPresetsToTagger) {
             const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
             const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
@@ -1871,7 +1962,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
 
-        const systemPrompt = getSystemPromptWithPresets(store);
+        const systemPrompt = getSystemPromptWithPresets(store, !!payload.characterCardInfo);
         const messages = store.geminiJailbreak
             ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
@@ -3012,6 +3103,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             <div class="st-scene-trigger-subpanel-hint">首次生图时自动学习角色外貌（发色、瞳色、体型等），后续生图自动复用，确保角色外貌一致性。服装会随剧情自动更新。</div>
             <div class="st-scene-trigger-modal-grid">
                 <div id="rbq-sdt-char-memory-field" class="st-scene-trigger-field switch"><span>启用角色外貌记忆</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-memory" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-inject-char-card-field" class="st-scene-trigger-field switch"><span>参考角色卡信息（未建档时）</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-char-card" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
             </div>
             <div class="st-scene-trigger-field wide">
                 <span>已记忆角色档案</span>
@@ -3075,6 +3167,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         populateModelSelect(store.openaiModels || [], store.openaiModel);
         document.getElementById('rbq-sdt-openai-model-custom').value = store.openaiModelCustom || '';
         document.getElementById('rbq-sdt-gemini-jailbreak').checked = !!store.geminiJailbreak;
+        document.getElementById('rbq-sdt-inject-char-card').checked = !!store.injectCharacterCard;
         document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = store.geminiJailbreakPrompt || '';
         document.getElementById('rbq-sdt-post-process-enabled').checked = !!store.postProcessEnabled;
         document.getElementById('rbq-sdt-post-process-role').value = store.postProcessRole || 'assistant';
@@ -3100,6 +3193,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         bindSwitch('rbq-sdt-manual-draw-field', 'rbq-sdt-manual-draw');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
         bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
+        bindSwitch('rbq-sdt-inject-char-card-field', 'rbq-sdt-inject-char-card');
         bindSwitch('rbq-sdt-post-process-field', 'rbq-sdt-post-process-enabled');
         document.getElementById('rbq-sdt-gemini-jailbreak').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-post-process-enabled').addEventListener('change', updateProviderVisibility);
@@ -3281,6 +3375,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.openaiModel = val('rbq-sdt-openai-model').trim();
             s.openaiModelCustom = val('rbq-sdt-openai-model-custom').trim();
             s.geminiJailbreak = checked('rbq-sdt-gemini-jailbreak');
+            s.injectCharacterCard = checked('rbq-sdt-inject-char-card');
             s.geminiJailbreakPrompt = val('rbq-sdt-gemini-jailbreak-prompt').trim();
             s.postProcessEnabled = checked('rbq-sdt-post-process-enabled');
             s.postProcessRole = val('rbq-sdt-post-process-role');
@@ -3680,10 +3775,15 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
 
+            const cardInfo = collectCharacterCardInfo();
+            if (cardInfo && cardInfo.length > 0) {
+                manualPayload.characterCardInfo = cardInfo;
+            }
+
             logTaggerPayload('manual draw request', manualPayload);
 
             // Build messages exactly like callOpenAiCompatible / callCustomHttp
-            const systemPrompt = getSystemPromptWithPresets(store);
+            const systemPrompt = getSystemPromptWithPresets(store, !!manualPayload.characterCardInfo);
             const messages = store.geminiJailbreak
                 ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
                 : [{ role: 'system', content: systemPrompt }];

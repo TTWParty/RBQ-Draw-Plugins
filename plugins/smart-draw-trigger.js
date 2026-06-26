@@ -1997,6 +1997,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 model: modelName,
                 temperature: 0.2,
                 response_format: { type: 'json_object' },
+                stream: false,
                 messages,
             }),
         });
@@ -3830,7 +3831,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                    body: JSON.stringify({ model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+                    body: JSON.stringify({ model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages }),
                 });
                 if (!response.ok) throw new Error(`tagger API \u8bf7\u6c42\u5931\u8d25: HTTP ${response.status}`);
                 json = await response.json();

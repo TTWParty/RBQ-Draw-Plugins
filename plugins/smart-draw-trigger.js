@@ -2788,10 +2788,24 @@ Zimage 擅长理解复杂的英文长句和语境。
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
         clearTimeout(pendingTimers.get(id));
+
+        // 优化切换分身/滑动时的生图还原体验：如果该版本文本已有缓存结果，则直接以 50ms 的超低延迟立刻渲染，实现秒出。
+        // 如果没有缓存，则保持 900ms 的防抖延迟，防止频繁打字或连续切换时触发过度请求。
+        const store = getStore();
+        const message = getMessageSnapshot(id);
+        const trigger = getTrigger(message);
+        let delay = 900;
+        if (trigger) {
+            const key = makeKey(id, message, trigger.type, trigger.marker || 'auto');
+            if (store.cache[key]) {
+                delay = 50;
+            }
+        }
+
         pendingTimers.set(id, setTimeout(() => {
             pendingTimers.delete(id);
             processMessage(id, options);
-        }, 900));
+        }, delay));
     }
 
     function scanAllVisible() {

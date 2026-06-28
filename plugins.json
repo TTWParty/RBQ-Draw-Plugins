@@ -55,13 +55,13 @@
     "author": "TTWP-09",
     "main": "plugins/grok-draw.js?v=1.1.1"
   },
-{
-  "id": "rbq-perchance-draw",
-  "name": "测试生图",
-  "description": "内置高精度写实人像模板与过滤词，支持自定义分辨率和生图风格，原位极速渲染。",
-  "version": "1.0.2",
-  "author": "TTWP-09",
-  "main": "plugins/perchance-draw.js?v=1.0.2"
-}
+  {
+    "id": "rbq-perchance-draw",
+    "name": "测试生图",
+    "description": "基于 Perchance 的免费高速生图扩展，内置高精度写实人像模板与过滤词，支持自定义分辨率和生图风格，原位极速渲染。",
+    "version": "1.0.2",
+    "author": "TTWP-09",
+    "main": "plugins/perchance-draw.js?v=1.0.2"
+  }
 
 ]

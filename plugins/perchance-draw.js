@@ -108,6 +108,19 @@ RBQ.api.registerMode("perchance", {
 // 以下代码为子插件自适应界面逻辑 (实现零修改主插件，自动隐藏通用参数)
 // =========================================================================
 (function() {
+    // 自动在后台注入默认接口地址，绕过主插件的 [请先填写接口地址] 强校验
+    try {
+        const settings = RBQ.api.getSettings();
+        if (settings && !settings.freeUrl) {
+            settings.freeUrl = "https://image-generation.perchance.org";
+            if (typeof RBQ.api.saveSettings === "function") {
+                RBQ.api.saveSettings();
+            }
+        }
+    } catch (e) {
+        console.error("自动注入默认接口失败:", e);
+    }
+
     function syncPerchanceFields() {
         const select = document.getElementById("st-scene-trigger-current-mode");
         if (!select) return;

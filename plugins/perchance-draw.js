@@ -103,3 +103,31 @@ RBQ.api.registerMode("perchance", {
     const blob = await imageResponse.blob();
     return { blob };
 });
+
+// =========================================================================
+// 以下代码为子插件自适应界面逻辑 (实现零修改主插件，自动隐藏通用参数)
+// =========================================================================
+(function() {
+    function syncPerchanceFields() {
+        const select = document.getElementById("st-scene-trigger-current-mode");
+        if (!select) return;
+        const mode = select.value;
+        
+        const keyField = document.getElementById("st-scene-trigger-key-field");
+        const urlField = document.getElementById("st-scene-trigger-url-field");
+        const modelField = document.getElementById("st-scene-trigger-modal-model")?.closest(".st-scene-trigger-field");
+        
+        if (mode === "perchance") {
+            if (keyField) keyField.style.setProperty("display", "none", "important");
+            if (urlField) urlField.style.setProperty("display", "none", "important");
+            if (modelField) modelField.style.setProperty("display", "none", "important");
+        } else {
+            if (keyField) keyField.style.removeProperty("display");
+            if (urlField) urlField.style.removeProperty("display");
+            if (modelField) modelField.style.removeProperty("display");
+        }
+    }
+
+    // 定时监测，确保在主插件任何 UI 刷新时，均能自动重置隐藏状态
+    setInterval(syncPerchanceFields, 300);
+})();

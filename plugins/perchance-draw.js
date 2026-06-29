@@ -53,54 +53,26 @@ RBQ.api.registerMode("perchance", {
     }
 
     const resolution = settings.perchanceResolution || "512x768";
-    const createUrl = "https://image-generation.perchance.org/api/generate?userKey=" + userKey + "&requestId=st_" + Math.random() + "&__cacheBust=" + Math.random();
     
-    const body = {
-        generatorName: "ai-image-generator",
-        channel: "ai-text-to-image-generator",
-        subChannel: "public",
-        prompt: finalPrompt,
-        negativePrompt: negativePrompt,
-        seed: -1,
-        resolution: resolution,
-        guidanceScale: 7
-    };
+    // 请求本地 Python 代理服务，完美解决浏览器 CORS 跨域与 Cloudflare 403 封锁
+    const response = await fetch("http://127.0.0.1:8008/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            prompt: finalPrompt,
+            negativePrompt: negativePrompt,
+            resolution: resolution,
+            userKey: userKey
+        })
+    });
 
-    let resData;
-    let attempts = 0;
-    // 循环尝试 15 次，每次间隔 3 秒，防止排队被阻断
-    while (attempts < 15) {
-        const response = await fetch(createUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-        });
-        if (!response.ok) throw new Error("API 请求失败: " + response.status);
-        resData = await response.json();
-
-        if (resData.status === "success" || resData.imageId) {
-            break;
-        } else if (resData.status === "waiting_for_prev_request_to_finish") {
-            onProgress && onProgress("排队中，第 " + (attempts + 1) + " 次重试...");
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            attempts++;
-        } else {
-            throw new Error("生图失败: " + JSON.stringify(resData));
-        }
+    if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "生图失败 (HTTP " + response.status + ")");
     }
 
-    if (!resData || (!resData.imageId && resData.status !== "success")) {
-        throw new Error("排队超时，请稍后重试");
-    }
-
-    onProgress && onProgress("生成成功，正在下载图片...");
-    
-    // 使用最新代理接口下载
-    const downloadUrl = "https://image-generation.perchance.org" + resData.imageDownloadUrl;
-    const imageResponse = await fetch(downloadUrl);
-    if (!imageResponse.ok) throw new Error("图片下载失败");
-
-    const blob = await imageResponse.blob();
+    onProgress && onProgress("生成成功，正在接收图片数据...");
+    const blob = await response.blob();
     return { blob };
 });
 
@@ -108,17 +80,29 @@ RBQ.api.registerMode("perchance", {
 // 以下代码为子插件自适应界面逻辑 (实现零修改主插件，自动隐藏通用参数)
 // =========================================================================
 (function() {
-    // 自动在后台注入默认接口地址，绕过主插件的 [请先填写接口地址] 强校验
+    // 自动在后台注入默认接口与模型名称，绕过主插件的通用非空强校验
     try {
         const settings = RBQ.api.getSettings();
-        if (settings && !settings.freeUrl) {
-            settings.freeUrl = "https://image-generation.perchance.org";
-            if (typeof RBQ.api.saveSettings === "function") {
+        if (settings) {
+            let needSave = false;
+            if (!settings.freeUrl) {
+                settings.freeUrl = "https://image-generation.perchance.org";
+                needSave = true;
+            }
+            if (!settings.freeModel) {
+                settings.freeModel = "Perchance AI";
+                needSave = true;
+            }
+            if (!settings.perchanceModel) {
+                settings.perchanceModel = "Perchance AI";
+                needSave = true;
+            }
+            if (needSave && typeof RBQ.api.saveSettings === "function") {
                 RBQ.api.saveSettings();
             }
         }
     } catch (e) {
-        console.error("自动注入默认接口失败:", e);
+        console.error("自动注入默认配置失败:", e);
     }
 
     function syncPerchanceFields() {
@@ -133,7 +117,14 @@ RBQ.api.registerMode("perchance", {
         if (mode === "perchance") {
             if (keyField) keyField.style.setProperty("display", "none", "important");
             if (urlField) urlField.style.setProperty("display", "none", "important");
-            if (modelField) modelField.style.setProperty("display", "none", "important");
+            if (modelField) {
+                modelField.style.setProperty("display", "none", "important");
+                const modelInput = document.getElementById("st-scene-trigger-modal-model");
+                if (modelInput && modelInput.value !== "Perchance AI") {
+                    modelInput.value = "Perchance AI";
+                    modelInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
         } else {
             if (keyField) keyField.style.removeProperty("display");
             if (urlField) urlField.style.removeProperty("display");

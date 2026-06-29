@@ -524,6 +524,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         targetRole: 'assistant',
         debugToast: false,
         multiCharOutput: false,
+        multiCharUseCoords: false,
         autoRunTagger: false,
         autoRunGenerate: false,
         minSegments: 0,
@@ -1677,7 +1678,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         payload.parameters.v4_prompt = {
             caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },
-            use_coords: true,
+            use_coords: !!getStore().multiCharUseCoords,
             use_order: true,
             legacy_uc: false,
         };
@@ -3055,6 +3056,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <label class="st-scene-trigger-field" title="选择前情增强分析版本。V2: payload 注入时间线定位。V5/V6: 额外 system prompt 注入中文详细分析。V7: 三层分析链。V8: 无条目式综合思维链分析。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v2">V2 · 时间线定位</option><option value="v5">V5 · 状态快照</option><option value="v6">V6 · 帧同步</option><option value="v7">V7 · 场景感知</option><option value="v8">V8 · 综合推理 (推荐)</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -3166,6 +3168,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
+        document.getElementById('rbq-sdt-multichar-coords').checked = !!store.multiCharUseCoords;
         document.getElementById('rbq-sdt-inject-presets').checked = !!store.injectPresetsToTagger;
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
         document.getElementById('rbq-sdt-auto-generate').checked = !!store.autoRunGenerate;
@@ -3202,6 +3205,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         // enhanced-context is now a <select>, no bindSwitch needed
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
+        bindSwitch('rbq-sdt-multichar-coords-field', 'rbq-sdt-multichar-coords');
         bindSwitch('rbq-sdt-inject-presets-field', 'rbq-sdt-inject-presets');
         bindSwitch('rbq-sdt-autorun-field', 'rbq-sdt-autorun');
         bindSwitch('rbq-sdt-auto-generate-field', 'rbq-sdt-auto-generate');
@@ -3374,6 +3378,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.enhancedContext = val('rbq-sdt-enhanced-context') || 'off';
             s.debugToast = checked('rbq-sdt-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');
+            s.multiCharUseCoords = checked('rbq-sdt-multichar-coords');
             s.injectPresetsToTagger = checked('rbq-sdt-inject-presets');
             s.autoRunTagger = checked('rbq-sdt-autorun');
             s.autoRunGenerate = checked('rbq-sdt-auto-generate');

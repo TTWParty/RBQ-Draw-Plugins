@@ -3164,7 +3164,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
         // Backward compat: boolean true → 'v2', removed versions → fallback
-        const ecVal = store.enhancedContext === true ? 'v2' : (['v1','v3','v4'].includes(store.enhancedContext) ? 'v2' : (['v8'].includes(store.enhancedContext) ? 'v7' : (store.enhancedContext || 'off')));
+        const ecVal = store.enhancedContext === true ? 'v2' : (['v1','v3','v4'].includes(store.enhancedContext) ? 'v2' : (store.enhancedContext || 'off'));
         document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;

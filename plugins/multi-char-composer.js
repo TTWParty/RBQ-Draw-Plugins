@@ -7,7 +7,8 @@
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { enabled: false };
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { enabled: false, useCoords: false };
+        if (s[STORAGE_KEY].useCoords === undefined) s[STORAGE_KEY].useCoords = false;
         return s[STORAGE_KEY];
     }
     function save() { RBQ.api.saveSettings(); }
@@ -124,7 +125,7 @@
                 base_caption: baseCaption,
                 char_captions: charCaptions
             },
-            use_coords: true,
+            use_coords: !!store.useCoords,
             use_order: true,
             legacy_uc: false
         };
@@ -171,6 +172,20 @@
         });
 
         checkboxGrid.appendChild(label);
+
+        const labelCoords = document.createElement('label');
+        labelCoords.className = 'st-scene-trigger-nai-ck';
+        labelCoords.innerHTML = '<input id="rbq-multi-char-coords" type="checkbox"' + (store.useCoords ? ' checked' : '') + '> 启用严格定位';
+
+        const checkboxCoords = labelCoords.querySelector('#rbq-multi-char-coords');
+        checkboxCoords.addEventListener('change', () => {
+            const s = getStore();
+            s.useCoords = checkboxCoords.checked;
+            save();
+            toastr.info(s.useCoords ? '严格坐标定位已开启' : '严格坐标定位已关闭 (启用AI选择)', PLUGIN_NAME);
+        });
+
+        checkboxGrid.appendChild(labelCoords);
     }
 
     setInterval(() => {

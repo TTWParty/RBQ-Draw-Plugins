@@ -3984,6 +3984,10 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
 
+        if (store.postProcessEnabled && store.postProcessPrompt) {
+            messages.push({ role: store.postProcessRole === 'system' ? 'system' : 'assistant', content: store.postProcessPrompt });
+        }
+
         let json;
         if (store.provider === 'custom') {
             const customUrl = String(store.customUrl || '').trim();

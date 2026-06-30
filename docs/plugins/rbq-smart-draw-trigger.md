@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`5.11.5`
+版本：`5.11.6`
 
 ---
 
@@ -94,6 +94,9 @@
 
 从 `5.11.5` 开始，插件新增**辅助生成测试 API**：
 - 支持 `window.RBQ.api.generateWithTagger` API，允许宿主从“生成测试”面板调用 Tagger API 将测试文字分析为提示词并完成生图测试。
+
+从 `5.11.6` 开始，优化了生图测试流程：
+- 恢复了测试时的**世界书词条匹配与扫描（Lorebook Matching）**，以确保测试时能正确提取并注入被匹配词条中的角色特征和设定。
 
 ---
 

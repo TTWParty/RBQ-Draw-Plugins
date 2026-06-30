@@ -128,6 +128,18 @@ RBQ.api.saveSettings();
 
 建议插件把自己的状态放在 `_pluginName` 或 `_pluginId` 字段中，避免污染宿主顶层配置。
 
+### 动态设置面板注册 (Setting Panel API)
+
+宿主 `0.3.20+` 支持插件动态在控制面板注册独立的 Tab 页，避免插件强行操作 DOM。
+
+```javascript
+RBQ.ui.addSettingPanel(id, title, renderHtmlFn);
+```
+
+- `id`：面板的唯一标识符（例如 `'inspector'`），会自动作为 `data-kite-tab` 和 `data-kite-panel` 属性。
+- `title`：标签按钮上显示的文本，支持直接传入包含 FontAwesome 图标的 HTML，例如 `'<i class="fa-solid fa-file-invoice"></i><span>图片解析</span>'`。
+- `renderHtmlFn`：面板渲染函数，可返回 HTML 字符串或一个已绑定事件的 DOM 元素（`HTMLElement`）。如果是 DOM 元素，宿主会直接将其挂载在面板中。
+
 ### 自定义生图模式注册
 
 ```javascript

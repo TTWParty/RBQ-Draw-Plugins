@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`1.9.2`
+版本：`5.11.5`
 
 ---
 
@@ -91,6 +91,9 @@
 - 新增 `image###` 协议后处理器：自动清理多余换行符并修复部分格式截断，防止解析器出错。
 - 移除了由于缺少 `scene` / `characters[]` 导致的阻断报错。
 - 内置 Prompt 升级至 `v6`，请手动点击“重置为所选内置 Prompt”以更新。
+
+从 `5.11.5` 开始，插件新增**辅助生成测试 API**：
+- 支持 `window.RBQ.api.generateWithTagger` API，允许宿主从“生成测试”面板调用 Tagger API 将测试文字分析为提示词并完成生图测试。
 
 ---
 

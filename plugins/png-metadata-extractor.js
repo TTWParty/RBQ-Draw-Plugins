@@ -1192,13 +1192,7 @@
         reader.readAsArrayBuffer(file);
     }
 
-    function injectInspectorTab() {
-        const rail = document.querySelector('.st-scene-trigger-tab-rail');
-        const content = document.querySelector('.st-scene-trigger-modal-content');
-        if (!rail || !content) return;
-
-        if (document.getElementById('rbq-inspector-tab')) return;
-
+    function initInspectorPanel() {
         if (!document.getElementById('rbq-inspector-styles')) {
             const style = document.createElement('style');
             style.id = 'rbq-inspector-styles';
@@ -1374,70 +1368,50 @@
             document.head.appendChild(style);
         }
 
-        const button = document.createElement('button');
-        button.className = 'st-scene-trigger-tab-button';
-        button.id = 'rbq-inspector-tab';
-        button.dataset.kiteTab = 'inspector';
-        button.type = 'button';
-        button.innerHTML = '<i class="fa-solid fa-file-invoice"></i><span>图片解析</span>';
-        button.addEventListener('click', () => {
-            document.querySelectorAll('[data-kite-tab]').forEach((el) => {
-                el.classList.toggle('active', el.dataset.kiteTab === 'inspector');
+        RBQ.ui.addSettingPanel('inspector', '<i class="fa-solid fa-file-invoice"></i><span>图片解析</span>', () => {
+            const container = document.createElement('div');
+            container.style.display = 'contents';
+            container.innerHTML = `
+                <div class="st-scene-trigger-panel-title"><i class="fa-solid fa-file-invoice"></i><span>图片信息解析 (Prompt Reader)</span></div>
+                <div class="st-scene-trigger-inspector-dropzone" id="st-scene-trigger-inspector-dropzone">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <span>拖拽图片至此处，或点击上传解析元数据</span>
+                    <input type="file" id="st-scene-trigger-inspector-file" style="display: none;" accept="image/png">
+                </div>
+                <div class="st-scene-trigger-inspector-result" id="st-scene-trigger-inspector-result" style="display: none;"></div>
+            `;
+
+            const dropzone = container.querySelector('#st-scene-trigger-inspector-dropzone');
+            const fileInput = container.querySelector('#st-scene-trigger-inspector-file');
+            
+            dropzone.addEventListener('click', () => fileInput.click());
+
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
             });
-            document.querySelectorAll('[data-kite-panel]').forEach((el) => {
-                el.classList.toggle('active', el.dataset.kitePanel === 'inspector');
+
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('dragover');
             });
-        });
 
-        const testButton = rail.querySelector('[data-kite-tab="test"]');
-        if (testButton && testButton.nextSibling) {
-            rail.insertBefore(button, testButton.nextSibling);
-        } else {
-            rail.append(button);
-        }
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleInspectFile(files[0]);
+                }
+            });
 
-        const panel = document.createElement('section');
-        panel.className = 'st-scene-trigger-modal-panel';
-        panel.dataset.kitePanel = 'inspector';
-        panel.innerHTML = `
-            <div class="st-scene-trigger-panel-title"><i class="fa-solid fa-file-invoice"></i><span>图片信息解析 (Prompt Reader)</span></div>
-            <div class="st-scene-trigger-inspector-dropzone" id="st-scene-trigger-inspector-dropzone">
-                <i class="fa-solid fa-cloud-arrow-up"></i>
-                <span>拖拽图片至此处，或点击上传解析元数据</span>
-                <input type="file" id="st-scene-trigger-inspector-file" style="display: none;" accept="image/png">
-            </div>
-            <div class="st-scene-trigger-inspector-result" id="st-scene-trigger-inspector-result" style="display: none;"></div>
-        `;
-        content.append(panel);
+            fileInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    handleInspectFile(files[0]);
+                }
+            });
 
-        const dropzone = panel.querySelector('#st-scene-trigger-inspector-dropzone');
-        const fileInput = panel.querySelector('#st-scene-trigger-inspector-file');
-        
-        dropzone.addEventListener('click', () => fileInput.click());
-
-        dropzone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropzone.classList.add('dragover');
-        });
-
-        dropzone.addEventListener('dragleave', () => {
-            dropzone.classList.remove('dragover');
-        });
-
-        dropzone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropzone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleInspectFile(files[0]);
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            const files = e.target.files;
-            if (files.length > 0) {
-                handleInspectFile(files[0]);
-            }
+            return container;
         });
     }
 
@@ -1474,7 +1448,6 @@
             document.head.appendChild(style);
         }
 
-        injectInspectorTab();
 
         const viewers = [
             {
@@ -1574,6 +1547,7 @@
         });
     }
 
+    initInspectorPanel();
     setInterval(scanAndInject, 500);
     setTimeout(scanAndInject, 100);
 

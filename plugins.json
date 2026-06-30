@@ -19,17 +19,17 @@
     "id": "rbq-png-metadata",
     "name": "NAI 图片信息提取器",
     "description": "在画廊直接提取 NovelAI/SD/ComfyUI 图像的隐藏数据。并在“生成测试”面板中提供拖拽解析 (Prompt Reader) 与一键导入测试功能。",
-    "version": "1.1.6",
+    "version": "1.1.7",
     "author": "TTWP-09",
-    "main": "plugins/png-metadata-extractor.js?v=1.1.6"
+    "main": "plugins/png-metadata-extractor.js?v=1.1.7"
   },
   {
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "无需让正文输出长 tag。支持短标记和自动定位两种模式，调用 OpenAI 兼容或自定义 HTTP tagger API 生成 prompt，并在正文中插入 RBQ 生图卡片。",
-    "version": "5.11.4",
+    "version": "5.11.5",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=5.11.4"
+    "main": "plugins/smart-draw-trigger.js?v=5.11.5"
   },
   {
     "id": "rbq-multi-char",

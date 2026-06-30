@@ -1192,11 +1192,12 @@
         reader.readAsArrayBuffer(file);
     }
 
-    function injectInspectorToTestTab() {
-        const testSection = document.querySelector('section[data-kite-panel="test"]');
-        if (!testSection) return;
+    function injectInspectorTab() {
+        const rail = document.querySelector('.st-scene-trigger-tab-rail');
+        const content = document.querySelector('.st-scene-trigger-modal-content');
+        if (!rail || !content) return;
 
-        if (document.getElementById('st-scene-trigger-inspector-dropzone')) return;
+        if (document.getElementById('rbq-inspector-tab')) return;
 
         if (!document.getElementById('rbq-inspector-styles')) {
             const style = document.createElement('style');
@@ -1373,33 +1374,44 @@
             document.head.appendChild(style);
         }
 
-        const hr = document.createElement('hr');
-        hr.style.cssText = "margin: 24px 0; border: none; border-top: 1px dashed var(--linear-border-standard, rgba(255,255,255,0.15));";
-        
-        const titleDiv = document.createElement('div');
-        titleDiv.className = 'st-scene-trigger-panel-title';
-        titleDiv.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>图片信息解析 (Prompt Reader)</span>';
-        
-        const dropzone = document.createElement('div');
-        dropzone.className = 'st-scene-trigger-inspector-dropzone';
-        dropzone.id = 'st-scene-trigger-inspector-dropzone';
-        dropzone.innerHTML = `
-            <i class="fa-solid fa-cloud-arrow-up"></i>
-            <span>拖拽图片至此处，或点击上传解析元数据</span>
-            <input type="file" id="st-scene-trigger-inspector-file" style="display: none;" accept="image/png">
+        const button = document.createElement('button');
+        button.className = 'st-scene-trigger-tab-button';
+        button.id = 'rbq-inspector-tab';
+        button.dataset.kiteTab = 'inspector';
+        button.type = 'button';
+        button.innerHTML = '<i class="fa-solid fa-file-invoice"></i><span>图片解析</span>';
+        button.addEventListener('click', () => {
+            document.querySelectorAll('[data-kite-tab]').forEach((el) => {
+                el.classList.toggle('active', el.dataset.kiteTab === 'inspector');
+            });
+            document.querySelectorAll('[data-kite-panel]').forEach((el) => {
+                el.classList.toggle('active', el.dataset.kitePanel === 'inspector');
+            });
+        });
+
+        const testButton = rail.querySelector('[data-kite-tab="test"]');
+        if (testButton && testButton.nextSibling) {
+            rail.insertBefore(button, testButton.nextSibling);
+        } else {
+            rail.append(button);
+        }
+
+        const panel = document.createElement('section');
+        panel.className = 'st-scene-trigger-modal-panel';
+        panel.dataset.kitePanel = 'inspector';
+        panel.innerHTML = `
+            <div class="st-scene-trigger-panel-title"><i class="fa-solid fa-file-invoice"></i><span>图片信息解析 (Prompt Reader)</span></div>
+            <div class="st-scene-trigger-inspector-dropzone" id="st-scene-trigger-inspector-dropzone">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <span>拖拽图片至此处，或点击上传解析元数据</span>
+                <input type="file" id="st-scene-trigger-inspector-file" style="display: none;" accept="image/png">
+            </div>
+            <div class="st-scene-trigger-inspector-result" id="st-scene-trigger-inspector-result" style="display: none;"></div>
         `;
+        content.append(panel);
 
-        const resultDiv = document.createElement('div');
-        resultDiv.className = 'st-scene-trigger-inspector-result';
-        resultDiv.id = 'st-scene-trigger-inspector-result';
-        resultDiv.style.display = 'none';
-
-        testSection.appendChild(hr);
-        testSection.appendChild(titleDiv);
-        testSection.appendChild(dropzone);
-        testSection.appendChild(resultDiv);
-
-        const fileInput = dropzone.querySelector('#st-scene-trigger-inspector-file');
+        const dropzone = panel.querySelector('#st-scene-trigger-inspector-dropzone');
+        const fileInput = panel.querySelector('#st-scene-trigger-inspector-file');
         
         dropzone.addEventListener('click', () => fileInput.click());
 
@@ -1462,7 +1474,7 @@
             document.head.appendChild(style);
         }
 
-        injectInspectorToTestTab();
+        injectInspectorTab();
 
         const viewers = [
             {

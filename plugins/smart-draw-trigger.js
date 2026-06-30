@@ -3917,13 +3917,25 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         if (onProgress) onProgress('正在调用 tagger API 解析场景描述...');
 
+        let rawLorebooks = [];
+        try {
+            rawLorebooks = collectMatchedLorebookEntries(description, [], 0);
+        } catch (e) {
+            console.warn('[Smart Draw] failed to gather lorebook for test draw', e);
+        }
+        const lorebook = rawLorebooks.map(l => ({ 
+            name: l.comment || l.sourceName || '角色/设定', 
+            keys: l.matchedKeys, 
+            tags: String(l.content || '').trim() 
+        }));
+
         const manualPayload = {
             mode: 'manual',
             marker: '',
             messageId: -1,
             currentMessage: { role: 'user', name: 'Manual Input', content: description },
             recentMessages: [],
-            lorebook: [],
+            lorebook,
             contextCount: 1,
             manualMode: true,
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
@@ -4000,7 +4012,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             json = await response.json();
         }
 
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, []));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
         logTaggerPayload('test draw tagger result', normalized);
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {

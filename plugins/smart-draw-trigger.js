@@ -3917,40 +3917,16 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         if (onProgress) onProgress('正在调用 tagger API 解析场景描述...');
 
-        let rawLorebooks = [];
-        try {
-            rawLorebooks = collectMatchedLorebookEntries(description, [], 0);
-        } catch (e) {
-            console.warn('[Smart Draw] failed to gather lorebook for test draw', e);
-        }
-        const lorebook = rawLorebooks.map(l => ({ 
-            name: l.comment || l.sourceName || '角色/设定', 
-            keys: l.matchedKeys, 
-            tags: String(l.content || '').trim() 
-        }));
-
-        const minSeg = Number(store.minSegments) || 0;
-
         const manualPayload = {
             mode: 'manual',
             marker: '',
             messageId: -1,
             currentMessage: { role: 'user', name: 'Manual Input', content: description },
             recentMessages: [],
-            lorebook,
+            lorebook: [],
             contextCount: 1,
-            ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `本次请求要求至少生成 ${minSeg} 个 segment 分镜。` } : {}),
             manualMode: true,
-            manualInstruction: '用户手动输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。至少输出 1 个 segment。',
-            ...((ec => {
-                const ecPayloads = {
-                    v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits.",
-                    v5: "Build a state snapshot from the user description and any provided context.",
-                    v6: "FRAME-SYNC: Reconstruct character states from context and user description.",
-                    v7: "SCENE-AWARE ANALYSIS: Apply the full three-layer analysis chain to the user's description.",
-                };
-                return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
-            })(store.enhancedContext)),
+            manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
             outputSchema: {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -3959,47 +3935,42 @@ Zimage 擅长理解复杂的英文长句和语境。
             },
         };
 
-        if (store.injectPresetsToTagger) {
-            const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
-            const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
-            if (activePreset) {
-                manualPayload.stylePreset = {
-                    name: activePreset.name || '',
-                    positive: activePreset.positive || '',
-                    negative: activePreset.negative || ''
-                };
-            }
-        }
-
-        const cardInfo = collectCharacterCardInfo();
-        if (cardInfo && cardInfo.length > 0) {
-            manualPayload.characterCardInfo = cardInfo;
-        }
-
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = getSystemPromptWithPresets(store, !!manualPayload.characterCardInfo);
+        const systemPrompt = `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
+
+请分析用户的场景描述，并将其转化为如下 JSON 结构：
+{
+  "shouldDraw": true,
+  "reason": "测试生成描述解析",
+  "segments": [
+    {
+      "anchor": { "type": "sentence", "index": 1, "text": "用户输入的描述文本" },
+      "scene": "用逗号分隔的英文场景提示词，描述背景、环境、灯光、氛围等 (例如: 1room, night, bed, window, dramatic lighting)",
+      "characters": [
+        {
+          "name": "角色的英文名或代表称呼",
+          "base": "描述角色基本外貌的英文提示词，如发色、发型、眼睛、体型等 (例如: 1girl, red hair, short hair, blue eyes)",
+          "outfit": "描述角色衣着服装的英文提示词 (例如: school uniform, white shirt, pleated skirt)",
+          "action": "描述角色动作、姿势、表情、视线的英文提示词 (例如: holding a cup, sitting on bed, looking at viewer, blush)",
+          "center": "角色的画面位置及相对重心坐标，如 A3, B2 等"
+        }
+      ]
+    }
+  ]
+}
+
+要求：
+1. 所有的提示词（scene, base, outfit, action）必须为高质量的英文 Danbooru 风格 Tag，使用小写且用半角逗号分隔。
+2. 精准拆分出人物的“外貌基础 (base)”、“服装 (outfit)”和“当前动作与表情 (action)”。
+3. 即使只有一个角色，也请使用 characters 数组。如果是多人场景，请分别为每个角色输出对应的配置。
+4. 仅输出符合 schema 格式的纯 JSON，绝对禁止在 JSON 外输出任何分析文字或 Markdown 代码块标记（如 \`\`\`json ）。`;
+
         const messages = store.geminiJailbreak
             ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
 
-        if (['v5','v6','v7','v8'].includes(store.enhancedContext)) {
-            const ecPrompts = {
-                v5: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，建立当前帧的完整状态快照：\n1. 场景连续性：当前空间环境、时间段、氛围基调\n2. 衣态追踪：逐件追踪每个角色的衣物状态（穿着/半脱/脱落/损坏），仅文本明确描述的变化才可更新\n3. 体态与位置：角色的体型特征、当前姿势、空间相对位置\n4. 情绪基调：每个角色此刻的核心情绪（严格区分屈辱/恐惧/快感/愤怒/哀求等，不可混淆）\n5. 时间线定位：当前文本的动作处于哪个阶段——即将发生/正在进行/已经完成，Tag须精确匹配该阶段\n6. 动作承接：上一帧→当前帧之间，什么发生了变化，什么保持不变\n核心原则：生成的Tag必须是当前帧状态快照 of 真实映射。文本未描述的变化（衣物/体液/动作/情绪升级）一律不添加。\n最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。",
-                v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。未提及 = 不变。\n2. 当前帧定位：姿势和动作以 currentMessage 为准，不沿用前文的姿势。\n3. 情绪独立：每个角色的情绪状态单独判断，不能笼统套用同一种情绪。\n4. 空间感：center 坐标要反映角色在场景中的实际位置关系，避免所有人挤在同一个点。\n5. 时间帧：只 tag 此刻正在发生的事，即将发生的不加完成态 tag。\n6. 同层分镜：同一消息多个分镜时，根据正文内容判断它们的关系。\n7. 动作粒度：区分瞬间动作和持续动作，选择匹配 of tag。\n8. 动作方向：分清谁对谁做了什么，结果发生在谁身上，把 tag 放在正确的角色上。\n9. 忠实程度：不要超越文本描述的强度来选 tag，按原文的程度来。\n\n核心：每个 tag 都要有文本依据。禁止输出分析文本，只输出 JSON。",
-                v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
-                v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
-            };
-            if (ecPrompts[store.enhancedContext]) {
-                messages.push({ role: 'system', content: ecPrompts[store.enhancedContext] });
-            }
-        }
-
         messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
-
-        if (store.postProcessEnabled && store.postProcessPrompt) {
-            messages.push({ role: store.postProcessRole === 'system' ? 'system' : 'assistant', content: store.postProcessPrompt });
-        }
 
         let json;
         if (store.provider === 'custom') {
@@ -4029,7 +4000,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             json = await response.json();
         }
 
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, []));
         logTaggerPayload('test draw tagger result', normalized);
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {

@@ -1676,9 +1676,10 @@ Zimage 擅长理解复杂的英文长句和语境。
             existingNegBase = existingNegBase.replace(/^,+|,+$/g, '').replace(/,+/g, ','); // cleanup
         }
 
+        const isV5Model = String(payload.model || '').toLowerCase().includes('nai-diffusion-5');
         payload.parameters.v4_prompt = {
             caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },
-            use_coords: !!getStore().multiCharUseCoords,
+            use_coords: isV5Model ? false : !!getStore().multiCharUseCoords,
             use_order: true,
             legacy_uc: false,
         };

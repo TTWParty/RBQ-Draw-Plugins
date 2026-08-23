@@ -1955,17 +1955,34 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     async function smartFetch(url, options = {}) {
+        let response;
+        let isCorsError = false;
         try {
-            const response = await fetch(url, options);
-            return response;
+            response = await fetch(url, options);
+            if (response.ok || (response.status !== 405 && response.status < 500)) {
+                return response;
+            }
         } catch (err) {
             const errStr = String(err || '');
-            const isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
-            if (isCorsError) {
-                throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制，浏览器禁止跨域访问。请尝试安装 Allow CORS 浏览器扩展或更换支持 CORS 跨域的中转 API 域名。`);
-            }
-            throw err;
+            isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
+            if (!isCorsError) throw err;
         }
+
+        if (isCorsError || (response && response.status === 405)) {
+            console.warn(`[${PLUGIN_NAME}] 直连发包被 CORS / OPTIONS 405 拦截，自动尝试使用酒馆内置代理转发 (/proxy/):`, url);
+            try {
+                const proxyUrl = `/proxy/${url}`;
+                const proxyResponse = await fetch(proxyUrl, options);
+                if (proxyResponse.ok || proxyResponse.status < 500) {
+                    return proxyResponse;
+                }
+            } catch (proxyErr) {
+                console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
+            }
+            throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制。请尝试安装 Allow CORS 浏览器扩展或在 config.yaml 开启 enableCorsProxy。`);
+        }
+
+        return response;
     }
 
     async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj) {

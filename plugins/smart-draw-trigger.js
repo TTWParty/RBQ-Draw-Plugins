@@ -1954,6 +1954,55 @@ Zimage 擅长理解复杂的英文长句和语境。
         return messages;
     }
 
+    async function smartFetch(url, options = {}) {
+        let response;
+        let isCorsError = false;
+        try {
+            response = await fetch(url, options);
+            if (response.ok || (response.status !== 405 && response.status < 500)) {
+                return response;
+            }
+        } catch (err) {
+            const errStr = String(err || '');
+            isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
+            if (!isCorsError) throw err;
+        }
+
+        if (isCorsError || (response && response.status === 405)) {
+            console.warn(`[${PLUGIN_NAME}] 直连发包被 CORS / OPTIONS 405 拦截，自动尝试使用酒馆内部代理转发:`, url);
+            try {
+                const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+                const proxyResponse = await fetch(proxyUrl, options);
+                if (proxyResponse.ok || proxyResponse.status < 500) {
+                    return proxyResponse;
+                }
+            } catch (proxyErr) {
+                console.error(`[${PLUGIN_NAME}] 代理转发亦失败:`, proxyErr);
+            }
+            throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制。请检查接口地址或尝试使用 CORS 解除扩展。`);
+        }
+
+        return response;
+    }
+
+    async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj) {
+        let response = await smartFetch(url, {
+            ...fetchOptions,
+            body: JSON.stringify(reqBodyObj),
+        });
+
+        if (!response.ok && response.status === 400 && reqBodyObj.response_format) {
+            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
+            const retryBody = { ...reqBodyObj };
+            delete retryBody.response_format;
+            response = await smartFetch(url, {
+                ...fetchOptions,
+                body: JSON.stringify(retryBody),
+            });
+        }
+        return response;
+    }
+
     async function callOpenAiCompatible(messageId, trigger, { signal } = {}) {
         const store = getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
@@ -1988,20 +2037,19 @@ Zimage 擅长理解复杂的英文长句和语境。
             });
         }
 
-        const response = await fetch(url, {
+        const response = await callApiWithJsonFallback(url, {
             method: 'POST',
             signal,
             headers: {
                 'Content-Type': 'application/json',
                 ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
             },
-            body: JSON.stringify({
-                model: modelName,
-                temperature: 0.2,
-                response_format: { type: 'json_object' },
-                stream: false,
-                messages,
-            }),
+        }, {
+            model: modelName,
+            temperature: 0.2,
+            response_format: { type: 'json_object' },
+            stream: false,
+            messages,
         });
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
@@ -2023,7 +2071,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
-        const response = await fetch(url, {
+        const response = await smartFetch(url, {
             method: 'POST',
             signal,
             headers,
@@ -2989,7 +3037,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 button.disabled = true;
                 button.textContent = '刷新中...';
             }
-            const response = await fetch(url, {
+            const response = await smartFetch(url, {
                 method: 'GET',
                 headers: {
                     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -3832,28 +3880,27 @@ Zimage 擅长理解复杂的英文长句和语境。
             let json;
             if (store.provider === 'custom') {
                 const customUrl = String(store.customUrl || '').trim();
-                if (!customUrl) throw new Error('\u8bf7\u5148\u586b\u5199\u81ea\u5b9a\u4e49 HTTP \u63a5\u53e3\u5730\u5740');
+                if (!customUrl) throw new Error('请先填写自定义 HTTP 接口地址');
                 checkUrlSafety(customUrl);
                 const headers = { 'Content-Type': 'application/json' };
                 if (store.customApiKey) {
                     const headerName = store.customApiKeyHeader || 'Authorization';
                     headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
                 }
-                const response = await fetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
-                if (!response.ok) throw new Error(`\u81ea\u5b9a\u4e49 tagger \u8bf7\u6c42\u5931\u8d25: HTTP ${response.status}`);
+                const response = await smartFetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
+                if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
                 json = await response.json();
             } else {
                 const url = normalizeBaseUrl(store.openaiBaseUrl);
-                if (!url) throw new Error('\u8bf7\u5148\u586b\u5199 OpenAI \u517c\u5bb9\u63a5\u53e3 Base URL');
+                if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
                 const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-                if (!modelName) throw new Error('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u540d\u79f0');
+                if (!modelName) throw new Error('请先填写模型名称');
                 checkUrlSafety(url);
-                const response = await fetch(url, {
+                const response = await callApiWithJsonFallback(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                    body: JSON.stringify({ model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages }),
-                });
-                if (!response.ok) throw new Error(`tagger API \u8bf7\u6c42\u5931\u8d25: HTTP ${response.status}`);
+                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages });
+                if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
                 json = await response.json();
             }
 
@@ -3999,7 +4046,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const headerName = store.customApiKeyHeader || 'Authorization';
                 headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
             }
-            const response = await fetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
+            const response = await smartFetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
             if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
             json = await response.json();
         } else {
@@ -4008,11 +4055,10 @@ Zimage 擅长理解复杂的英文长句和语境。
             const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
             if (!modelName) throw new Error('请先填写模型名称');
             checkUrlSafety(url);
-            const response = await fetch(url, {
+            const response = await callApiWithJsonFallback(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                body: JSON.stringify({ model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages }),
-            });
+            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages });
             if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
             json = await response.json();
         }

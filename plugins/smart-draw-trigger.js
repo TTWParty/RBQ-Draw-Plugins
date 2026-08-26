@@ -534,6 +534,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         lorebookContextDepth: 5,
         lorebookBudget: 8000,
         lorebookSources: [],
+        showLorebookHitBadge: false,
+        showCharCoordBadge: true,
 
         characterMemoryEnabled: false,
         characterProfiles: {},
@@ -1611,12 +1613,13 @@ Zimage 擅长理解复杂的英文长句和语境。
                             font-size: 11px !important;
                             color: rgba(255,255,255,0.7) !important;
                             line-height: 1.4 !important;
-                            max-height: 70px !important;
-                            overflow-y: auto !important;
-                            word-break: break-word !important;
                             box-sizing: border-box !important;
                         ">
-                            <strong style="color: #fff !important;">【${escapeHtml(currentItem.title)}】测试提示词：</strong> ${escapeHtml(currentItem.prompt)}
+                            <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; margin-bottom: 6px !important; gap: 8px !important;">
+                                <strong style="color: #fff !important;">【${escapeHtml(currentItem.title)}】测试提示词：</strong>
+                                <button class="menu_button" id="rbq-sdt-preview-copy-prompt" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-regular fa-copy"></i> 复制提示词</button>
+                            </div>
+                            <div style="max-height: 60px !important; overflow-y: auto !important; word-break: break-word !important; color: rgba(255,255,255,0.85) !important; font-family: monospace !important;">${escapeHtml(currentItem.prompt)}</div>
                         </div>
                     </div>
                     <div style="
@@ -1631,6 +1634,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                         box-sizing: border-box !important;
                         width: 100% !important;
                     ">
+                        <a href="${escapeHtml(currentItem.url)}" download="${escapeHtml(cleanName)}_${currentItem.modeKey || 'test'}.png" class="menu_button" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important; background: rgba(255,255,255,0.08) !important;">💾 保存图片</a>
                         <a href="${escapeHtml(currentItem.url)}" target="_blank" class="menu_button" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;">🔍 查看原图</a>
                         <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; background: rgba(100,255,100,0.18) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;">📌 设为该角色头像</button>
                         <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px !important; margin: 0 !important; font-size: 12px !important; background: rgba(104,215,255,0.2) !important; white-space: nowrap !important;">完成</button>
@@ -1640,6 +1644,17 @@ Zimage 擅长理解复杂的英文长句和语境。
 
             modal.querySelector('#rbq-sdt-preview-close')?.addEventListener('click', () => modal.remove());
             modal.querySelector('#rbq-sdt-preview-done')?.addEventListener('click', () => modal.remove());
+            modal.querySelector('#rbq-sdt-preview-copy-prompt')?.addEventListener('click', () => {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(currentItem.prompt).then(() => {
+                        toastr.success('已复制测试提示词到剪贴板！', PLUGIN_NAME);
+                    }).catch(() => {
+                        toastr.info(currentItem.prompt.slice(0, 100), '测试提示词');
+                    });
+                } else {
+                    toastr.info(currentItem.prompt.slice(0, 100), '测试提示词');
+                }
+            });
             modal.querySelector('#rbq-sdt-preview-set-avatar')?.addEventListener('click', () => {
                 const profile = getCharacterProfile(cleanName);
                 if (profile) {
@@ -1771,6 +1786,181 @@ Zimage 擅长理解复杂的英文长句和语境。
             });
     }
 
+    function openLorebookSearchModal(initialSourceId = null) {
+        const existing = document.getElementById('rbq-sdt-lorebook-search-modal');
+        if (existing) existing.remove();
+
+        const sources = ensureLorebookStore();
+        if (!sources.length) {
+            toastr.warning('当前尚未导入任何世界书，请先导入 JSON 文件', PLUGIN_NAME);
+            return;
+        }
+
+        let selectedSourceId = initialSourceId || 'all';
+        let searchQuery = '';
+
+        const getAllEntries = () => {
+            const list = [];
+            for (const src of sources) {
+                if (selectedSourceId !== 'all' && src.id !== selectedSourceId) continue;
+                try {
+                    const parsed = parseLorebookRawJson(src.rawJson, src.name);
+                    for (const e of parsed.entries) {
+                        list.push({ ...e, sourceName: src.name });
+                    }
+                } catch (_e) { /* noop */ }
+            }
+            return list;
+        };
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-lorebook-search-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999999 !important;
+            background: rgba(0,0,0,0.82) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+        `;
+
+        const renderModal = () => {
+            const allEntries = getAllEntries();
+            const q = searchQuery.toLowerCase().trim();
+            const filtered = q
+                ? allEntries.filter(e => {
+                    const c = (e.comment || '').toLowerCase();
+                    const cont = (e.content || '').toLowerCase();
+                    const k = (e.key || []).join(' ').toLowerCase();
+                    const sk = (e.keysecondary || []).join(' ').toLowerCase();
+                    return c.includes(q) || cont.includes(q) || k.includes(q) || sk.includes(q);
+                })
+                : allEntries;
+
+            modal.innerHTML = `
+                <div style="
+                    background: #1e1f24 !important;
+                    border: 1px solid rgba(255,255,255,0.18) !important;
+                    border-radius: 14px !important;
+                    width: 720px !important;
+                    max-width: 95vw !important;
+                    height: 85vh !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    overflow: hidden !important;
+                    box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
+                    box-sizing: border-box !important;
+                ">
+                    <div style="
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        padding: 14px 18px !important;
+                        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                        background: rgba(255,255,255,0.03) !important;
+                    ">
+                        <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                            <span>📚</span> 世界书词条库与搜索预览
+                            <span style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;">(共 ${filtered.length}/${allEntries.length} 条)</span>
+                        </strong>
+                        <button class="menu_button" id="rbq-sdt-lb-search-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                    </div>
+
+                    <div style="padding: 12px 18px !important; display: flex !important; gap: 10px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
+                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 制服, 紧身裙, 拳击, 跳蛋, 姿势, 视角, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 32px !important; margin: 0 !important; font-size: 13px !important; padding: 0 10px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                        <select id="rbq-sdt-lb-search-source" style="height: 32px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                            <option value="all" ${selectedSourceId === 'all' ? 'selected' : ''}>🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
+                            ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>📖 ${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div id="rbq-sdt-lb-search-results" style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
+                        ${filtered.length === 0 ? `
+                            <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
+                        ` : filtered.slice(0, 100).map((e) => `
+                            <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important;">
+                                    <div style="display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
+                                        <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
+                                        <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
+                                    </div>
+                                    <button class="menu_button rbq-sdt-copy-entry-tags" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制 Tag</button>
+                                </div>
+                                <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important;">
+                                    <span style="opacity: 0.8;">🔑 触发词:</span>
+                                    ${(e.key || []).map(k => `<span style="background: rgba(100,255,100,0.1) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.2) !important; padding: 1px 5px !important; border-radius: 4px !important;">${escapeHtml(k)}</span>`).join('')}
+                                    ${(e.keysecondary && e.keysecondary.length > 0) ? `
+                                        <span style="opacity: 0.8; margin-left: 4px;">➕ 次触发:</span>
+                                        ${e.keysecondary.map(sk => `<span style="background: rgba(255,200,100,0.1) !important; color: #ffd685 !important; border: 1px solid rgba(255,200,100,0.2) !important; padding: 1px 5px !important; border-radius: 4px !important;">${escapeHtml(sk)}</span>`).join('')}
+                                    ` : ''}
+                                </div>
+                                <div style="background: rgba(0,0,0,0.35) !important; padding: 8px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 90px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(e.content)}</div>
+                            </div>
+                        `).join('')}
+                        ${filtered.length > 100 ? `
+                            <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 10px 0 !important; font-size: 12px !important;">已展示前 100 条匹配结果，请输入更精确的关键词以进一步筛选</div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            modal.querySelector('#rbq-sdt-lb-search-close')?.addEventListener('click', () => modal.remove());
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.remove();
+            });
+
+            const searchInput = modal.querySelector('#rbq-sdt-lb-search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    searchQuery = e.target.value;
+                    renderModal();
+                    const newInput = modal.querySelector('#rbq-sdt-lb-search-input');
+                    if (newInput) {
+                        newInput.focus();
+                        newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+                    }
+                });
+            }
+
+            const sourceSelect = modal.querySelector('#rbq-sdt-lb-search-source');
+            if (sourceSelect) {
+                sourceSelect.addEventListener('change', (e) => {
+                    selectedSourceId = e.target.value;
+                    renderModal();
+                });
+            }
+
+            modal.querySelectorAll('.rbq-sdt-copy-entry-tags').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tags = btn.dataset.tags || '';
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(tags).then(() => {
+                            toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
+                        }).catch(() => {
+                            toastr.info(tags.slice(0, 100), '词条内容');
+                        });
+                    } else {
+                        toastr.info(tags.slice(0, 100), '词条内容');
+                    }
+                });
+            });
+        };
+
+        renderModal();
+        document.body.appendChild(modal);
+        modal.querySelector('#rbq-sdt-lb-search-input')?.focus();
+    }
+
     function renderLorebookSourceList() {
         const sources = ensureLorebookStore();
         if (!sources.length) return '暂无已导入世界书';
@@ -1784,6 +1974,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                         <small>${source.type} · ${source.entryCount || 0} entries</small>
                     </div>
                     <div class="rbq-sdt-lorebook-actions">
+                        <button class="menu_button" type="button" data-action="browse-lorebook" data-id="${source.id}" style="padding: 3px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-solid fa-magnifying-glass"></i> 浏览</button>
                         <button class="menu_button" type="button" data-action="toggle-lorebook" data-id="${source.id}">${actionText}</button>
                         <button class="menu_button" type="button" data-action="remove-lorebook" data-id="${source.id}">移除</button>
                     </div>
@@ -2255,6 +2446,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             anchor: normalizeAnchor(source?.anchor, 1),
             reason: String(source?.reason || '').trim(),
             segments,
+            matchedLorebooks: (matchedLorebooks || []).map(l => l.comment || l.sourceName || '词条').filter(Boolean),
         };
 
         if (!segments.length && normalized.shouldDraw && (normalized.prompt || normalized.characters.length)) {
@@ -2283,6 +2475,54 @@ Zimage 擅长理解复杂的英文长句和语境。
             return { x: SDT_COL_MAP[col], y: SDT_ROW_MAP[row] };
         }
         return { x: 0.5, y: 0.5 };
+    }
+
+    function formatCoordLabel(coord) {
+        const s = String(coord || '').trim().toUpperCase();
+        const col = s.charAt(0);
+        const row = s.charAt(1);
+        const colLabels = { A: '最左', B: '左侧', C: '居中', D: '右侧', E: '最右' };
+        const rowLabels = { '1': '顶部', '2': '上部', '3': '中/站姿', '4': '下/坐卧', '5': '底部' };
+        const colText = colLabels[col] || '';
+        const rowText = rowLabels[row] || '';
+        if (colText && rowText) return `${colText}·${rowText}`;
+        return colText || rowText || '居中';
+    }
+
+    function renderCardBadges(wrapper, segResult) {
+        if (!(wrapper instanceof HTMLElement)) return;
+        const store = getStore();
+        const existingDeck = wrapper.querySelector('.rbq-sdt-card-badge-deck');
+        if (existingDeck) existingDeck.remove();
+
+        const badges = [];
+
+        // 1. Worldbook hit badges (if switch is on)
+        if (store.showLorebookHitBadge && Array.isArray(segResult?.matchedLorebooks) && segResult.matchedLorebooks.length > 0) {
+            const uniqueNames = Array.from(new Set(segResult.matchedLorebooks));
+            for (const name of uniqueNames) {
+                badges.push(`<span class="rbq-sdt-lorebook-badge" style="font-size: 11px !important; background: rgba(104,215,255,0.12) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.3) !important; border-radius: 6px !important; padding: 2px 7px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;"><i class="fa-solid fa-book-bookmark" style="font-size: 10px !important;"></i> 命中世界书: ${escapeHtml(name)}</span>`);
+            }
+        }
+
+        // 2. Multi-char coordinate badges (if switch is on and characters array > 0)
+        if (store.showCharCoordBadge !== false && Array.isArray(segResult?.characters) && segResult.characters.length > 0) {
+            for (const c of segResult.characters) {
+                const charName = c._rawName || c.name || '角色';
+                const center = c.center || 'C3';
+                const posName = formatCoordLabel(center);
+                badges.push(`<span class="rbq-sdt-coord-badge" style="font-size: 11px !important; background: rgba(255,255,255,0.06) !important; color: #ddd !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; padding: 2px 7px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;"><i class="fa-solid fa-user" style="font-size: 10px !important; color: #79e4ff !important;"></i> ${escapeHtml(charName)}: <b style="color: #79e4ff !important;">${escapeHtml(center)}</b> (${posName})</span>`);
+            }
+        }
+
+        if (badges.length > 0) {
+            const deck = document.createElement('div');
+            deck.className = 'rbq-sdt-card-badge-deck';
+            deck.style.cssText = 'display: flex !important; flex-wrap: wrap !important; gap: 5px !important; margin-top: 6px !important; padding: 0 2px !important; box-sizing: border-box !important;';
+            deck.innerHTML = badges.join('');
+            const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
+            inlineUi.appendChild(deck);
+        }
     }
 
     function getFinalPrompt(obj) {
@@ -2447,6 +2687,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const segResult = {
                     ...seg,
                     reason: result.reason || '',
+                    matchedLorebooks: result.matchedLorebooks || [],
                 };
                 const wrapper = insertCard(messageId, trigger, segResult, segmentKey);
                 if (wrapper) {
@@ -2455,6 +2696,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     wrapper.dataset.rbqSdtSegmentKey = segmentKey;
                     wrapper.dataset.rbqSdtSegmentIndex = String(index + 1);
                     wrapper.dataset.rbqSdtIsResult = '1';
+                    renderCardBadges(wrapper, segResult);
                     resultMap.set(index, { wrapper, key: segmentKey, segment: seg });
                 }
             }
@@ -2470,6 +2712,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 wrapper.dataset.rbqSdtBaseKey = key;
                 wrapper.dataset.rbqSdtSegmentKey = key;
                 wrapper.dataset.rbqSdtIsResult = '1';
+                renderCardBadges(wrapper, result);
                 rendered.push({ wrapper, key, segment: result });
             }
         }
@@ -3812,8 +4055,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
                 <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
                 <div class="st-scene-trigger-field wide">
@@ -3856,6 +4100,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             <div class="st-scene-trigger-buttons">
                 <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为所选内置 Prompt</button>
                 <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
+                <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
                 <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描/恢复可见楼层</button>
             </div>
@@ -3923,6 +4168,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
+        document.getElementById('rbq-sdt-lorebook-badge').checked = !!store.showLorebookHitBadge;
+        document.getElementById('rbq-sdt-char-coord-badge').checked = store.showCharCoordBadge !== false;
         document.getElementById('rbq-sdt-lorebook-depth').value = store.lorebookContextDepth;
         document.getElementById('rbq-sdt-lorebook-budget').value = store.lorebookBudget || 8000;
         document.getElementById('rbq-sdt-provider').value = store.provider;
@@ -3957,6 +4204,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         bindSwitch('rbq-sdt-auto-generate-field', 'rbq-sdt-auto-generate');
         bindSwitch('rbq-sdt-manual-draw-field', 'rbq-sdt-manual-draw');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
+        bindSwitch('rbq-sdt-lorebook-badge-field', 'rbq-sdt-lorebook-badge');
+        bindSwitch('rbq-sdt-char-coord-badge-field', 'rbq-sdt-char-coord-badge');
         bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
         bindSwitch('rbq-sdt-inject-char-card-field', 'rbq-sdt-inject-char-card');
         bindSwitch('rbq-sdt-post-process-field', 'rbq-sdt-post-process-enabled');
@@ -4133,6 +4382,8 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
+            s.showLorebookHitBadge = checked('rbq-sdt-lorebook-badge');
+            s.showCharCoordBadge = checked('rbq-sdt-char-coord-badge');
             s.lorebookContextDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-lorebook-depth')) || 5));
             s.lorebookBudget = Math.max(500, Number(val('rbq-sdt-lorebook-budget')) || 8000);
             s.provider = val('rbq-sdt-provider');
@@ -4189,6 +4440,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             document.getElementById('rbq-sdt-post-process-prompt').value = DEFAULT_POST_PROCESS_PROMPT;
             toastr.success('尾部引导内容已重置为默认', PLUGIN_NAME);
         };
+        document.getElementById('rbq-sdt-search-lorebook').onclick = () => {
+            openLorebookSearchModal('all');
+        };
         document.getElementById('rbq-sdt-import-lorebook').onclick = () => {
             let input = document.getElementById('rbq-sdt-lorebook-file-input');
             if (!(input instanceof HTMLInputElement)) {
@@ -4225,7 +4479,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             const sources = ensureLorebookStore();
             const index = sources.findIndex((source) => source.id === id);
             if (index < 0) return;
-            if (action === 'toggle-lorebook') {
+            if (action === 'browse-lorebook') {
+                openLorebookSearchModal(id);
+            } else if (action === 'toggle-lorebook') {
                 sources[index].enabled = sources[index].enabled === false;
                 save();
                 refreshLorebookListUi();

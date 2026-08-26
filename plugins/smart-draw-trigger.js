@@ -2506,9 +2506,24 @@ Zimage 擅长理解复杂的英文长句和语境。
         return colText || rowText || '居中';
     }
 
+    function checkLorebookEntryAdopted(entry, finalPrompt) {
+        if (!entry || !entry.content || !finalPrompt) return false;
+        const promptLower = finalPrompt.toLowerCase();
+        const entryTags = entry.content.toLowerCase().split(/[,，\n]+/).map(t => t.trim()).filter(t => t.length > 2);
+        if (!entryTags.length) return false;
+        let hitCount = 0;
+        for (const tag of entryTags) {
+            const cleanTag = tag.replace(/[:\{\}\(\)\[\]]/g, '').trim();
+            if (cleanTag && promptLower.includes(cleanTag)) {
+                hitCount++;
+            }
+        }
+        return hitCount > 0;
+    }
+
     const sdtLorebookHitMap = new Map();
 
-    function openLorebookHitViewerModal(entries, title = '本次生图命中的世界书词条与 Tag') {
+    function openLorebookHitViewerModal(entries, title = '本次生图命中的世界书词条与 Tag', finalPrompt = '') {
         const existing = document.getElementById('rbq-sdt-hit-viewer-modal');
         if (existing) existing.remove();
 
@@ -2568,12 +2583,19 @@ Zimage 擅长理解复杂的英文长句和语境。
                 </div>
 
                 <div style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
-                    ${entries.map((e, idx) => `
-                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                    ${entries.map((e, idx) => {
+                        const isAdopted = checkLorebookEntryAdopted(e, finalPrompt);
+                        return `
+                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid ${isAdopted ? 'rgba(100,255,100,0.25)' : 'rgba(255,255,255,0.08)'} !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                             <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important;">
                                 <div style="display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
-                                    <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '词条 ' + (idx + 1))}</strong>
+                                    <strong style="font-size: 13px !important; color: ${isAdopted ? '#a3ffa3' : '#79e4ff'} !important;">📌 ${escapeHtml(e.comment || '词条 ' + (idx + 1))}</strong>
                                     <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName || '世界书')}</span>
+                                    ${finalPrompt ? (isAdopted ? `
+                                        <span style="font-size: 11px !important; background: rgba(100,255,100,0.15) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.3) !important; padding: 2px 7px !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-solid fa-check"></i> 已采纳进画面提示词</span>
+                                    ` : `
+                                        <span style="font-size: 11px !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.1) !important; padding: 2px 7px !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-regular fa-bookmark"></i> 上下文候选参考</span>
+                                    `) : ''}
                                 </div>
                                 <button class="menu_button rbq-sdt-copy-hit-tags" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制 Tag</button>
                             </div>
@@ -2585,7 +2607,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                             ` : ''}
                             <div style="background: rgba(0,0,0,0.35) !important; padding: 8px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 120px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(e.content)}</div>
                         </div>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </div>
             </div>
         `;
@@ -2624,14 +2647,16 @@ Zimage 擅长理解复杂的英文长句和语境。
             .filter(isMeaningfulLorebookEntry)
             .map(l => (typeof l === 'object' ? l : { comment: String(l), content: '', sourceName: '世界书' }));
 
+        const finalPrompt = getFinalPrompt(segResult);
+
         // Save into hit map for image viewer
         if (validLorebooks.length > 0) {
             const key = wrapper.dataset.rbqSdtSegmentKey || wrapper.dataset.rbqSdtBaseKey;
-            if (key) sdtLorebookHitMap.set(key, validLorebooks);
+            if (key) sdtLorebookHitMap.set(key, { entries: validLorebooks, prompt: finalPrompt });
             const img = wrapper.querySelector('img');
-            if (img?.src) sdtLorebookHitMap.set(img.src, validLorebooks);
+            if (img?.src) sdtLorebookHitMap.set(img.src, { entries: validLorebooks, prompt: finalPrompt });
             const imgLink = wrapper.querySelector('.st-scene-trigger-inline-image-link');
-            if (imgLink?.dataset?.url) sdtLorebookHitMap.set(imgLink.dataset.url, validLorebooks);
+            if (imgLink?.dataset?.url) sdtLorebookHitMap.set(imgLink.dataset.url, { entries: validLorebooks, prompt: finalPrompt });
         }
 
         // 1. Worldbook hit button in card (compact interactive single button if enabled)
@@ -2657,7 +2682,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             
             deck.querySelector('.rbq-sdt-card-lorebook-btn')?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag');
+                openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
             });
 
             const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
@@ -5222,29 +5247,31 @@ Zimage 擅长理解复杂的英文长句和语境。
             let hitBtn = document.getElementById('rbq-sdt-viewer-lorebook-btn');
             
             // Look up matched entries for currentSrc or recent card
-            let entries = sdtLorebookHitMap.get(currentSrc) || [];
-            if (!entries.length && currentSrc) {
+            let hitData = sdtLorebookHitMap.get(currentSrc);
+            if (!hitData && currentSrc) {
                 for (const [k, v] of sdtLorebookHitMap.entries()) {
                     if (k && (currentSrc.includes(k) || k.includes(currentSrc))) {
-                        entries = v;
+                        hitData = v;
                         break;
                     }
                 }
             }
 
-            if (!entries.length) {
-                // If not found by direct url, search from the active thumb index
+            if (!hitData) {
                 const activeThumb = viewer.querySelector('.st-scene-trigger-viewer-thumb.active img');
                 const thumbSrc = activeThumb?.src || '';
                 if (thumbSrc) {
                     for (const [k, v] of sdtLorebookHitMap.entries()) {
                         if (k && (thumbSrc.includes(k) || k.includes(thumbSrc))) {
-                            entries = v;
+                            hitData = v;
                             break;
                         }
                     }
                 }
             }
+
+            const entries = Array.isArray(hitData) ? hitData : (hitData?.entries || []);
+            const currentPrompt = hitData?.prompt || (img?.alt || '');
 
             if (!entries.length) {
                 if (hitBtn) hitBtn.style.display = 'none';
@@ -5264,7 +5291,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             hitBtn.innerHTML = `<i class="fa-solid fa-book-bookmark"></i> 命中世界书 (${entries.length})`;
             hitBtn.onclick = (e) => {
                 e.stopPropagation();
-                openLorebookHitViewerModal(entries, '当前图片命中的世界书词条与 Tag');
+                openLorebookHitViewerModal(entries, '当前图片命中的世界书词条与 Tag', currentPrompt);
             };
         };
 

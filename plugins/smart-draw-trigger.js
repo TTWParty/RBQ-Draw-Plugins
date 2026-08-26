@@ -967,6 +967,152 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
     }
 
+    async function importCharacterFromCurrentCard() {
+        const btn = document.getElementById('rbq-sdt-import-char-profile-btn');
+        const origHtml = btn ? btn.innerHTML : '';
+        try {
+            const ctx = RBQ.api.getContext();
+            if (!ctx) {
+                toastr.warning('无法获取酒馆上下文，请刷新网页重试', PLUGIN_NAME);
+                return;
+            }
+
+            const characters = ctx.characters;
+            if (!Array.isArray(characters) || characters.length === 0) {
+                toastr.warning('当前酒馆未加载任何角色卡，请先选择角色卡', PLUGIN_NAME);
+                return;
+            }
+
+            let char = null;
+            if (ctx.groupId != null && String(ctx.groupId).trim() !== '') {
+                char = characters.find(c => c && c.name) || characters[0];
+            } else if (ctx.characterId != null && characters[ctx.characterId]) {
+                char = characters[ctx.characterId];
+            } else {
+                char = characters[0];
+            }
+
+            if (!char || !char.name) {
+                toastr.warning('未找到当前角色卡信息，请先打开一个角色卡聊天', PLUGIN_NAME);
+                return;
+            }
+
+            const name = String(char.name || '').trim();
+            const description = String(char.description || char.data?.description || '').trim();
+            const charBookEntries = [];
+            const entries = char.data?.character_book?.entries || char.character_book?.entries;
+            if (Array.isArray(entries)) {
+                for (const entry of entries) {
+                    if (entry.disable !== true && entry.enabled !== false && entry.content) {
+                        charBookEntries.push(String(entry.content).trim());
+                    }
+                }
+            }
+
+            const contextText = [
+                description ? `【角色描述设定】\n${description}` : '',
+                charBookEntries.length ? `【角色世界书】\n${charBookEntries.join('\n\n')}` : ''
+            ].filter(Boolean).join('\n\n');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在提取外貌...';
+            }
+
+            let extractedBase = '';
+            let extractedOutfit = '';
+
+            const store = getStore();
+            const hasLlm = (store.provider === 'custom' && store.customUrl) || (store.provider !== 'custom' && store.openaiBaseUrl);
+
+            if (hasLlm && contextText) {
+                try {
+                    const promptMessages = [
+                        {
+                            role: 'system',
+                            content: '你是一个专业的 Danbooru/NovelAI 动漫提示词提取专家。请从给定的角色卡和世界书描述中，提取该角色的：\n1. base: 角色固定的基础外貌特征（如 1girl, blonde hair, long hair, blue eyes, large breasts 等特征标签）\n2. outfit: 初始或默认服装设定（如 school uniform, white shirt, pleated skirt 等）\n输出要求：只输出标准英文 tag，用逗号隔开。输出必须为纯 JSON 格式：{"base": "...", "outfit": "..."}，严禁输出任何分析或额外文本。'
+                        },
+                        {
+                            role: 'user',
+                            content: `角色名称: ${name}\n\n${contextText}`
+                        }
+                    ];
+
+                    let jsonRes;
+                    if (store.provider === 'custom') {
+                        const customUrl = String(store.customUrl || '').trim();
+                        checkUrlSafety(customUrl);
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (store.customApiKey) {
+                            const headerName = store.customApiKeyHeader || 'Authorization';
+                            headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
+                        }
+                        const res = await smartFetch(customUrl, {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({ messages: promptMessages })
+                        });
+                        jsonRes = await res.json();
+                    } else {
+                        const url = normalizeBaseUrl(store.openaiBaseUrl);
+                        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+                        checkUrlSafety(url);
+                        const res = await callApiWithJsonFallback(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
+                            }
+                        }, {
+                            model: modelName,
+                            temperature: 0.2,
+                            response_format: { type: 'json_object' },
+                            stream: false,
+                            messages: promptMessages
+                        });
+                        jsonRes = await res.json();
+                    }
+
+                    const rawContent = jsonRes?.choices?.[0]?.message?.content || jsonRes?.content || '';
+                    const parsed = extractJson(typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
+                    if (parsed && (parsed.base || parsed.outfit)) {
+                        extractedBase = String(parsed.base || '').trim();
+                        extractedOutfit = String(parsed.outfit || '').trim();
+                    }
+                } catch (llmErr) {
+                    console.warn(`[${PLUGIN_NAME}] LLM 提取角色外貌失败，使用本地回退:`, llmErr);
+                }
+            }
+
+            if (!extractedBase && description) {
+                extractedBase = description.slice(0, 150);
+            }
+
+            const addCharPanel = document.getElementById('rbq-sdt-add-char-panel');
+            const nameInput = document.getElementById('rbq-sdt-new-char-name');
+            const displayInput = document.getElementById('rbq-sdt-new-char-display');
+            const baseInput = document.getElementById('rbq-sdt-new-char-base');
+            const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
+
+            if (addCharPanel) addCharPanel.style.display = 'flex';
+            if (nameInput) nameInput.value = name.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+            if (displayInput) displayInput.value = name;
+            if (baseInput) baseInput.value = extractedBase;
+            if (outfitInput) outfitInput.value = extractedOutfit;
+
+            addCharPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            toastr.success(`已从角色卡「${name}」提取外貌设定，可在下方确认或修改后点击添加！`, PLUGIN_NAME);
+        } catch (err) {
+            console.error(`[${PLUGIN_NAME}] 导入角色卡失败:`, err);
+            toastr.error(`导入角色卡失败: ${err.message || String(err)}`, PLUGIN_NAME);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
+        }
+    }
+
     function ensureLorebookStore() {
         const store = getStore();
         if (!Array.isArray(store.lorebookSources)) store.lorebookSources = [];
@@ -3201,6 +3347,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 </div>
             </div>
             <div class="st-scene-trigger-buttons">
+                <button id="rbq-sdt-import-char-profile-btn" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-file-import"></i> 从当前角色卡导入</button>
                 <button id="rbq-sdt-add-char-profile-btn" class="menu_button" type="button">手动添加角色</button>
                 <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button">清空所有角色记忆</button>
             </div>
@@ -3589,6 +3736,12 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
         });
+
+        // Import character profile from current card
+        const importCharBtn = document.getElementById('rbq-sdt-import-char-profile-btn');
+        if (importCharBtn) {
+            importCharBtn.onclick = importCharacterFromCurrentCard;
+        }
 
         // Manual character profile add panel toggle
         const addCharBtn = document.getElementById('rbq-sdt-add-char-profile-btn');

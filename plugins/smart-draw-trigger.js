@@ -1195,72 +1195,144 @@ Zimage 擅长理解复杂的英文长句和语境。
         const modal = document.createElement('div');
         modal.id = 'rbq-sdt-test-mode-modal';
         modal.style.cssText = `
-            position: fixed;
-            inset: 0;
-            z-index: 999999;
-            background: rgba(0,0,0,0.75);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            backdrop-filter: blur(5px);
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999999 !important;
+            background: rgba(0,0,0,0.75) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
         `;
 
         modal.innerHTML = `
             <div style="
-                background: #1e1f24;
-                border: 1px solid rgba(255,255,255,0.18);
-                border-radius: 14px;
-                max-width: 460px;
-                width: 100%;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-                box-shadow: 0 16px 48px rgba(0,0,0,0.85);
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,255,255,0.18) !important;
+                border-radius: 14px !important;
+                width: 480px !important;
+                max-width: 94vw !important;
+                min-width: 280px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
+                box-sizing: border-box !important;
+                margin: auto !important;
             ">
                 <div style="
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: 12px 16px;
-                    border-bottom: 1px solid rgba(255,255,255,0.08);
-                    background: rgba(255,255,255,0.03);
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,255,255,0.03) !important;
+                    box-sizing: border-box !important;
+                    width: 100% !important;
                 ">
-                    <strong style="font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                         <span>🎨</span> 选择测试生图视角 — ${escapeHtml(cleanName)}
                     </strong>
-                    <button class="menu_button" id="rbq-sdt-mode-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
+                    <button class="menu_button" id="rbq-sdt-mode-close" style="padding: 3px 10px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                 </div>
-                <div style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
-                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">请选择本次测试生成的视角模式或一键全景套图：</div>
-                    <button class="menu_button rbq-sdt-mode-opt" data-mode="portrait" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                        <div>
-                            <div style="font-weight: bold; color: #fff; font-size: 13px;">👤 肖像特写 (Portrait)</div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">上半身特写，检验发色、瞳色、五官细节与发型</div>
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 10px !important; box-sizing: border-box !important; width: 100% !important;">
+                    <div style="font-size: 12px !important; color: rgba(255,255,255,0.8) !important; margin-bottom: 4px !important;">请选择本次测试生成的视角模式或一键全景套图：</div>
+                    
+                    <div class="rbq-sdt-mode-opt" data-mode="portrait" style="
+                        padding: 12px 14px !important;
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        text-align: left !important;
+                        background: rgba(255,255,255,0.04) !important;
+                        border: 1px solid rgba(255,255,255,0.1) !important;
+                        border-radius: 10px !important;
+                        cursor: pointer !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        transition: background 0.15s ease !important;
+                    ">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 3px !important; flex: 1 !important; min-width: 0 !important;">
+                            <div style="font-weight: bold !important; color: #fff !important; font-size: 13px !important; white-space: nowrap !important;">👤 肖像特写 (Portrait)</div>
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.65) !important; line-height: 1.4 !important;">上半身特写，检验发色、瞳色、五官细节与发型</div>
                         </div>
-                        <i class="fa-solid fa-chevron-right" style="opacity: 0.5;"></i>
-                    </button>
-                    <button class="menu_button rbq-sdt-mode-opt" data-mode="fullbody" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                        <div>
-                            <div style="font-weight: bold; color: #fff; font-size: 13px;">👗 全身立绘 (Full Body)</div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">站立全景，检验完整服装、鞋袜搭配与身材比例</div>
+                        <i class="fa-solid fa-chevron-right" style="color: rgba(255,255,255,0.4) !important; margin-left: 10px !important; flex-shrink: 0 !important;"></i>
+                    </div>
+
+                    <div class="rbq-sdt-mode-opt" data-mode="fullbody" style="
+                        padding: 12px 14px !important;
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        text-align: left !important;
+                        background: rgba(255,255,255,0.04) !important;
+                        border: 1px solid rgba(255,255,255,0.1) !important;
+                        border-radius: 10px !important;
+                        cursor: pointer !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        transition: background 0.15s ease !important;
+                    ">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 3px !important; flex: 1 !important; min-width: 0 !important;">
+                            <div style="font-weight: bold !important; color: #fff !important; font-size: 13px !important; white-space: nowrap !important;">👗 全身立绘 (Full Body)</div>
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.65) !important; line-height: 1.4 !important;">站立全景，检验完整服装、鞋袜搭配与身材比例</div>
                         </div>
-                        <i class="fa-solid fa-chevron-right" style="opacity: 0.5;"></i>
-                    </button>
-                    <button class="menu_button rbq-sdt-mode-opt" data-mode="dynamic" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                        <div>
-                            <div style="font-weight: bold; color: #fff; font-size: 13px;">💃 动态姿态 (Dynamic Pose)</div>
-                            <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">微表情与动作姿势，检验角色生动的神态与衣服摆动</div>
+                        <i class="fa-solid fa-chevron-right" style="color: rgba(255,255,255,0.4) !important; margin-left: 10px !important; flex-shrink: 0 !important;"></i>
+                    </div>
+
+                    <div class="rbq-sdt-mode-opt" data-mode="dynamic" style="
+                        padding: 12px 14px !important;
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        text-align: left !important;
+                        background: rgba(255,255,255,0.04) !important;
+                        border: 1px solid rgba(255,255,255,0.1) !important;
+                        border-radius: 10px !important;
+                        cursor: pointer !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        transition: background 0.15s ease !important;
+                    ">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 3px !important; flex: 1 !important; min-width: 0 !important;">
+                            <div style="font-weight: bold !important; color: #fff !important; font-size: 13px !important; white-space: nowrap !important;">💃 动态姿态 (Dynamic Pose)</div>
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.65) !important; line-height: 1.4 !important;">微表情与动作姿势，检验角色生动的神态与衣服摆动</div>
                         </div>
-                        <i class="fa-solid fa-chevron-right" style="opacity: 0.5;"></i>
-                    </button>
-                    <button class="menu_button rbq-sdt-mode-opt" data-mode="all" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3); border-radius: 8px;">
-                        <div>
-                            <div style="font-weight: bold; color: #fff; font-size: 13px;">📦 一键生成全景套图 (3张)</div>
-                            <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">依次生成【特写 + 全身 + 动态】3张分镜，在弹窗画廊中对比切换</div>
+                        <i class="fa-solid fa-chevron-right" style="color: rgba(255,255,255,0.4) !important; margin-left: 10px !important; flex-shrink: 0 !important;"></i>
+                    </div>
+
+                    <div class="rbq-sdt-mode-opt" data-mode="all" style="
+                        padding: 12px 14px !important;
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        text-align: left !important;
+                        background: rgba(104,215,255,0.15) !important;
+                        border: 1px solid rgba(104,215,255,0.35) !important;
+                        border-radius: 10px !important;
+                        cursor: pointer !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        transition: background 0.15s ease !important;
+                    ">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 3px !important; flex: 1 !important; min-width: 0 !important;">
+                            <div style="font-weight: bold !important; color: #79e4ff !important; font-size: 13px !important; white-space: nowrap !important;">📦 一键生成全景套图 (3张)</div>
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important;">依次生成【特写 + 全身 + 动态】3张分镜，在弹窗画廊中对比切换</div>
                         </div>
-                        <i class="fa-solid fa-wand-magic-sparkles" style="color: #79e4ff;"></i>
-                    </button>
+                        <i class="fa-solid fa-wand-magic-sparkles" style="color: #79e4ff !important; margin-left: 10px !important; flex-shrink: 0 !important;"></i>
+                    </div>
                 </div>
             </div>
         `;
@@ -1274,6 +1346,20 @@ Zimage 擅长理解复杂的英文长句和语境。
         });
 
         modal.querySelectorAll('.rbq-sdt-mode-opt').forEach((btn) => {
+            btn.addEventListener('mouseenter', () => {
+                if (btn.dataset.mode === 'all') {
+                    btn.style.background = 'rgba(104,215,255,0.25)';
+                } else {
+                    btn.style.background = 'rgba(255,255,255,0.08)';
+                }
+            });
+            btn.addEventListener('mouseleave', () => {
+                if (btn.dataset.mode === 'all') {
+                    btn.style.background = 'rgba(104,215,255,0.15)';
+                } else {
+                    btn.style.background = 'rgba(255,255,255,0.04)';
+                }
+            });
             btn.addEventListener('click', () => {
                 const selectedMode = btn.dataset.mode;
                 close();
@@ -1361,15 +1447,22 @@ Zimage 擅长理解复杂的英文长句和语境。
         const modal = document.createElement('div');
         modal.id = 'rbq-sdt-test-preview-modal';
         modal.style.cssText = `
-            position: fixed;
-            inset: 0;
-            z-index: 999999;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            backdrop-filter: blur(5px);
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999999 !important;
+            background: rgba(0,0,0,0.8) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
         `;
 
         const renderGalleryContent = () => {
@@ -1377,15 +1470,16 @@ Zimage 擅长理解复杂的英文长句和语境。
             const hasMultiple = items.length > 1;
 
             const tabsHtml = hasMultiple ? `
-                <div style="display: flex; gap: 6px; width: 100%; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 8px 16px; background: rgba(0,0,0,0.2); overflow-x: auto;">
+                <div style="display: flex !important; gap: 8px !important; width: 100% !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; padding: 10px 16px !important; background: rgba(0,0,0,0.25) !important; overflow-x: auto !important; box-sizing: border-box !important;">
                     ${items.map((it, idx) => `
                         <button class="menu_button rbq-sdt-tab-btn" data-index="${idx}" type="button" style="
-                            padding: 4px 12px;
-                            margin: 0;
-                            font-size: 12px;
-                            border-radius: 6px;
-                            white-space: nowrap;
-                            ${idx === activeIndex ? 'background: rgba(104,215,255,0.2) !important; border-color: #79e4ff; color: #fff; font-weight: bold;' : 'opacity: 0.7;'}
+                            padding: 6px 14px !important;
+                            margin: 0 !important;
+                            font-size: 12px !important;
+                            border-radius: 8px !important;
+                            white-space: nowrap !important;
+                            cursor: pointer !important;
+                            ${idx === activeIndex ? 'background: rgba(104,215,255,0.22) !important; border: 1px solid #79e4ff !important; color: #fff !important; font-weight: bold !important;' : 'opacity: 0.7 !important;'}
                         ">${escapeHtml(it.title)}</button>
                     `).join('')}
                 </div>
@@ -1393,71 +1487,82 @@ Zimage 擅长理解复杂的英文长句和语境。
 
             modal.innerHTML = `
                 <div style="
-                    background: #1e1f24;
-                    border: 1px solid rgba(255,255,255,0.18);
-                    border-radius: 14px;
-                    max-width: 540px;
-                    width: 100%;
-                    max-height: 92vh;
-                    display: flex;
-                    flex-direction: column;
-                    overflow: hidden;
-                    box-shadow: 0 16px 48px rgba(0,0,0,0.85);
+                    background: #1e1f24 !important;
+                    border: 1px solid rgba(255,255,255,0.18) !important;
+                    border-radius: 14px !important;
+                    width: 560px !important;
+                    max-width: 94vw !important;
+                    min-width: 280px !important;
+                    max-height: 92vh !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    overflow: hidden !important;
+                    box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
+                    box-sizing: border-box !important;
+                    margin: auto !important;
                 ">
                     <div style="
-                        display: flex;
-                        align-items: center;
-                        justify-content: space-between;
-                        padding: 12px 16px;
-                        border-bottom: 1px solid rgba(255,255,255,0.08);
-                        background: rgba(255,255,255,0.03);
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        padding: 12px 18px !important;
+                        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                        background: rgba(255,255,255,0.03) !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
                     ">
-                        <strong style="font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px;">
-                            <span>🎨</span> 角色测试预览 — ${escapeHtml(cleanName)} ${hasMultiple ? `(${activeIndex + 1}/${items.length})` : ''}
+                        <strong style="font-size: 14px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                            <span>🎨</span> 角色测试预览 — ${escapeHtml(cleanName)} ${hasMultiple ? `<span style="font-size:12px; opacity:0.8;">(${activeIndex + 1}/${items.length})</span>` : ''}
                         </strong>
-                        <button class="menu_button" id="rbq-sdt-preview-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
+                        <button class="menu_button" id="rbq-sdt-preview-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 12px !important; cursor: pointer !important;">✕</button>
                     </div>
                     ${tabsHtml}
-                    <div style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-y: auto;">
+                    <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; align-items: center !important; gap: 12px !important; overflow-y: auto !important; box-sizing: border-box !important; width: 100% !important;">
                         <div style="
-                            width: 100%;
-                            max-height: 50vh;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            background: rgba(0,0,0,0.45);
-                            border-radius: 8px;
-                            overflow: hidden;
+                            width: 100% !important;
+                            max-height: 50vh !important;
+                            min-height: 200px !important;
+                            display: flex !important;
+                            align-items: center !important;
+                            justify-content: center !important;
+                            background: rgba(0,0,0,0.45) !important;
+                            border-radius: 10px !important;
+                            overflow: hidden !important;
+                            box-sizing: border-box !important;
                         ">
-                            <img src="${escapeHtml(currentItem.url)}" style="max-width: 100%; max-height: 50vh; object-fit: contain; border-radius: 6px;" alt="Character Preview" />
+                            <img src="${escapeHtml(currentItem.url)}" style="max-width: 100% !important; max-height: 50vh !important; object-fit: contain !important; border-radius: 8px !important; display: block !important;" alt="Character Preview" />
                         </div>
                         <div style="
-                            width: 100%;
-                            background: rgba(0,0,0,0.35);
-                            padding: 8px 12px;
-                            border-radius: 6px;
-                            font-size: 11px;
-                            color: rgba(255,255,255,0.7);
-                            line-height: 1.4;
-                            max-height: 65px;
-                            overflow-y: auto;
-                            word-break: break-word;
+                            width: 100% !important;
+                            background: rgba(0,0,0,0.35) !important;
+                            padding: 10px 14px !important;
+                            border-radius: 8px !important;
+                            font-size: 11px !important;
+                            color: rgba(255,255,255,0.7) !important;
+                            line-height: 1.4 !important;
+                            max-height: 70px !important;
+                            overflow-y: auto !important;
+                            word-break: break-word !important;
+                            box-sizing: border-box !important;
                         ">
-                            <strong style="color: #fff;">【${escapeHtml(currentItem.title)}】测试提示词：</strong> ${escapeHtml(currentItem.prompt)}
+                            <strong style="color: #fff !important;">【${escapeHtml(currentItem.title)}】测试提示词：</strong> ${escapeHtml(currentItem.prompt)}
                         </div>
                     </div>
                     <div style="
-                        padding: 10px 16px;
-                        border-top: 1px solid rgba(255,255,255,0.08);
-                        display: flex;
-                        justify-content: flex-end;
-                        gap: 8px;
-                        flex-wrap: wrap;
-                        background: rgba(255,255,255,0.02);
+                        padding: 12px 18px !important;
+                        border-top: 1px solid rgba(255,255,255,0.08) !important;
+                        display: flex !important;
+                        justify-content: flex-end !important;
+                        align-items: center !important;
+                        gap: 8px !important;
+                        flex-wrap: wrap !important;
+                        background: rgba(255,255,255,0.02) !important;
+                        box-sizing: border-box !important;
+                        width: 100% !important;
                     ">
-                        <a href="${escapeHtml(currentItem.url)}" target="_blank" class="menu_button" style="padding: 6px 12px; margin: 0; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">🔍 查看原图</a>
-                        <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.18) !important; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">📌 设为该角色头像</button>
-                        <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.2) !important; white-space: nowrap;">完成</button>
+                        <a href="${escapeHtml(currentItem.url)}" target="_blank" class="menu_button" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;">🔍 查看原图</a>
+                        <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; background: rgba(100,255,100,0.18) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;">📌 设为该角色头像</button>
+                        <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px !important; margin: 0 !important; font-size: 12px !important; background: rgba(104,215,255,0.2) !important; white-space: nowrap !important;">完成</button>
                     </div>
                 </div>
             `;

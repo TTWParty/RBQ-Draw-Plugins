@@ -1172,18 +1172,33 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
     }
 
-    function showCharacterTestPreview(name, imageUrl, prompt) {
-        const existing = document.getElementById('rbq-sdt-test-preview-modal');
+    const TEST_PRESETS = {
+        portrait: {
+            title: '肖像特写',
+            tags: '1girl, solo, looking_at_viewer, upper_body, portrait, simple_background, best_quality, masterpiece'
+        },
+        fullbody: {
+            title: '全身立绘',
+            tags: '1girl, solo, looking_at_viewer, full_body, standing, simple_background, best_quality, masterpiece'
+        },
+        dynamic: {
+            title: '动态姿态',
+            tags: '1girl, solo, slight_smile, dynamic_pose, upper_body, looking_at_viewer, expressive, simple_background, best_quality, masterpiece'
+        }
+    };
+
+    function openCharacterTestModeSelector(name, baseTags, outfitTags, triggerBtn = null) {
+        const cleanName = getCanonicalCharName(name) || 'Character';
+        const existing = document.getElementById('rbq-sdt-test-mode-modal');
         if (existing) existing.remove();
 
-        const cleanName = getCanonicalCharName(name);
         const modal = document.createElement('div');
-        modal.id = 'rbq-sdt-test-preview-modal';
+        modal.id = 'rbq-sdt-test-mode-modal';
         modal.style.cssText = `
             position: fixed;
             inset: 0;
             z-index: 999999;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.75);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1196,9 +1211,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 background: #1e1f24;
                 border: 1px solid rgba(255,255,255,0.18);
                 border-radius: 14px;
-                max-width: 520px;
+                max-width: 460px;
                 width: 100%;
-                max-height: 90vh;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
@@ -1213,50 +1227,40 @@ Zimage 擅长理解复杂的英文长句和语境。
                     background: rgba(255,255,255,0.03);
                 ">
                     <strong style="font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px;">
-                        <span>🎨</span> 角色立绘测试预览 — ${escapeHtml(cleanName)}
+                        <span>🎨</span> 选择测试生图视角 — ${escapeHtml(cleanName)}
                     </strong>
-                    <button class="menu_button" id="rbq-sdt-preview-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
+                    <button class="menu_button" id="rbq-sdt-mode-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
                 </div>
-                <div style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-y: auto;">
-                    <div style="
-                        width: 100%;
-                        max-height: 52vh;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        background: rgba(0,0,0,0.45);
-                        border-radius: 8px;
-                        overflow: hidden;
-                    ">
-                        <img src="${escapeHtml(imageUrl)}" style="max-width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px;" alt="Character Preview" />
-                    </div>
-                    <div style="
-                        width: 100%;
-                        background: rgba(0,0,0,0.35);
-                        padding: 8px 12px;
-                        border-radius: 6px;
-                        font-size: 11px;
-                        color: rgba(255,255,255,0.7);
-                        line-height: 1.4;
-                        max-height: 70px;
-                        overflow-y: auto;
-                        word-break: break-word;
-                    ">
-                        <strong style="color: #fff;">测试提示词：</strong> ${escapeHtml(prompt)}
-                    </div>
-                </div>
-                <div style="
-                    padding: 10px 16px;
-                    border-top: 1px solid rgba(255,255,255,0.08);
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: 8px;
-                    flex-wrap: wrap;
-                    background: rgba(255,255,255,0.02);
-                ">
-                    <a href="${escapeHtml(imageUrl)}" target="_blank" class="menu_button" style="padding: 6px 12px; margin: 0; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">🔍 查看原图</a>
-                    <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.18) !important; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">📌 设为该角色头像</button>
-                    <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.2) !important; white-space: nowrap;">完成</button>
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px;">请选择本次测试生成的视角模式或一键全景套图：</div>
+                    <button class="menu_button rbq-sdt-mode-opt" data-mode="portrait" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: bold; color: #fff; font-size: 13px;">👤 肖像特写 (Portrait)</div>
+                            <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">上半身特写，检验发色、瞳色、五官细节与发型</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right" style="opacity: 0.5;"></i>
+                    </button>
+                    <button class="menu_button rbq-sdt-mode-opt" data-mode="fullbody" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: bold; color: #fff; font-size: 13px;">👗 全身立绘 (Full Body)</div>
+                            <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">站立全景，检验完整服装、鞋袜搭配与身材比例</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right" style="opacity: 0.5;"></i>
+                    </button>
+                    <button class="menu_button rbq-sdt-mode-opt" data-mode="dynamic" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: bold; color: #fff; font-size: 13px;">💃 动态姿态 (Dynamic Pose)</div>
+                            <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">微表情与动作姿势，检验角色生动的神态与衣服摆动</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right" style="opacity: 0.5;"></i>
+                    </button>
+                    <button class="menu_button rbq-sdt-mode-opt" data-mode="all" type="button" style="padding: 10px 14px; margin: 0; display: flex; align-items: center; justify-content: space-between; text-align: left; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3); border-radius: 8px;">
+                        <div>
+                            <div style="font-weight: bold; color: #fff; font-size: 13px;">📦 一键生成全景套图 (3张)</div>
+                            <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">依次生成【特写 + 全身 + 动态】3张分镜，在弹窗画廊中对比切换</div>
+                        </div>
+                        <i class="fa-solid fa-wand-magic-sparkles" style="color: #79e4ff;"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -1264,56 +1268,78 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.body.appendChild(modal);
 
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-preview-close')?.addEventListener('click', close);
-        modal.querySelector('#rbq-sdt-preview-done')?.addEventListener('click', close);
-        modal.querySelector('#rbq-sdt-preview-set-avatar')?.addEventListener('click', () => {
-            const profile = getCharacterProfile(cleanName);
-            if (profile) {
-                profile.avatarUrl = imageUrl;
-                save();
-                refreshCharacterProfileListUi();
-                toastr.success(`已将此图绑定为「${cleanName}」的角色头像！`, PLUGIN_NAME);
-            } else {
-                toastr.info(`请先在列表中添加角色「${cleanName}」，随后可绑定头像`, PLUGIN_NAME);
-            }
-        });
+        modal.querySelector('#rbq-sdt-mode-close')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => {
             if (e.target === modal) close();
         });
+
+        modal.querySelectorAll('.rbq-sdt-mode-opt').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const selectedMode = btn.dataset.mode;
+                close();
+                runCharacterTest(cleanName, baseTags, outfitTags, selectedMode, triggerBtn);
+            });
+        });
     }
 
-    async function testGenerateCharacter(name, baseTags, outfitTags, triggerBtn = null) {
+    async function runCharacterTest(name, baseTags, outfitTags, mode = 'portrait', triggerBtn = null) {
         const origHtml = triggerBtn ? triggerBtn.innerHTML : '';
         if (triggerBtn) {
             triggerBtn.disabled = true;
-            triggerBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生图中...';
+            triggerBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 准备生图...';
         }
 
         try {
-            const cleanName = String(name || '').trim();
+            const cleanName = getCanonicalCharName(name) || 'Character';
             const weightedName = weightCharacterName(cleanName);
-            const promptParts = [
-                weightedName,
-                baseTags,
-                outfitTags,
-                '1girl, solo, looking_at_viewer, upper_body, portrait, simple_background, best_quality, masterpiece'
-            ].filter(Boolean);
 
-            const testPrompt = promptParts.join(', ');
-            toastr.info(`正在为角色「${cleanName}」生成测试立绘...`, PLUGIN_NAME);
+            const modesToRun = mode === 'all' ? ['portrait', 'fullbody', 'dynamic'] : [mode];
+            const results = [];
 
-            const result = await RBQ.api.generateImage(testPrompt, 'sdt-char-test', {}, (progress) => {
-                if (triggerBtn && typeof progress === 'string') {
-                    triggerBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 8)}...`;
+            for (let i = 0; i < modesToRun.length; i++) {
+                const currentMode = modesToRun[i];
+                const preset = TEST_PRESETS[currentMode] || TEST_PRESETS.portrait;
+
+                if (triggerBtn) {
+                    triggerBtn.innerHTML = mode === 'all'
+                        ? `<i class="fa-solid fa-spinner fa-spin"></i> [${i + 1}/3] ${preset.title}...`
+                        : `<i class="fa-solid fa-spinner fa-spin"></i> 生成中...`;
                 }
-            });
 
-            if (!result || !result.url) {
+                toastr.info(`正在为「${cleanName}」生成 ${preset.title}...`, PLUGIN_NAME);
+
+                const promptParts = [
+                    weightedName,
+                    baseTags,
+                    outfitTags,
+                    preset.tags
+                ].filter(Boolean);
+
+                const testPrompt = promptParts.join(', ');
+
+                const result = await RBQ.api.generateImage(testPrompt, 'sdt-char-test', {}, (progress) => {
+                    if (triggerBtn && typeof progress === 'string') {
+                        const prefix = mode === 'all' ? `[${i + 1}/3] ` : '';
+                        triggerBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${prefix}${progress.slice(0, 8)}...`;
+                    }
+                });
+
+                if (result && result.url) {
+                    results.push({
+                        title: preset.title,
+                        modeKey: currentMode,
+                        url: result.url,
+                        prompt: testPrompt
+                    });
+                }
+            }
+
+            if (results.length === 0) {
                 throw new Error('生图未返回有效图片地址');
             }
 
-            showCharacterTestPreview(cleanName, result.url, testPrompt);
-            toastr.success(`角色「${cleanName}」测试生图成功！`, PLUGIN_NAME);
+            showCharacterTestGallery(cleanName, results);
+            toastr.success(`角色「${cleanName}」测试生图完成！共生成 ${results.length} 张图片`, PLUGIN_NAME);
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 角色测试生图失败:`, err);
             toastr.error(`角色测试生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
@@ -1323,6 +1349,147 @@ Zimage 擅长理解复杂的英文长句和语境。
                 triggerBtn.innerHTML = origHtml;
             }
         }
+    }
+
+    function showCharacterTestGallery(name, items) {
+        const existing = document.getElementById('rbq-sdt-test-preview-modal');
+        if (existing) existing.remove();
+
+        const cleanName = getCanonicalCharName(name);
+        let activeIndex = 0;
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-test-preview-modal';
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(5px);
+        `;
+
+        const renderGalleryContent = () => {
+            const currentItem = items[activeIndex] || items[0];
+            const hasMultiple = items.length > 1;
+
+            const tabsHtml = hasMultiple ? `
+                <div style="display: flex; gap: 6px; width: 100%; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 8px 16px; background: rgba(0,0,0,0.2); overflow-x: auto;">
+                    ${items.map((it, idx) => `
+                        <button class="menu_button rbq-sdt-tab-btn" data-index="${idx}" type="button" style="
+                            padding: 4px 12px;
+                            margin: 0;
+                            font-size: 12px;
+                            border-radius: 6px;
+                            white-space: nowrap;
+                            ${idx === activeIndex ? 'background: rgba(104,215,255,0.2) !important; border-color: #79e4ff; color: #fff; font-weight: bold;' : 'opacity: 0.7;'}
+                        ">${escapeHtml(it.title)}</button>
+                    `).join('')}
+                </div>
+            ` : '';
+
+            modal.innerHTML = `
+                <div style="
+                    background: #1e1f24;
+                    border: 1px solid rgba(255,255,255,0.18);
+                    border-radius: 14px;
+                    max-width: 540px;
+                    width: 100%;
+                    max-height: 92vh;
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    box-shadow: 0 16px 48px rgba(0,0,0,0.85);
+                ">
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        padding: 12px 16px;
+                        border-bottom: 1px solid rgba(255,255,255,0.08);
+                        background: rgba(255,255,255,0.03);
+                    ">
+                        <strong style="font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <span>🎨</span> 角色测试预览 — ${escapeHtml(cleanName)} ${hasMultiple ? `(${activeIndex + 1}/${items.length})` : ''}
+                        </strong>
+                        <button class="menu_button" id="rbq-sdt-preview-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
+                    </div>
+                    ${tabsHtml}
+                    <div style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-y: auto;">
+                        <div style="
+                            width: 100%;
+                            max-height: 50vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background: rgba(0,0,0,0.45);
+                            border-radius: 8px;
+                            overflow: hidden;
+                        ">
+                            <img src="${escapeHtml(currentItem.url)}" style="max-width: 100%; max-height: 50vh; object-fit: contain; border-radius: 6px;" alt="Character Preview" />
+                        </div>
+                        <div style="
+                            width: 100%;
+                            background: rgba(0,0,0,0.35);
+                            padding: 8px 12px;
+                            border-radius: 6px;
+                            font-size: 11px;
+                            color: rgba(255,255,255,0.7);
+                            line-height: 1.4;
+                            max-height: 65px;
+                            overflow-y: auto;
+                            word-break: break-word;
+                        ">
+                            <strong style="color: #fff;">【${escapeHtml(currentItem.title)}】测试提示词：</strong> ${escapeHtml(currentItem.prompt)}
+                        </div>
+                    </div>
+                    <div style="
+                        padding: 10px 16px;
+                        border-top: 1px solid rgba(255,255,255,0.08);
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 8px;
+                        flex-wrap: wrap;
+                        background: rgba(255,255,255,0.02);
+                    ">
+                        <a href="${escapeHtml(currentItem.url)}" target="_blank" class="menu_button" style="padding: 6px 12px; margin: 0; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">🔍 查看原图</a>
+                        <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.18) !important; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">📌 设为该角色头像</button>
+                        <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.2) !important; white-space: nowrap;">完成</button>
+                    </div>
+                </div>
+            `;
+
+            modal.querySelector('#rbq-sdt-preview-close')?.addEventListener('click', () => modal.remove());
+            modal.querySelector('#rbq-sdt-preview-done')?.addEventListener('click', () => modal.remove());
+            modal.querySelector('#rbq-sdt-preview-set-avatar')?.addEventListener('click', () => {
+                const profile = getCharacterProfile(cleanName);
+                if (profile) {
+                    profile.avatarUrl = currentItem.url;
+                    save();
+                    refreshCharacterProfileListUi();
+                    toastr.success(`已将【${currentItem.title}】绑定为「${cleanName}」的角色头像！`, PLUGIN_NAME);
+                } else {
+                    toastr.info(`请先在列表中添加角色「${cleanName}」，随后可绑定头像`, PLUGIN_NAME);
+                }
+            });
+
+            modal.querySelectorAll('.rbq-sdt-tab-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    activeIndex = Number(btn.dataset.index) || 0;
+                    renderGalleryContent();
+                });
+            });
+        };
+
+        renderGalleryContent();
+        document.body.appendChild(modal);
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
     }
 
     function ensureLorebookStore() {
@@ -3923,14 +4090,14 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const profiles = getCharacterProfiles();
                 const profile = profiles[key];
                 if (!profile) return;
-                testGenerateCharacter(profile.displayName || key, profile.baseTags || '', profile.currentOutfit || '', button);
+                openCharacterTestModeSelector(profile.displayName || key, profile.baseTags || '', profile.currentOutfit || '', button);
             } else if (action === 'test-char-edit') {
                 const baseText = item.querySelector('.rbq-sdt-char-edit-base')?.value || '';
                 const outfitText = item.querySelector('.rbq-sdt-char-edit-outfit')?.value || '';
                 const profiles = getCharacterProfiles();
                 const profile = profiles[key];
                 const displayName = profile?.displayName || key;
-                testGenerateCharacter(displayName, baseText, outfitText, button);
+                openCharacterTestModeSelector(displayName, baseText, outfitText, button);
             } else if (action === 'edit-char') {
                 const viewMode = item.querySelector('.rbq-sdt-char-view-mode');
                 const editMode = item.querySelector('.rbq-sdt-char-edit-mode');
@@ -3973,7 +4140,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     return;
                 }
 
-                testGenerateCharacter(name, baseTags, outfitTags, testNewCharBtn);
+                openCharacterTestModeSelector(name, baseTags, outfitTags, testNewCharBtn);
             };
         }
 

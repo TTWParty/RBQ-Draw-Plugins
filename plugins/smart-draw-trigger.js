@@ -535,7 +535,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         lorebookBudget: 8000,
         lorebookSources: [],
         showLorebookHitBadge: false,
-        showCharCoordBadge: true,
+        showCharCoordBadge: false,
 
         characterMemoryEnabled: false,
         characterProfiles: {},
@@ -4048,17 +4048,13 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
                 <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
-                <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
                 <div class="st-scene-trigger-field wide">
                     <span style="font-weight: bold; font-size: 14px; opacity: 0.9;">API 预设/模板管理</span>
                     <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 16px; width: 100%; margin-top: 4px;">
@@ -4098,12 +4094,25 @@ Zimage 擅长理解复杂的英文长句和语境。
             </div>
             <div class="st-scene-trigger-buttons">
                 <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为所选内置 Prompt</button>
-                <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
-                <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
                 <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
                 <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描/恢复可见楼层</button>
             </div>
-            <div class="st-scene-trigger-field wide">
+            <div class="st-scene-trigger-subpanel-title" style="margin-top:16px;font-size:14px;">
+                <i class="fa-solid fa-book-bookmark"></i>
+                <span>世界书兼容与词库</span>
+            </div>
+            <div class="st-scene-trigger-subpanel-hint">导入包含服装、姿势、场景等 Tag 模板的世界书 JSON，AI 会根据剧情上下文自动匹配并注入词条。</div>
+            <div class="st-scene-trigger-modal-grid">
+                <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
+                <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
+            </div>
+            <div class="st-scene-trigger-buttons">
+                <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
+                <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
+            </div>
+            <div class="st-scene-trigger-field wide" style="margin-top:8px;">
                 <span>已挂载世界书</span>
                 <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
             </div>

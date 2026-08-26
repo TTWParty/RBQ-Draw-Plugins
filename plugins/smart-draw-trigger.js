@@ -1613,13 +1613,12 @@ Zimage 擅长理解复杂的英文长句和语境。
                             font-size: 11px !important;
                             color: rgba(255,255,255,0.7) !important;
                             line-height: 1.4 !important;
+                            max-height: 70px !important;
+                            overflow-y: auto !important;
+                            word-break: break-word !important;
                             box-sizing: border-box !important;
                         ">
-                            <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; margin-bottom: 6px !important; gap: 8px !important;">
-                                <strong style="color: #fff !important;">【${escapeHtml(currentItem.title)}】测试提示词：</strong>
-                                <button class="menu_button" id="rbq-sdt-preview-copy-prompt" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-regular fa-copy"></i> 复制提示词</button>
-                            </div>
-                            <div style="max-height: 60px !important; overflow-y: auto !important; word-break: break-word !important; color: rgba(255,255,255,0.85) !important; font-family: monospace !important;">${escapeHtml(currentItem.prompt)}</div>
+                            <strong style="color: #fff !important;">【${escapeHtml(currentItem.title)}】测试提示词：</strong> ${escapeHtml(currentItem.prompt)}
                         </div>
                     </div>
                     <div style="
@@ -1634,7 +1633,6 @@ Zimage 擅长理解复杂的英文长句和语境。
                         box-sizing: border-box !important;
                         width: 100% !important;
                     ">
-                        <a href="${escapeHtml(currentItem.url)}" download="${escapeHtml(cleanName)}_${currentItem.modeKey || 'test'}.png" class="menu_button" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important; background: rgba(255,255,255,0.08) !important;">💾 保存图片</a>
                         <a href="${escapeHtml(currentItem.url)}" target="_blank" class="menu_button" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;">🔍 查看原图</a>
                         <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px !important; margin: 0 !important; font-size: 12px !important; background: rgba(100,255,100,0.18) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;">📌 设为该角色头像</button>
                         <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px !important; margin: 0 !important; font-size: 12px !important; background: rgba(104,215,255,0.2) !important; white-space: nowrap !important;">完成</button>
@@ -4055,6 +4053,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
                 <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>

@@ -781,6 +781,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                             <small title="${profile.currentOutfit || ''}" style="display: block; opacity: 0.8; font-size: 11px;">outfit: ${outfit}${profile.currentOutfit && profile.currentOutfit.length >= 50 ? '...' : ''}</small>
                         </div>
                         <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px;">
+                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
                             <button class="menu_button" type="button" data-action="edit-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px;">编辑</button>
                             <button class="menu_button" type="button" data-action="delete-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px;">删除</button>
                         </div>
@@ -796,6 +797,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                             <textarea class="rbq-sdt-char-edit-outfit" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${profile.currentOutfit || ''}</textarea>
                         </div>
                         <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+                            <button class="menu_button" type="button" data-action="test-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
                             <button class="menu_button" type="button" data-action="save-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px; background: rgba(100,255,100,0.15) !important;">保存</button>
                             <button class="menu_button" type="button" data-action="cancel-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px;">取消</button>
                         </div>
@@ -1109,6 +1111,145 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
+            }
+        }
+    }
+
+    function showCharacterTestPreview(name, imageUrl, prompt) {
+        const existing = document.getElementById('rbq-sdt-test-preview-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-test-preview-modal';
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(5px);
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24;
+                border: 1px solid rgba(255,255,255,0.18);
+                border-radius: 14px;
+                max-width: 520px;
+                width: 100%;
+                max-height: 90vh;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                box-shadow: 0 16px 48px rgba(0,0,0,0.85);
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px 16px;
+                    border-bottom: 1px solid rgba(255,255,255,0.08);
+                    background: rgba(255,255,255,0.03);
+                ">
+                    <strong style="font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px;">
+                        <span>🎨</span> 角色立绘测试预览 — ${name}
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-preview-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
+                </div>
+                <div style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-y: auto;">
+                    <div style="
+                        width: 100%;
+                        max-height: 55vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: rgba(0,0,0,0.45);
+                        border-radius: 8px;
+                        overflow: hidden;
+                    ">
+                        <img src="${imageUrl}" style="max-width: 100%; max-height: 55vh; object-fit: contain; border-radius: 6px;" alt="Character Preview" />
+                    </div>
+                    <div style="
+                        width: 100%;
+                        background: rgba(0,0,0,0.35);
+                        padding: 8px 12px;
+                        border-radius: 6px;
+                        font-size: 11px;
+                        color: rgba(255,255,255,0.7);
+                        line-height: 1.4;
+                        max-height: 80px;
+                        overflow-y: auto;
+                        word-break: break-word;
+                    ">
+                        <strong style="color: #fff;">测试提示词：</strong> ${prompt}
+                    </div>
+                </div>
+                <div style="
+                    padding: 10px 16px;
+                    border-top: 1px solid rgba(255,255,255,0.08);
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 10px;
+                    background: rgba(255,255,255,0.02);
+                ">
+                    <a href="${imageUrl}" target="_blank" class="menu_button" style="padding: 6px 14px; margin: 0; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🔍 查看原图</a>
+                    <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 16px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.2) !important;">完成</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-preview-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-preview-done')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+    }
+
+    async function testGenerateCharacter(name, baseTags, outfitTags, triggerBtn = null) {
+        const origHtml = triggerBtn ? triggerBtn.innerHTML : '';
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生图中...';
+        }
+
+        try {
+            const cleanName = String(name || '').trim();
+            const weightedName = weightCharacterName(cleanName);
+            const promptParts = [
+                weightedName,
+                baseTags,
+                outfitTags,
+                '1girl, solo, looking_at_viewer, upper_body, portrait, simple_background, best_quality, masterpiece'
+            ].filter(Boolean);
+
+            const testPrompt = promptParts.join(', ');
+            toastr.info(`正在为角色「${cleanName}」生成测试立绘...`, PLUGIN_NAME);
+
+            const result = await RBQ.api.generateImage(testPrompt, 'sdt-char-test', {}, (progress) => {
+                if (triggerBtn && typeof progress === 'string') {
+                    triggerBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 8)}...`;
+                }
+            });
+
+            if (!result || !result.url) {
+                throw new Error('生图未返回有效图片地址');
+            }
+
+            showCharacterTestPreview(cleanName, result.url, testPrompt);
+            toastr.success(`角色「${cleanName}」测试生图成功！`, PLUGIN_NAME);
+        } catch (err) {
+            console.error(`[${PLUGIN_NAME}] 角色测试生图失败:`, err);
+            toastr.error(`角色测试生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = origHtml;
             }
         }
     }
@@ -3342,6 +3483,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     <textarea id="rbq-sdt-new-char-outfit" placeholder="例如: white dress, hair ribbon" style="min-height: 40px; margin: 0;"></textarea>
                 </div>
                 <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+                    <button id="rbq-sdt-test-new-char" class="menu_button" type="button" style="padding: 4px 12px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
                     <button id="rbq-sdt-save-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.15) !important;">添加</button>
                     <button id="rbq-sdt-cancel-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px;">取消</button>
                 </div>
@@ -3712,6 +3854,18 @@ Zimage 擅长理解复杂的英文长句和语境。
                 deleteCharacterProfile(key);
                 refreshCharacterProfileListUi();
                 toastr.success(`已删除角色记忆：${key}`, PLUGIN_NAME);
+            } else if (action === 'test-char') {
+                const profiles = getCharacterProfiles();
+                const profile = profiles[key];
+                if (!profile) return;
+                testGenerateCharacter(profile.displayName || key, profile.baseTags || '', profile.currentOutfit || '', button);
+            } else if (action === 'test-char-edit') {
+                const baseText = item.querySelector('.rbq-sdt-char-edit-base')?.value || '';
+                const outfitText = item.querySelector('.rbq-sdt-char-edit-outfit')?.value || '';
+                const profiles = getCharacterProfiles();
+                const profile = profiles[key];
+                const displayName = profile?.displayName || key;
+                testGenerateCharacter(displayName, baseText, outfitText, button);
             } else if (action === 'edit-char') {
                 const viewMode = item.querySelector('.rbq-sdt-char-view-mode');
                 const editMode = item.querySelector('.rbq-sdt-char-edit-mode');
@@ -3736,6 +3890,28 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
         });
+
+        // Test new character in manual add panel
+        const testNewCharBtn = document.getElementById('rbq-sdt-test-new-char');
+        if (testNewCharBtn) {
+            testNewCharBtn.onclick = () => {
+                const nameInput = document.getElementById('rbq-sdt-new-char-name');
+                const displayInput = document.getElementById('rbq-sdt-new-char-display');
+                const baseInput = document.getElementById('rbq-sdt-new-char-base');
+                const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
+
+                const name = displayInput?.value?.trim() || nameInput?.value?.trim() || 'Character';
+                const baseTags = baseInput?.value?.trim() || '';
+                const outfitTags = outfitInput?.value?.trim() || '';
+
+                if (!baseTags && !outfitTags) {
+                    toastr.warning('请先输入角色的 Base Tags 或 Outfit Tags', PLUGIN_NAME);
+                    return;
+                }
+
+                testGenerateCharacter(name, baseTags, outfitTags, testNewCharBtn);
+            };
+        }
 
         // Import character profile from current card
         const importCharBtn = document.getElementById('rbq-sdt-import-char-profile-btn');

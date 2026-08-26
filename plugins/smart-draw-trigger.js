@@ -689,6 +689,16 @@ Zimage 擅长理解复杂的英文长句和语境。
         return '_global';
     }
 
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    function getCanonicalCharName(name) {
+        if (!name) return '';
+        return String(name).replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
+    }
+
     function getCharacterProfiles() {
         const store = getStore();
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
@@ -696,51 +706,83 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.characterProfiles[chatKey] || typeof store.characterProfiles[chatKey] !== 'object') {
             store.characterProfiles[chatKey] = {};
         }
+
+        const dict = store.characterProfiles[chatKey];
+        let changed = false;
+        for (const [k, p] of Object.entries(dict)) {
+            if (!p || typeof p !== 'object') continue;
+            // Fix "____" key
+            if (/^_+$/.test(k) && p.displayName) {
+                const targetKey = getCanonicalCharName(p.displayName);
+                if (targetKey && !dict[targetKey]) {
+                    dict[targetKey] = p;
+                    delete dict[k];
+                    changed = true;
+                    continue;
+                }
+            }
+            // Merge "(original)" suffix
+            const canon = getCanonicalCharName(k);
+            if (canon && canon !== k && dict[canon]) {
+                if (!dict[canon].currentOutfit && p.currentOutfit) dict[canon].currentOutfit = p.currentOutfit;
+                if (!dict[canon].baseTags && p.baseTags) dict[canon].baseTags = p.baseTags;
+                if (!dict[canon].avatarUrl && p.avatarUrl) dict[canon].avatarUrl = p.avatarUrl;
+                delete dict[k];
+                changed = true;
+            } else if (canon && canon !== k && !dict[canon]) {
+                p.displayName = p.displayName ? getCanonicalCharName(p.displayName) : canon;
+                dict[canon] = p;
+                delete dict[k];
+                changed = true;
+            }
+        }
+        if (changed) save();
+
         return store.characterProfiles[chatKey];
     }
 
     function getCharacterProfile(name) {
         const profiles = getCharacterProfiles();
-        const rawKey = String(name || '').trim().toLowerCase();
-        if (!rawKey) return null;
-        if (profiles[rawKey]) return profiles[rawKey];
+        const rawName = String(name || '').trim();
+        if (!rawName) return null;
+        const canonical = getCanonicalCharName(rawName);
         
-        // 模糊匹配：忽略括号内的内容（防止 LLM 时而带 (original) 时而不带导致记忆断裂）
-        const strippedKey = rawKey.replace(/\([^)]*\)/g, '').trim();
-        if (strippedKey && profiles[strippedKey]) return profiles[strippedKey];
-        
-        const match = Object.keys(profiles).find(k => k.replace(/\([^)]*\)/g, '').trim() === strippedKey);
-        return match ? profiles[match] : null;
+        if (profiles[canonical]) return profiles[canonical];
+        if (profiles[rawName]) return profiles[rawName];
+
+        const lowerCanon = canonical.toLowerCase();
+        for (const [k, p] of Object.entries(profiles)) {
+            const pCanon = getCanonicalCharName(p.displayName || k);
+            if (k.toLowerCase() === lowerCanon || pCanon.toLowerCase() === lowerCanon) {
+                return p;
+            }
+        }
+        return null;
     }
 
-    function updateCharacterProfile(name, baseTags, outfitTags) {
+    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null) {
         const profiles = getCharacterProfiles();
-        const rawKey = String(name || '').trim().toLowerCase();
-        if (!rawKey) return;
+        const rawName = String(name || '').trim();
+        if (!rawName) return;
+        const canonical = getCanonicalCharName(rawName);
 
-        // 查找是否已有模糊匹配的记录
-        let key = rawKey;
-        if (!profiles[rawKey]) {
-            const strippedKey = rawKey.replace(/\([^)]*\)/g, '').trim();
-            const match = Object.keys(profiles).find(k => k.replace(/\([^)]*\)/g, '').trim() === strippedKey);
-            if (match) key = match;
-        }
-
-        const existing = profiles[key];
+        let existing = getCharacterProfile(canonical);
         if (existing) {
-            // Only update outfit if provided; base is immutable once set
             if (outfitTags) existing.currentOutfit = outfitTags;
+            if (baseTags && !existing.baseTags) existing.baseTags = baseTags;
+            if (avatarUrl) existing.avatarUrl = avatarUrl;
             existing.updatedAt = Date.now();
-            debugInfo(`角色记忆更新「${name}」: outfit="${(outfitTags || '').slice(0, 40)}..."`);
+            debugInfo(`角色记忆更新「${canonical}」: outfit="${(outfitTags || '').slice(0, 40)}..."`);
         } else {
-            profiles[key] = {
-                displayName: String(name || '').trim(),
+            profiles[canonical] = {
+                displayName: canonical,
                 baseTags: baseTags || '',
                 currentOutfit: outfitTags || '',
+                avatarUrl: avatarUrl || '',
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
-            debugInfo(`角色记忆新建「${name}」: base="${(baseTags || '').slice(0, 40)}...", outfit="${(outfitTags || '').slice(0, 40)}..."`);
+            debugInfo(`角色记忆新建「${canonical}」: base="${(baseTags || '').slice(0, 40)}...", outfit="${(outfitTags || '').slice(0, 40)}..."`);
         }
         save();
         refreshCharacterProfileListUi();
@@ -748,6 +790,12 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function deleteCharacterProfile(name) {
         const profiles = getCharacterProfiles();
+        const canonical = getCanonicalCharName(name);
+        if (profiles[canonical]) {
+            delete profiles[canonical];
+            save();
+            return;
+        }
         const key = String(name || '').trim().toLowerCase();
         if (key && profiles[key]) {
             delete profiles[key];
@@ -771,35 +819,43 @@ Zimage 擅长理解复杂的英文长句和语境。
         return entries.map(([key, profile]) => {
             const base = String(profile.baseTags || '').slice(0, 50);
             const outfit = String(profile.currentOutfit || '').slice(0, 50);
+            const name = profile.displayName || key;
+            const avatarHtml = profile.avatarUrl
+                ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 38px; height: 38px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0;" alt="${escapeHtml(name)}" />`
+                : `<div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">👤</div>`;
+
             return `
-                <div class="rbq-sdt-lorebook-item" data-char-key="${key}" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div class="rbq-sdt-lorebook-item" data-char-key="${escapeHtml(key)}" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;">
                     <!-- Normal View -->
                     <div class="rbq-sdt-char-view-mode" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%;">
-                        <div class="rbq-sdt-lorebook-meta" style="flex: 1; min-width: 0;">
-                            <strong>👤 ${profile.displayName || key}</strong>
-                            <small title="${profile.baseTags || ''}" style="display: block; opacity: 0.8; font-size: 11px;">base: ${base}${profile.baseTags && profile.baseTags.length >= 50 ? '...' : ''}</small>
-                            <small title="${profile.currentOutfit || ''}" style="display: block; opacity: 0.8; font-size: 11px;">outfit: ${outfit}${profile.currentOutfit && profile.currentOutfit.length >= 50 ? '...' : ''}</small>
+                        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+                            ${avatarHtml}
+                            <div class="rbq-sdt-lorebook-meta" style="flex: 1; min-width: 0;">
+                                <strong style="font-size: 13px; color: #fff;">${escapeHtml(name)}</strong>
+                                <small title="${escapeHtml(profile.baseTags || '')}" style="display: block; opacity: 0.8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">base: ${escapeHtml(base)}${profile.baseTags && profile.baseTags.length >= 50 ? '...' : ''}</small>
+                                <small title="${escapeHtml(profile.currentOutfit || '')}" style="display: block; opacity: 0.8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">outfit: ${escapeHtml(outfit)}${profile.currentOutfit && profile.currentOutfit.length >= 50 ? '...' : ''}</small>
+                            </div>
                         </div>
-                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px;">
-                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
-                            <button class="menu_button" type="button" data-action="edit-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px;">编辑</button>
-                            <button class="menu_button" type="button" data-action="delete-char" data-char-key="${key}" style="padding: 2px 8px; margin: 0; font-size: 11px;">删除</button>
+                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center;">
+                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
+                            <button class="menu_button" type="button" data-action="edit-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap;">编辑</button>
+                            <button class="menu_button" type="button" data-action="delete-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap;">删除</button>
                         </div>
                     </div>
                     <!-- Edit View -->
                     <div class="rbq-sdt-char-edit-mode" style="display: none; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px;">
                         <div style="display: flex; flex-direction: column; gap: 4px;">
                             <span style="font-size: 11px; opacity: 0.8;">Base Tags (外貌基础特征，如发色瞳色)：</span>
-                            <textarea class="rbq-sdt-char-edit-base" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${profile.baseTags || ''}</textarea>
+                            <textarea class="rbq-sdt-char-edit-base" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${escapeHtml(profile.baseTags || '')}</textarea>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 4px;">
                             <span style="font-size: 11px; opacity: 0.8;">Outfit Tags (当前剧情服装，随自动解析更新)：</span>
-                            <textarea class="rbq-sdt-char-edit-outfit" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${profile.currentOutfit || ''}</textarea>
+                            <textarea class="rbq-sdt-char-edit-outfit" style="width: 100%; min-height: 40px; font-size: 12px; padding: 4px 8px; margin: 0;">${escapeHtml(profile.currentOutfit || '')}</textarea>
                         </div>
-                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
-                            <button class="menu_button" type="button" data-action="test-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
-                            <button class="menu_button" type="button" data-action="save-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px; background: rgba(100,255,100,0.15) !important;">保存</button>
-                            <button class="menu_button" type="button" data-action="cancel-char-edit" data-char-key="${key}" style="padding: 4px 12px; margin: 0; font-size: 11px;">取消</button>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; align-items: center;">
+                            <button class="menu_button" type="button" data-action="test-char-edit" data-char-key="${escapeHtml(key)}" style="padding: 4px 12px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
+                            <button class="menu_button" type="button" data-action="save-char-edit" data-char-key="${escapeHtml(key)}" style="padding: 4px 12px; margin: 0; font-size: 11px; white-space: nowrap; background: rgba(100,255,100,0.15) !important;">保存</button>
+                            <button class="menu_button" type="button" data-action="cancel-char-edit" data-char-key="${escapeHtml(key)}" style="padding: 4px 12px; margin: 0; font-size: 11px; white-space: nowrap;">取消</button>
                         </div>
                     </div>
                 </div>
@@ -1096,14 +1152,15 @@ Zimage 擅长理解复杂的英文长句和语境。
             const baseInput = document.getElementById('rbq-sdt-new-char-base');
             const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
 
+            const cleanCharName = getCanonicalCharName(name);
             if (addCharPanel) addCharPanel.style.display = 'flex';
-            if (nameInput) nameInput.value = name.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-            if (displayInput) displayInput.value = name;
+            if (nameInput) nameInput.value = cleanCharName;
+            if (displayInput) displayInput.value = cleanCharName;
             if (baseInput) baseInput.value = extractedBase;
             if (outfitInput) outfitInput.value = extractedOutfit;
 
             addCharPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            toastr.success(`已从角色卡「${name}」提取外貌设定，可在下方确认或修改后点击添加！`, PLUGIN_NAME);
+            toastr.success(`已从角色卡「${cleanCharName}」提取外貌设定，可在下方确认或修改后点击添加！`, PLUGIN_NAME);
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 导入角色卡失败:`, err);
             toastr.error(`导入角色卡失败: ${err.message || String(err)}`, PLUGIN_NAME);
@@ -1119,6 +1176,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const existing = document.getElementById('rbq-sdt-test-preview-modal');
         if (existing) existing.remove();
 
+        const cleanName = getCanonicalCharName(name);
         const modal = document.createElement('div');
         modal.id = 'rbq-sdt-test-preview-modal';
         modal.style.cssText = `
@@ -1155,14 +1213,14 @@ Zimage 擅长理解复杂的英文长句和语境。
                     background: rgba(255,255,255,0.03);
                 ">
                     <strong style="font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px;">
-                        <span>🎨</span> 角色立绘测试预览 — ${name}
+                        <span>🎨</span> 角色立绘测试预览 — ${escapeHtml(cleanName)}
                     </strong>
                     <button class="menu_button" id="rbq-sdt-preview-close" style="padding: 2px 8px; margin: 0; font-size: 12px;">✕</button>
                 </div>
                 <div style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-y: auto;">
                     <div style="
                         width: 100%;
-                        max-height: 55vh;
+                        max-height: 52vh;
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -1170,7 +1228,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                         border-radius: 8px;
                         overflow: hidden;
                     ">
-                        <img src="${imageUrl}" style="max-width: 100%; max-height: 55vh; object-fit: contain; border-radius: 6px;" alt="Character Preview" />
+                        <img src="${escapeHtml(imageUrl)}" style="max-width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px;" alt="Character Preview" />
                     </div>
                     <div style="
                         width: 100%;
@@ -1180,11 +1238,11 @@ Zimage 擅长理解复杂的英文长句和语境。
                         font-size: 11px;
                         color: rgba(255,255,255,0.7);
                         line-height: 1.4;
-                        max-height: 80px;
+                        max-height: 70px;
                         overflow-y: auto;
                         word-break: break-word;
                     ">
-                        <strong style="color: #fff;">测试提示词：</strong> ${prompt}
+                        <strong style="color: #fff;">测试提示词：</strong> ${escapeHtml(prompt)}
                     </div>
                 </div>
                 <div style="
@@ -1192,11 +1250,13 @@ Zimage 擅长理解复杂的英文长句和语境。
                     border-top: 1px solid rgba(255,255,255,0.08);
                     display: flex;
                     justify-content: flex-end;
-                    gap: 10px;
+                    gap: 8px;
+                    flex-wrap: wrap;
                     background: rgba(255,255,255,0.02);
                 ">
-                    <a href="${imageUrl}" target="_blank" class="menu_button" style="padding: 6px 14px; margin: 0; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🔍 查看原图</a>
-                    <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 16px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.2) !important;">完成</button>
+                    <a href="${escapeHtml(imageUrl)}" target="_blank" class="menu_button" style="padding: 6px 12px; margin: 0; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">🔍 查看原图</a>
+                    <button class="menu_button" id="rbq-sdt-preview-set-avatar" style="padding: 6px 12px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.18) !important; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">📌 设为该角色头像</button>
+                    <button class="menu_button" id="rbq-sdt-preview-done" style="padding: 6px 14px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.2) !important; white-space: nowrap;">完成</button>
                 </div>
             </div>
         `;
@@ -1206,6 +1266,17 @@ Zimage 擅长理解复杂的英文长句和语境。
         const close = () => modal.remove();
         modal.querySelector('#rbq-sdt-preview-close')?.addEventListener('click', close);
         modal.querySelector('#rbq-sdt-preview-done')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-preview-set-avatar')?.addEventListener('click', () => {
+            const profile = getCharacterProfile(cleanName);
+            if (profile) {
+                profile.avatarUrl = imageUrl;
+                save();
+                refreshCharacterProfileListUi();
+                toastr.success(`已将此图绑定为「${cleanName}」的角色头像！`, PLUGIN_NAME);
+            } else {
+                toastr.info(`请先在列表中添加角色「${cleanName}」，随后可绑定头像`, PLUGIN_NAME);
+            }
+        });
         modal.addEventListener('click', (e) => {
             if (e.target === modal) close();
         });
@@ -3464,15 +3535,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             </div>
             <div id="rbq-sdt-add-char-panel" class="st-scene-trigger-field wide" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px; border: 1px dashed var(--linear-border-standard); padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.01);">
                 <span style="font-weight: bold; font-size: 13px;">手动添加新角色档案</span>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; width: 100%;">
-                    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px;">
-                        <span style="font-size: 11px; opacity: 0.8;">角色代号 (存取Key，小写英文，如 shylily)</span>
-                        <input id="rbq-sdt-new-char-name" type="text" placeholder="例如: shylily" style="height: 30px; margin: 0;">
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px;">
-                        <span style="font-size: 11px; opacity: 0.8;">角色显示名称 (如 Lily)</span>
-                        <input id="rbq-sdt-new-char-display" type="text" placeholder="例如: Lily" style="height: 30px; margin: 0;">
-                    </div>
+                <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                    <span style="font-size: 11px; opacity: 0.8;">角色名称 (如 金纯珉 或 Shylily)</span>
+                    <input id="rbq-sdt-new-char-name" type="text" placeholder="输入角色名称，例如: 金纯珉" style="height: 30px; margin: 0;">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <span style="font-size: 11px; opacity: 0.8;">Base Tags (外貌基础特征，如发色瞳色)：</span>
@@ -3482,16 +3547,16 @@ Zimage 擅长理解复杂的英文长句和语境。
                     <span style="font-size: 11px; opacity: 0.8;">Outfit Tags (当前剧情服装，可选)：</span>
                     <textarea id="rbq-sdt-new-char-outfit" placeholder="例如: white dress, hair ribbon" style="min-height: 40px; margin: 0;"></textarea>
                 </div>
-                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
-                    <button id="rbq-sdt-test-new-char" class="menu_button" type="button" style="padding: 4px 12px; margin: 0; font-size: 12px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
-                    <button id="rbq-sdt-save-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px; background: rgba(100,255,100,0.15) !important;">添加</button>
-                    <button id="rbq-sdt-cancel-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px;">取消</button>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; align-items: center;">
+                    <button id="rbq-sdt-test-new-char" class="menu_button" type="button" style="padding: 4px 12px; margin: 0; font-size: 12px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
+                    <button id="rbq-sdt-save-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px; white-space: nowrap; background: rgba(100,255,100,0.15) !important;">添加</button>
+                    <button id="rbq-sdt-cancel-new-char" class="menu_button" type="button" style="padding: 4px 16px; margin: 0; font-size: 12px; white-space: nowrap;">取消</button>
                 </div>
             </div>
-            <div class="st-scene-trigger-buttons">
-                <button id="rbq-sdt-import-char-profile-btn" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-file-import"></i> 从当前角色卡导入</button>
-                <button id="rbq-sdt-add-char-profile-btn" class="menu_button" type="button">手动添加角色</button>
-                <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button">清空所有角色记忆</button>
+            <div class="st-scene-trigger-buttons" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button id="rbq-sdt-import-char-profile-btn" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-file-import"></i> 从当前角色卡导入</button>
+                <button id="rbq-sdt-add-char-profile-btn" class="menu_button" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;">手动添加角色</button>
+                <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;">清空所有角色记忆</button>
             </div>
             <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会按 segment 独立自动出图；关闭时只显示“生成图片”按钮。建议让 tagger 返回 anchor.text，以便卡片插入到目标原句后方。</div>
         `;
@@ -3896,11 +3961,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (testNewCharBtn) {
             testNewCharBtn.onclick = () => {
                 const nameInput = document.getElementById('rbq-sdt-new-char-name');
-                const displayInput = document.getElementById('rbq-sdt-new-char-display');
                 const baseInput = document.getElementById('rbq-sdt-new-char-base');
                 const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
 
-                const name = displayInput?.value?.trim() || nameInput?.value?.trim() || 'Character';
+                const name = nameInput?.value?.trim() || 'Character';
                 const baseTags = baseInput?.value?.trim() || '';
                 const outfitTags = outfitInput?.value?.trim() || '';
 
@@ -3933,10 +3997,12 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (cancelNewCharBtn && addCharPanel) {
             cancelNewCharBtn.onclick = () => {
                 addCharPanel.style.display = 'none';
-                document.getElementById('rbq-sdt-new-char-name').value = '';
-                document.getElementById('rbq-sdt-new-char-display').value = '';
-                document.getElementById('rbq-sdt-new-char-base').value = '';
-                document.getElementById('rbq-sdt-new-char-outfit').value = '';
+                const nameInput = document.getElementById('rbq-sdt-new-char-name');
+                const baseInput = document.getElementById('rbq-sdt-new-char-base');
+                const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
+                if (nameInput) nameInput.value = '';
+                if (baseInput) baseInput.value = '';
+                if (outfitInput) outfitInput.value = '';
             };
         }
 
@@ -3944,38 +4010,25 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (saveNewCharBtn && addCharPanel) {
             saveNewCharBtn.onclick = () => {
                 const nameInput = document.getElementById('rbq-sdt-new-char-name');
-                const displayInput = document.getElementById('rbq-sdt-new-char-display');
                 const baseInput = document.getElementById('rbq-sdt-new-char-base');
                 const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
 
-                const name = nameInput?.value?.trim()?.toLowerCase();
-                const display = displayInput?.value?.trim();
+                const name = nameInput?.value?.trim();
                 const baseTags = baseInput?.value?.trim();
                 const outfitTags = outfitInput?.value?.trim();
 
                 if (!name) {
-                    toastr.warning('请输入角色代号 (Key)', PLUGIN_NAME);
+                    toastr.warning('请输入角色名称', PLUGIN_NAME);
                     return;
                 }
 
                 updateCharacterProfile(name, baseTags, outfitTags);
-                
-                // If custom displayName was specified, update it
-                if (display) {
-                    const profiles = getCharacterProfiles();
-                    if (profiles[name]) {
-                        profiles[name].displayName = display;
-                        save();
-                    }
-                }
-
                 refreshCharacterProfileListUi();
-                toastr.success(`成功手动添加角色「${display || name}」`, PLUGIN_NAME);
+                toastr.success(`成功保存角色「${getCanonicalCharName(name)}」档案`, PLUGIN_NAME);
 
                 // Hide and clear
                 addCharPanel.style.display = 'none';
-                nameInput.value = '';
-                if (displayInput) displayInput.value = '';
+                if (nameInput) nameInput.value = '';
                 if (baseInput) baseInput.value = '';
                 if (outfitInput) outfitInput.value = '';
             };

@@ -1368,6 +1368,62 @@ Zimage 擅长理解复杂的英文长句和语境。
         });
     }
 
+    function composeCharacterTestPrompt(name, baseTags, outfitTags, mode) {
+        const cleanName = getCanonicalCharName(name) || 'Character';
+        const weightedName = weightCharacterName(cleanName);
+
+        // Blacklists for mutually exclusive shot types
+        const portraitBlacklist = /^(full_body|full body|standing|feet_out_of_frame)$/i;
+        const fullbodyBlacklist = /^(upper_body|upper body|portrait|close-up|close up|face_focus|bust_shot|headshot)$/i;
+        const dynamicBlacklist = /^(portrait|close-up|close up|headshot)$/i;
+
+        const isFullbody = mode === 'fullbody';
+        const isPortrait = mode === 'portrait';
+
+        const blacklist = isFullbody ? fullbodyBlacklist : (isPortrait ? portraitBlacklist : dynamicBlacklist);
+
+        // Split & filter base and outfit tags
+        const rawTags = `${baseTags || ''}, ${outfitTags || ''}`
+            .split(/[,，\n]/)
+            .map(t => t.trim())
+            .filter(t => t && !blacklist.test(t));
+
+        // Composition framing & quality tags
+        let prefixTags = [];
+        let suffixTags = [];
+
+        if (isFullbody) {
+            prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'full_body', 'standing'];
+            suffixTags = ['shoes', 'white_background', 'simple_background', 'best_quality', 'masterpiece'];
+        } else if (isPortrait) {
+            prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'upper_body', 'portrait'];
+            suffixTags = ['simple_background', 'depth_of_field', 'best_quality', 'masterpiece'];
+        } else {
+            prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'dynamic_pose', 'slight_smile', 'upper_body'];
+            suffixTags = ['expressive', 'simple_background', 'best_quality', 'masterpiece'];
+        }
+
+        // Deduplicate while preserving order: name -> prefix -> cleaned tags -> suffix
+        const seen = new Set();
+        const finalTags = [];
+
+        const addTag = (t) => {
+            if (!t) return;
+            const norm = t.toLowerCase().replace(/_/g, ' ');
+            if (!seen.has(norm)) {
+                seen.add(norm);
+                finalTags.push(t);
+            }
+        };
+
+        if (weightedName) finalTags.push(weightedName);
+        prefixTags.forEach(addTag);
+        rawTags.forEach(addTag);
+        suffixTags.forEach(addTag);
+
+        return finalTags.join(', ');
+    }
+
     async function runCharacterTest(name, baseTags, outfitTags, mode = 'portrait', triggerBtn = null) {
         const origHtml = triggerBtn ? triggerBtn.innerHTML : '';
         if (triggerBtn) {
@@ -1377,8 +1433,6 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         try {
             const cleanName = getCanonicalCharName(name) || 'Character';
-            const weightedName = weightCharacterName(cleanName);
-
             const modesToRun = mode === 'all' ? ['portrait', 'fullbody', 'dynamic'] : [mode];
             const results = [];
 
@@ -1394,14 +1448,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
                 toastr.info(`正在为「${cleanName}」生成 ${preset.title}...`, PLUGIN_NAME);
 
-                const promptParts = [
-                    weightedName,
-                    baseTags,
-                    outfitTags,
-                    preset.tags
-                ].filter(Boolean);
-
-                const testPrompt = promptParts.join(', ');
+                const testPrompt = composeCharacterTestPrompt(cleanName, baseTags, outfitTags, currentMode);
 
                 const result = await RBQ.api.generateImage(testPrompt, 'sdt-char-test', {}, (progress) => {
                     if (triggerBtn && typeof progress === 'string') {

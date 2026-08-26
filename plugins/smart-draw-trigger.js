@@ -1380,6 +1380,11 @@ Zimage 擅长理解复杂的英文长句和语境。
         const cleanName = getCanonicalCharName(name) || 'Character';
         const weightedName = weightCharacterName(cleanName);
 
+        // Detect gender from base/outfit/name
+        const allRawText = `${name} ${baseTags || ''} ${outfitTags || ''}`.toLowerCase();
+        const isMale = /\b(1boy|boy|male|man|guy)\b/.test(allRawText);
+        const genderTag = isMale ? '1boy' : '1girl';
+
         // Blacklists for mutually exclusive shot types
         const portraitBlacklist = /^(full_body|full body|standing|feet_out_of_frame)$/i;
         const fullbodyBlacklist = /^(upper_body|upper body|portrait|close-up|close up|face_focus|bust_shot|headshot)$/i;
@@ -1401,31 +1406,25 @@ Zimage 擅长理解复杂的英文长句和语境。
                 return true;
             });
 
-        // Composition framing & quality tags
+        // Composition framing tags without bloat/quality/DOF noise
         let prefixTags = [];
         let suffixTags = [];
 
         if (isFullbody) {
-            prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'full_body', 'standing'];
-            if (transparentBg) {
-                suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'shoes', 'best_quality', 'masterpiece'];
-            } else {
-                suffixTags = ['shoes', 'white_background', 'simple_background', 'best_quality', 'masterpiece'];
-            }
+            prefixTags = [genderTag, 'solo', 'looking_at_viewer', 'full_body', 'standing'];
+            suffixTags = transparentBg
+                ? ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'shoes']
+                : ['shoes', 'simple_background'];
         } else if (isPortrait) {
-            prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'upper_body', 'portrait'];
-            if (transparentBg) {
-                suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'depth_of_field', 'best_quality', 'masterpiece'];
-            } else {
-                suffixTags = ['simple_background', 'depth_of_field', 'best_quality', 'masterpiece'];
-            }
+            prefixTags = [genderTag, 'solo', 'looking_at_viewer', 'upper_body', 'portrait'];
+            suffixTags = transparentBg
+                ? ['2.0::transparent background::', 'has alpha', 'alpha transparency']
+                : ['simple_background'];
         } else {
-            prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'dynamic_pose', 'slight_smile', 'upper_body'];
-            if (transparentBg) {
-                suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'expressive', 'best_quality', 'masterpiece'];
-            } else {
-                suffixTags = ['expressive', 'simple_background', 'best_quality', 'masterpiece'];
-            }
+            prefixTags = [genderTag, 'solo', 'looking_at_viewer', 'dynamic_pose', 'upper_body'];
+            suffixTags = transparentBg
+                ? ['2.0::transparent background::', 'has alpha', 'alpha transparency']
+                : ['simple_background'];
         }
 
         // Deduplicate while preserving order: name -> prefix -> cleaned tags -> suffix

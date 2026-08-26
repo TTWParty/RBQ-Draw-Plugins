@@ -1333,6 +1333,13 @@ Zimage 擅长理解复杂的英文长句和语境。
                         </div>
                         <i class="fa-solid fa-wand-magic-sparkles" style="color: #79e4ff !important; margin-left: 10px !important; flex-shrink: 0 !important;"></i>
                     </div>
+
+                    <div style="margin-top: 4px !important; padding-top: 8px !important; border-top: 1px dashed rgba(255,255,255,0.12) !important;">
+                        <label style="display: flex !important; align-items: center !important; gap: 8px !important; font-size: 12px !important; color: #79e4ff !important; cursor: pointer !important; user-select: none !important;">
+                            <input id="rbq-sdt-test-transparent-bg" type="checkbox" style="cursor: pointer !important; accent-color: #68d7ff !important; width: 15px !important; height: 15px !important;">
+                            <span>✨ 启用透明背景 (NAI V5 原生 32位 RGBA 免抠图立绘)</span>
+                        </label>
+                    </div>
                 </div>
             </div>
         `;
@@ -1362,13 +1369,14 @@ Zimage 擅长理解复杂的英文长句和语境。
             });
             btn.addEventListener('click', () => {
                 const selectedMode = btn.dataset.mode;
+                const isTransparent = Boolean(modal.querySelector('#rbq-sdt-test-transparent-bg')?.checked);
                 close();
-                runCharacterTest(cleanName, baseTags, outfitTags, selectedMode, triggerBtn);
+                runCharacterTest(cleanName, baseTags, outfitTags, selectedMode, triggerBtn, isTransparent);
             });
         });
     }
 
-    function composeCharacterTestPrompt(name, baseTags, outfitTags, mode) {
+    function composeCharacterTestPrompt(name, baseTags, outfitTags, mode, transparentBg = false) {
         const cleanName = getCanonicalCharName(name) || 'Character';
         const weightedName = weightCharacterName(cleanName);
 
@@ -1386,7 +1394,12 @@ Zimage 擅长理解复杂的英文长句和语境。
         const rawTags = `${baseTags || ''}, ${outfitTags || ''}`
             .split(/[,，\n]/)
             .map(t => t.trim())
-            .filter(t => t && !blacklist.test(t));
+            .filter(t => {
+                if (!t) return false;
+                if (blacklist.test(t)) return false;
+                if (transparentBg && /^(white_background|white background|simple_background|simple background|grey_background|gray_background|black_background|solid_background|scenery)$/i.test(t)) return false;
+                return true;
+            });
 
         // Composition framing & quality tags
         let prefixTags = [];
@@ -1394,13 +1407,25 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         if (isFullbody) {
             prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'full_body', 'standing'];
-            suffixTags = ['shoes', 'white_background', 'simple_background', 'best_quality', 'masterpiece'];
+            if (transparentBg) {
+                suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'shoes', 'best_quality', 'masterpiece'];
+            } else {
+                suffixTags = ['shoes', 'white_background', 'simple_background', 'best_quality', 'masterpiece'];
+            }
         } else if (isPortrait) {
             prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'upper_body', 'portrait'];
-            suffixTags = ['simple_background', 'depth_of_field', 'best_quality', 'masterpiece'];
+            if (transparentBg) {
+                suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'depth_of_field', 'best_quality', 'masterpiece'];
+            } else {
+                suffixTags = ['simple_background', 'depth_of_field', 'best_quality', 'masterpiece'];
+            }
         } else {
             prefixTags = ['1girl', 'solo', 'looking_at_viewer', 'dynamic_pose', 'slight_smile', 'upper_body'];
-            suffixTags = ['expressive', 'simple_background', 'best_quality', 'masterpiece'];
+            if (transparentBg) {
+                suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'expressive', 'best_quality', 'masterpiece'];
+            } else {
+                suffixTags = ['expressive', 'simple_background', 'best_quality', 'masterpiece'];
+            }
         }
 
         // Deduplicate while preserving order: name -> prefix -> cleaned tags -> suffix
@@ -1424,7 +1449,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         return finalTags.join(', ');
     }
 
-    async function runCharacterTest(name, baseTags, outfitTags, mode = 'portrait', triggerBtn = null) {
+    async function runCharacterTest(name, baseTags, outfitTags, mode = 'portrait', triggerBtn = null, transparentBg = false) {
         const origHtml = triggerBtn ? triggerBtn.innerHTML : '';
         if (triggerBtn) {
             triggerBtn.disabled = true;
@@ -1446,9 +1471,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                         : `<i class="fa-solid fa-spinner fa-spin"></i> 生成中...`;
                 }
 
-                toastr.info(`正在为「${cleanName}」生成 ${preset.title}...`, PLUGIN_NAME);
+                toastr.info(`正在为「${cleanName}」生成 ${preset.title}${transparentBg ? ' (透明底)' : ''}...`, PLUGIN_NAME);
 
-                const testPrompt = composeCharacterTestPrompt(cleanName, baseTags, outfitTags, currentMode);
+                const testPrompt = composeCharacterTestPrompt(cleanName, baseTags, outfitTags, currentMode, transparentBg);
 
                 const result = await RBQ.api.generateImage(testPrompt, 'sdt-char-test', {}, (progress) => {
                     if (triggerBtn && typeof progress === 'string') {
@@ -1459,7 +1484,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
                 if (result && result.url) {
                     results.push({
-                        title: preset.title,
+                        title: `${preset.title}${transparentBg ? ' 🌟透明底' : ''}`,
                         modeKey: currentMode,
                         url: result.url,
                         prompt: testPrompt

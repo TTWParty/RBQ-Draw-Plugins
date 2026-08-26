@@ -2506,19 +2506,30 @@ Zimage 擅长理解复杂的英文长句和语境。
         return colText || rowText || '居中';
     }
 
-    function checkLorebookEntryAdopted(entry, finalPrompt) {
-        if (!entry || !entry.content || !finalPrompt) return false;
+    function getAdoptedTagDetails(entry, finalPrompt) {
+        if (!entry || !entry.content || !finalPrompt) {
+            return { isAdopted: false, adoptedTags: [], matchScore: 0 };
+        }
         const promptLower = finalPrompt.toLowerCase();
-        const entryTags = entry.content.toLowerCase().split(/[,，\n]+/).map(t => t.trim()).filter(t => t.length > 2);
-        if (!entryTags.length) return false;
-        let hitCount = 0;
-        for (const tag of entryTags) {
-            const cleanTag = tag.replace(/[:\{\}\(\)\[\]]/g, '').trim();
-            if (cleanTag && promptLower.includes(cleanTag)) {
-                hitCount++;
+        const rawTags = entry.content.split(/[,，\n]+/).map(t => t.trim()).filter(Boolean);
+        const adoptedTags = [];
+        const seen = new Set();
+
+        for (const rawTag of rawTags) {
+            const cleanTag = rawTag.replace(/[:\{\}\(\)\[\]]/g, ' ').replace(/\b\d+(\.\d+)?\b/g, '').trim().toLowerCase();
+            if (cleanTag.length >= 2 && !seen.has(cleanTag)) {
+                seen.add(cleanTag);
+                if (promptLower.includes(cleanTag)) {
+                    adoptedTags.push(rawTag);
+                }
             }
         }
-        return hitCount > 0;
+
+        return {
+            isAdopted: adoptedTags.length > 0,
+            adoptedTags,
+            matchScore: adoptedTags.length,
+        };
     }
 
     const sdtLorebookHitMap = new Map();
@@ -2531,6 +2542,28 @@ Zimage 擅长理解复杂的英文长句和语境。
             toastr.info('本次生图未命中任何世界书词条', PLUGIN_NAME);
             return;
         }
+
+        const analyzedEntries = entries.map((e, idx) => {
+            const details = getAdoptedTagDetails(e, finalPrompt);
+            return {
+                ...e,
+                originalIndex: idx,
+                ...details,
+            };
+        });
+
+        // Sort: Adopted entries at the top (highest match count first), then candidate entries
+        analyzedEntries.sort((a, b) => {
+            if (a.isAdopted !== b.isAdopted) {
+                return a.isAdopted ? -1 : 1;
+            }
+            if (a.isAdopted) {
+                return b.adoptedTags.length - a.adoptedTags.length;
+            }
+            return (a.order || 0) - (b.order || 0);
+        });
+
+        const adoptedCount = analyzedEntries.filter(e => e.isAdopted).length;
 
         const modal = document.createElement('div');
         modal.id = 'rbq-sdt-hit-viewer-modal';
@@ -2558,9 +2591,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                 background: #1e1f24 !important;
                 border: 1px solid rgba(255,255,255,0.18) !important;
                 border-radius: 14px !important;
-                width: 640px !important;
+                width: 660px !important;
                 max-width: 95vw !important;
-                max-height: 80vh !important;
+                max-height: 82vh !important;
                 display: flex !important;
                 flex-direction: column !important;
                 overflow: hidden !important;
@@ -2575,30 +2608,38 @@ Zimage 擅长理解复杂的英文长句和语境。
                     border-bottom: 1px solid rgba(255,255,255,0.08) !important;
                     background: rgba(255,255,255,0.03) !important;
                 ">
-                    <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                    <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
                         <span>📚</span> ${escapeHtml(title)}
-                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;">(共 ${entries.length} 条)</span>
+                        <span style="font-size: 12px !important; color: ${adoptedCount > 0 ? '#a3ffa3' : 'rgba(255,255,255,0.6)'} !important; font-weight: normal !important;">
+                            (${finalPrompt ? `已采用 ${adoptedCount} 条 / 共 ${entries.length} 候选` : `共 ${entries.length} 条`})
+                        </span>
                     </strong>
                     <button class="menu_button" id="rbq-sdt-hit-viewer-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                 </div>
 
                 <div style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
-                    ${entries.map((e, idx) => {
-                        const isAdopted = checkLorebookEntryAdopted(e, finalPrompt);
-                        return `
-                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid ${isAdopted ? 'rgba(100,255,100,0.25)' : 'rgba(255,255,255,0.08)'} !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                    ${analyzedEntries.map((e, idx) => `
+                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid ${e.isAdopted ? 'rgba(100,255,100,0.3)' : 'rgba(255,255,255,0.08)'} !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                             <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important;">
                                 <div style="display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
-                                    <strong style="font-size: 13px !important; color: ${isAdopted ? '#a3ffa3' : '#79e4ff'} !important;">📌 ${escapeHtml(e.comment || '词条 ' + (idx + 1))}</strong>
+                                    <strong style="font-size: 13px !important; color: ${e.isAdopted ? '#a3ffa3' : '#79e4ff'} !important;">📌 ${escapeHtml(e.comment || '词条 ' + (idx + 1))}</strong>
                                     <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName || '世界书')}</span>
-                                    ${finalPrompt ? (isAdopted ? `
-                                        <span style="font-size: 11px !important; background: rgba(100,255,100,0.15) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.3) !important; padding: 2px 7px !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-solid fa-check"></i> 已采纳进画面提示词</span>
+                                    ${finalPrompt ? (e.isAdopted ? `
+                                        <span style="font-size: 11px !important; background: rgba(100,255,100,0.15) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.3) !important; padding: 2px 7px !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-solid fa-check"></i> 已采纳 (${e.adoptedTags.length} 个 Tag)</span>
                                     ` : `
                                         <span style="font-size: 11px !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.1) !important; padding: 2px 7px !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-regular fa-bookmark"></i> 上下文候选参考</span>
                                     `) : ''}
                                 </div>
                                 <button class="menu_button rbq-sdt-copy-hit-tags" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制 Tag</button>
                             </div>
+
+                            ${(e.isAdopted && e.adoptedTags.length > 0) ? `
+                                <div style="font-size: 11px !important; color: #a3ffa3 !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important; background: rgba(100,255,100,0.06) !important; border: 1px dashed rgba(100,255,100,0.25) !important; padding: 6px 8px !important; border-radius: 6px !important;">
+                                    <span style="opacity: 0.9; font-weight: bold;"><i class="fa-solid fa-circle-check"></i> 实际采用的 Tag (${e.adoptedTags.length}个):</span>
+                                    ${e.adoptedTags.map(t => `<span style="background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.4) !important; padding: 1px 6px !important; border-radius: 4px !important; font-family: monospace !important; font-weight: bold !important;">${escapeHtml(t)}</span>`).join('')}
+                                </div>
+                            ` : ''}
+
                             ${(Array.isArray(e.key) && e.key.length > 0) ? `
                                 <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important;">
                                     <span style="opacity: 0.8;">🔑 触发词:</span>
@@ -2607,8 +2648,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                             ` : ''}
                             <div style="background: rgba(0,0,0,0.35) !important; padding: 8px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 120px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(e.content)}</div>
                         </div>
-                    `;
-                    }).join('')}
+                    `).join('')}
                 </div>
             </div>
         `;

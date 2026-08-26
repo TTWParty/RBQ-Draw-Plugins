@@ -5248,93 +5248,9 @@ Zimage 擅长理解复杂的英文长句和语境。
         return RBQ.api.generateImage(finalPrompt, 'sdt-test', {}, onProgress);
     };
 
-    function initImageViewerLorebookIntegration() {
-        const checkViewer = () => {
-            const viewer = document.getElementById('st-scene-trigger-image-viewer');
-            if (!viewer || !viewer.classList.contains('open')) return;
-            const img = viewer.querySelector('.st-scene-trigger-viewer-image');
-            const currentSrc = img?.src || '';
-            const actions = viewer.querySelector('.st-scene-trigger-viewer-actions');
-            if (!actions) return;
-
-            let hitBtn = document.getElementById('rbq-sdt-viewer-lorebook-btn');
-            
-            // Look up matched entries for currentSrc or recent card
-            let hitData = sdtLorebookHitMap.get(currentSrc);
-            if (!hitData && currentSrc) {
-                for (const [k, v] of sdtLorebookHitMap.entries()) {
-                    if (k && (currentSrc.includes(k) || k.includes(currentSrc))) {
-                        hitData = v;
-                        break;
-                    }
-                }
-            }
-
-            if (!hitData) {
-                const activeThumb = viewer.querySelector('.st-scene-trigger-viewer-thumb.active img');
-                const thumbSrc = activeThumb?.src || '';
-                if (thumbSrc) {
-                    for (const [k, v] of sdtLorebookHitMap.entries()) {
-                        if (k && (thumbSrc.includes(k) || k.includes(thumbSrc))) {
-                            hitData = v;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (!hitData) {
-                hitData = sdtLorebookHitMap.get('__last_active__');
-            }
-
-            const entries = Array.isArray(hitData) ? hitData : (hitData?.entries || []);
-            const currentPrompt = hitData?.prompt || (img?.alt || '');
-
-            if (!entries.length) {
-                if (hitBtn) hitBtn.style.display = 'none';
-                return;
-            }
-
-            if (!hitBtn) {
-                hitBtn = document.createElement('button');
-                hitBtn.id = 'rbq-sdt-viewer-lorebook-btn';
-                hitBtn.className = 'menu_button';
-                hitBtn.type = 'button';
-                hitBtn.style.cssText = 'padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; background: rgba(104,215,255,0.2) !important; border: 1px solid rgba(104,215,255,0.4) !important; color: #79e4ff !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important; border-radius: 8px !important;';
-                actions.prepend(hitBtn);
-            }
-
-            hitBtn.style.display = 'inline-flex';
-            hitBtn.innerHTML = `<i class="fa-solid fa-book-bookmark"></i> 命中世界书 (${entries.length})`;
-            hitBtn.onclick = (e) => {
-                e.stopPropagation();
-                openLorebookHitViewerModal(entries, '当前图片命中的世界书词条与 Tag', currentPrompt);
-            };
-        };
-
-        const observer = new MutationObserver(() => checkViewer());
-        observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class', 'src'] });
-        document.addEventListener('click', (e) => {
-            const link = e.target.closest('.st-scene-trigger-inline-image-link');
-            if (link) {
-                const wrapper = link.closest('.st-scene-trigger-inline-wrap');
-                const key = wrapper?.dataset?.rbqSdtSegmentKey || wrapper?.dataset?.rbqSdtBaseKey;
-                const hitObj = (key && sdtLorebookHitMap.get(key)) || (link.dataset.url && sdtLorebookHitMap.get(link.dataset.url)) || (link.getAttribute('href') && sdtLorebookHitMap.get(link.getAttribute('href')));
-                if (hitObj) {
-                    sdtLorebookHitMap.set('__last_active__', hitObj);
-                }
-                setTimeout(checkViewer, 80);
-            }
-            if (e.target.closest('.st-scene-trigger-viewer-thumb') || e.target.closest('.st-scene-trigger-viewer-nav')) {
-                setTimeout(checkViewer, 80);
-            }
-        });
-    }
-
     waitForPanel();
     observeMessages();
     watchForFloatingBall();
-    initImageViewerLorebookIntegration();
     // Startup diagnostic: verify persistent data loaded
     try {
         const bootStore = getStore();

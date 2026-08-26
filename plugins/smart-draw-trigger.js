@@ -2900,6 +2900,19 @@ Zimage 擅长理解复杂的英文长句和语境。
                 prompt: image.prompt,
                 cacheId: image.cacheId || '',
             };
+
+            const segResult = cache?.segments?.[segmentKey] || cache?.normalizedResult?.segments?.[0] || cache?.normalizedResult;
+            const rawMatched = Array.isArray(segResult?.matchedLorebooks) ? segResult.matchedLorebooks : [];
+            const validLorebooks = rawMatched.filter(isMeaningfulLorebookEntry).map(l => (typeof l === 'object' ? l : { comment: String(l), content: '', sourceName: '世界书' }));
+            if (validLorebooks.length > 0) {
+                const finalPrompt = image.prompt || getFinalPrompt(segResult);
+                const hitObj = { entries: validLorebooks, prompt: finalPrompt };
+                if (image.url) sdtLorebookHitMap.set(image.url, hitObj);
+                if (image.displayUrl) sdtLorebookHitMap.set(image.displayUrl, hitObj);
+                sdtLorebookHitMap.set(segmentKey, hitObj);
+                sdtLorebookHitMap.set(baseKey, hitObj);
+            }
+
             console.info(`[Smart Draw] 💾 saved imageResult for ${segmentKey}`, {
                 cacheId: image.cacheId || '(none)',
                 urlType: image.url?.startsWith('blob:') ? 'blob' : 'other',
@@ -5270,6 +5283,10 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
 
+            if (!hitData) {
+                hitData = sdtLorebookHitMap.get('__last_active__');
+            }
+
             const entries = Array.isArray(hitData) ? hitData : (hitData?.entries || []);
             const currentPrompt = hitData?.prompt || (img?.alt || '');
 
@@ -5298,7 +5315,17 @@ Zimage 擅长理解复杂的英文长句和语境。
         const observer = new MutationObserver(() => checkViewer());
         observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class', 'src'] });
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.st-scene-trigger-inline-image-link') || e.target.closest('.st-scene-trigger-viewer-thumb') || e.target.closest('.st-scene-trigger-viewer-nav')) {
+            const link = e.target.closest('.st-scene-trigger-inline-image-link');
+            if (link) {
+                const wrapper = link.closest('.st-scene-trigger-inline-wrap');
+                const key = wrapper?.dataset?.rbqSdtSegmentKey || wrapper?.dataset?.rbqSdtBaseKey;
+                const hitObj = (key && sdtLorebookHitMap.get(key)) || (link.dataset.url && sdtLorebookHitMap.get(link.dataset.url)) || (link.getAttribute('href') && sdtLorebookHitMap.get(link.getAttribute('href')));
+                if (hitObj) {
+                    sdtLorebookHitMap.set('__last_active__', hitObj);
+                }
+                setTimeout(checkViewer, 80);
+            }
+            if (e.target.closest('.st-scene-trigger-viewer-thumb') || e.target.closest('.st-scene-trigger-viewer-nav')) {
                 setTimeout(checkViewer, 80);
             }
         });

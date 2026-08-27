@@ -2277,10 +2277,10 @@ Zimage 擅长理解复杂的英文长句和语境。
             .replace(/\s*,\s*,+/g, ', ')
             .trim();
 
-        // Check active character
-        const activeProfiles = getCharacterProfiles();
+        // Collect all available character profiles
+        const allProfiles = getCharacterProfiles();
         const activeName = getActiveCharacterName() || '';
-        const activeProfile = activeName ? activeProfiles[activeName] : null;
+        const charEntries = Object.entries(allProfiles);
 
         const modal = document.createElement('div');
         modal.id = 'rbq-sdt-wb-test-modal';
@@ -2340,16 +2340,20 @@ Zimage 擅长理解复杂的英文长句和语境。
                     </div>
 
                     <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.2) !important; padding: 10px 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
-                        <label style="display: flex !important; align-items: center !important; gap: 8px !important; font-size: 12px !important; color: rgba(255,255,255,0.85) !important; cursor: pointer !important; user-select: none !important;">
-                            <input id="rbq-sdt-wb-test-quality" type="checkbox" checked style="cursor: pointer !important; accent-color: #ffb86c !important;">
-                            <span>✨ 附加基础画质增强词 (best_quality, masterpiece)</span>
-                        </label>
-                        ${activeProfile && activeProfile.baseTags ? `
-                            <label style="display: flex !important; align-items: center !important; gap: 8px !important; font-size: 12px !important; color: #79e4ff !important; cursor: pointer !important; user-select: none !important;">
-                                <input id="rbq-sdt-wb-test-char-base" type="checkbox" style="cursor: pointer !important; accent-color: #79e4ff !important;">
-                                <span>👤 附带当前角色「${escapeHtml(activeName)}」外貌特征 (${escapeHtml(activeProfile.baseTags.slice(0, 35))}...)</span>
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important;">
+                            <label for="rbq-sdt-wb-test-char-select" style="font-size: 12px !important; color: #79e4ff !important; font-weight: bold !important; display: flex !important; align-items: center !important; gap: 6px !important; white-space: nowrap !important;">
+                                <span>👤</span> 附带角色外貌：
                             </label>
-                        ` : ''}
+                            <select id="rbq-sdt-wb-test-char-select" style="flex: 1 !important; height: 32px !important; margin: 0 !important; font-size: 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(104,215,255,0.3) !important; border-radius: 6px !important; color: #fff !important;">
+                                <option value="none">❌ 不附带 (纯世界书提示词)</option>
+                                ${charEntries.map(([cName, cProfile]) => `
+                                    <option value="${escapeHtml(cName)}" ${cName === activeName ? 'selected' : ''}>
+                                        👤 ${escapeHtml(cName)} ${cProfile && cProfile.baseTags ? `(${escapeHtml(cProfile.baseTags.slice(0, 30))}...)` : ''}
+                                    </option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <div id="rbq-sdt-wb-test-char-preview" style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important; font-family: monospace !important; word-break: break-all !important; padding-left: 2px !important;"></div>
                     </div>
 
                     <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
@@ -2367,10 +2371,32 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (e.target === modal) close();
         });
 
+        const charSelect = modal.querySelector('#rbq-sdt-wb-test-char-select');
+        const charPreview = modal.querySelector('#rbq-sdt-wb-test-char-preview');
+        const updateCharPreview = () => {
+            const selectedCharName = charSelect?.value;
+            if (selectedCharName && selectedCharName !== 'none' && allProfiles[selectedCharName]) {
+                const bTags = (allProfiles[selectedCharName].baseTags || '').trim();
+                charPreview.textContent = bTags ? `包含外貌特征: ${bTags}` : '该角色暂未设置外貌特征';
+                charPreview.style.display = 'block';
+            } else {
+                charPreview.textContent = '';
+                charPreview.style.display = 'none';
+            }
+        };
+        if (charSelect) {
+            charSelect.addEventListener('change', updateCharPreview);
+            updateCharPreview();
+        }
+
         modal.querySelector('#rbq-sdt-wb-test-submit')?.addEventListener('click', async () => {
             const promptInput = modal.querySelector('#rbq-sdt-wb-test-prompt');
-            const qualityChecked = modal.querySelector('#rbq-sdt-wb-test-quality')?.checked;
-            const charBaseChecked = modal.querySelector('#rbq-sdt-wb-test-char-base')?.checked;
+            const selectedCharName = charSelect?.value;
+
+            let charBaseTags = '';
+            if (selectedCharName && selectedCharName !== 'none' && allProfiles[selectedCharName]) {
+                charBaseTags = (allProfiles[selectedCharName].baseTags || '').trim();
+            }
 
             let finalPromptText = (promptInput?.value || '').trim();
             if (!finalPromptText) {
@@ -2378,11 +2404,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 return;
             }
 
-            if (charBaseChecked && activeProfile && activeProfile.baseTags) {
-                finalPromptText = `${activeProfile.baseTags}, ${finalPromptText}`;
-            }
-            if (qualityChecked) {
-                finalPromptText = `${finalPromptText}, best_quality, masterpiece`;
+            if (charBaseTags) {
+                finalPromptText = `${charBaseTags}, ${finalPromptText}`;
             }
 
             const submitBtn = modal.querySelector('#rbq-sdt-wb-test-submit');

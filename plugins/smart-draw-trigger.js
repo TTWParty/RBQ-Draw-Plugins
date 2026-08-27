@@ -3051,9 +3051,9 @@ Zimage 擅长理解复杂的英文长句和语境。
         const systemPrompt = `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
-1. Update scene tags, characters' names, appearance base, outfits, actions, poses, or camera POV according to the user instructions.
-2. If the user asks to change or replace a character (e.g. "女生换成雷姆", "变成2个人"), update the character list and appearance tags accordingly (e.g. rem (re:zero), blue hair, short hair, blue eyes, maid outfit).
-3. If unmentioned, keep fixed character appearance tags intact.
+1. Update scene tags, characters' outfits, actions, poses, expressions, or camera POV according to the user instructions.
+2. If the user asks to adjust or change specific elements, update the corresponding fields accordingly.
+3. If unmentioned, keep fixed character appearance tags (hair color, eye color, body type) intact.
 4. Output ONLY a valid JSON object matching the schema below, without markdown backticks or commentary.
 
 SCHEMA:
@@ -3265,7 +3265,7 @@ SCHEMA:
 
                     <div style="display: flex !important; flex-direction: column !important; gap: 6px !important;">
                         <span style="font-size: 13px !important; font-weight: bold !important; color: #fff !important;">✍️ 输入你想让 AI 调整的内容 (自然语言或 Tag)：</span>
-                        <textarea id="rbq-sdt-refine-input" placeholder="例如：\n- 女生换成雷姆 (Rem)\n- 换成半透明蕾丝睡衣，露出香肩\n- 表情变成害羞脸红、眼角带泪，视角改成仰视特写\n- 动作改成双手被绑在身后跪坐在地毯上..." style="width: 100% !important; min-height: 100px !important; padding: 10px 12px !important; font-size: 13px !important; border-radius: 8px !important; box-sizing: border-box !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important;"></textarea>
+                        <textarea id="rbq-sdt-refine-input" placeholder="例如：&#10;- 服装：换成白色露肩连衣裙，戴一顶草帽&#10;- 动作：双手抱膝坐在地毯上，转头看向镜头&#10;- 视角与表情：改为仰视特写，害羞脸红、微带泪光&#10;- 场景与氛围：改为暴雨夜的室内，柔和昏暗的烛光照明" style="width: 100% !important; min-height: 105px !important; padding: 10px 12px !important; font-size: 13px !important; border-radius: 8px !important; box-sizing: border-box !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.45 !important;"></textarea>
                     </div>
 
                     <div style="display: flex !important; flex-direction: row !important; justify-content: flex-end !important; align-items: center !important; gap: 10px !important; margin-top: 6px !important; width: 100% !important; flex-shrink: 0 !important;">

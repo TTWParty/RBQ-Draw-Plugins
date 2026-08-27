@@ -3291,8 +3291,14 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function extractJson(text) {
-        const str = String(text || '').trim();
+        let str = String(text || '').trim();
         if (!str) return {};
+
+        // 1. Strip explicit thinking/reasoning blocks first (prevent capturing partial JSON inside CoT)
+        str = str.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+        str = str.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+        str = str.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+        str = str.trim();
 
         try {
             return JSON.parse(str);
@@ -3300,6 +3306,17 @@ Zimage 擅长理解复杂的英文长句和语境。
             // fall through
         }
 
+        // 2. Markdown codeblock fallback
+        const codeBlockMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (codeBlockMatch && codeBlockMatch[1]) {
+            try {
+                return JSON.parse(codeBlockMatch[1].trim());
+            } catch (_e) {
+                // fall through
+            }
+        }
+
+        // 3. Find outermost matching JSON object
         const start = str.indexOf('{');
         if (start < 0) return {};
 
@@ -3339,9 +3356,10 @@ Zimage 擅长理解复杂的英文长句和语境。
                 depth--;
                 if (depth === 0) {
                     try {
-                        return JSON.parse(str.slice(start, i + 1));
+                        const parsed = JSON.parse(str.slice(start, i + 1));
+                        if (parsed && typeof parsed === 'object') return parsed;
                     } catch (_e) {
-                        return {};
+                        // continue searching
                     }
                 }
             }

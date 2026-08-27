@@ -713,6 +713,38 @@ Zimage 擅长理解复杂的英文长句和语境。
         return String(name).replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
     }
 
+    function getActiveCharacterName() {
+        try {
+            const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
+                ? window.RBQ.api.getContext()
+                : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
+            if (ctx && ctx.characterId != null && Array.isArray(ctx.characters) && ctx.characters[ctx.characterId]) {
+                return ctx.characters[ctx.characterId].name || '';
+            }
+        } catch (_e) { /* noop */ }
+        return '';
+    }
+
+    function getAllKnownCharacterProfiles() {
+        const store = getStore();
+        const profiles = {};
+        if (store.characterProfiles && typeof store.characterProfiles === 'object') {
+            for (const chatDict of Object.values(store.characterProfiles)) {
+                if (chatDict && typeof chatDict === 'object') {
+                    for (const [name, prof] of Object.entries(chatDict)) {
+                        if (name && prof && typeof prof === 'object') {
+                            const canonical = getCanonicalCharName(prof.displayName || name);
+                            if (canonical && !profiles[canonical]) {
+                                profiles[canonical] = prof;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return profiles;
+    }
+
     function getCharacterProfiles() {
         const store = getStore();
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
@@ -2278,8 +2310,8 @@ Zimage 擅长理解复杂的英文长句和语境。
             .trim();
 
         // Collect all available character profiles
-        const allProfiles = getCharacterProfiles();
-        const activeName = getActiveCharacterName() || '';
+        const allProfiles = { ...getAllKnownCharacterProfiles(), ...(typeof getCharacterProfiles === 'function' ? getCharacterProfiles() : {}) };
+        const activeName = (typeof getActiveCharacterName === 'function' ? getActiveCharacterName() : '') || '';
         const charEntries = Object.entries(allProfiles);
 
         const modal = document.createElement('div');

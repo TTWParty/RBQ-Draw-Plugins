@@ -970,22 +970,27 @@ Zimage 擅长理解复杂的英文长句和语境。
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-size: 11px; font-weight: bold; color: #ffb86c; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-vest-patches"></i> 差分衣柜 (${wardrobe.length} 套预设)</span>
                         </div>
-                        ${wardrobe.length ? wardrobe.map(w => `
-                            <div class="rbq-sdt-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                                <div style="flex: 1; min-width: 0;">
-                                    <div style="font-size: 12px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 6px;">
-                                        <span>👗 ${escapeHtml(w.name)}</span>
-                                        ${w.triggers?.length ? `<span style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: normal;">(触发词: ${escapeHtml(w.triggers.join(', '))})</span>` : ''}
+                        ${wardrobe.length ? wardrobe.map(w => {
+                            const isActive = isSameOutfit(w.outfit, profile.currentOutfit);
+                            return `
+                                <div class="rbq-sdt-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; background: ${isActive ? 'rgba(100,255,100,0.06)' : 'rgba(255,255,255,0.03)'}; border-radius: 6px; border: 1px solid ${isActive ? 'rgba(100,255,100,0.25)' : 'rgba(255,255,255,0.05)'};">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="font-size: 12px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                            <span>👗 ${escapeHtml(w.name)}</span>
+                                            ${isActive ? `<span style="font-size: 10px; color: #a3ffa3; background: rgba(100,255,100,0.15); border: 1px solid rgba(100,255,100,0.3); padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;"><i class="fa-solid fa-circle-check"></i> 当前穿着</span>` : ''}
+                                            ${w.triggers?.length ? `<span style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: normal;">(触发词: ${escapeHtml(w.triggers.join(', '))})</span>` : ''}
+                                        </div>
+                                        <div style="font-size: 11px; color: rgba(255,255,255,0.7); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;" title="${escapeHtml(w.outfit)}">${escapeHtml(w.outfit)}</div>
                                     </div>
-                                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;" title="${escapeHtml(w.outfit)}">${escapeHtml(w.outfit)}</div>
+                                    <div style="display: flex; gap: 4px; flex-shrink: 0; align-items: center; flex-wrap: wrap;">
+                                        ${!isActive ? `<button class="menu_button" data-action="set-active-outfit" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="将此服装设为当前穿着 (用于后续出图)" style="padding: 2px 7px; font-size: 10px; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important;"><i class="fa-solid fa-shirt"></i> 设为当前穿着</button>` : ''}
+                                        <button class="menu_button" data-action="test-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="测试这套服装" style="padding: 2px 8px; font-size: 10px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试穿</button>
+                                        <button class="menu_button" data-action="edit-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="编辑服装名称与Tags" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-pen-to-square"></i></button>
+                                        <button class="menu_button" data-action="delete-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="删除此套服装" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash"></i></button>
+                                    </div>
                                 </div>
-                                <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                                    <button class="menu_button" data-action="test-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="测试这套服装" style="padding: 2px 8px; font-size: 10px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试穿</button>
-                                    <button class="menu_button" data-action="edit-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="编辑服装名称与Tags" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-pen-to-square"></i></button>
-                                    <button class="menu_button" data-action="delete-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="删除此套服装" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash"></i></button>
-                                </div>
-                            </div>
-                        `).join('') : '<div style="font-size: 11px; opacity: 0.5; padding: 2px 0;">暂无预设服装，点击上方「加衣服」添加</div>'}
+                            `;
+                        }).join('') : '<div style="font-size: 11px; opacity: 0.5; padding: 2px 0;">暂无预设服装，点击上方「加衣服」添加</div>'}
                     </div>
 
                     <!-- Edit View -->
@@ -3287,6 +3292,204 @@ SCHEMA:
         inputEl?.focus();
     }
 
+    function openCardOutfitModal(wrapper, segResult) {
+        const existing = document.getElementById('rbq-sdt-card-outfit-modal');
+        if (existing) existing.remove();
+
+        const characters = Array.isArray(segResult?.characters) && segResult.characters.length > 0
+            ? segResult.characters
+            : [{ name: '角色', _rawName: '角色', _rawOutfit: '' }];
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-card-outfit-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: rgba(0,0,0,0.8) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+        `;
+
+        const charsHtml = characters.map((c, idx) => {
+            const charName = c._rawName || c.name || `角色 ${idx + 1}`;
+            const canonical = getCanonicalCharName(charName);
+            const profile = getCharacterProfile(canonical);
+            const wardrobe = (profile && Array.isArray(profile.wardrobe)) ? profile.wardrobe : [];
+            const currentOutfitTags = c._rawOutfit || c.outfit || profile?.currentOutfit || '';
+
+            return `
+                <div class="rbq-sdt-card-char-outfit-sec" data-char-idx="${idx}" data-char-name="${escapeHtml(charName)}" style="display: flex; flex-direction: column; gap: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                        <strong style="font-size: 14px; color: #ffb86c; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-user"></i> ${escapeHtml(charName)}
+                        </strong>
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.5);">当前穿着: ${escapeHtml(currentOutfitTags.slice(0, 35)) || '默认'}</span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.8); font-weight: bold;">从衣柜预设中选择：</span>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            ${wardrobe.length > 0 ? wardrobe.map(w => {
+                                const isCurrent = isSameOutfit(w.outfit, currentOutfitTags);
+                                return `
+                                    <button class="menu_button rbq-sdt-pick-outfit-btn" data-tags="${escapeHtml(w.outfit)}" data-name="${escapeHtml(w.name)}" type="button" style="padding: 4px 10px; font-size: 11px; margin: 0; background: ${isCurrent ? 'rgba(100,255,100,0.18)' : 'rgba(255,255,255,0.06)'} !important; border: 1px solid ${isCurrent ? 'rgba(100,255,100,0.4)' : 'rgba(255,255,255,0.12)'} !important; color: ${isCurrent ? '#a3ffa3' : '#fff'} !important; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 6px;">
+                                        👗 ${escapeHtml(w.name)} ${isCurrent ? '<i class="fa-solid fa-check" style="font-size: 10px;"></i>' : ''}
+                                    </button>
+                                `;
+                            }).join('') : '<span style="font-size: 11px; opacity: 0.5;">该角色衣柜暂无预设，可在下方直接输入自定义服装 Tag</span>'}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.8);">或输入自定义服装 Tag (Danbooru 英文)：</span>
+                        <input class="rbq-sdt-custom-outfit-input" type="text" placeholder="例如: maid outfit, aproned dress 或 bikini, straw hat" value="${escapeHtml(currentOutfitTags)}" style="width: 100%; padding: 6px 10px; font-size: 12px; border-radius: 6px; box-sizing: border-box; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff;">
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,184,108,0.35) !important;
+                border-radius: 14px !important;
+                width: 520px !important;
+                max-width: 95vw !important;
+                max-height: 85vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,184,108,0.08) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <i class="fa-solid fa-vest-patches"></i> 👗 卡片模块化换装
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-card-outfit-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <div style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
+                    <div style="font-size: 11px !important; color: rgba(255,255,255,0.65) !important; line-height: 1.4 !important;">
+                        💡 <b>提示</b>：仅替换当前卡片的服装模块，角色的外貌基础、动作表情、场景环境与构图坐标将完全保留！
+                    </div>
+
+                    ${charsHtml}
+
+                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 6px !important;">
+                        <button class="menu_button" id="rbq-sdt-card-outfit-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-card-outfit-apply" type="button" style="padding: 6px 18px !important; font-size: 12px !important; background: rgba(255,184,108,0.22) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 立即换装并重绘</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-card-outfit-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-card-outfit-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        modal.querySelectorAll('.rbq-sdt-card-char-outfit-sec').forEach(sec => {
+            const input = sec.querySelector('.rbq-sdt-custom-outfit-input');
+            sec.querySelectorAll('.rbq-sdt-pick-outfit-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (input) input.value = btn.dataset.tags || '';
+                    sec.querySelectorAll('.rbq-sdt-pick-outfit-btn').forEach(b => {
+                        b.style.background = 'rgba(255,255,255,0.06)';
+                        b.style.color = '#fff';
+                        b.style.borderColor = 'rgba(255,255,255,0.12)';
+                    });
+                    btn.style.background = 'rgba(100,255,100,0.18)';
+                    btn.style.color = '#a3ffa3';
+                    btn.style.borderColor = 'rgba(100,255,100,0.4)';
+                });
+            });
+        });
+
+        modal.querySelector('#rbq-sdt-card-outfit-apply')?.addEventListener('click', async () => {
+            const updatedSeg = JSON.parse(JSON.stringify(segResult));
+            if (!Array.isArray(updatedSeg.characters)) updatedSeg.characters = [];
+
+            const secs = modal.querySelectorAll('.rbq-sdt-card-char-outfit-sec');
+            secs.forEach((sec, idx) => {
+                const newOutfit = sec.querySelector('.rbq-sdt-custom-outfit-input')?.value?.trim() || '';
+                if (updatedSeg.characters[idx]) {
+                    updatedSeg.characters[idx]._rawOutfit = newOutfit;
+                    updatedSeg.characters[idx].outfit = newOutfit;
+                    const charName = updatedSeg.characters[idx]._rawName || updatedSeg.characters[idx].name || '';
+                    const llmBase = updatedSeg.characters[idx]._rawBase || updatedSeg.characters[idx].base || '';
+                    const llmAction = updatedSeg.characters[idx]._rawAction || updatedSeg.characters[idx].action || '';
+                    updatedSeg.characters[idx].caption = mergeCharacterCaption(charName, llmBase, newOutfit, llmAction, '');
+                }
+            });
+
+            close();
+
+            try {
+                prepareNaiCharData(updatedSeg);
+                const newFinalPrompt = getFinalPrompt(updatedSeg);
+                wrapper.dataset.prompt = newFinalPrompt;
+
+                const baseKey = wrapper.dataset.rbqSdtBaseKey;
+                const segmentKey = wrapper.dataset.rbqSdtSegmentKey;
+
+                const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
+                const origHtml = inlineUi.innerHTML;
+                inlineUi.innerHTML = `
+                    <div class="st-scene-trigger-loading" style="padding: 20px; text-align: center;">
+                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: #ffb86c; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #ffb86c;">👗 角色换装重绘中...</div>
+                    </div>
+                `;
+
+                const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-outfit-swap', {}, (progress) => {
+                    const statusText = wrapper.querySelector('.st-scene-trigger-loading div');
+                    if (statusText && typeof progress === 'string') {
+                        statusText.textContent = progress;
+                    }
+                });
+
+                if (imageResult && (imageResult.url || imageResult.displayUrl)) {
+                    RBQ.api.renderInlineGeneratedImage(wrapper, imageResult);
+                    renderCardBadges(wrapper, updatedSeg);
+                    if (baseKey && segmentKey) {
+                        markSegmentAutoGenerated(baseKey, segmentKey, imageResult);
+                    }
+                    toastr.success('已成功为角色换装并重新生成插画！', PLUGIN_NAME);
+                } else {
+                    inlineUi.innerHTML = origHtml;
+                    throw new Error('生图未返回有效图像');
+                }
+            } catch (err) {
+                console.error(`[${PLUGIN_NAME}] 角色换装重绘失败:`, err);
+                toastr.error(`换装重绘失败: ${err.message || String(err)}`, PLUGIN_NAME);
+                renderCardBadges(wrapper, segResult);
+            }
+        });
+
+        document.body.appendChild(modal);
+    }
+
     function renderCardBadges(wrapper, segResult) {
         if (!(wrapper instanceof HTMLElement)) return;
         const store = getStore();
@@ -3326,7 +3529,10 @@ SCHEMA:
             }
         }
 
-        // 3. AI Segment Refinement button
+        // 3. Modular Outfit Quick Switcher button
+        badges.push(`<button class="menu_button rbq-sdt-card-outfit-btn" type="button" style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important; border-radius: 6px !important; padding: 2px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-solid fa-vest-patches" style="font-size: 10px !important;"></i> 👗 换装 ▾</button>`);
+
+        // 4. AI Segment Refinement button
         badges.push(`<button class="menu_button rbq-sdt-card-refine-btn" type="button" style="font-size: 11px !important; background: rgba(180,104,255,0.14) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.35) !important; border-radius: 6px !important; padding: 2px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 10px !important;"></i> ✨ AI 调整此图</button>`);
 
         if (badges.length > 0) {
@@ -3338,6 +3544,11 @@ SCHEMA:
             deck.querySelector('.rbq-sdt-card-lorebook-btn')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
+            });
+
+            deck.querySelector('.rbq-sdt-card-outfit-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openCardOutfitModal(wrapper, segResult);
             });
 
             deck.querySelector('.rbq-sdt-card-refine-btn')?.addEventListener('click', (e) => {
@@ -5380,6 +5591,18 @@ SCHEMA:
                 toastr.success(`已删除角色记忆：${key}`, PLUGIN_NAME);
             } else if (action === 'add-wardrobe-btn') {
                 openAddWardrobeModal(key);
+            } else if (action === 'set-active-outfit') {
+                const outfitId = button.dataset.outfitId;
+                const profiles = getCharacterProfiles();
+                const profile = profiles[key];
+                const outfit = (profile?.wardrobe || []).find(w => w.id === outfitId);
+                if (profile && outfit) {
+                    profile.currentOutfit = outfit.outfit;
+                    profile.updatedAt = Date.now();
+                    save();
+                    refreshCharacterProfileListUi();
+                    toastr.success(`已将「${outfit.name}」设为「${profile.displayName || key}」的当前穿着（用于后续出图）！`, PLUGIN_NAME);
+                }
             } else if (action === 'test-wardrobe-item') {
                 const outfitId = button.dataset.outfitId;
                 const profiles = getCharacterProfiles();

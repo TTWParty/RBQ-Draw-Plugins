@@ -2614,7 +2614,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
 
                     // Merge character memory with LLM output
-                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, seg?.label || '');
+                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, item?.label || '');
 
                     return {
                         index: charIndex + 1,

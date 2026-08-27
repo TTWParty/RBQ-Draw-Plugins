@@ -2224,39 +2224,36 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function extractLorebookSubVariants(content) {
         if (!content) return [];
-        const lines = content.split(/\r?\n/);
+        // Normalize zero-width spaces and special whitespace
+        const normalized = content.replace(/[\ufeff\u200b\u200c\u200d]/g, '').trim();
+        const lines = normalized.split(/\r?\n/);
         const variants = [];
         let currentTitle = '';
         let currentTags = [];
 
         for (let rawLine of lines) {
-            const line = rawLine.trim();
+            let line = rawLine.trim();
             if (!line) continue;
             // Ignore top-level worldbook single header "# 后入位"
             if (line.startsWith('# ') && !currentTitle) continue;
+
+            const chineseCount = (line.match(/[\u4e00-\u9fa5]/g) || []).length;
+            const englishCount = (line.match(/[a-zA-Z]/g) || []).length;
 
             const isHeader = (
                 line.startsWith('##') ||
                 (line.startsWith('#') && !line.startsWith('# ')) ||
                 /^(\d+[\.\、]|[-*]\s+|【|\[)/.test(line) ||
                 /^(默认\d*|变体\d*|机位\d*|视角\d*)/.test(line) ||
-                (/^[\u4e00-\u9fa5A-Za-z0-9_（）\(\)\,\，\s\-\/\:\：\.]+$/.test(line) && !line.includes(',') && !line.includes('1girl') && !line.includes('1boy') && line.length < 30) ||
+                (chineseCount >= 2 && englishCount < 15) ||
                 (/^[\u4e00-\u9fa5]+[：:]/.test(line))
             );
 
-            const isTagLine = (
-                line.includes('1girl') || line.includes('1boy') || line.includes('solo') ||
-                line.includes('breasts') || line.includes('penis') || line.includes('pussy') ||
-                line.includes('sex') || line.includes('cunnilingus') || line.includes('fellatio') ||
-                line.includes('masterpiece') || line.includes('looking_at_viewer') ||
-                (line.includes(',') && line.split(',').length >= 3)
-            );
-
-            if (isHeader && !isTagLine) {
+            if (isHeader) {
                 if (currentTitle && currentTags.length > 0) {
                     variants.push({ title: currentTitle, tags: currentTags.join(', ').trim() });
                 }
-                currentTitle = line.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').replace(/[:：]$/, '');
+                currentTitle = line.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').replace(/[:：]$/, '').trim();
                 currentTags = [];
             } else {
                 if (!currentTitle) currentTitle = '默认变体';
@@ -2267,6 +2264,165 @@ Zimage 擅长理解复杂的英文长句和语境。
             variants.push({ title: currentTitle, tags: currentTags.join(', ').trim() });
         }
         return variants.length > 0 ? variants : [{ title: '默认', tags: content.trim() }];
+    }
+
+    function openWorldbookEntryTestModal(entryTitle, rawTags) {
+        const existing = document.getElementById('rbq-sdt-wb-test-modal');
+        if (existing) existing.remove();
+
+        // 1. Clean the raw tags into initial prompt
+        let initialPrompt = rawTags
+            .replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '') // strip header like "- 动作 (哺乳) : "
+            .replace(/\s*\/\s*/g, ', ') // convert slash synonyms to comma
+            .replace(/\s*,\s*,+/g, ', ')
+            .trim();
+
+        // Check active character
+        const activeProfiles = getCharacterProfiles();
+        const activeName = getActiveCharacterName() || '';
+        const activeProfile = activeName ? activeProfiles[activeName] : null;
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-wb-test-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 100000010 !important;
+            background: rgba(0,0,0,0.82) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,184,108,0.3) !important;
+                border-radius: 14px !important;
+                width: 580px !important;
+                max-width: 95vw !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,184,108,0.08) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <span>🎨</span> 测试世界书词条 — ${escapeHtml(entryTitle)}
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-wb-test-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important;">
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                            <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">生图提示词 (Prompt)：</span>
+                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important;">可在此直接微调</span>
+                        </div>
+                        <textarea id="rbq-sdt-wb-test-prompt" style="width: 100% !important; min-height: 110px !important; padding: 8px 10px !important; font-size: 12px !important; font-family: monospace !important; border-radius: 8px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important; box-sizing: border-box !important;">${escapeHtml(initialPrompt)}</textarea>
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.2) !important; padding: 10px 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                        <label style="display: flex !important; align-items: center !important; gap: 8px !important; font-size: 12px !important; color: rgba(255,255,255,0.85) !important; cursor: pointer !important; user-select: none !important;">
+                            <input id="rbq-sdt-wb-test-quality" type="checkbox" checked style="cursor: pointer !important; accent-color: #ffb86c !important;">
+                            <span>✨ 附加基础画质增强词 (best_quality, masterpiece)</span>
+                        </label>
+                        ${activeProfile && activeProfile.baseTags ? `
+                            <label style="display: flex !important; align-items: center !important; gap: 8px !important; font-size: 12px !important; color: #79e4ff !important; cursor: pointer !important; user-select: none !important;">
+                                <input id="rbq-sdt-wb-test-char-base" type="checkbox" style="cursor: pointer !important; accent-color: #79e4ff !important;">
+                                <span>👤 附带当前角色「${escapeHtml(activeName)}」外貌特征 (${escapeHtml(activeProfile.baseTags.slice(0, 35))}...)</span>
+                            </label>
+                        ` : ''}
+                    </div>
+
+                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
+                        <button class="menu_button" id="rbq-sdt-wb-test-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-wb-test-submit" type="button" style="padding: 6px 20px !important; font-size: 12px !important; background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即开始测试生图</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-wb-test-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-wb-test-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        modal.querySelector('#rbq-sdt-wb-test-submit')?.addEventListener('click', async () => {
+            const promptInput = modal.querySelector('#rbq-sdt-wb-test-prompt');
+            const qualityChecked = modal.querySelector('#rbq-sdt-wb-test-quality')?.checked;
+            const charBaseChecked = modal.querySelector('#rbq-sdt-wb-test-char-base')?.checked;
+
+            let finalPromptText = (promptInput?.value || '').trim();
+            if (!finalPromptText) {
+                toastr.warning('提示词不能为空', PLUGIN_NAME);
+                return;
+            }
+
+            if (charBaseChecked && activeProfile && activeProfile.baseTags) {
+                finalPromptText = `${activeProfile.baseTags}, ${finalPromptText}`;
+            }
+            if (qualityChecked) {
+                finalPromptText = `${finalPromptText}, best_quality, masterpiece`;
+            }
+
+            const submitBtn = modal.querySelector('#rbq-sdt-wb-test-submit');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成图片...';
+            }
+
+            toastr.info(`正在测试生图「${entryTitle}」...`, PLUGIN_NAME);
+
+            try {
+                const result = await RBQ.api.generateImage(finalPromptText, 'sdt-wb-test', {}, (progress) => {
+                    if (submitBtn && typeof progress === 'string') {
+                        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 8)}...`;
+                    }
+                });
+
+                if (result && result.url) {
+                    close();
+                    showCharacterTestGallery(entryTitle, [{
+                        title: entryTitle,
+                        modeKey: 'worldbook',
+                        url: result.url,
+                        prompt: finalPromptText
+                    }]);
+                    toastr.success(`「${entryTitle}」测试生图完成！`, PLUGIN_NAME);
+                } else {
+                    throw new Error('生图未返回有效图片地址');
+                }
+            } catch (err) {
+                console.error(`[${PLUGIN_NAME}] 世界书测试生图失败:`, err);
+                toastr.error(`生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即开始测试生图';
+                }
+            }
+        });
+
+        document.body.appendChild(modal);
     }
 
     function openSubVariantPickerModal(entry, onSelectVariant = null, isWardrobeMode = false) {
@@ -2285,7 +2441,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000002 !important;
+            z-index: 100000005 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
@@ -2370,9 +2526,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const idx = Number(btn.dataset.index);
                 const v = variants[idx];
                 if (v) {
-                    let tags = v.tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '').replace(/\s*\/\s*/g, ', ');
                     close();
-                    openCharacterTestModeSelector(`${entry.comment} - ${v.title}`, '', tags, null);
+                    openWorldbookEntryTestModal(`${entry.comment} - ${v.title}`, v.tags);
                 }
             });
         });
@@ -2662,10 +2817,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                     if (isMulti) {
                         openSubVariantPickerModal(targetEntry, null, false);
                     } else {
-                        let tags = targetEntry.content || '';
-                        tags = tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '').replace(/\s*\/\s*/g, ', ');
                         const comment = targetEntry.comment || '世界书测试';
-                        openCharacterTestModeSelector(comment, '', tags, btn);
+                        openWorldbookEntryTestModal(comment, targetEntry.content || '');
                     }
                 });
             });

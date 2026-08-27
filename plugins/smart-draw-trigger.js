@@ -3674,6 +3674,113 @@ SCHEMA:
         });
     }
 
+    function findSegmentDataForViewer(current) {
+        if (!current) return null;
+        const url = String(current.displayUrl || current.url || '').trim();
+        const prompt = String(current.prompt || '').trim();
+
+        // 1. Direct memory map lookup
+        if (url && sdtSegmentMap.has(url)) return sdtSegmentMap.get(url);
+        if (prompt && sdtSegmentMap.has(prompt)) return sdtSegmentMap.get(prompt);
+
+        // 2. Search chat DOM wrappers for matching image src or prompt
+        const wrappers = [...document.querySelectorAll('.st-scene-trigger-inline-wrap')];
+        let matchedWrapper = null;
+
+        if (url) {
+            matchedWrapper = wrappers.find(w => {
+                const img = w.querySelector('img');
+                const link = w.querySelector('.st-scene-trigger-inline-image-link');
+                return (img && (img.src === url || url.endsWith(img.src) || img.src.endsWith(url)))
+                    || (link && (link.dataset.url === url || link.dataset.url?.endsWith(url)));
+            });
+        }
+
+        if (!matchedWrapper && prompt) {
+            matchedWrapper = wrappers.find(w => {
+                const p = (w.dataset.prompt || '').trim();
+                return p === prompt || (p && prompt.includes(p)) || (p && p.includes(prompt));
+            });
+        }
+
+        const segKey = matchedWrapper?.dataset?.rbqSdtSegmentKey;
+        const baseKey = matchedWrapper?.dataset?.rbqSdtBaseKey;
+        if (segKey && sdtSegmentMap.has(segKey)) return sdtSegmentMap.get(segKey);
+        if (baseKey && sdtSegmentMap.has(baseKey)) return sdtSegmentMap.get(baseKey);
+
+        // 3. Fallback: Parse characters & lorebooks from prompt & character profiles
+        const characters = [];
+        const profiles = getCharacterProfiles();
+        for (const [charName, prof] of Object.entries(profiles)) {
+            if (prof && prompt.toLowerCase().includes(charName.toLowerCase())) {
+                characters.push({
+                    name: prof.displayName || charName,
+                    _rawName: prof.displayName || charName,
+                    base: prof.baseTags || '',
+                    outfit: prof.currentOutfit || '',
+                    action: '',
+                    center: 'C3'
+                });
+            }
+        }
+
+        const rawLorebooks = (sdtLorebookHitMap.get(url)?.entries)
+            || (sdtLorebookHitMap.get(prompt)?.entries)
+            || [];
+
+        const reconstructedSeg = {
+            label: '当前分镜',
+            scene: prompt,
+            prompt: prompt,
+            characters: characters.length > 0 ? characters : [{ name: '角色', _rawName: '角色', outfit: '', base: '', center: 'C3' }],
+            matchedLorebooks: rawLorebooks
+        };
+
+        const segData = {
+            segResult: reconstructedSeg,
+            wrapper: matchedWrapper,
+            validLorebooks: rawLorebooks,
+            finalPrompt: prompt
+        };
+
+        if (url) sdtSegmentMap.set(url, segData);
+        if (prompt) sdtSegmentMap.set(prompt, segData);
+
+        return segData;
+    }
+
+    function scanAndInjectViewer() {
+        const modal = document.getElementById('st-scene-trigger-image-viewer');
+        if (!modal) return;
+        const style = window.getComputedStyle(modal);
+        const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && modal.classList.contains('open');
+        if (!isVisible) return;
+
+        const img = modal.querySelector('.st-scene-trigger-viewer-image');
+        if (!img || !img.src) return;
+
+        let bottomBar = modal.querySelector('.st-scene-trigger-viewer-bottom-bar');
+        if (!bottomBar) {
+            const shell = modal.querySelector('.st-scene-trigger-image-viewer-shell') || modal;
+            bottomBar = document.createElement('div');
+            bottomBar.className = 'st-scene-trigger-viewer-bottom-bar';
+            shell.appendChild(bottomBar);
+        }
+
+        if (bottomBar.dataset.renderedSrc === img.src && bottomBar.children.length > 0) return;
+
+        const viewerState = (typeof RBQ?.api?.getViewerState === 'function') ? RBQ.api.getViewerState() : null;
+        const currentItem = viewerState?.items?.[viewerState.index] || { displayUrl: img.src, url: img.src, prompt: img.alt || '' };
+
+        const segData = findSegmentDataForViewer(currentItem);
+        if (segData && segData.segResult) {
+            renderViewerBottomBar(bottomBar, segData.segResult, segData.wrapper, currentItem, modal);
+            bottomBar.dataset.renderedSrc = img.src;
+        }
+    }
+
+    setInterval(scanAndInjectViewer, 300);
+
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
         const detail = event?.detail;
         if (!detail || !detail.bottomBar) return;
@@ -3683,12 +3790,10 @@ SCHEMA:
             return;
         }
 
-        const segData = sdtSegmentMap.get(current.displayUrl)
-            || sdtSegmentMap.get(current.url)
-            || (current.prompt ? sdtSegmentMap.get(current.prompt) : null);
-
+        const segData = findSegmentDataForViewer(current);
         if (segData && segData.segResult) {
             renderViewerBottomBar(detail.bottomBar, segData.segResult, segData.wrapper, current, detail.modal);
+            detail.bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
         } else {
             detail.bottomBar.innerHTML = '';
         }

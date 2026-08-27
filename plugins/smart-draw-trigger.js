@@ -776,45 +776,49 @@ Zimage 擅长理解复杂的英文长句和语境。
         return similarity > 0.7; // Similarity > 70% considered same outfit
     }
 
-    function deriveOutfitName(canonicalName, outfitTags, sceneLabel, isInitial = false) {
-        const cleanName = String(canonicalName || '').trim();
-        const cleanTags = String(outfitTags || '').replace(/_/g, ' ');
-        const firstTag = cleanTags.split(/[,，\n]/).map(t => t.trim()).filter(Boolean)[0] || '';
+    const OUTFIT_CATEGORY_MAP = [
+        { regex: /\b(school[ _]uniform|sailor[ _]collar|pleated[ _]skirt|polo[ _]shirt|school[ _]dress)\b/i, name: '校服' },
+        { regex: /\b(bikini|swimsuit|swimwear|micro[ _]bikini|monokini)\b/i, name: '泳装' },
+        { regex: /\b(pajamas|nightgown|sleepwear|camisole|negligee)\b/i, name: '睡衣' },
+        { regex: /\b(maid[ _]outfit|maid[ _]dress|maid[ _]apron)\b/i, name: '女仆装' },
+        { regex: /\b(leather[ _]armor|plate[ _]armor|chainmail|knight[ _]armor|armor)\b/i, name: '皮甲/盔甲' },
+        { regex: /\b(corset|bondage|leash|collar|latex|leather[ _]dress)\b/i, name: '束腰调教装' },
+        { regex: /\b(cheongsam|qipao|china[ _]dress)\b/i, name: '旗袍' },
+        { regex: /\b(kimono|yukata)\b/i, name: '和服/浴衣' },
+        { regex: /\b(bunny[ _]suit|playboy[ _]bunny)\b/i, name: '兔女郎装' },
+        { regex: /\b(nurse|nurse[ _]cap|scrubs)\b/i, name: '护士装' },
+        { regex: /\b(crop[ _]top|tied[ _]shirt|t-shirt|tank[ _]top)\b/i, name: '休闲T恤/露脐装' },
+        { regex: /\b(business[ _]suit|suit[ _]jacket|office[ _]lady|ol)\b/i, name: '职场西装' },
+        { regex: /\b(gym[ _]uniform|bloomers|buruma|tracksuit|sportswear)\b/i, name: '运动服/体操服' },
+        { regex: /\b(wedding[ _]dress|bridal[ _]veil)\b/i, name: '婚纱礼服' },
+        { regex: /\b(evening[ _]dress|cocktail[ _]dress|long[ _]dress)\b/i, name: '晚礼服/长裙' },
+        { regex: /\b(lingerie|underwear|bra|panties|lace[ _]bra)\b/i, name: '内衣/私密着装' },
+        { regex: /\b(hoodie|jacket|cardigan|coat|sweater)\b/i, name: '外套/日常私服' },
+    ];
 
-        // Check if sceneLabel is specifically relevant for this character
-        let labelIsRelevant = false;
-        if (sceneLabel) {
-            const lowerLabel = sceneLabel.toLowerCase();
-            const lowerName = cleanName.toLowerCase();
-            if (lowerLabel.includes(lowerName)) {
-                labelIsRelevant = true;
-            } else {
-                // If label mentions another character's name (e.g. "Alma"), NEVER use it for Ulrihi
-                const profiles = getCharacterProfiles();
-                const otherNames = Object.keys(profiles)
-                    .map(k => getCanonicalCharName(profiles[k]?.displayName || k))
-                    .filter(n => n && n.toLowerCase() !== lowerName);
-                const mentionsOther = otherNames.some(on => lowerLabel.includes(on.toLowerCase()));
-                if (!mentionsOther) {
-                    labelIsRelevant = true; // Generic scene description (e.g. "海滩度假", "教室日常")
-                }
+    function deriveOutfitName(canonicalName, outfitTags, isInitial = false) {
+        const rawTags = String(outfitTags || '').trim();
+        if (!rawTags) return isInitial ? '初始设定服装' : '剧情着装';
+
+        // 1. Check mapped category
+        for (const cat of OUTFIT_CATEGORY_MAP) {
+            if (cat.regex.test(rawTags)) {
+                return `${isInitial ? '初始: ' : '剧情: '}${cat.name}`;
             }
         }
 
-        if (labelIsRelevant && sceneLabel) {
-            return `${isInitial ? '初始: ' : '剧情: '}${sceneLabel.slice(0, 12)}`;
-        }
-
+        // 2. Extract first 1-2 prominent English tags
+        const firstTag = rawTags.split(/[,，\n]/).map(t => t.trim().replace(/_/g, ' ')).filter(Boolean)[0] || '';
         if (firstTag && firstTag.length <= 25) {
             return `${isInitial ? '初始: ' : '剧情: '}${firstTag}`;
         }
 
         const now = new Date();
         const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        return isInitial ? '初始设定服装' : `剧情着装 (${timeStr})`;
+        return isInitial ? '初始常服' : `剧情服装 (${timeStr})`;
     }
 
-    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true, sceneLabel = '') {
+    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true) {
         const profiles = getCharacterProfiles();
         const rawName = String(name || '').trim();
         if (!rawName) return;
@@ -831,12 +835,12 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
                 const alreadyExists = existing.wardrobe.some(w => isSameOutfit(w.outfit, outfitTags));
                 if (!alreadyExists) {
-                    const nameStr = deriveOutfitName(canonical, outfitTags, sceneLabel, false);
+                    const nameStr = deriveOutfitName(canonical, outfitTags, false);
                     existing.wardrobe.push({
                         id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                         name: nameStr,
                         outfit: outfitTags,
-                        triggers: sceneLabel ? [sceneLabel.slice(0, 6)] : [],
+                        triggers: [],
                         createdAt: Date.now()
                     });
                     debugInfo(`👗 角色「${canonical}」新剧情服装已自动收录至衣柜: ${nameStr}`);
@@ -848,7 +852,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         } else {
             const initialWardrobe = [];
             if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
-                const nameStr = deriveOutfitName(canonical, outfitTags, sceneLabel, true);
+                const nameStr = deriveOutfitName(canonical, outfitTags, true);
                 initialWardrobe.push({
                     id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                     name: nameStr,
@@ -1035,7 +1039,7 @@ Zimage 擅长理解复杂的英文长句和语境。
      * Merge character memory with LLM output.
      * @returns {string} Final merged caption for char_caption
      */
-    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, sceneLabel = '') {
+    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
         const store = getStore();
         const chatKey = getChatKey();
         const weightedName = weightCharacterName(name);
@@ -1056,14 +1060,14 @@ Zimage 擅长理解复杂的英文长句和语境。
             // Use stored base (immutable), update outfit from LLM
             finalBase = profile.baseTags;
             finalOutfit = llmOutfit || profile.currentOutfit;
-            if (llmOutfit) updateCharacterProfile(name, null, llmOutfit, null, true, sceneLabel);
+            if (llmOutfit) updateCharacterProfile(name, null, llmOutfit, null, true);
             debugInfo(`角色记忆复用「${name}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
             // First time: learn from LLM and store (store clean name, not weighted)
             finalBase = [name, llmBase].filter(Boolean).join(', ');
             finalOutfit = llmOutfit || '';
             if (finalBase && name) {
-                updateCharacterProfile(name, finalBase, finalOutfit, null, true, sceneLabel);
+                updateCharacterProfile(name, finalBase, finalOutfit, null, true);
             } else if (!finalBase && name) {
                 debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
             }
@@ -2766,7 +2770,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
 
                     // Merge character memory with LLM output
-                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, item?.label || '');
+                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags);
 
                     return {
                         index: charIndex + 1,

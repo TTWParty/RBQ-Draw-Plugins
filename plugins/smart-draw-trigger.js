@@ -3049,22 +3049,23 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         const segJson = JSON.stringify(segResult || {});
         const systemPrompt = `You are an expert anime AI art storyboard director and tagger.
-Your task is to refine a single storyboard segment based on the user's specific modification instructions.
+Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
-1. Update the scene, characters' outfits, actions, emotions, poses, or camera POV according to the user instructions.
-2. Keep unmentioned fixed character appearance (hair color, eye color, body type) intact.
-3. Output ONLY a valid JSON object matching the schema below, without markdown backticks or commentary.
+1. Update scene tags, characters' names, appearance base, outfits, actions, poses, or camera POV according to the user instructions.
+2. If the user asks to change or replace a character (e.g. "女生换成雷姆", "变成2个人"), update the character list and appearance tags accordingly (e.g. rem (re:zero), blue hair, short hair, blue eyes, maid outfit).
+3. If unmentioned, keep fixed character appearance tags intact.
+4. Output ONLY a valid JSON object matching the schema below, without markdown backticks or commentary.
 
 SCHEMA:
 {
-  "label": "string short chinese summary (5-15 chars)",
+  "label": "string short chinese summary",
   "scene": "string danbooru tags for background, environment, lighting, camera angle, NO character tags",
   "characters": [
     {
       "name": "string character name",
-      "base": "string unchanged appearance tags",
-      "outfit": "string updated clothing tags",
-      "action": "string updated action, pose, expression tags",
+      "base": "string character base appearance tags",
+      "outfit": "string clothing tags",
+      "action": "string action, pose, expression tags",
       "center": "string grid coordinate e.g. C3, B3, D3"
     }
   ]
@@ -3072,7 +3073,7 @@ SCHEMA:
 
         const messages = [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Original Segment:\n${segJson}\n\nUser Modification Instructions:\n${userInstructions}\n\nRefined Segment JSON:` }
+            { role: 'user', content: `Original Segment Data:\n${segJson}\n\nUser Modification Request:\n${userInstructions}\n\nOutput Refined JSON:` }
         ];
 
         let json;
@@ -3111,27 +3112,64 @@ SCHEMA:
         }
 
         const rawContent = json?.choices?.[0]?.message?.content || json?.content || json;
-        const parsed = typeof rawContent === 'object' && rawContent !== null ? rawContent : extractJson(rawContent);
-        if (!parsed || (!parsed.scene && !parsed.characters?.length && !parsed.prompt)) {
-            throw new Error('AI 未能生成有效的调整分镜 JSON');
+        const parsedRaw = typeof rawContent === 'object' && rawContent !== null ? rawContent : extractJson(rawContent);
+
+        let parsed = parsedRaw;
+        if (Array.isArray(parsedRaw?.segments) && parsedRaw.segments.length > 0) {
+            parsed = parsedRaw.segments[0];
+        } else if (parsedRaw?.segment && typeof parsedRaw.segment === 'object') {
+            parsed = parsedRaw.segment;
+        } else if (parsedRaw?.result && typeof parsedRaw.result === 'object') {
+            parsed = parsedRaw.result;
         }
 
+        let charactersList = [];
+        if (Array.isArray(parsed?.characters) && parsed.characters.length > 0) {
+            charactersList = parsed.characters;
+        } else if (parsed?.character && typeof parsed.character === 'object') {
+            charactersList = Array.isArray(parsed.character) ? parsed.character : [parsed.character];
+        } else if (Array.isArray(segResult?.characters)) {
+            charactersList = segResult.characters;
+        }
+
+        const sceneTags = parsed?.scene || parsed?.prompt || segResult?.scene || '';
+
         return {
-            label: parsed.label || segResult.label || '调整后分镜',
-            anchor: segResult.anchor || { type: 'sentence', index: 1 },
-            scene: parsed.scene || segResult.scene || '',
-            characters: Array.isArray(parsed.characters) && parsed.characters.length > 0
-                ? parsed.characters.map(c => ({
-                    name: c.name || '',
-                    _rawName: c.name || '',
-                    base: c.base || '',
-                    outfit: c.outfit || '',
-                    action: c.action || '',
-                    center: c.center || 'C3',
-                    uc: c.uc || ''
-                }))
-                : (segResult.characters || []),
-            matchedLorebooks: segResult.matchedLorebooks || [],
+            label: String(parsed?.label || segResult?.label || '微调后分镜').trim(),
+            anchor: segResult?.anchor || { type: 'sentence', index: 1 },
+            scene: String(sceneTags).trim(),
+            characters: charactersList.map((c, i) => {
+                const name = String(c.name || c._rawName || `角色${i+1}`).trim();
+                const base = String(c.base || c._rawBase || '').trim();
+                const outfit = String(c.outfit || c._rawOutfit || '').trim();
+                const action = String(c.action || c._rawAction || '').trim();
+                const center = String(c.center || 'C3').trim().toUpperCase();
+                const uc = String(c.uc || '').trim();
+                const weightedName = weightCharacterName(name);
+                const profile = getCharacterProfile(name);
+                let finalBase = profile?.baseTags || (name ? [name, base].filter(Boolean).join(', ') : base);
+                let displayBase = finalBase;
+                if (profile && name && displayBase.startsWith(name)) {
+                    displayBase = weightedName + displayBase.slice(name.length);
+                }
+                const store = getStore();
+                const wrappedBase = (store.systemPromptPreset === 'consistent' && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
+                return {
+                    name,
+                    _rawName: name,
+                    _rawBase: base,
+                    _rawOutfit: outfit,
+                    _rawAction: action,
+                    base,
+                    outfit,
+                    action,
+                    caption,
+                    center,
+                    uc
+                };
+            }),
+            matchedLorebooks: segResult?.matchedLorebooks || []
         };
     }
 
@@ -3139,7 +3177,6 @@ SCHEMA:
         const existing = document.getElementById('rbq-sdt-refiner-modal');
         if (existing) existing.remove();
 
-        const currentPrompt = getFinalPrompt(segResult);
         const charSummary = (segResult?.characters || []).map(c => {
             const parts = [c.name || c._rawName, c.outfit, c.action].filter(Boolean);
             return parts.join(' — ');
@@ -3205,12 +3242,12 @@ SCHEMA:
 
                     <div style="display: flex !important; flex-direction: column !important; gap: 6px !important;">
                         <span style="font-size: 13px !important; font-weight: bold !important; color: #fff !important;">✍️ 输入你想让 AI 调整的内容 (自然语言或 Tag)：</span>
-                        <textarea id="rbq-sdt-refine-input" placeholder="例如：\n- 换成半透明蕾丝睡衣，露出香肩\n- 表情变成害羞脸红、眼角带泪，视角改成仰视特写\n- 动作改成双手被绑在身后跪坐在地毯上..." style="width: 100% !important; min-height: 100px !important; padding: 10px 12px !important; font-size: 13px !important; border-radius: 8px !important; box-sizing: border-box !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important;"></textarea>
+                        <textarea id="rbq-sdt-refine-input" placeholder="例如：\n- 女生换成雷姆 (Rem)\n- 换成半透明蕾丝睡衣，露出香肩\n- 表情变成害羞脸红、眼角带泪，视角改成仰视特写\n- 动作改成双手被绑在身后跪坐在地毯上..." style="width: 100% !important; min-height: 100px !important; padding: 10px 12px !important; font-size: 13px !important; border-radius: 8px !important; box-sizing: border-box !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important;"></textarea>
                     </div>
 
-                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
-                        <button class="menu_button" id="rbq-sdt-refiner-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
-                        <button class="menu_button" id="rbq-sdt-refiner-submit" type="button" style="padding: 6px 18px !important; font-size: 12px !important; background: rgba(180,104,255,0.25) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.4) !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 重新构思并生图</button>
+                    <div style="display: flex !important; flex-direction: row !important; justify-content: flex-end !important; align-items: center !important; gap: 10px !important; margin-top: 6px !important; width: 100% !important; flex-shrink: 0 !important;">
+                        <button class="menu_button" id="rbq-sdt-refiner-cancel" type="button" style="padding: 6px 16px !important; font-size: 12px !important; width: auto !important; height: auto !important; margin: 0 !important; white-space: nowrap !important; cursor: pointer !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-refiner-submit" type="button" style="padding: 6px 20px !important; font-size: 12px !important; width: auto !important; height: auto !important; margin: 0 !important; white-space: nowrap !important; background: rgba(180,104,255,0.25) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.4) !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 重新构思并生图</button>
                     </div>
                 </div>
             </div>

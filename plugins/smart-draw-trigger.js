@@ -1378,7 +1378,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000000 !important;
+            z-index: 100000010 !important;
             background: rgba(0,0,0,0.75) !important;
             display: flex !important;
             align-items: center !important;
@@ -1704,7 +1704,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000001 !important;
+            z-index: 100000020 !important;
             background: rgba(0,0,0,0.8) !important;
             display: flex !important;
             align-items: center !important;
@@ -2371,7 +2371,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 const v = variants[idx];
                 if (v) {
                     let tags = v.tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '').replace(/\s*\/\s*/g, ', ');
-                    openCharacterTestModeSelector(`${entry.comment} - ${v.title}`, '', tags, btn);
+                    close();
+                    openCharacterTestModeSelector(`${entry.comment} - ${v.title}`, '', tags, null);
                 }
             });
         });

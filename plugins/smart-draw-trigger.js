@@ -2299,41 +2299,57 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function openWorldbookEntryTestModal(entryTitle, rawTags) {
-        const existing = document.getElementById('rbq-sdt-wb-test-modal');
-        if (existing) existing.remove();
+        try {
+            const existing = document.getElementById('rbq-sdt-wb-test-modal');
+            if (existing) existing.remove();
 
-        // 1. Clean the raw tags into initial prompt
-        let initialPrompt = rawTags
-            .replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '') // strip header like "- 动作 (哺乳) : "
-            .replace(/\s*\/\s*/g, ', ') // convert slash synonyms to comma
-            .replace(/\s*,\s*,+/g, ', ')
-            .trim();
+            // 1. Clean the raw tags into initial prompt
+            let initialPrompt = (rawTags || '')
+                .replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '') // strip header like "- 动作 (哺乳) : "
+                .replace(/\s*\/\s*/g, ', ') // convert slash synonyms to comma
+                .replace(/\s*,\s*,+/g, ', ')
+                .trim();
 
-        // Collect all available character profiles
-        const allProfiles = { ...getAllKnownCharacterProfiles(), ...(typeof getCharacterProfiles === 'function' ? getCharacterProfiles() : {}) };
-        const activeName = (typeof getActiveCharacterName === 'function' ? getActiveCharacterName() : '') || '';
-        const charEntries = Object.entries(allProfiles);
+            // Collect all available character profiles
+            let allProfiles = {};
+            try {
+                if (typeof getAllKnownCharacterProfiles === 'function') {
+                    allProfiles = { ...getAllKnownCharacterProfiles() };
+                }
+                if (typeof getCharacterProfiles === 'function') {
+                    allProfiles = { ...allProfiles, ...getCharacterProfiles() };
+                }
+            } catch (_e) { /* noop */ }
 
-        const modal = document.createElement('div');
-        modal.id = 'rbq-sdt-wb-test-modal';
-        modal.style.cssText = `
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            z-index: 100000010 !important;
-            background: rgba(0,0,0,0.82) !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            padding: 16px !important;
-            box-sizing: border-box !important;
-            backdrop-filter: blur(6px) !important;
-            -webkit-backdrop-filter: blur(6px) !important;
-        `;
+            let activeName = '';
+            try {
+                if (typeof getActiveCharacterName === 'function') {
+                    activeName = getActiveCharacterName() || '';
+                }
+            } catch (_e) { /* noop */ }
+
+            const charEntries = Object.entries(allProfiles);
+
+            const modal = document.createElement('div');
+            modal.id = 'rbq-sdt-wb-test-modal';
+            modal.style.cssText = `
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                z-index: 100000010 !important;
+                background: rgba(0,0,0,0.82) !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                padding: 16px !important;
+                box-sizing: border-box !important;
+                backdrop-filter: blur(6px) !important;
+                -webkit-backdrop-filter: blur(6px) !important;
+            `;
 
         modal.innerHTML = `
             <div style="
@@ -2478,6 +2494,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         });
 
         document.body.appendChild(modal);
+        } catch (err) {
+            console.error('[RBQ SDT] 打开世界书测试弹窗失败:', err);
+            toastr.error(`打开测试弹窗失败: ${err.message || err}`, PLUGIN_NAME);
+        }
     }
 
     function openSubVariantPickerModal(entry, onSelectVariant = null, isWardrobeMode = false) {
@@ -2864,16 +2884,22 @@ Zimage 擅长理解复杂的英文长句和语境。
             });
 
             modal.querySelectorAll('.rbq-sdt-test-entry-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = Number(btn.dataset.index);
-                    const targetEntry = filtered[idx];
-                    if (!targetEntry) return;
-                    const isMulti = btn.dataset.multi === '1';
-                    if (isMulti) {
-                        openSubVariantPickerModal(targetEntry, null, false);
-                    } else {
-                        const comment = targetEntry.comment || '世界书测试';
-                        openWorldbookEntryTestModal(comment, targetEntry.content || '');
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    try {
+                        const idx = Number(btn.dataset.index);
+                        const targetEntry = filtered[idx];
+                        if (!targetEntry) return;
+                        const isMulti = btn.dataset.multi === '1';
+                        if (isMulti) {
+                            openSubVariantPickerModal(targetEntry, null, false);
+                        } else {
+                            const comment = targetEntry.comment || '世界书测试';
+                            openWorldbookEntryTestModal(comment, targetEntry.content || '');
+                        }
+                    } catch (err) {
+                        console.error('[RBQ SDT] 测试生图点击失败:', err);
+                        toastr.error(`测试生图失败: ${err.message || err}`, PLUGIN_NAME);
                     }
                 });
             });

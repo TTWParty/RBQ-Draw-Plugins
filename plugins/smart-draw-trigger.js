@@ -2222,6 +2222,181 @@ Zimage 擅长理解复杂的英文长句和语境。
             });
     }
 
+    function extractLorebookSubVariants(content) {
+        if (!content) return [];
+        const lines = content.split(/\r?\n/);
+        const variants = [];
+        let currentTitle = '';
+        let currentTags = [];
+
+        for (let rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            // Ignore top-level worldbook single header "# 后入位"
+            if (line.startsWith('# ') && !currentTitle) continue;
+
+            const isHeader = (
+                line.startsWith('##') ||
+                (line.startsWith('#') && !line.startsWith('# ')) ||
+                /^(\d+[\.\、]|[-*]\s+|【|\[)/.test(line) ||
+                /^(默认\d*|变体\d*|机位\d*|视角\d*)/.test(line) ||
+                (/^[\u4e00-\u9fa5A-Za-z0-9_（）\(\)\,\，\s\-\/\:\：\.]+$/.test(line) && !line.includes(',') && !line.includes('1girl') && !line.includes('1boy') && line.length < 30) ||
+                (/^[\u4e00-\u9fa5]+[：:]/.test(line))
+            );
+
+            const isTagLine = (
+                line.includes('1girl') || line.includes('1boy') || line.includes('solo') ||
+                line.includes('breasts') || line.includes('penis') || line.includes('pussy') ||
+                line.includes('sex') || line.includes('cunnilingus') || line.includes('fellatio') ||
+                line.includes('masterpiece') || line.includes('looking_at_viewer') ||
+                (line.includes(',') && line.split(',').length >= 3)
+            );
+
+            if (isHeader && !isTagLine) {
+                if (currentTitle && currentTags.length > 0) {
+                    variants.push({ title: currentTitle, tags: currentTags.join(', ').trim() });
+                }
+                currentTitle = line.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').replace(/[:：]$/, '');
+                currentTags = [];
+            } else {
+                if (!currentTitle) currentTitle = '默认变体';
+                currentTags.push(line.replace(/^[-*]\s*/, ''));
+            }
+        }
+        if (currentTitle && currentTags.length > 0) {
+            variants.push({ title: currentTitle, tags: currentTags.join(', ').trim() });
+        }
+        return variants.length > 0 ? variants : [{ title: '默认', tags: content.trim() }];
+    }
+
+    function openSubVariantPickerModal(entry, onSelectVariant = null, isWardrobeMode = false) {
+        const existing = document.getElementById('rbq-sdt-variant-picker-modal');
+        if (existing) existing.remove();
+
+        const variants = extractLorebookSubVariants(entry.content);
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-variant-picker-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 100000002 !important;
+            background: rgba(0,0,0,0.85) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,255,255,0.2) !important;
+                border-radius: 14px !important;
+                width: 640px !important;
+                max-width: 95vw !important;
+                max-height: 85vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,184,108,0.08) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <span>🧩</span> 选择「${escapeHtml(entry.comment || '姿势词条')}」的具体动作变体
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;">(共 ${variants.length} 种变体)</span>
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-variant-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <div style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 10px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
+                    ${variants.map((v, idx) => `
+                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
+                            <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
+                                <div style="display: flex !important; align-items: center !important; gap: 8px !important;">
+                                    <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;">#${idx + 1}</span>
+                                    <strong style="font-size: 13px !important; color: #fff !important;">${escapeHtml(v.title)}</strong>
+                                </div>
+                                <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
+                                    ${isWardrobeMode ? `
+                                        <button class="menu_button rbq-sdt-pick-variant-btn" data-index="${idx}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-check"></i> 选用此姿势</button>
+                                    ` : ''}
+                                    <button class="menu_button rbq-sdt-test-variant-btn" data-index="${idx}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
+                                    <button class="menu_button rbq-sdt-copy-variant-btn" data-index="${idx}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制 Tag</button>
+                                </div>
+                            </div>
+                            <div style="background: rgba(0,0,0,0.35) !important; padding: 6px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 70px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(v.tags)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-variant-close')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        modal.querySelectorAll('.rbq-sdt-pick-variant-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.dataset.index);
+                const v = variants[idx];
+                if (v && typeof onSelectVariant === 'function') {
+                    onSelectVariant({ ...entry, comment: `${entry.comment} (${v.title})`, content: v.tags });
+                    close();
+                }
+            });
+        });
+
+        modal.querySelectorAll('.rbq-sdt-test-variant-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.dataset.index);
+                const v = variants[idx];
+                if (v) {
+                    let tags = v.tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '').replace(/\s*\/\s*/g, ', ');
+                    openCharacterTestModeSelector(`${entry.comment} - ${v.title}`, '', tags, btn);
+                }
+            });
+        });
+
+        modal.querySelectorAll('.rbq-sdt-copy-variant-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.dataset.index);
+                const v = variants[idx];
+                if (v) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(v.tags).then(() => {
+                            toastr.success(`已复制变体「${v.title}」Tags 到剪贴板`, PLUGIN_NAME);
+                        }).catch(() => {
+                            toastr.info(v.tags.slice(0, 100), v.title);
+                        });
+                    } else {
+                        toastr.info(v.tags.slice(0, 100), v.title);
+                    }
+                }
+            });
+        });
+
+        document.body.appendChild(modal);
+    }
+
     function openLorebookSearchModal(initialSourceId = null, onSelectEntry = null) {
         const existing = document.getElementById('rbq-sdt-lorebook-search-modal');
         if (existing) existing.remove();
@@ -2323,19 +2498,25 @@ Zimage 擅长理解复杂的英文长句和语境。
                     <div id="rbq-sdt-lb-search-results" style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
                         ${filtered.length === 0 ? `
                             <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
-                        ` : filtered.slice(0, 100).map((e, idx) => `
+                        ` : filtered.slice(0, 100).map((e, idx) => {
+                            const subVariants = extractLorebookSubVariants(e.content);
+                            const hasMultiple = subVariants.length > 1;
+                            return `
                             <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                                 <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
                                     <div style="display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
                                         <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
                                         <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
+                                        ${hasMultiple ? `
+                                            <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
+                                        ` : ''}
                                     </div>
                                     <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
                                         ${onSelectEntry ? `
-                                            <button class="menu_button rbq-sdt-select-lb-entry" data-index="${idx}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-solid fa-check"></i> 选用此词条</button>
+                                            <button class="menu_button rbq-sdt-select-lb-entry" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-solid fa-check"></i> ${hasMultiple ? '选择具体姿势' : '选用此词条'}</button>
                                         ` : ''}
-                                        <button class="menu_button rbq-sdt-test-entry-btn" data-tags="${escapeHtml(e.content)}" data-comment="${escapeHtml(e.comment || '')}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
-                                        <button class="menu_button rbq-sdt-copy-entry-tags" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制</button>
+                                        <button class="menu_button rbq-sdt-test-entry-btn" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" data-comment="${escapeHtml(e.comment || '')}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${hasMultiple ? '挑选姿势测试' : '测试生图'}</button>
+                                        <button class="menu_button rbq-sdt-copy-entry-tags" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制</button>
                                     </div>
                                 </div>
                                 <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important;">
@@ -2348,7 +2529,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                                 </div>
                                 <div style="background: rgba(0,0,0,0.35) !important; padding: 8px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 90px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(e.content)}</div>
                             </div>
-                        `).join('')}
+                        `;}).join('')}
                         ${filtered.length > 100 ? `
                             <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 10px 0 !important; font-size: 12px !important;">已展示前 100 条匹配结果，请输入更精确的关键词以进一步筛选</div>
                         ` : ''}
@@ -2386,36 +2567,60 @@ Zimage 擅长理解复杂的英文长句和语境。
                 btn.addEventListener('click', () => {
                     const idx = Number(btn.dataset.index);
                     const targetEntry = filtered[idx];
-                    if (targetEntry && typeof onSelectEntry === 'function') {
-                        onSelectEntry(targetEntry);
-                        modal.remove();
+                    if (!targetEntry) return;
+                    const isMulti = btn.dataset.multi === '1';
+                    if (isMulti) {
+                        openSubVariantPickerModal(targetEntry, (chosenEntry) => {
+                            if (typeof onSelectEntry === 'function') {
+                                onSelectEntry(chosenEntry);
+                                modal.remove();
+                            }
+                        }, true);
+                    } else {
+                        if (typeof onSelectEntry === 'function') {
+                            onSelectEntry(targetEntry);
+                            modal.remove();
+                        }
                     }
                 });
             });
 
             modal.querySelectorAll('.rbq-sdt-test-entry-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    let tags = btn.dataset.tags || '';
-                    // 清理 markdown 列表标头如 `- 动作 (哺乳) : `
-                    tags = tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '');
-                    // 将斜杠同义词转为逗号分隔
-                    tags = tags.replace(/\s*\/\s*/g, ', ');
-                    const comment = btn.dataset.comment || '世界书测试';
-                    openCharacterTestModeSelector(comment, '', tags, btn);
+                    const idx = Number(btn.dataset.index);
+                    const targetEntry = filtered[idx];
+                    if (!targetEntry) return;
+                    const isMulti = btn.dataset.multi === '1';
+                    if (isMulti) {
+                        openSubVariantPickerModal(targetEntry, null, false);
+                    } else {
+                        let tags = targetEntry.content || '';
+                        tags = tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '').replace(/\s*\/\s*/g, ', ');
+                        const comment = targetEntry.comment || '世界书测试';
+                        openCharacterTestModeSelector(comment, '', tags, btn);
+                    }
                 });
             });
 
             modal.querySelectorAll('.rbq-sdt-copy-entry-tags').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const tags = btn.dataset.tags || '';
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(tags).then(() => {
-                            toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
-                        }).catch(() => {
-                            toastr.info(tags.slice(0, 100), '词条内容');
-                        });
+                    const idx = Number(btn.dataset.index);
+                    const targetEntry = filtered[idx];
+                    if (!targetEntry) return;
+                    const isMulti = btn.dataset.multi === '1';
+                    if (isMulti) {
+                        openSubVariantPickerModal(targetEntry, null, false);
                     } else {
-                        toastr.info(tags.slice(0, 100), '词条内容');
+                        const tags = targetEntry.content || '';
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(tags).then(() => {
+                                toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
+                            }).catch(() => {
+                                toastr.info(tags.slice(0, 100), '词条内容');
+                            });
+                        } else {
+                            toastr.info(tags.slice(0, 100), '词条内容');
+                        }
                     }
                 });
             });

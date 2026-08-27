@@ -3173,6 +3173,29 @@ SCHEMA:
         };
     }
 
+    function setCardLoadingState(wrapper, isLoading, title = '生成中...', sub = '') {
+        if (!(wrapper instanceof HTMLElement)) return;
+        const btn = wrapper.querySelector('.st-scene-trigger-generate');
+        const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
+        const img = wrapper.querySelector('.st-scene-trigger-inline-image');
+
+        if (isLoading) {
+            if (btn) btn.style.display = 'none';
+            if (loader) {
+                loader.style.display = 'flex';
+                const titleEl = loader.querySelector('.st-scene-trigger-nai-loader-title');
+                const subEl = loader.querySelector('.st-scene-trigger-nai-loader-sub');
+                if (titleEl) titleEl.textContent = title;
+                if (subEl) subEl.textContent = sub || '正在请求集群分配运算资源...';
+            }
+            if (img) img.style.opacity = '0.3';
+        } else {
+            if (loader) loader.style.display = 'none';
+            if (btn) btn.style.display = 'inline-block';
+            if (img) img.style.opacity = '1';
+        }
+    }
+
     function openSegmentAiRefinerModal(wrapper, segResult) {
         const existing = document.getElementById('rbq-sdt-refiner-modal');
         if (existing) existing.remove();
@@ -3280,7 +3303,6 @@ SCHEMA:
                 close();
                 toastr.info('分镜重构完成，开始生成新图像...', PLUGIN_NAME);
 
-                // Set loading status in card
                 prepareNaiCharData(updatedSeg);
                 const newFinalPrompt = getFinalPrompt(updatedSeg);
                 wrapper.dataset.prompt = newFinalPrompt;
@@ -3288,24 +3310,13 @@ SCHEMA:
                 const baseKey = wrapper.dataset.rbqSdtBaseKey;
                 const segmentKey = wrapper.dataset.rbqSdtSegmentKey;
 
-                // Update card UI loading placeholder
-                const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
-                const origHtml = inlineUi.innerHTML;
-                inlineUi.innerHTML = `
-                    <div class="st-scene-trigger-loading" style="padding: 20px; text-align: center;">
-                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: #d8aaff; margin-bottom: 8px;"></i>
-                        <div style="font-size: 13px; color: #d8aaff;">AI 微调重绘中...</div>
-                        <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">${escapeHtml(userInstructions.slice(0, 30))}</div>
-                    </div>
-                `;
+                setCardLoadingState(wrapper, true, '✨ AI 微调重绘中...', userInstructions.slice(0, 30));
 
-                // Generate new image
                 const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-refine', {}, (progress) => {
-                    const statusText = wrapper.querySelector('.st-scene-trigger-loading div');
-                    if (statusText && typeof progress === 'string') {
-                        statusText.textContent = progress;
-                    }
+                    setCardLoadingState(wrapper, true, '✨ AI 微调重绘中...', typeof progress === 'string' ? progress : '');
                 });
+
+                setCardLoadingState(wrapper, false);
 
                 if (imageResult && (imageResult.url || imageResult.displayUrl)) {
                     RBQ.api.renderInlineGeneratedImage(wrapper, imageResult);
@@ -3315,10 +3326,10 @@ SCHEMA:
                     }
                     toastr.success('已根据你的调整要求成功生成新图像！', PLUGIN_NAME);
                 } else {
-                    inlineUi.innerHTML = origHtml;
                     throw new Error('生图未返回有效图像');
                 }
             } catch (err) {
+                setCardLoadingState(wrapper, false);
                 console.error(`[${PLUGIN_NAME}] AI 调整此图失败:`, err);
                 toastr.error(`AI 调整生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
                 renderCardBadges(wrapper, segResult);
@@ -3490,21 +3501,13 @@ SCHEMA:
                 const baseKey = wrapper.dataset.rbqSdtBaseKey;
                 const segmentKey = wrapper.dataset.rbqSdtSegmentKey;
 
-                const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
-                const origHtml = inlineUi.innerHTML;
-                inlineUi.innerHTML = `
-                    <div class="st-scene-trigger-loading" style="padding: 20px; text-align: center;">
-                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: #ffb86c; margin-bottom: 8px;"></i>
-                        <div style="font-size: 13px; color: #ffb86c;">👗 角色换装重绘中...</div>
-                    </div>
-                `;
+                setCardLoadingState(wrapper, true, '👗 角色换装重绘中...', '正在替换服装并请求生图...');
 
                 const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-outfit-swap', {}, (progress) => {
-                    const statusText = wrapper.querySelector('.st-scene-trigger-loading div');
-                    if (statusText && typeof progress === 'string') {
-                        statusText.textContent = progress;
-                    }
+                    setCardLoadingState(wrapper, true, '👗 角色换装重绘中...', typeof progress === 'string' ? progress : '');
                 });
+
+                setCardLoadingState(wrapper, false);
 
                 if (imageResult && (imageResult.url || imageResult.displayUrl)) {
                     RBQ.api.renderInlineGeneratedImage(wrapper, imageResult);
@@ -3514,10 +3517,10 @@ SCHEMA:
                     }
                     toastr.success('已成功为角色换装并重新生成插画！', PLUGIN_NAME);
                 } else {
-                    inlineUi.innerHTML = origHtml;
                     throw new Error('生图未返回有效图像');
                 }
             } catch (err) {
+                setCardLoadingState(wrapper, false);
                 console.error(`[${PLUGIN_NAME}] 角色换装重绘失败:`, err);
                 toastr.error(`换装重绘失败: ${err.message || String(err)}`, PLUGIN_NAME);
                 renderCardBadges(wrapper, segResult);

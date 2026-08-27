@@ -128,7 +128,11 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
 }
 ══ 输出（① pov·原创角色示例·摄像机角色身体写入scene不入characters）══
 {
+  "shouldDraw": true,
+  "reason": "中文10~30字",
   "segments": [{
+    "label": "5~15字中文",
+    "anchor": {"text": "逐字复制原文"},
     "scene": "nsfw, sex, hetero, 1boy 1girl, pov, pov_crotch, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background, 1.2::large_penis::, erection, ejaculation, pov_hands",
     "characters": [{
       "name": "Kato (original)",
@@ -233,7 +237,11 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定，仅文本明确变更
 }
 ══ 输出（POV 示例·男主不入 characters）══
 {
+  "shouldDraw": true,
+  "reason": "中文10~30字",
   "segments": [{
+    "label": "5~15字中文",
+    "anchor": {"text": "逐字复制原文"},
     "scene": "nsfw, hetero, 1boy 1girl, pov, pov_crotch, from_above, indoor, infirmary, close-up, 1.2::large_penis::, veiny_penis, pre-cum",
     "characters": [{
       "name": "角色名",
@@ -1094,7 +1102,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
-    function collectCharacterCardInfo() {
+    function collectCharacterCardInfo(currentMes = '', recentMessages = []) {
         const store = getStore();
         if (!store.injectCharacterCard) return [];
 
@@ -1122,6 +1130,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
 
+            const allContextText = [...(recentMessages || []).map(m => m.content || ''), currentMes || ''].join('\n').toLowerCase();
             const infoList = [];
 
             for (const char of activeChars) {
@@ -1131,7 +1140,10 @@ Zimage 擅长理解复杂的英文长句和语境。
                     continue;
                 }
 
-                const description = String(char.description || char.data?.description || '').trim();
+                let description = String(char.description || char.data?.description || '').trim();
+                if (description.length > 1200) {
+                    description = description.slice(0, 1200) + '...';
+                }
 
                 const charBookEntries = [];
                 const entries = char.data?.character_book?.entries || char.character_book?.entries;
@@ -1148,13 +1160,22 @@ Zimage 擅长理解复杂的英文长句和语境。
                             } else if (Array.isArray(entry.key)) {
                                 keys = entry.key;
                             }
-                            const content = String(entry.content || '').trim();
+
+                            // 仅当包含关键词匹配当前上下文时才注入，防止几十条全量词条撑爆 Token
+                            const isMatched = keys.length === 0 || keys.some(k => k && allContextText.includes(k.toLowerCase()));
+                            if (!isMatched) continue;
+
+                            let content = String(entry.content || '').trim();
+                            if (content.length > 600) {
+                                content = content.slice(0, 600) + '...';
+                            }
                             if (content) {
                                 charBookEntries.push({
                                     keys,
                                     content
                                 });
                             }
+                            if (charBookEntries.length >= 8) break; // 最多 8 条高频相关词条
                         }
                     }
                 }
@@ -2814,8 +2835,20 @@ Zimage 擅长理解复杂的英文长句和语境。
                 keysecondary: Array.isArray(l.keysecondary) ? l.keysecondary : [],
             }));
 
+        let shouldDraw = true;
+        const rawShouldDraw = source?.shouldDraw;
+        if (rawShouldDraw === true || rawShouldDraw === 'true' || rawShouldDraw === 1 || rawShouldDraw === '1') {
+            shouldDraw = true;
+        } else if (rawShouldDraw === false || rawShouldDraw === 'false' || rawShouldDraw === 0 || rawShouldDraw === '0') {
+            // 仅当 segments 确实为空且无任何场景/角色 Tag 时，才判定为无需生图
+            shouldDraw = segments.length > 0 && segments.some(s => s.prompt || s.characters?.length || s.scene);
+        } else {
+            // 当模型未显式返回 shouldDraw 字段时，只要解析出了有效分镜或场景即默认生图
+            shouldDraw = segments.length > 0 || !!source?.prompt || !!source?.scene;
+        }
+
         const normalized = {
-            shouldDraw: !!source?.shouldDraw,
+            shouldDraw,
             prompt: segments.length ? segments[0].prompt : '',
             negative: '',
             multiChar: segments.length ? segments[0].multiChar : false,
@@ -4064,6 +4097,8 @@ SCHEMA:
             if (Number(last.id) === Number(messageId)) last.content = current.mes;
         }
         const lorebook = collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
+        // 限制发送给 LLM 的最大世界书词条数，防止数百条词条堆积导致请求巨大和极度变慢
+        const cappedLorebooks = lorebook.slice(0, 25);
 
         const minSeg = Number(store.minSegments) || 0;
 
@@ -4078,7 +4113,7 @@ SCHEMA:
             },
             recentMessages,
 
-            lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
+            lorebook: cappedLorebooks.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
             ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。` } : {}),
             ...((ec => {
@@ -4106,7 +4141,7 @@ SCHEMA:
             },
         };
 
-        const cardInfo = collectCharacterCardInfo();
+        const cardInfo = collectCharacterCardInfo(current.mes, recentMessages);
         if (cardInfo && cardInfo.length > 0) {
             payload.characterCardInfo = cardInfo;
         }
@@ -4870,9 +4905,9 @@ SCHEMA:
             };
             pruneCache();
             save();
-            const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment));
-            const hasTopLevelPrompt = !!getFinalPrompt(result);
-            if (!result.shouldDraw || (!hasUsableSegments && !hasTopLevelPrompt)) {
+            const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment) || segment.scene || (segment.characters && segment.characters.length > 0));
+            const hasTopLevelPrompt = !!getFinalPrompt(result) || !!result?.scene;
+            if (!result.shouldDraw && !hasUsableSegments && !hasTopLevelPrompt) {
                 ensureTaggerButtonState(wrapper, 'tagger 判断无需生图');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'done-no-draw');

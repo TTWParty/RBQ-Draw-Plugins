@@ -2397,6 +2397,31 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.body.appendChild(modal);
     }
 
+    function extractLorebookCategory(comment) {
+        if (!comment) return '综合';
+        const c = comment.trim();
+
+        // 1. [着装]：xxx or [动作/姿势]：xxx
+        const bracketMatch = c.match(/^\[([^\]]+)\]/);
+        if (bracketMatch) return bracketMatch[1].trim();
+
+        // 2. *服装-xxx or 日常服-xxx or 兽奸-xxx or 口交-xxx
+        const prefixMatch = c.match(/^[\*#\s]*([^\-\—\－\:\：\s\(\)\[\]]{2,8})[\-\—\－\:\：]/);
+        if (prefixMatch) return prefixMatch[1].trim();
+
+        // 3. Keywords prefix
+        const keywords = [
+            '日常服', '日常服装', '日常', '服装', '泳装', '内衣', '睡衣', '礼服', '制服', '女仆', '旗袍', '西装', '校服', '婚纱',
+            '口交', '手交', '乳交', '足交', '肛交', '自慰', '骑乘', '后入', '侧入', '坐姿', '群交', '轮奸', '兽奸', '触手', '调教',
+            '构图', '视角', '动作', '表情', '发型', '眼睛', '背景', '光影', '特效', '纹身', '束缚', '人物转化'
+        ];
+        for (const kw of keywords) {
+            if (c.startsWith(kw)) return kw;
+        }
+
+        return '综合';
+    }
+
     function openLorebookSearchModal(initialSourceId = null, onSelectEntry = null) {
         const existing = document.getElementById('rbq-sdt-lorebook-search-modal');
         if (existing) existing.remove();
@@ -2408,6 +2433,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         let selectedSourceId = initialSourceId || 'all';
+        let selectedCategory = 'all';
         let searchQuery = '';
 
         const getAllEntries = () => {
@@ -2417,11 +2443,20 @@ Zimage 擅长理解复杂的英文长句和语境。
                 try {
                     const parsed = parseLorebookRawJson(src.rawJson, src.name);
                     for (const e of parsed.entries) {
-                        list.push({ ...e, sourceName: src.name });
+                        list.push({ ...e, sourceName: src.name, category: extractLorebookCategory(e.comment) });
                     }
                 } catch (_e) { /* noop */ }
             }
             return list;
+        };
+
+        const getCategories = (entries) => {
+            const catMap = {};
+            for (const e of entries) {
+                const cat = e.category || '综合';
+                catMap[cat] = (catMap[cat] || 0) + 1;
+            }
+            return Object.entries(catMap).sort((a, b) => b[1] - a[1]);
         };
 
         const modal = document.createElement('div');
@@ -2447,25 +2482,26 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         const renderModal = () => {
             const allEntries = getAllEntries();
+            const categories = getCategories(allEntries);
             const q = searchQuery.toLowerCase().trim();
-            const filtered = q
-                ? allEntries.filter(e => {
-                    const c = (e.comment || '').toLowerCase();
-                    const cont = (e.content || '').toLowerCase();
-                    const k = (e.key || []).join(' ').toLowerCase();
-                    const sk = (e.keysecondary || []).join(' ').toLowerCase();
-                    return c.includes(q) || cont.includes(q) || k.includes(q) || sk.includes(q);
-                })
-                : allEntries;
+            const filtered = allEntries.filter(e => {
+                if (selectedCategory !== 'all' && e.category !== selectedCategory) return false;
+                if (!q) return true;
+                const c = (e.comment || '').toLowerCase();
+                const cont = (e.content || '').toLowerCase();
+                const k = (e.key || []).join(' ').toLowerCase();
+                const sk = (e.keysecondary || []).join(' ').toLowerCase();
+                return c.includes(q) || cont.includes(q) || k.includes(q) || sk.includes(q);
+            });
 
             modal.innerHTML = `
                 <div style="
                     background: #1e1f24 !important;
                     border: 1px solid rgba(255,255,255,0.18) !important;
                     border-radius: 14px !important;
-                    width: 720px !important;
+                    width: 760px !important;
                     max-width: 95vw !important;
-                    height: 85vh !important;
+                    height: 86vh !important;
                     display: flex !important;
                     flex-direction: column !important;
                     overflow: hidden !important;
@@ -2481,18 +2517,32 @@ Zimage 擅长理解复杂的英文长句和语境。
                         background: rgba(255,255,255,0.03) !important;
                     ">
                         <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
-                            <span>📚</span> ${onSelectEntry ? '从世界书中选择服装/词条预设' : '世界书词条库与搜索预览'}
+                            <span>📚</span> ${onSelectEntry ? '从世界书中选择服装/词条预设' : '世界书词条库与分类浏览'}
                             <span style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;">(共 ${filtered.length}/${allEntries.length} 条)</span>
                         </strong>
                         <button class="menu_button" id="rbq-sdt-lb-search-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                     </div>
 
-                    <div style="padding: 12px 18px !important; display: flex !important; gap: 10px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
-                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 制服, 紧身裙, 拳击, 跳蛋, 姿势, 视角, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 32px !important; margin: 0 !important; font-size: 13px !important; padding: 0 10px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
-                        <select id="rbq-sdt-lb-search-source" style="height: 32px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                    <div style="padding: 10px 18px !important; display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
+                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 制服, 紧身裙, 拳击, 跳蛋, 姿势, 视角, vibrator)..." style="flex: 1 !important; min-width: 180px !important; height: 32px !important; margin: 0 !important; font-size: 13px !important; padding: 0 10px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                        
+                        <select id="rbq-sdt-lb-search-source" style="height: 32px !important; margin: 0 !important; font-size: 12px !important; max-width: 160px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
                             <option value="all" ${selectedSourceId === 'all' ? 'selected' : ''}>🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
                             ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>📖 ${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
                         </select>
+
+                        <select id="rbq-sdt-lb-search-category" style="height: 32px !important; margin: 0 !important; font-size: 12px !important; max-width: 160px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,184,108,0.3) !important; border-radius: 8px !important; color: #ffb86c !important;">
+                            <option value="all" ${selectedCategory === 'all' ? 'selected' : ''}>🏷️ 全部分类 (${allEntries.length})</option>
+                            ${categories.map(([catName, count]) => `<option value="${escapeHtml(catName)}" ${selectedCategory === catName ? 'selected' : ''}>🏷️ ${escapeHtml(catName)} (${count})</option>`).join('')}
+                        </select>
+                    </div>
+
+                    <div style="padding: 6px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.15) !important; align-items: center !important; white-space: nowrap !important;">
+                        <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">分类:</span>
+                        <button class="menu_button rbq-sdt-cat-chip" data-cat="all" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; ${selectedCategory === 'all' ? 'background: rgba(104,215,255,0.25) !important; color: #79e4ff !important; border: 1px solid #79e4ff !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.05) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.1) !important;'}">全部 (${allEntries.length})</button>
+                        ${categories.slice(0, 18).map(([catName, count]) => `
+                            <button class="menu_button rbq-sdt-cat-chip" data-cat="${escapeHtml(catName)}" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; ${selectedCategory === catName ? 'background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.05) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.1) !important;'}">${escapeHtml(catName)} (${count})</button>
+                        `).join('')}
                     </div>
 
                     <div id="rbq-sdt-lb-search-results" style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
@@ -2504,9 +2554,10 @@ Zimage 擅长理解复杂的英文长句和语境。
                             return `
                             <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                                 <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
-                                    <div style="display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
+                                    <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important;">
                                         <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
                                         <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
+                                        <span style="font-size: 11px !important; background: rgba(104,215,255,0.1) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.2) !important; padding: 1px 6px !important; border-radius: 4px !important;">🏷️ ${escapeHtml(e.category)}</span>
                                         ${hasMultiple ? `
                                             <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
                                         ` : ''}
@@ -2559,9 +2610,25 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (sourceSelect) {
                 sourceSelect.addEventListener('change', (e) => {
                     selectedSourceId = e.target.value;
+                    selectedCategory = 'all';
                     renderModal();
                 });
             }
+
+            const categorySelect = modal.querySelector('#rbq-sdt-lb-search-category');
+            if (categorySelect) {
+                categorySelect.addEventListener('change', (e) => {
+                    selectedCategory = e.target.value;
+                    renderModal();
+                });
+            }
+
+            modal.querySelectorAll('.rbq-sdt-cat-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    selectedCategory = chip.dataset.cat;
+                    renderModal();
+                });
+            });
 
             modal.querySelectorAll('.rbq-sdt-select-lb-entry').forEach(btn => {
                 btn.addEventListener('click', () => {

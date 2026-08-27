@@ -776,6 +776,44 @@ Zimage 擅长理解复杂的英文长句和语境。
         return similarity > 0.7; // Similarity > 70% considered same outfit
     }
 
+    function deriveOutfitName(canonicalName, outfitTags, sceneLabel, isInitial = false) {
+        const cleanName = String(canonicalName || '').trim();
+        const cleanTags = String(outfitTags || '').replace(/_/g, ' ');
+        const firstTag = cleanTags.split(/[,，\n]/).map(t => t.trim()).filter(Boolean)[0] || '';
+
+        // Check if sceneLabel is specifically relevant for this character
+        let labelIsRelevant = false;
+        if (sceneLabel) {
+            const lowerLabel = sceneLabel.toLowerCase();
+            const lowerName = cleanName.toLowerCase();
+            if (lowerLabel.includes(lowerName)) {
+                labelIsRelevant = true;
+            } else {
+                // If label mentions another character's name (e.g. "Alma"), NEVER use it for Ulrihi
+                const profiles = getCharacterProfiles();
+                const otherNames = Object.keys(profiles)
+                    .map(k => getCanonicalCharName(profiles[k]?.displayName || k))
+                    .filter(n => n && n.toLowerCase() !== lowerName);
+                const mentionsOther = otherNames.some(on => lowerLabel.includes(on.toLowerCase()));
+                if (!mentionsOther) {
+                    labelIsRelevant = true; // Generic scene description (e.g. "海滩度假", "教室日常")
+                }
+            }
+        }
+
+        if (labelIsRelevant && sceneLabel) {
+            return `${isInitial ? '初始: ' : '剧情: '}${sceneLabel.slice(0, 12)}`;
+        }
+
+        if (firstTag && firstTag.length <= 25) {
+            return `${isInitial ? '初始: ' : '剧情: '}${firstTag}`;
+        }
+
+        const now = new Date();
+        const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        return isInitial ? '初始设定服装' : `剧情着装 (${timeStr})`;
+    }
+
     function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true, sceneLabel = '') {
         const profiles = getCharacterProfiles();
         const rawName = String(name || '').trim();
@@ -793,9 +831,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
                 const alreadyExists = existing.wardrobe.some(w => isSameOutfit(w.outfit, outfitTags));
                 if (!alreadyExists) {
-                    const now = new Date();
-                    const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-                    const nameStr = sceneLabel ? `剧情: ${sceneLabel.slice(0, 12)}` : `剧情着装 (${timeStr})`;
+                    const nameStr = deriveOutfitName(canonical, outfitTags, sceneLabel, false);
                     existing.wardrobe.push({
                         id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                         name: nameStr,
@@ -812,9 +848,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         } else {
             const initialWardrobe = [];
             if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
+                const nameStr = deriveOutfitName(canonical, outfitTags, sceneLabel, true);
                 initialWardrobe.push({
                     id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-                    name: sceneLabel ? `初始: ${sceneLabel.slice(0, 12)}` : '初始设定服装',
+                    name: nameStr,
                     outfit: outfitTags,
                     triggers: [],
                     createdAt: Date.now()
@@ -940,6 +977,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                                 </div>
                                 <div style="display: flex; gap: 4px; flex-shrink: 0;">
                                     <button class="menu_button" data-action="test-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="测试这套服装" style="padding: 2px 8px; font-size: 10px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试穿</button>
+                                    <button class="menu_button" data-action="edit-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="编辑服装名称与Tags" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-pen-to-square"></i></button>
                                     <button class="menu_button" data-action="delete-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="删除此套服装" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash"></i></button>
                                 </div>
                             </div>
@@ -1888,6 +1926,120 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         document.body.appendChild(modal);
         modal.querySelector('#rbq-sdt-wardrobe-name')?.focus();
+    }
+
+    function openEditWardrobeModal(charKey, outfitId) {
+        const existing = document.getElementById('rbq-sdt-wardrobe-edit-modal');
+        if (existing) existing.remove();
+
+        const profiles = getCharacterProfiles();
+        const profile = profiles[charKey];
+        if (!profile) return;
+        const charName = profile.displayName || charKey;
+        const outfit = (profile.wardrobe || []).find(w => w.id === outfitId);
+        if (!outfit) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-wardrobe-edit-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: rgba(0,0,0,0.8) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,184,108,0.3) !important;
+                border-radius: 14px !important;
+                width: 500px !important;
+                max-width: 95vw !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,184,108,0.06) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <i class="fa-solid fa-pen-to-square"></i> 编辑「${escapeHtml(charName)}」的服装预设
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-wardrobe-edit-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important;">
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">服装预设名称：</span>
+                        <input id="rbq-sdt-wardrobe-edit-name" type="text" value="${escapeHtml(outfit.name)}" style="width: 100% !important; padding: 6px 10px !important; font-size: 13px !important; border-radius: 6px !important; box-sizing: border-box !important;">
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">服装 Tags (Danbooru 英文提示词)：</span>
+                        <textarea id="rbq-sdt-wardrobe-edit-tags" style="width: 100% !important; min-height: 70px !important; padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; box-sizing: border-box !important;">${escapeHtml(outfit.outfit)}</textarea>
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">剧情触发词 (可选，用逗号隔开)：</span>
+                        <input id="rbq-sdt-wardrobe-edit-triggers" type="text" value="${escapeHtml((outfit.triggers || []).join(', '))}" style="width: 100% !important; padding: 6px 10px !important; font-size: 13px !important; border-radius: 6px !important; box-sizing: border-box !important;">
+                    </div>
+
+                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
+                        <button class="menu_button" id="rbq-sdt-wardrobe-edit-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-wardrobe-edit-save" type="button" style="padding: 6px 18px !important; font-size: 12px !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.3) !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-check"></i> 保存修改</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-wardrobe-edit-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-wardrobe-edit-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        modal.querySelector('#rbq-sdt-wardrobe-edit-save')?.addEventListener('click', () => {
+            const newName = modal.querySelector('#rbq-sdt-wardrobe-edit-name')?.value?.trim();
+            const newTags = modal.querySelector('#rbq-sdt-wardrobe-edit-tags')?.value?.trim();
+            const triggersStr = modal.querySelector('#rbq-sdt-wardrobe-edit-triggers')?.value?.trim();
+
+            if (!newName || !newTags) {
+                toastr.warning('请填写服装名称和对应的服装 Tags', PLUGIN_NAME);
+                return;
+            }
+
+            outfit.name = newName;
+            outfit.outfit = newTags;
+            outfit.triggers = triggersStr.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
+            profile.updatedAt = Date.now();
+            save();
+            refreshCharacterProfileListUi();
+            close();
+            toastr.success(`已保存服装「${newName}」的修改！`, PLUGIN_NAME);
+        });
+
+        document.body.appendChild(modal);
+        modal.querySelector('#rbq-sdt-wardrobe-edit-name')?.focus();
     }
 
     function ensureLorebookStore() {
@@ -5232,6 +5384,9 @@ SCHEMA:
                 if (profile && outfit) {
                     openCharacterTestModeSelector(profile.displayName || key, profile.baseTags || '', outfit.outfit || '', button);
                 }
+            } else if (action === 'edit-wardrobe-item') {
+                const outfitId = button.dataset.outfitId;
+                openEditWardrobeModal(key, outfitId);
             } else if (action === 'delete-wardrobe-item') {
                 const outfitId = button.dataset.outfitId;
                 deleteCharacterWardrobeOutfit(key, outfitId);

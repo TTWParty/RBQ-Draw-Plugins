@@ -4097,8 +4097,6 @@ SCHEMA:
             if (Number(last.id) === Number(messageId)) last.content = current.mes;
         }
         const lorebook = collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
-        // 限制发送给 LLM 的最大世界书词条数，防止数百条词条堆积导致请求巨大和极度变慢
-        const cappedLorebooks = lorebook.slice(0, 25);
 
         const minSeg = Number(store.minSegments) || 0;
 
@@ -4113,7 +4111,7 @@ SCHEMA:
             },
             recentMessages,
 
-            lorebook: cappedLorebooks.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
+            lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
             ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。` } : {}),
             ...((ec => {

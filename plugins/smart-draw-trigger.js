@@ -762,7 +762,21 @@ Zimage 擅长理解复杂的英文长句和语境。
         return null;
     }
 
-    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null) {
+    function isSameOutfit(a, b) {
+        if (!a || !b) return false;
+        const setA = new Set(String(a).toLowerCase().split(/[,，\s]+/).map(t => t.trim()).filter(t => t.length > 2));
+        const setB = new Set(String(b).toLowerCase().split(/[,，\s]+/).map(t => t.trim()).filter(t => t.length > 2));
+        if (setA.size === 0 || setB.size === 0) return false;
+        let intersect = 0;
+        for (const t of setA) {
+            if (setB.has(t)) intersect++;
+        }
+        const maxLen = Math.max(setA.size, setB.size);
+        const similarity = intersect / maxLen;
+        return similarity > 0.7; // Similarity > 70% considered same outfit
+    }
+
+    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true, sceneLabel = '') {
         const profiles = getCharacterProfiles();
         const rawName = String(name || '').trim();
         if (!rawName) return;
@@ -774,15 +788,44 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (baseTags && !existing.baseTags) existing.baseTags = baseTags;
             if (avatarUrl) existing.avatarUrl = avatarUrl;
             if (!Array.isArray(existing.wardrobe)) existing.wardrobe = [];
+
+            // Auto-archive new plot outfit to wardrobe if distinct
+            if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
+                const alreadyExists = existing.wardrobe.some(w => isSameOutfit(w.outfit, outfitTags));
+                if (!alreadyExists) {
+                    const now = new Date();
+                    const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                    const nameStr = sceneLabel ? `剧情: ${sceneLabel.slice(0, 12)}` : `剧情着装 (${timeStr})`;
+                    existing.wardrobe.push({
+                        id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: nameStr,
+                        outfit: outfitTags,
+                        triggers: sceneLabel ? [sceneLabel.slice(0, 6)] : [],
+                        createdAt: Date.now()
+                    });
+                    debugInfo(`👗 角色「${canonical}」新剧情服装已自动收录至衣柜: ${nameStr}`);
+                }
+            }
+
             existing.updatedAt = Date.now();
             debugInfo(`角色记忆更新「${canonical}」: outfit="${(outfitTags || '').slice(0, 40)}..."`);
         } else {
+            const initialWardrobe = [];
+            if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
+                initialWardrobe.push({
+                    id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                    name: sceneLabel ? `初始: ${sceneLabel.slice(0, 12)}` : '初始设定服装',
+                    outfit: outfitTags,
+                    triggers: [],
+                    createdAt: Date.now()
+                });
+            }
             profiles[canonical] = {
                 displayName: canonical,
                 baseTags: baseTags || '',
                 currentOutfit: outfitTags || '',
                 avatarUrl: avatarUrl || '',
-                wardrobe: [],
+                wardrobe: initialWardrobe,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
@@ -954,7 +997,7 @@ Zimage 擅长理解复杂的英文长句和语境。
      * Merge character memory with LLM output.
      * @returns {string} Final merged caption for char_caption
      */
-    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
+    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, sceneLabel = '') {
         const store = getStore();
         const chatKey = getChatKey();
         const weightedName = weightCharacterName(name);
@@ -975,14 +1018,14 @@ Zimage 擅长理解复杂的英文长句和语境。
             // Use stored base (immutable), update outfit from LLM
             finalBase = profile.baseTags;
             finalOutfit = llmOutfit || profile.currentOutfit;
-            if (llmOutfit) updateCharacterProfile(name, null, llmOutfit);
+            if (llmOutfit) updateCharacterProfile(name, null, llmOutfit, null, true, sceneLabel);
             debugInfo(`角色记忆复用「${name}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
             // First time: learn from LLM and store (store clean name, not weighted)
             finalBase = [name, llmBase].filter(Boolean).join(', ');
             finalOutfit = llmOutfit || '';
             if (finalBase && name) {
-                updateCharacterProfile(name, finalBase, finalOutfit);
+                updateCharacterProfile(name, finalBase, finalOutfit, null, true, sceneLabel);
             } else if (!finalBase && name) {
                 debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
             }
@@ -2571,7 +2614,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
 
                     // Merge character memory with LLM output
-                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags);
+                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, seg?.label || '');
 
                     return {
                         index: charIndex + 1,

@@ -1378,7 +1378,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 9999999 !important;
+            z-index: 100000000 !important;
             background: rgba(0,0,0,0.75) !important;
             display: flex !important;
             align-items: center !important;
@@ -1553,8 +1553,11 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function composeCharacterTestPrompt(name, baseTags, outfitTags, mode, transparentBg = false) {
-        const cleanName = getCanonicalCharName(name) || 'Character';
-        const weightedName = weightCharacterName(cleanName);
+        let cleanName = getCanonicalCharName(name) || '';
+        if (/^\[[^\]]+\]/.test(cleanName) || /[\u4e00-\u9fa5]/.test(cleanName)) {
+            cleanName = '';
+        }
+        const weightedName = cleanName ? weightCharacterName(cleanName) : '';
 
         // Detect gender from base/outfit/name
         const allRawText = `${name} ${baseTags || ''} ${outfitTags || ''}`.toLowerCase();
@@ -1701,7 +1704,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 9999999 !important;
+            z-index: 100000001 !important;
             background: rgba(0,0,0,0.8) !important;
             display: flex !important;
             align-items: center !important;
@@ -2392,7 +2395,11 @@ Zimage 擅长理解复杂的英文长句和语境。
 
             modal.querySelectorAll('.rbq-sdt-test-entry-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const tags = btn.dataset.tags || '';
+                    let tags = btn.dataset.tags || '';
+                    // 清理 markdown 列表标头如 `- 动作 (哺乳) : `
+                    tags = tags.replace(/^[#\-\*\s]+[^:\n]+[:：]\s*/gm, '');
+                    // 将斜杠同义词转为逗号分隔
+                    tags = tags.replace(/\s*\/\s*/g, ', ');
                     const comment = btn.dataset.comment || '世界书测试';
                     openCharacterTestModeSelector(comment, '', tags, btn);
                 });

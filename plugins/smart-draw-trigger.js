@@ -773,6 +773,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (outfitTags) existing.currentOutfit = outfitTags;
             if (baseTags && !existing.baseTags) existing.baseTags = baseTags;
             if (avatarUrl) existing.avatarUrl = avatarUrl;
+            if (!Array.isArray(existing.wardrobe)) existing.wardrobe = [];
             existing.updatedAt = Date.now();
             debugInfo(`角色记忆更新「${canonical}」: outfit="${(outfitTags || '').slice(0, 40)}..."`);
         } else {
@@ -781,11 +782,44 @@ Zimage 擅长理解复杂的英文长句和语境。
                 baseTags: baseTags || '',
                 currentOutfit: outfitTags || '',
                 avatarUrl: avatarUrl || '',
+                wardrobe: [],
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
             debugInfo(`角色记忆新建「${canonical}」: base="${(baseTags || '').slice(0, 40)}...", outfit="${(outfitTags || '').slice(0, 40)}..."`);
         }
+        save();
+        refreshCharacterProfileListUi();
+    }
+
+    function addCharacterWardrobeOutfit(charName, outfitName, outfitTags, triggersStr = '') {
+        const canonical = getCanonicalCharName(charName);
+        const p = getCharacterProfile(canonical);
+        if (!p) return null;
+        if (!Array.isArray(p.wardrobe)) p.wardrobe = [];
+        const triggers = typeof triggersStr === 'string'
+            ? triggersStr.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean)
+            : (Array.isArray(triggersStr) ? triggersStr : []);
+        const newOutfit = {
+            id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            name: String(outfitName || '未命名服装').trim(),
+            outfit: String(outfitTags || '').trim(),
+            triggers,
+            createdAt: Date.now()
+        };
+        p.wardrobe.push(newOutfit);
+        p.updatedAt = Date.now();
+        save();
+        refreshCharacterProfileListUi();
+        return newOutfit;
+    }
+
+    function deleteCharacterWardrobeOutfit(charName, outfitId) {
+        const canonical = getCanonicalCharName(charName);
+        const p = getCharacterProfile(canonical);
+        if (!p || !Array.isArray(p.wardrobe)) return;
+        p.wardrobe = p.wardrobe.filter(w => w.id !== outfitId);
+        p.updatedAt = Date.now();
         save();
         refreshCharacterProfileListUi();
     }
@@ -822,6 +856,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             const base = String(profile.baseTags || '').slice(0, 50);
             const outfit = String(profile.currentOutfit || '').slice(0, 50);
             const name = profile.displayName || key;
+            const wardrobe = Array.isArray(profile.wardrobe) ? profile.wardrobe : [];
             const avatarHtml = profile.avatarUrl
                 ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 38px; height: 38px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0;" alt="${escapeHtml(name)}" />`
                 : `<div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">👤</div>`;
@@ -838,12 +873,36 @@ Zimage 擅长理解复杂的英文长句和语境。
                                 <small title="${escapeHtml(profile.currentOutfit || '')}" style="display: block; opacity: 0.8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">outfit: ${escapeHtml(outfit)}${profile.currentOutfit && profile.currentOutfit.length >= 50 ? '...' : ''}</small>
                             </div>
                         </div>
-                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center;">
-                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试生图</button>
+                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap;">
+                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试衣测试</button>
+                            <button class="menu_button" type="button" data-action="add-wardrobe-btn" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important;"><i class="fa-solid fa-plus"></i> 加衣服</button>
                             <button class="menu_button" type="button" data-action="edit-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap;">编辑</button>
                             <button class="menu_button" type="button" data-action="delete-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap;">删除</button>
                         </div>
                     </div>
+
+                    <!-- Wardrobe Subpanel -->
+                    <div class="rbq-sdt-char-wardrobe-deck" style="margin-top: 4px; padding: 6px 10px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 11px; font-weight: bold; color: #ffb86c; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-vest-patches"></i> 差分衣柜 (${wardrobe.length} 套预设)</span>
+                        </div>
+                        ${wardrobe.length ? wardrobe.map(w => `
+                            <div class="rbq-sdt-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="font-size: 12px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 6px;">
+                                        <span>👗 ${escapeHtml(w.name)}</span>
+                                        ${w.triggers?.length ? `<span style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: normal;">(触发词: ${escapeHtml(w.triggers.join(', '))})</span>` : ''}
+                                    </div>
+                                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;" title="${escapeHtml(w.outfit)}">${escapeHtml(w.outfit)}</div>
+                                </div>
+                                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                                    <button class="menu_button" data-action="test-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="测试这套服装" style="padding: 2px 8px; font-size: 10px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试穿</button>
+                                    <button class="menu_button" data-action="delete-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="删除此套服装" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash"></i></button>
+                                </div>
+                            </div>
+                        `).join('') : '<div style="font-size: 11px; opacity: 0.5; padding: 2px 0;">暂无预设服装，点击上方「加衣服」添加</div>'}
+                    </div>
+
                     <!-- Edit View -->
                     <div class="rbq-sdt-char-edit-mode" style="display: none; flex-direction: column; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px;">
                         <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -1679,6 +1738,113 @@ Zimage 擅长理解复杂的英文长句和语境。
         modal.addEventListener('click', (e) => {
             if (e.target === modal) modal.remove();
         });
+    }
+
+    function openAddWardrobeModal(charKey) {
+        const existing = document.getElementById('rbq-sdt-wardrobe-modal');
+        if (existing) existing.remove();
+
+        const profiles = getCharacterProfiles();
+        const profile = profiles[charKey];
+        if (!profile) return;
+        const charName = profile.displayName || charKey;
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-wardrobe-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: rgba(0,0,0,0.8) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(6px) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,184,108,0.3) !important;
+                border-radius: 14px !important;
+                width: 500px !important;
+                max-width: 95vw !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,184,108,0.06) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <i class="fa-solid fa-vest-patches"></i> 为「${escapeHtml(charName)}」添加新服装预设
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-wardrobe-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important;">
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">服装名称 (例如: 日常校服 / 蕾丝睡衣 / 战斗女仆装 / 泳装)：</span>
+                        <input id="rbq-sdt-wardrobe-name" type="text" placeholder="输入服装预设名称" style="width: 100% !important; padding: 6px 10px !important; font-size: 13px !important; border-radius: 6px !important; box-sizing: border-box !important;">
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">服装 Tags (Danbooru 英文提示词)：</span>
+                        <textarea id="rbq-sdt-wardrobe-tags" placeholder="例如: school uniform, sailor collar, pleated skirt, white socks, loafers" style="width: 100% !important; min-height: 70px !important; padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; box-sizing: border-box !important;"></textarea>
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">剧情触发词 (可选，用逗号隔开，剧情提到时优先换装)：</span>
+                        <input id="rbq-sdt-wardrobe-triggers" type="text" placeholder="例如: 上学, 教室, 校服" style="width: 100% !important; padding: 6px 10px !important; font-size: 13px !important; border-radius: 6px !important; box-sizing: border-box !important;">
+                    </div>
+
+                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
+                        <button class="menu_button" id="rbq-sdt-wardrobe-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-wardrobe-save" type="button" style="padding: 6px 18px !important; font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.4) !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-plus"></i> 保存到衣柜</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-wardrobe-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-wardrobe-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        modal.querySelector('#rbq-sdt-wardrobe-save')?.addEventListener('click', () => {
+            const outfitName = modal.querySelector('#rbq-sdt-wardrobe-name')?.value?.trim();
+            const outfitTags = modal.querySelector('#rbq-sdt-wardrobe-tags')?.value?.trim();
+            const triggersStr = modal.querySelector('#rbq-sdt-wardrobe-triggers')?.value?.trim();
+
+            if (!outfitName || !outfitTags) {
+                toastr.warning('请填写服装名称和对应的服装 Tags', PLUGIN_NAME);
+                return;
+            }
+
+            addCharacterWardrobeOutfit(charKey, outfitName, outfitTags, triggersStr);
+            close();
+            toastr.success(`已为角色「${charName}」添加服装预设「${outfitName}」！`, PLUGIN_NAME);
+        });
+
+        document.body.appendChild(modal);
+        modal.querySelector('#rbq-sdt-wardrobe-name')?.focus();
     }
 
     function ensureLorebookStore() {
@@ -2675,6 +2841,253 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.body.appendChild(modal);
     }
 
+    async function runSegmentAiRefinement(segResult, userInstructions) {
+        const store = getStore();
+        const segJson = JSON.stringify(segResult || {});
+        const systemPrompt = `You are an expert anime AI art storyboard director and tagger.
+Your task is to refine a single storyboard segment based on the user's specific modification instructions.
+Instructions:
+1. Update the scene, characters' outfits, actions, emotions, poses, or camera POV according to the user instructions.
+2. Keep unmentioned fixed character appearance (hair color, eye color, body type) intact.
+3. Output ONLY a valid JSON object matching the schema below, without markdown backticks or commentary.
+
+SCHEMA:
+{
+  "label": "string short chinese summary (5-15 chars)",
+  "scene": "string danbooru tags for background, environment, lighting, camera angle, NO character tags",
+  "characters": [
+    {
+      "name": "string character name",
+      "base": "string unchanged appearance tags",
+      "outfit": "string updated clothing tags",
+      "action": "string updated action, pose, expression tags",
+      "center": "string grid coordinate e.g. C3, B3, D3"
+    }
+  ]
+}`;
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Original Segment:\n${segJson}\n\nUser Modification Instructions:\n${userInstructions}\n\nRefined Segment JSON:` }
+        ];
+
+        let json;
+        if (store.provider === 'custom') {
+            const customUrl = String(store.customUrl || '').trim();
+            checkUrlSafety(customUrl);
+            const headers = { 'Content-Type': 'application/json' };
+            if (store.customApiKey) {
+                const headerName = store.customApiKeyHeader || 'Authorization';
+                headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
+            }
+            const response = await smartFetch(customUrl, { method: 'POST', headers, body: JSON.stringify({ messages }) });
+            if (!response.ok) throw new Error(`Tagger API 请求失败: HTTP ${response.status}`);
+            json = await response.json();
+        } else {
+            const url = normalizeBaseUrl(store.openaiBaseUrl);
+            if (!url) throw new Error('请先在设置中填写 OpenAI 兼容接口 Base URL');
+            const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+            if (!modelName) throw new Error('请先在设置中填写模型名称');
+            checkUrlSafety(url);
+            const response = await callApiWithJsonFallback(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
+                }
+            }, {
+                model: modelName,
+                temperature: 0.3,
+                response_format: { type: 'json_object' },
+                stream: false,
+                messages
+            });
+            if (!response.ok) throw new Error(`Tagger API 请求失败: HTTP ${response.status}`);
+            json = await response.json();
+        }
+
+        const rawContent = json?.choices?.[0]?.message?.content || json?.content || json;
+        const parsed = typeof rawContent === 'object' && rawContent !== null ? rawContent : extractJson(rawContent);
+        if (!parsed || (!parsed.scene && !parsed.characters?.length && !parsed.prompt)) {
+            throw new Error('AI 未能生成有效的调整分镜 JSON');
+        }
+
+        return {
+            label: parsed.label || segResult.label || '调整后分镜',
+            anchor: segResult.anchor || { type: 'sentence', index: 1 },
+            scene: parsed.scene || segResult.scene || '',
+            characters: Array.isArray(parsed.characters) && parsed.characters.length > 0
+                ? parsed.characters.map(c => ({
+                    name: c.name || '',
+                    _rawName: c.name || '',
+                    base: c.base || '',
+                    outfit: c.outfit || '',
+                    action: c.action || '',
+                    center: c.center || 'C3',
+                    uc: c.uc || ''
+                }))
+                : (segResult.characters || []),
+            matchedLorebooks: segResult.matchedLorebooks || [],
+        };
+    }
+
+    function openSegmentAiRefinerModal(wrapper, segResult) {
+        const existing = document.getElementById('rbq-sdt-refiner-modal');
+        if (existing) existing.remove();
+
+        const currentPrompt = getFinalPrompt(segResult);
+        const charSummary = (segResult?.characters || []).map(c => {
+            const parts = [c.name || c._rawName, c.outfit, c.action].filter(Boolean);
+            return parts.join(' — ');
+        }).join(' | ') || '无角色设定';
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-refiner-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: rgba(0,0,0,0.85) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(8px) !important;
+            -webkit-backdrop-filter: blur(8px) !important;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(180,104,255,0.35) !important;
+                border-radius: 14px !important;
+                width: 600px !important;
+                max-width: 95vw !important;
+                max-height: 85vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(180,104,255,0.08) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #d8aaff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <span>✨</span> AI 微调重构此分镜
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-refiner-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important;">当前分镜状态：</span>
+                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; padding: 6px 10px !important; border-radius: 6px !important; font-size: 11px !important; color: rgba(255,255,255,0.8) !important;">
+                            ${segResult.scene ? `<div><b>场景:</b> ${escapeHtml(segResult.scene)}</div>` : ''}
+                            <div><b>角色:</b> ${escapeHtml(charSummary)}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 6px !important;">
+                        <span style="font-size: 13px !important; font-weight: bold !important; color: #fff !important;">✍️ 输入你想让 AI 调整的内容 (自然语言或 Tag)：</span>
+                        <textarea id="rbq-sdt-refine-input" placeholder="例如：\n- 换成半透明蕾丝睡衣，露出香肩\n- 表情变成害羞脸红、眼角带泪，视角改成仰视特写\n- 动作改成双手被绑在身后跪坐在地毯上..." style="width: 100% !important; min-height: 100px !important; padding: 10px 12px !important; font-size: 13px !important; border-radius: 8px !important; box-sizing: border-box !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important;"></textarea>
+                    </div>
+
+                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
+                        <button class="menu_button" id="rbq-sdt-refiner-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-refiner-submit" type="button" style="padding: 6px 18px !important; font-size: 12px !important; background: rgba(180,104,255,0.25) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.4) !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 重新构思并生图</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-refiner-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-refiner-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        const submitBtn = modal.querySelector('#rbq-sdt-refiner-submit');
+        const inputEl = modal.querySelector('#rbq-sdt-refine-input');
+
+        submitBtn?.addEventListener('click', async () => {
+            const userInstructions = String(inputEl?.value || '').trim();
+            if (!userInstructions) {
+                toastr.warning('请输入你想让 AI 调整的内容', PLUGIN_NAME);
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> AI 正在构思分镜...';
+
+            try {
+                toastr.info('AI 正在根据你的指令重构提示词...', PLUGIN_NAME);
+                const updatedSeg = await runSegmentAiRefinement(segResult, userInstructions);
+                
+                close();
+                toastr.info('分镜重构完成，开始生成新图像...', PLUGIN_NAME);
+
+                // Set loading status in card
+                prepareNaiCharData(updatedSeg);
+                const newFinalPrompt = getFinalPrompt(updatedSeg);
+                wrapper.dataset.prompt = newFinalPrompt;
+
+                const baseKey = wrapper.dataset.rbqSdtBaseKey;
+                const segmentKey = wrapper.dataset.rbqSdtSegmentKey;
+
+                // Update card UI loading placeholder
+                const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
+                const origHtml = inlineUi.innerHTML;
+                inlineUi.innerHTML = `
+                    <div class="st-scene-trigger-loading" style="padding: 20px; text-align: center;">
+                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: #d8aaff; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #d8aaff;">AI 微调重绘中...</div>
+                        <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">${escapeHtml(userInstructions.slice(0, 30))}</div>
+                    </div>
+                `;
+
+                // Generate new image
+                const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-refine', {}, (progress) => {
+                    const statusText = wrapper.querySelector('.st-scene-trigger-loading div');
+                    if (statusText && typeof progress === 'string') {
+                        statusText.textContent = progress;
+                    }
+                });
+
+                if (imageResult && (imageResult.url || imageResult.displayUrl)) {
+                    RBQ.api.renderInlineGeneratedImage(wrapper, imageResult);
+                    renderCardBadges(wrapper, updatedSeg);
+                    if (baseKey && segmentKey) {
+                        markSegmentAutoGenerated(baseKey, segmentKey, imageResult);
+                    }
+                    toastr.success('已根据你的调整要求成功生成新图像！', PLUGIN_NAME);
+                } else {
+                    inlineUi.innerHTML = origHtml;
+                    throw new Error('生图未返回有效图像');
+                }
+            } catch (err) {
+                console.error(`[${PLUGIN_NAME}] AI 调整此图失败:`, err);
+                toastr.error(`AI 调整生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
+                renderCardBadges(wrapper, segResult);
+            }
+        });
+
+        document.body.appendChild(modal);
+        inputEl?.focus();
+    }
+
     function renderCardBadges(wrapper, segResult) {
         if (!(wrapper instanceof HTMLElement)) return;
         const store = getStore();
@@ -2714,6 +3127,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             }
         }
 
+        // 3. AI Segment Refinement button
+        badges.push(`<button class="menu_button rbq-sdt-card-refine-btn" type="button" style="font-size: 11px !important; background: rgba(180,104,255,0.14) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.35) !important; border-radius: 6px !important; padding: 2px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 10px !important;"></i> ✨ AI 调整此图</button>`);
+
         if (badges.length > 0) {
             const deck = document.createElement('div');
             deck.className = 'rbq-sdt-card-badge-deck';
@@ -2723,6 +3139,11 @@ Zimage 擅长理解复杂的英文长句和语境。
             deck.querySelector('.rbq-sdt-card-lorebook-btn')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
+            });
+
+            deck.querySelector('.rbq-sdt-card-refine-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openSegmentAiRefinerModal(wrapper, segResult);
             });
 
             const inlineUi = wrapper.querySelector('.st-scene-trigger-inline-ui') || wrapper;
@@ -3042,6 +3463,17 @@ Zimage 擅长理解复杂的英文长句和语境。
             payload.characterCardInfo = cardInfo;
         }
 
+        const profiles = getCharacterProfiles();
+        const wardrobeList = Object.entries(profiles)
+            .filter(([_, p]) => Array.isArray(p.wardrobe) && p.wardrobe.length > 0)
+            .map(([k, p]) => ({
+                character: p.displayName || k,
+                wardrobe: p.wardrobe.map(w => ({ name: w.name, outfit: w.outfit, triggers: w.triggers }))
+            }));
+        if (wardrobeList.length > 0) {
+            payload.characterWardrobes = wardrobeList;
+        }
+
         if (store.injectPresetsToTagger) {
             const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
             const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
@@ -3062,6 +3494,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (store.injectCharacterCard && hasCardInfo) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征（如发色、瞳色、发型、体型、标志性服饰特征等）并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于你脑中的常识和随意猜测。';
         }
+        systemPrompt += '\n\n【👗 角色差分衣柜指示】\n当 payload 中包含 `characterWardrobes` 字段时，若剧情场景、动作或台词命中了角色的某套预设服装或触发词（如泳装、睡衣、战斗服等），请优先直接采用该套服装预设中的 `outfit` 提示词，保持角色服饰的一致性与高还原度。';
         if (store.injectPresetsToTagger) {
             const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
             const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
@@ -4746,6 +5179,20 @@ Zimage 擅长理解复杂的英文长句和语境。
                 deleteCharacterProfile(key);
                 refreshCharacterProfileListUi();
                 toastr.success(`已删除角色记忆：${key}`, PLUGIN_NAME);
+            } else if (action === 'add-wardrobe-btn') {
+                openAddWardrobeModal(key);
+            } else if (action === 'test-wardrobe-item') {
+                const outfitId = button.dataset.outfitId;
+                const profiles = getCharacterProfiles();
+                const profile = profiles[key];
+                const outfit = (profile?.wardrobe || []).find(w => w.id === outfitId);
+                if (profile && outfit) {
+                    openCharacterTestModeSelector(profile.displayName || key, profile.baseTags || '', outfit.outfit || '', button);
+                }
+            } else if (action === 'delete-wardrobe-item') {
+                const outfitId = button.dataset.outfitId;
+                deleteCharacterWardrobeOutfit(key, outfitId);
+                toastr.success('已从衣柜中删除该服装预设', PLUGIN_NAME);
             } else if (action === 'test-char') {
                 const profiles = getCharacterProfiles();
                 const profile = profiles[key];

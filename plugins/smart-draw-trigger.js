@@ -981,31 +981,39 @@ Zimage 擅长理解复杂的英文长句和语境。
         const entries = Object.entries(profiles);
         if (!entries.length) return '<span style="opacity:.6">暂无已记忆角色</span>';
         return entries.map(([key, profile]) => {
-            const base = String(profile.baseTags || '').slice(0, 50);
-            const outfit = String(profile.currentOutfit || '').slice(0, 50);
-            const name = profile.displayName || key;
+            const base = String(profile.baseTags || '').trim();
+            const outfit = String(profile.currentOutfit || '').trim();
+            const rawName = (profile.displayName || key || '').trim();
+            const name = getCanonicalCharName(rawName) || rawName || '未命名角色';
             const wardrobe = Array.isArray(profile.wardrobe) ? profile.wardrobe : [];
             const avatarHtml = profile.avatarUrl
                 ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 38px; height: 38px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.15); flex-shrink: 0;" alt="${escapeHtml(name)}" />`
                 : `<div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">👤</div>`;
 
             return `
-                <div class="rbq-sdt-lorebook-item" data-char-key="${escapeHtml(key)}" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;">
+                <div class="rbq-sdt-lorebook-item" data-char-key="${escapeHtml(key)}" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 6px;">
                     <!-- Normal View -->
-                    <div class="rbq-sdt-char-view-mode" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%;">
-                        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+                    <div class="rbq-sdt-char-view-mode" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                        <!-- Top Row: Avatar & Character Meta Info (Full Width) -->
+                        <div style="display: flex; align-items: flex-start; gap: 10px; width: 100%; min-width: 0;">
                             ${avatarHtml}
-                            <div class="rbq-sdt-lorebook-meta" style="flex: 1; min-width: 0;">
-                                <strong style="font-size: 13px; color: #fff;">${escapeHtml(name)}</strong>
-                                <small title="${escapeHtml(profile.baseTags || '')}" style="display: block; opacity: 0.8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">base: ${escapeHtml(base)}${profile.baseTags && profile.baseTags.length >= 50 ? '...' : ''}</small>
-                                <small title="${escapeHtml(profile.currentOutfit || '')}" style="display: block; opacity: 0.8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">outfit: ${escapeHtml(outfit)}${profile.currentOutfit && profile.currentOutfit.length >= 50 ? '...' : ''}</small>
+                            <div class="rbq-sdt-lorebook-meta" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                                <strong style="font-size: 13.5px; color: #79e4ff; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3;">👤 ${escapeHtml(name)}</strong>
+                                <small title="${escapeHtml(profile.baseTags || '')}" style="display: block; opacity: 0.75; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    <span style="color: rgba(255,255,255,0.5);">外貌:</span> ${escapeHtml(base ? (base.length > 45 ? base.slice(0, 45) + '...' : base) : '暂无外貌设定')}
+                                </small>
+                                <small title="${escapeHtml(profile.currentOutfit || '')}" style="display: block; opacity: 0.75; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    <span style="color: rgba(255,255,255,0.5);">当前服装:</span> ${escapeHtml(outfit ? (outfit.length > 45 ? outfit.slice(0, 45) + '...' : outfit) : '暂无当前服装')}
+                                </small>
                             </div>
                         </div>
-                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap;">
-                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试衣测试</button>
-                            <button class="menu_button" type="button" data-action="add-wardrobe-btn" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important;"><i class="fa-solid fa-plus"></i> 加衣服</button>
-                            <button class="menu_button" type="button" data-action="edit-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap;">编辑</button>
-                            <button class="menu_button" type="button" data-action="delete-char" data-char-key="${escapeHtml(key)}" style="padding: 4px 10px; margin: 0; font-size: 11px; white-space: nowrap;">删除</button>
+
+                        <!-- Action Buttons Toolbar (Wraps cleanly on mobile) -->
+                        <div class="rbq-sdt-lorebook-actions" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.05);">
+                            <button class="menu_button" type="button" data-action="test-char" data-char-key="${escapeHtml(key)}" style="padding: 3px 9px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.3) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试衣测试</button>
+                            <button class="menu_button" type="button" data-action="add-wardrobe-btn" data-char-key="${escapeHtml(key)}" style="padding: 3px 9px; margin: 0; font-size: 11px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important;"><i class="fa-solid fa-plus"></i> 加衣服</button>
+                            <button class="menu_button" type="button" data-action="edit-char" data-char-key="${escapeHtml(key)}" style="padding: 3px 9px; margin: 0; font-size: 11px; white-space: nowrap;"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+                            <button class="menu_button" type="button" data-action="delete-char" data-char-key="${escapeHtml(key)}" style="padding: 3px 9px; margin: 0; font-size: 11px; white-space: nowrap; color: #ff8585 !important;"><i class="fa-solid fa-trash"></i> 删除</button>
                         </div>
                     </div>
 
@@ -1017,21 +1025,21 @@ Zimage 擅长理解复杂的英文长句和语境。
                         ${wardrobe.length ? wardrobe.map(w => {
                             const isActive = isSameOutfit(w.outfit, profile.currentOutfit);
                             return `
-                                <div class="rbq-sdt-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; background: ${isActive ? 'rgba(100,255,100,0.06)' : 'rgba(255,255,255,0.03)'}; border-radius: 6px; border: 1px solid ${isActive ? 'rgba(100,255,100,0.25)' : 'rgba(255,255,255,0.05)'};">
-                                    <div style="flex: 1; min-width: 0;">
+                                <div class="rbq-sdt-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" style="display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; background: ${isActive ? 'rgba(100,255,100,0.06)' : 'rgba(255,255,255,0.03)'}; border-radius: 6px; border: 1px solid ${isActive ? 'rgba(100,255,100,0.25)' : 'rgba(255,255,255,0.05)'};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
                                         <div style="font-size: 12px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                                             <span>👗 ${escapeHtml(w.name)}</span>
                                             ${isActive ? `<span style="font-size: 10px; color: #a3ffa3; background: rgba(100,255,100,0.15); border: 1px solid rgba(100,255,100,0.3); padding: 1px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px;"><i class="fa-solid fa-circle-check"></i> 当前穿着</span>` : ''}
                                             ${w.triggers?.length ? `<span style="font-size: 10px; color: rgba(255,255,255,0.55); font-weight: normal;">(触发词: ${escapeHtml(w.triggers.join(', '))})</span>` : ''}
                                         </div>
-                                        <div style="font-size: 11px; color: rgba(255,255,255,0.7); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;" title="${escapeHtml(w.outfit)}">${escapeHtml(w.outfit)}</div>
+                                        <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-left: auto;">
+                                            ${!isActive ? `<button class="menu_button" data-action="set-active-outfit" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="将此服装设为当前穿着 (用于后续出图)" style="padding: 2px 7px; font-size: 10px; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important;"><i class="fa-solid fa-shirt"></i> 设为当前</button>` : ''}
+                                            <button class="menu_button" data-action="test-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="测试这套服装" style="padding: 2px 8px; font-size: 10px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试穿</button>
+                                            <button class="menu_button" data-action="edit-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="编辑服装名称与Tags" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-pen-to-square"></i></button>
+                                            <button class="menu_button" data-action="delete-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="删除此套服装" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash"></i></button>
+                                        </div>
                                     </div>
-                                    <div style="display: flex; gap: 4px; flex-shrink: 0; align-items: center; flex-wrap: wrap;">
-                                        ${!isActive ? `<button class="menu_button" data-action="set-active-outfit" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="将此服装设为当前穿着 (用于后续出图)" style="padding: 2px 7px; font-size: 10px; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important;"><i class="fa-solid fa-shirt"></i> 设为当前穿着</button>` : ''}
-                                        <button class="menu_button" data-action="test-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="测试这套服装" style="padding: 2px 8px; font-size: 10px; background: rgba(104,215,255,0.15) !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试穿</button>
-                                        <button class="menu_button" data-action="edit-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="编辑服装名称与Tags" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-pen-to-square"></i></button>
-                                        <button class="menu_button" data-action="delete-wardrobe-item" data-char-key="${escapeHtml(key)}" data-outfit-id="${escapeHtml(w.id)}" type="button" title="删除此套服装" style="padding: 2px 6px; font-size: 10px;"><i class="fa-solid fa-trash"></i></button>
-                                    </div>
+                                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(w.outfit)}">${escapeHtml(w.outfit)}</div>
                                 </div>
                             `;
                         }).join('') : '<div style="font-size: 11px; opacity: 0.5; padding: 2px 0;">暂无预设服装，点击上方「加衣服」添加</div>'}
@@ -3291,7 +3299,13 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function extractJson(text) {
-        const str = String(text || '').trim();
+        let str = String(text || '').trim();
+        if (!str) return {};
+
+        // 移除 <think>...</think> 或 <thinking>...</thinking> 思考区，避免提取到思考过程中的草稿 JSON
+        str = str.replace(/<think>[\s\S]*?<\/think>/gi, '')
+                 .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+                 .trim();
         if (!str) return {};
 
         try {

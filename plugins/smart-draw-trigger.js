@@ -3291,11 +3291,8 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function extractJson(text) {
-        let str = String(text || '').trim();
+        const str = String(text || '').trim();
         if (!str) return {};
-
-        // Strip <think>...</think> if model generated hidden/explicit CoT
-        str = str.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
         try {
             return JSON.parse(str);
@@ -4896,7 +4893,7 @@ SCHEMA:
                 v5: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，建立当前帧的完整状态快照：\n1. 场景连续性：当前空间环境、时间段、氛围基调\n2. 衣态追踪：逐件追踪每个角色的衣物状态（穿着/半脱/脱落/损坏），仅文本明确描述的变化才可更新\n3. 体态与位置：角色的体型特征、当前姿势、空间相对位置\n4. 情绪基调：每个角色此刻的核心情绪（严格区分屈辱/恐惧/快感/愤怒/哀求等，不可混淆）\n5. 时间线定位：当前文本的动作处于哪个阶段——即将发生/正在进行/已经完成，Tag须精确匹配该阶段\n6. 动作承接：上一帧→当前帧之间，什么发生了变化，什么保持不变\n核心原则：生成的Tag必须是当前帧状态快照的忠实映射。文本未描述的变化（衣物/体液/动作/情绪升级）一律不添加。\n最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。",
                 v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。未提及 = 不变。\n2. 当前帧定位：姿势和动作以 currentMessage 为准，不沿用前文的姿势。\n3. 情绪独立：每个角色的情绪状态单独判断，不能笼统套用同一种情绪。\n4. 空间感：center 坐标要反映角色在场景中的实际位置关系，避免所有人挤在同一个点。\n5. 时间帧：只 tag 此刻正在发生的事，即将发生的不加完成态 tag。\n6. 同层分镜：同一消息多个分镜时，根据正文内容判断它们的关系。\n7. 动作粒度：区分瞬间动作和持续动作，选择匹配的 tag。\n8. 动作方向：分清谁对谁做了什么，结果发生在谁身上，把 tag 放在正确的角色上。\n9. 忠实程度：不要超越文本描述的强度来选 tag，按原文的程度来。\n\n核心：每个 tag 都要有文本依据。禁止输出分析文本，只输出 JSON。",
                 v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
-                v8: "【快速综合推演 v8】\n\n请在内部快速理清场景状态与视角关系，直接输出 JSON，严禁输出思维链分析文本：\n1. 画面判断：识别正文中的视觉高潮、照片/配图提及、动作突变；纯无意义对话则 shouldDraw: false\n2. 状态映射：理清角色衣着状态、姿势与空间关系，忠于原文描写强度\n3. 镜头视角：区分用户 POV（摄像机禁入 characters，身体部位入 scene）、旁观窥视与第三人称客观视角\n直接以标准 JSON 格式输出结果，首字符为 {，禁止任何多余文本。",
+                v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
             };
             messages.push({ role: 'system', content: ecPrompts[store.enhancedContext] });
         }
@@ -4910,25 +4907,6 @@ SCHEMA:
             });
         }
 
-        // 强力禁止思维链输出，防止模型在 <think> 阶段产生 30+ 秒首字延迟
-        messages.push({
-            role: 'system',
-            content: '【极速输出与禁止思维链声明】\n严禁在输出中包含任何 <think> 标签、分析推理过程或前言解释。你必须以最快速度直接输出合法 JSON，首字符必须为 {，末字符必须为 }。'
-        });
-
-        const reqBody = {
-            model: modelName,
-            temperature: 0.2,
-            response_format: { type: 'json_object' },
-            stream: false,
-            messages,
-        };
-
-        const lowerModel = modelName.toLowerCase();
-        if (lowerModel.includes('o1') || lowerModel.includes('o3') || lowerModel.includes('reasoner') || lowerModel.includes('thinking')) {
-            reqBody.reasoning_effort = 'low';
-        }
-
         const response = await callApiWithJsonFallback(url, {
             method: 'POST',
             signal,
@@ -4936,7 +4914,13 @@ SCHEMA:
                 'Content-Type': 'application/json',
                 ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
             },
-        }, reqBody);
+        }, {
+            model: modelName,
+            temperature: 0.2,
+            response_format: { type: 'json_object' },
+            stream: false,
+            messages,
+        });
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
         logTaggerPayload('tagger raw response', json);

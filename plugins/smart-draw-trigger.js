@@ -2514,9 +2514,20 @@ Zimage 擅长理解复杂的英文长句和语境。
     /* ── SillyTavern-compatible worldbook matching engine ── */
 
     function matchKeyInText(key, text, caseSensitive) {
-        if (!key) return false;
-        if (caseSensitive) return text.includes(key);
-        return text.toLowerCase().includes(key.toLowerCase());
+        if (!key || !text) return false;
+        const cleanKey = String(key).trim();
+        if (!cleanKey) return false;
+
+        // 对纯英文/数字标识符使用词边界正则，防止 "bed" 误触 "bedroom"、"red" 误触 "already" 等高频泛滥
+        if (/^[a-zA-Z0-9_-]+$/.test(cleanKey)) {
+            const escaped = cleanKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(^|[^a-zA-Z0-9_])${escaped}(?=[^a-zA-Z0-9_]|$)`, caseSensitive ? '' : 'i');
+            return regex.test(text);
+        }
+
+        // 中文或混合字符采用包含匹配
+        if (caseSensitive) return text.includes(cleanKey);
+        return text.toLowerCase().includes(cleanKey.toLowerCase());
     }
 
     function checkEntryKeyMatch(entry, contextText) {
@@ -2641,9 +2652,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             debugInfo(`互斥分组 "${groupName}": ${members.length} 条竞争, 胜出: ${members.length > 0 ? (afterGroup[afterGroup.length - 1].comment || afterGroup[afterGroup.length - 1].uid) : '无'}`);
         }
 
-        // Phase 3: Multi-pass Recursion — keep scanning until stable (like SillyTavern)
+        // Phase 3: Multi-pass Recursion — ST standard 2 passes
         const activatedUids = new Set(afterGroup.map(e => `${e.sourceId}:${e.uid}`));
-        const MAX_RECURSION_PASSES = 5;
+        const MAX_RECURSION_PASSES = 2;
         for (let pass = 0; pass < MAX_RECURSION_PASSES; pass++) {
             const recursionContent = afterGroup.filter(e => !e.excludeRecursion).map(e => e.content).join('\n');
             const remaining = entries.filter(e => !activatedUids.has(`${e.sourceId}:${e.uid}`));

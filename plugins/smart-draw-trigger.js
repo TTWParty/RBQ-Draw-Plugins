@@ -4910,12 +4910,6 @@ SCHEMA:
             });
         }
 
-        // 强力禁止思维链输出，防止模型在 <think> 阶段产生 30+ 秒首字延迟
-        messages.push({
-            role: 'system',
-            content: '【极速输出与禁止思维链声明】\n严禁在输出中包含任何 <think> 标签、分析推理过程或前言解释。你必须以最快速度直接输出合法 JSON，首字符必须为 {，末字符必须为 }。'
-        });
-
         const reqBody = {
             model: modelName,
             temperature: 0.2,

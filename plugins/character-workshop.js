@@ -869,19 +869,31 @@
             ]
         },
         {
-            group: '🌟 基础/体态',
+            group: '🎂 年龄段与身份 (Age & Identity)',
+            tags: [
+                { name: 'JK/女高中生 (teenager)', tag: 'teenager' },
+                { name: '青涩少女 (young girl)', tag: 'young girl' },
+                { name: '年轻女郎/大学 (young woman)', tag: 'young woman' },
+                { name: '御姐/成熟女性 (mature female)', tag: 'mature female' },
+                { name: '少妇/人妻/熟女 (milf)', tag: 'milf' },
+                { name: '萌系萝莉 (loli)', tag: 'loli' },
+                { name: '小女孩/幼女 (little girl)', tag: 'little girl' },
+                { name: '少年/男高中生 (teenager boy)', tag: 'teenager boy' },
+                { name: '正太/小男孩 (shota)', tag: 'shota' },
+                { name: '青年帅哥 (young man)', tag: 'young man' },
+                { name: '成熟大叔 (mature male)', tag: 'mature male' }
+            ]
+        },
+        {
+            group: '🌟 角色基底与体态',
             tags: [
                 { name: '单人女性 (1girl)', tag: '1girl' },
                 { name: '单人男性 (1boy)', tag: '1boy' },
                 { name: '单人 (solo)', tag: 'solo' },
                 { name: '美少女 (bishoujo)', tag: 'bishoujo' },
-                { name: '萝莉 (loli)', tag: 'loli' },
-                { name: '少女 (young girl)', tag: 'young girl' },
-                { name: '御姐 (mature female)', tag: 'mature female' },
+                { name: '帅哥 (ikemen)', tag: 'ikemen' },
                 { name: '辣妹 (gyaru)', tag: 'gyaru' },
-                { name: '少妇/熟女 (milf)', tag: 'milf' },
-                { name: '正太 (shota)', tag: 'shota' },
-                { name: '美少年/帅哥 (ikemen)', tag: 'ikemen' }
+                { name: '大和抚子 (yamato nadeshiko)', tag: 'yamato nadeshiko' }
             ]
         },
         {

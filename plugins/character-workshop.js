@@ -869,7 +869,8 @@
 
     // ── Tab 1: 多角色组合台 ────────────────────────────────
     function renderComposerTab(comp, charList) {
-        const slots = Array.isArray(comp.slots) ? comp.slots : [];
+        const store = getStore();
+        const slots = Array.isArray(comp?.slots) ? comp.slots : [];
         const finalPrompt = composeFinalPrompt(comp);
 
         return `
@@ -888,11 +889,11 @@
                     <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 10px !important;">
                         <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
                             <span style="font-size: 11px !important; opacity: 0.8 !important;">场景背景 Tags (indoors, beach, night...)：</span>
-                            <input id="rbq-cw-comp-scene" type="text" value="${escapeHtml(comp.scene)}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
+                            <input id="rbq-cw-comp-scene" type="text" value="${escapeHtml(comp?.scene || '')}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
                         </div>
                         <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
                             <span style="font-size: 11px !important; opacity: 0.8 !important;">镜头视角 (POV, from above, close-up...)：</span>
-                            <input id="rbq-cw-comp-camera" type="text" value="${escapeHtml(comp.camera)}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
+                            <input id="rbq-cw-comp-camera" type="text" value="${escapeHtml(comp?.camera || '')}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
                         </div>
                     </div>
                 </div>
@@ -938,7 +939,7 @@
                                         <span style="font-size: 11px !important; opacity: 0.75 !important;">动作/姿势 (Action)：</span>
                                         <button class="menu_button rbq-cw-pick-slot-action-wb" data-index="${idx}" type="button" style="padding: 1px 6px !important; font-size: 10px !important; color: #79e4ff !important; background: rgba(121,228,255,0.12) !important;"><i class="fa-solid fa-book-open"></i> 选动作</button>
                                     </div>
-                                    <input class="rbq-cw-slot-action-input" data-index="${idx}" type="text" placeholder="standing, blush, hands on hips..." value="${escapeHtml(slot.action)}" style="height: 28px !important; padding: 2px 6px !important; font-size: 11px !important; font-family: monospace !important; background: rgba(0,0,0,0.3) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; color: #fff !important;" />
+                                    <input class="rbq-cw-slot-action-input" data-index="${idx}" type="text" placeholder="standing, blush, hands on hips..." value="${escapeHtml(slot.action || '')}" style="height: 28px !important; padding: 2px 6px !important; font-size: 11px !important; font-family: monospace !important; background: rgba(0,0,0,0.3) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; color: #fff !important;" />
                                 </div>
 
                                 <!-- Spatial Coordinate Grid Picker -->
@@ -984,6 +985,7 @@
 
     // ── Tab 2: 角色档案库 ──────────────────────────────────
     function renderCharactersTab(charList) {
+        const store = getStore();
         return `
             <div style="display: flex !important; flex-direction: column !important; gap: 14px !important;">
                 <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 8px !important;">
@@ -1028,6 +1030,7 @@
 
     // ── Tab 3: 组合预设库 ──────────────────────────────────
     function renderPresetsTab() {
+        const store = getStore();
         const presets = store.presets || [];
         return `
             <div style="display: flex !important; flex-direction: column !important; gap: 12px !important;">
@@ -1056,8 +1059,9 @@
     }
 
     function composeFinalPrompt(comp) {
-        const slots = Array.isArray(comp.slots) ? comp.slots : [];
-        const sceneParts = [comp.scene, comp.camera, comp.atmosphere].filter(Boolean).join(', ');
+        const store = getStore();
+        const slots = Array.isArray(comp?.slots) ? comp.slots : [];
+        const sceneParts = [comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).join(', ');
         const charParts = slots.map((s, idx) => {
             const charObj = store.characters[s.charId];
             const base = charObj?.baseTags || '';
@@ -1072,12 +1076,14 @@
     }
 
     function renderWorkshopInnerHtml(activeTab) {
-        const charList = Object.values(store.characters || {});
-        const comp = store.activeComposer;
+        try {
+            const store = getStore();
+            const charList = Object.values(store.characters || {});
+            const comp = store.activeComposer;
 
-        return `
-            <div class="rbq-cw-wrapper" style="display: flex !important; flex-direction: column !important; gap: 14px !important; width: 100% !important; box-sizing: border-box !important; padding: 4px 0 !important;">
-                <!-- Top Navigation Bar -->
+            return `
+                <div class="rbq-cw-wrapper" style="display: flex !important; flex-direction: column !important; gap: 14px !important; width: 100% !important; box-sizing: border-box !important; padding: 4px 0 !important;">
+                    <!-- Top Navigation Bar -->
                     <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 16px !important; border-radius: 10px !important; background: linear-gradient(90deg, rgba(121,228,255,0.12), rgba(255,184,108,0.08)) !important; border: 1px solid rgba(255,255,255,0.08) !important; flex-wrap: wrap !important; gap: 10px !important;">
                         <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                             <i class="fa-solid fa-palette"></i> 角色工坊 (Character Workshop)
@@ -1103,10 +1109,15 @@
                     </div>
                 </div>
             `;
+        } catch (err) {
+            console.error(`[${PLUGIN_NAME}] render error:`, err);
+            return `<div style="padding: 20px; color: #ff8585;">角色工坊渲染异常: ${escapeHtml(err.message || err)}</div>`;
         }
+    }
 
-        function bindWorkshopEvents(container, activeTab, onRefresh) {
-            container.querySelectorAll('.rbq-cw-nav-tab').forEach(btn => {
+    function bindWorkshopEvents(container, activeTab, onRefresh) {
+        const store = getStore();
+        container.querySelectorAll('.rbq-cw-nav-tab').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const tab = btn.dataset.tab;
                     if (tab) onRefresh(tab);
@@ -1396,7 +1407,13 @@
                 if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kiteTab === tab);
             });
             document.querySelectorAll('[data-kite-panel]').forEach((element) => {
-                if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kitePanel === tab);
+                if (element instanceof HTMLElement) {
+                    const isActive = element.dataset.kitePanel === tab;
+                    element.classList.toggle('active', isActive);
+                    if (element.dataset.kitePanel === 'character-workshop') {
+                        element.style.display = isActive ? 'flex' : 'none';
+                    }
+                }
             });
         }
 
@@ -1430,6 +1447,7 @@
                 panel = document.createElement('section');
                 panel.className = 'st-scene-trigger-modal-panel';
                 panel.dataset.kitePanel = 'character-workshop';
+                panel.style.cssText = 'width: 100% !important; box-sizing: border-box !important; flex-direction: column !important;';
                 content.append(panel);
                 renderWorkshopInSettingsPanel();
             }
@@ -1439,6 +1457,12 @@
         function renderWorkshopInSettingsPanel() {
             const panel = document.querySelector('[data-kite-panel="character-workshop"]');
             if (!panel) return;
+            const isActive = panel.classList.contains('active');
+            panel.style.display = isActive ? 'flex' : 'none';
+            panel.style.flexDirection = 'column';
+            panel.style.width = '100%';
+            panel.style.boxSizing = 'border-box';
+            panel.style.overflowY = 'auto';
             panel.innerHTML = renderWorkshopInnerHtml(currentSettingTab);
             bindWorkshopEvents(panel, currentSettingTab, (newTab) => {
                 currentSettingTab = newTab;

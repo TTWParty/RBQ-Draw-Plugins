@@ -852,20 +852,20 @@
     // ── Pre-defined Danbooru Trait Presets (全量外貌特征体系化点选词库) ────
     const BASE_TRAIT_PRESETS = [
         {
-            group: '🌏 族裔与面部特征',
+            group: '🌏 族裔与面相定位 (防欧美写实)',
             tags: [
-                { name: '日系美少女', tag: 'japanese, bishoujo, delicate face' },
-                { name: '日系 (japanese)', tag: 'japanese' },
-                { name: '东亚 (east asian)', tag: 'east asian' },
-                { name: '中式古典 (chinese)', tag: 'chinese' },
+                { name: '日系美少女 (japanese)', tag: 'japanese' },
+                { name: '精致小脸 (delicate face)', tag: 'delicate face' },
+                { name: '甜美萌脸 (cute face)', tag: 'cute face' },
+                { name: '傲娇猫眼/吊眼 (tsurime)', tag: 'tsurime' },
+                { name: '无辜垂眼 (tareme)', tag: 'tareme' },
+                { name: '东亚少女 (east asian)', tag: 'east asian' },
+                { name: '中式古典美 (chinese)', tag: 'chinese' },
                 { name: '韩系精致 (korean)', tag: 'korean' },
                 { name: '欧美白人 (caucasian)', tag: 'caucasian' },
                 { name: '混血儿 (half-japanese)', tag: 'half-japanese' },
-                { name: '精致小脸 (delicate face)', tag: 'delicate face' },
-                { name: '日系萌脸 (cute face)', tag: 'cute face' },
-                { name: '柔和五官', tag: 'soft facial features' },
-                { name: '傲娇猫眼/吊眼 (tsurime)', tag: 'tsurime' },
-                { name: '治愈无辜垂眼 (tareme)', tag: 'tareme' }
+                { name: '柔和五官 (soft facial features)', tag: 'soft facial features' },
+                { name: '二次元动漫脸 (anime face)', tag: 'anime face' }
             ]
         },
         {
@@ -874,7 +874,7 @@
                 { name: '单人女性 (1girl)', tag: '1girl' },
                 { name: '单人男性 (1boy)', tag: '1boy' },
                 { name: '单人 (solo)', tag: 'solo' },
-                { name: '美少女', tag: 'bishoujo' },
+                { name: '美少女 (bishoujo)', tag: 'bishoujo' },
                 { name: '萝莉 (loli)', tag: 'loli' },
                 { name: '少女 (young girl)', tag: 'young girl' },
                 { name: '御姐 (mature female)', tag: 'mature female' },

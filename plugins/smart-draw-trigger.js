@@ -5,6 +5,115 @@
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 23;
+    const V23_ANIME_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
+
+══ 铁律 ══
+1. 只输出合法 JSON，禁 markdown/注释/解释
+2. anchor.text 从 currentMessage.content **逐字复制** 10~40字原文（indexOf 可定位，找不到=失败）
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. Tag 使用 Danbooru 英文标准
+
+══ Tag 规范 ══
+权重: \`n::tag::\` 或 \`n::tag1,tag2::\`（1.1~2 强调 / 0.1~0.9 弱化 / {tag} 轻增 / -1~-4 反向排除）
+排序: 画面占比/重要性降序，关联 tag 相邻
+拆解: 复合→独立 tag（害羞→shy,blush；月下→moonlit,night）
+配额: 总量 70~100 tag（scene 18~25, 单主角 35~50, 双主角各 20~25）
+lorebook: payload.lorebook 含匹配到的 Tag 模板库（服装/场景/多角色体位/标签词典）。命中模板直接引用；多变体条目智能挑最贴切那 1 个；Char1/Char2 自动映射绑定到角色。
+微细节(配额有余时补 5~15 tag): 即时反馈(trembling,splash) > 主体标志(hair_ornament) > 氛围渲染(光影/粒子) > 细节补全
+
+══ 字段规范 ══
+
+**scene**（→ base_caption，全角色共享）
+顺序: 分级(nsfw/sfw) → 主题(exhibitionism等) → 关系(hetero/yuri/solo) → 人数(1boy 1girl) → 背景环境 → 光影 → 全局镜头
+⛔ 禁 quality tag（由系统预设处理）⛔ 禁单角色动作/外貌 tag
+⚠️ pov 模式: 摄像机角色不入 characters，其可见身体(pov_hands/large_penis等)写入 scene
+
+**name**（→ 角色身份键，用于记忆匹配与 Tag 注入）
+同人角色 → 英文名 (作品名)，如 "Fujiwara Chika (Kaguya-sama: Love Is War)"
+原创角色 → 英文译名 (original)，如 "Kato (original)"
+配角 → "faceless male" / "faceless female"
+
+**base**（→ char_caption 外貌防伪码，跨图绝对锁定不变）
+顺序: girl/boy(不带数字) → 族裔与面相定位(依人设或语境推断：二次元日系角色强烈推荐加入 japanese, delicate_face 以锁定正统动漫面相、避免欧美写实化；中式写 chinese, east_asian；欧美写 caucasian；奇幻精灵写 elven, pale_skin) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
+⚠️ 穷举所有维度，缺失则推断！遗漏族裔或特征=角色变脸/画风跑偏！
+⛔ 禁在此处写服装/动作/表情——属于 outfit/action
+
+**outfit**（→ char_caption 服装部分，随场景变化）
+顺序: 主要服装(款式+颜色+细节[材质/图案/装饰]) → 次要服装/配饰(款式+颜色) → 穿着状态(open/off_shoulder/half-off/lifted) → 衣物损耗 → 裸露部位+细节
+⚠️ 拆到部件级: dark_blue_blazer, white_collared_shirt, red_ribbon（禁 school_uniform 等模糊总称）
+
+**action**（→ char_caption 动态部分，每帧不同）
+顺序: 朝向(facing_viewer) → 绝对位置(in_centers/left_side/right_side) → 基础姿势(standing/sitting/kneeling) → 肢体动作(手/臂+位置+细节) → 行为(含道具描述) → 表情(情绪+眼/嘴) → 视线(looking_at_viewer) → 状态(sweat/cum) → 微细节
+⚠️ 多角色交互必须用前缀: source#动作 / target#动作 / mutual#动作
+
+**center**（→ 角色位置坐标，5×5 网格 A-E列×1-5行，C3=正中）
+常用参考: 单人C3 / 并排B3+D3 / 站+躺C2+C4 / 骑乘C2+C4。多角色须分开坐标
+
+**uc**（→ 角色负面提示词，防幻觉与跨角色污染）
+常规排除: 当前不应出现的元素（无胸罩→bra; 全裸→clothes）
+跨角色防污染: Char1 发色/瞳色/表情/服装 → 写入 Char2 uc
+
+══ 核心原则 ══
+真实: 文本有述→直用；无述→上文推断补全；冲突→文本优先。禁止虚构
+主次: 主角详述占主导配额；配角简述聚焦互动；路人剔除
+镜头过滤: upper_body→禁下身 | lower_body→禁上身 | from_behind→禁正面表情 | cowboy_shot→禁膝下
+视角选择:
+  ① pov(主观视角): 摄像机角色⛔禁入 characters，可见身体写 scene。被看角色入 characters 加 looking_at_viewer。
+  ② 第三人称(客观视角): 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3
+
+══ 角色规则 ══
+DNA锁定: 首次出场建立 base+outfit，跨图锁定。
+种族: 人形(≥60%)→girl/boy; 非人(<50%)→no_humans; 模糊→other
+多女: 仅 yuri/协同场景；其他默认单女
+
+══ 分镜 ══
+断裂点: 空间转换/动作突变/情绪高潮
+数量: 单消息 1~3 张，均匀分布，禁文末堆积
+
+══ 输出示例（第三人称·日系角色）══
+{
+  "shouldDraw": true,
+  "reason": "中文10~30字说明",
+  "segments": [{
+    "label": "分镜中文名",
+    "anchor": {"text": "逐字复制原文"},
+    "scene": "nsfw, sex, hetero, 1boy 1girl, indoor, living_room, night, dim_lighting, warm_lighting, from_below, depth_of_field",
+    "characters": [{
+      "name": "Kato (original)",
+      "base": "girl, japanese, delicate_face, adolescent, long_hair, straight_hair, black_hair, blunt_bangs, light_brown_eyes, large_breasts, slim, mole_under_eye",
+      "outfit": "1.2::pink_chiffon_blouse::, open_clothes, {black_lace_bra}, no_panties, pussy",
+      "action": "facing_viewer, cowgirl_position, girl_on_top, 1.3::source#sex, source#vaginal::, straddling, head_back, open_mouth, panting, bouncing_breasts, 1.2::sweat::, trembling, motion_lines",
+      "center": "C2",
+      "uc": "boy, short_hair, black_hair, heterochromia"
+    }, {
+      "name": "Protagonist (original)",
+      "base": "boy, japanese, short_hair, black_hair, tall, athletic",
+      "outfit": "shirtless, open_pants",
+      "action": "lying, 1.3::target#sex, target#vaginal::, large_penis, hands_on_another's_hips, looking_up",
+      "center": "C4",
+      "uc": "girl, long_hair, breasts"
+    }]
+  }]
+}
+══ 输出示例（POV·主观视角）══
+{
+  "shouldDraw": true,
+  "reason": "中文10~30字说明",
+  "segments": [{
+    "label": "分镜中文名",
+    "anchor": {"text": "逐字复制原文"},
+    "scene": "nsfw, hetero, 1boy 1girl, pov, pov_crotch, from_above, indoor, bedroom, close-up, 1.2::large_penis::, veiny_penis, pre-cum",
+    "characters": [{
+      "name": "Ayaka (original)",
+      "base": "girl, japanese, delicate_face, cute_face, tsurime, teenager, medium_hair, white_hair, wavy_hair, crossed_bangs, blue_eyes, medium_breasts, fair_skin",
+      "outfit": "white_blouse, collared_blouse, open_blouse, -2::bra::, bare_breasts, nipples",
+      "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::fellatio::, deepthroat, oral, hands_on_penis, penis_in_mouth, blush, wide-eyed, tears, open_mouth, cum, cum_in_mouth, 1.2::sweat::",
+      "center": "C3",
+      "uc": "boy, lower_body, bra"
+    }]
+  }]
+}`;
+
     const CONSISTENT_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
@@ -50,7 +159,7 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板库（服装/场景/多角�
 ⛔ 禁填中文名 ⛔ 禁省略作品名/original后缀 ⛔ 禁在 base 中重复填写姓名
 
 **base**（→ char_caption 外貌防伪码，跨图绝对锁定不变）
-顺序: girl/boy(不带数字) → 族裔/国籍(依人设推断如 japanese/caucasian等) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
+顺序: girl/boy(不带数字) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
 ⚠️ 穷举所有维度，缺失则推断！遗漏任何维度=角色变脸！
 ⚠️ 原创角色差异化: 基本特征之外追加 5~10 专属 Tag（标志性发型/异色瞳/专属配饰/身体特征）作为视觉防伪码
 ⛔ 禁在此处写服装/动作/表情——属于 outfit/action，混入会污染记忆
@@ -138,7 +247,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     "scene": "nsfw, sex, hetero, 1boy 1girl, pov, pov_crotch, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background, 1.2::large_penis::, erection, ejaculation, pov_hands",
     "characters": [{
       "name": "Kato (original)",
-      "base": "girl, japanese, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
+      "base": "girl, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
       "outfit": "blouse, white_blouse, collared_blouse, 1.2::unbuttoned, open_blouse::, -2::bra::, bare_breasts, nipples, nipple_erection",
       "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::fellatio, handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
       "center": "C3",
@@ -173,7 +282,7 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板库（服装/场景/多角�
 ⚠️ pov 模式: 男主身体部位(large_penis, veiny_penis 等)写入 scene 作为环境道具
 
 **base**（→ char_caption 固定部分，跨图锁定不变）
-顺序: girl/boy(不带数字) → 族裔/国籍(japanese/caucasian等) → 发长+发型+发色 → 瞳色 → 体型+罩杯 → 肤色 → 修饰(痣/疤/纹身)
+顺序: girl/boy(不带数字) → 发长+发型+发色 → 瞳色 → 体型+罩杯 → 肤色 → 修饰(痣/疤/纹身)
 
 **outfit**（→ char_caption 服装部分，随场景变化）
 顺序: 主要服装(款式+颜色+细节) → 次要服装/配饰 → 穿着状态(open/off/half-off) → 裸露部位+细节
@@ -485,14 +594,15 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        consistent: { label: 'V23-完整版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        v23_anime: { label: 'V23-国籍面相增强版 (推荐)', prompt: V23_ANIME_SYSTEM_PROMPT },
+        consistent: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT },
         zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
         grok_nl: { label: 'Grok-自然语言', prompt: GROK_NL_PROMPT },
         storyboarder: { label: 'V21-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
         classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'consistent';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v23_anime';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
     const DEFAULT_JAILBREAK_PROMPT = [
@@ -6364,7 +6474,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset">${Object.entries(SYSTEM_PROMPT_PRESETS).map(([k, v]) => `<option value="${k}">${escapeHtml(v.label)}</option>`).join('')}</select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
@@ -6709,22 +6819,6 @@ SCHEMA:
             document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
             toastr.success(`已重置为所选内置 Prompt：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
         };
-        document.getElementById('rbq-sdt-system-preset').addEventListener('change', (e) => {
-            const presetKey = e.target.value;
-            const presetObj = SYSTEM_PROMPT_PRESETS[presetKey];
-            if (!presetObj) return;
-            const promptArea = document.getElementById('rbq-sdt-system-prompt');
-            if (promptArea) {
-                promptArea.value = presetObj.prompt;
-                document.getElementById('rbq-sdt-system-prompt-version').textContent = `${presetObj.label} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（已切换）`;
-            }
-            const s = getStore();
-            s.systemPromptPreset = presetKey;
-            s.systemPrompt = presetObj.prompt;
-            s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
-            save();
-            toastr.success(`已切换并应用内置档位：${presetObj.label}`, PLUGIN_NAME);
-        });
         document.getElementById('rbq-sdt-reset-jailbreak').onclick = () => {
             const s = getStore();
             s.geminiJailbreakPrompt = DEFAULT_JAILBREAK_PROMPT;

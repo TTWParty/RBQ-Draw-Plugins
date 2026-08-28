@@ -706,108 +706,355 @@
         document.body.appendChild(modal);
     }
 
-    // ── Pre-defined Danbooru Trait Presets (可视化点选词库) ────
+    // ── Pre-defined Danbooru Trait Presets (全量外貌特征体系化点选词库) ────
     const BASE_TRAIT_PRESETS = [
         {
-            group: '🌟 基础',
+            group: '🌟 基础/体态',
             tags: [
-                { name: '女性 (1girl)', tag: '1girl' },
-                { name: '男性 (1boy)', tag: '1boy' },
+                { name: '单人女性 (1girl)', tag: '1girl' },
+                { name: '单人男性 (1boy)', tag: '1boy' },
                 { name: '单人 (solo)', tag: 'solo' },
                 { name: '美少女', tag: 'bishoujo' },
-                { name: '萝莉', tag: 'loli' },
-                { name: '御姐', tag: 'mature female' }
+                { name: '萝莉 (loli)', tag: 'loli' },
+                { name: '少女 (young girl)', tag: 'young girl' },
+                { name: '御姐 (mature female)', tag: 'mature female' },
+                { name: '辣妹 (gyaru)', tag: 'gyaru' },
+                { name: '少妇/熟女 (milf)', tag: 'milf' },
+                { name: '正太 (shota)', tag: 'shota' },
+                { name: '美少年/帅哥 (ikemen)', tag: 'ikemen' }
             ]
         },
         {
-            group: '💇 发色',
+            group: '💇 基础发色',
             tags: [
                 { name: '银发', tag: 'silver hair' },
-                { name: '金发', tag: 'blonde hair' },
+                { name: '白发', tag: 'white hair' },
                 { name: '黑发', tag: 'black hair' },
+                { name: '金发', tag: 'blonde hair' },
+                { name: '白金发', tag: 'platinum blonde hair' },
                 { name: '粉发', tag: 'pink hair' },
                 { name: '蓝发', tag: 'blue hair' },
-                { name: '白发', tag: 'white hair' },
+                { name: '浅蓝发', tag: 'light blue hair' },
+                { name: '深蓝发', tag: 'dark blue hair' },
                 { name: '紫发', tag: 'purple hair' },
-                { name: '棕发', tag: 'brown hair' },
+                { name: '棕发/茶发', tag: 'brown hair' },
                 { name: '红发', tag: 'red hair' },
-                { name: '渐变发', tag: 'two-tone hair' },
-                { name: '挑染', tag: 'streaked hair' }
+                { name: '绿发', tag: 'green hair' },
+                { name: '灰发', tag: 'grey hair' },
+                { name: '橙发', tag: 'orange hair' }
             ]
         },
         {
-            group: '💇 发型',
+            group: '🎨 特殊发色',
+            tags: [
+                { name: '双色发', tag: 'two-tone hair' },
+                { name: '渐变发', tag: 'gradient hair' },
+                { name: '挑染发', tag: 'streaked hair' },
+                { name: '多彩发', tag: 'multicolored hair' },
+                { name: '左右分色发', tag: 'split-color hair' },
+                { name: '内层挑染', tag: 'inner color hair' },
+                { name: '发尾渐变', tag: 'colored inner hair' }
+            ]
+        },
+        {
+            group: '✂️ 头发长度',
+            tags: [
+                { name: '超长发 (及膝/及踝)', tag: 'very long hair' },
+                { name: '及地长发', tag: 'absurdly long hair' },
+                { name: '长发', tag: 'long hair' },
+                { name: '中长发/及肩', tag: 'medium hair' },
+                { name: '短发', tag: 'short hair' },
+                { name: '超短发', tag: 'very short hair' }
+            ]
+        },
+        {
+            group: '💇 经典发型',
             tags: [
                 { name: '双马尾', tag: 'twintails' },
-                { name: '长发', tag: 'long hair' },
-                { name: '短发', tag: 'short hair' },
+                { name: '高双马尾', tag: 'high twintails' },
+                { name: '低双马尾', tag: 'low twintails' },
+                { name: '短双马尾', tag: 'short twintails' },
                 { name: '单马尾', tag: 'ponytail' },
                 { name: '侧马尾', tag: 'side ponytail' },
-                { name: '姬发式', tag: 'hime cut' },
-                { name: '波波头', tag: 'bob cut' },
+                { name: '高单马尾', tag: 'high ponytail' },
+                { name: '低单马尾', tag: 'low ponytail' },
+                { name: '黑长直/直发', tag: 'straight hair' },
+                { name: '姬发式/公主切', tag: 'hime cut' },
+                { name: '波波头/短鲍伯', tag: 'bob cut' },
                 { name: '麻花辫', tag: 'braid' },
-                { name: '波浪卷', tag: 'wavy hair' },
-                { name: '齐刘海', tag: 'blunt bangs' },
-                { name: '呆毛', tag: 'ahoge' },
-                { name: '碎发', tag: 'messy hair' }
+                { name: '双麻花辫', tag: 'twin braids' },
+                { name: '侧编单辫', tag: 'single side braid' },
+                { name: '法式盘发辫', tag: 'french braid' },
+                { name: '单丸子头', tag: 'hair bun' },
+                { name: '双丸子头/包子头', tag: 'double bun' },
+                { name: '波浪大卷发', tag: 'wavy hair' },
+                { name: '小卷发', tag: 'curly hair' },
+                { name: '钻头卷/螺旋卷', tag: 'drill hair' },
+                { name: '蓬松微乱发', tag: 'messy hair' },
+                { name: '精灵超短发', tag: 'pixie cut' },
+                { name: '不对称发型', tag: 'asymmetrical hair' }
             ]
         },
         {
-            group: '👁️ 瞳色/面部',
+            group: '✨ 头发细节/刘海',
+            tags: [
+                { name: '单呆毛 (ahoge)', tag: 'ahoge' },
+                { name: '双呆毛/天线', tag: 'antenna hair' },
+                { name: '齐刘海/平刘海', tag: 'blunt bangs' },
+                { name: '斜刘海/侧分刘海', tag: 'swept bangs' },
+                { name: '中分刘海', tag: 'parted bangs' },
+                { name: '交叉刘海', tag: 'crossed bangs' },
+                { name: '遮眉碎发', tag: 'hair between eyes' },
+                { name: '单眼遮发', tag: 'hair over one eye' },
+                { name: '双眼遮发 (看不见眼)', tag: 'hair over eyes' },
+                { name: '鬓角长发', tag: 'sidelocks' },
+                { name: '露额头', tag: 'forehead' },
+                { name: '发梢微翘', tag: 'flipped hair' }
+            ]
+        },
+        {
+            group: '👁️ 瞳孔色彩',
             tags: [
                 { name: '红瞳', tag: 'red eyes' },
                 { name: '蓝瞳', tag: 'blue eyes' },
-                { name: '金瞳', tag: 'golden eyes' },
-                { name: '绿瞳', tag: 'green eyes' },
+                { name: '水蓝瞳', tag: 'aqua eyes' },
+                { name: '深蓝瞳', tag: 'dark blue eyes' },
+                { name: '金瞳/琥珀瞳', tag: 'golden eyes' },
+                { name: '黄瞳', tag: 'yellow eyes' },
+                { name: '绿瞳/碧眼', tag: 'green eyes' },
                 { name: '紫瞳', tag: 'purple eyes' },
                 { name: '粉瞳', tag: 'pink eyes' },
-                { name: '异色瞳', tag: 'heterochromia' },
-                { name: '心形瞳', tag: 'heart-shaped pupils' },
-                { name: '泪痣', tag: 'mole under eye' },
-                { name: '脸红', tag: 'blush' },
-                { name: '小虎牙', tag: 'fangs' },
-                { name: '猫嘴', tag: ':3' }
+                { name: '棕瞳/褐瞳', tag: 'brown eyes' },
+                { name: '黑瞳', tag: 'black eyes' },
+                { name: '银瞳/灰瞳', tag: 'silver eyes' },
+                { name: '橙瞳', tag: 'orange eyes' },
+                { name: '白瞳', tag: 'white eyes' }
             ]
         },
         {
-            group: '🐾 种族/特征',
+            group: '✨ 特殊瞳孔与眼眸',
             tags: [
-                { name: '精灵耳', tag: 'pointy ears' },
+                { name: '异色瞳 (双色眼)', tag: 'heterochromia' },
+                { name: '心形瞳 (爱心眼)', tag: 'heart-shaped pupils' },
+                { name: '星形瞳 (星星眼)', tag: 'star-shaped pupils' },
+                { name: '竖瞳/猫瞳/蛇瞳', tag: 'slit pupils' },
+                { name: '十字瞳', tag: 'cross-shaped pupils' },
+                { name: '发光魔眼', tag: 'glowing eyes' },
+                { name: '渐变色双瞳', tag: 'gradient eyes' },
+                { name: '空洞无光瞳/失神瞳', tag: 'empty eyes' },
+                { name: '收缩惊恐瞳', tag: 'constricted pupils' },
+                { name: '同心圆瞳', tag: 'ringed eyes' }
+            ]
+        },
+        {
+            group: '👁️ 眼形与眼周特征',
+            tags: [
+                { name: '吊眼梢/猫眼 (tsurime)', tag: 'tsurime' },
+                { name: '下垂眼/无辜眼 (tareme)', tag: 'tareme' },
+                { name: '三白眼', tag: 'sanpaku' },
+                { name: '泪痣 (眼下小痣)', tag: 'mole under eye' },
+                { name: '左眼泪痣', tag: 'mole under left eye' },
+                { name: '右眼泪痣', tag: 'mole under right eye' },
+                { name: '浓密长睫毛', tag: 'long eyelashes' },
+                { name: '彩色睫毛', tag: 'colored eyelashes' },
+                { name: '眼影', tag: 'eyeshadow' },
+                { name: '眼线', tag: 'eyeliner' },
+                { name: '微醺黑眼圈', tag: 'dark circles' },
+                { name: '眨眼 (单眼wink)', tag: 'one eye closed' },
+                { name: '半睁慵懒眼', tag: 'half-closed eyes' },
+                { name: '闭眼微笑', tag: 'closed eyes' }
+            ]
+        },
+        {
+            group: '😊 愉悦/自信表情',
+            tags: [
+                { name: '甜美微笑', tag: 'smile' },
+                { name: '开怀露齿笑', tag: 'grin' },
+                { name: '浅浅浅笑', tag: 'light smile' },
+                { name: '温柔微笑', tag: 'gentle smile' },
+                { name: '灿烂阳光笑容', tag: 'beaming smile' },
+                { name: '得意自信笑 (smug)', tag: 'smug' },
+                { name: '调皮wink', tag: 'wink' },
+                { name: '坏笑/邪魅笑', tag: 'evil smile' },
+                { name: '戏谑轻笑', tag: 'chuckle' }
+            ]
+        },
+        {
+            group: '😳 害羞/傲娇表情',
+            tags: [
+                { name: '脸红 (blush)', tag: 'blush' },
+                { name: '大片腮红/通红', tag: 'heavy blush' },
+                { name: '害羞羞涩', tag: 'shy' },
+                { name: '尴尬羞赧', tag: 'embarrassed' },
+                { name: '傲娇神情', tag: 'tsundere' },
+                { name: '慌张不知所措', tag: 'flustered' },
+                { name: '气鼓鼓/嘟嘴 (pout)', tag: 'pout' },
+                { name: '别过脸去/移开视线', tag: 'looking away, blush' }
+            ]
+        },
+        {
+            group: '😠 情绪/特殊表情',
+            tags: [
+                { name: '三无/无表情', tag: 'expressionless' },
+                { name: '发呆出神', tag: 'dazed' },
+                { name: '困倦想睡', tag: 'sleepy' },
+                { name: '微皱眉头', tag: 'frown' },
+                { name: '生气愤怒', tag: 'angry' },
+                { name: '不耐烦/嫌恶', tag: 'disdain' },
+                { name: '眼含泪水', tag: 'tears' },
+                { name: '伤心哭泣', tag: 'crying' },
+                { name: '震惊呆住', tag: 'shocked' },
+                { name: '害怕恐惧', tag: 'scared' },
+                { name: '病娇狂气 (yandere)', tag: 'yandere' },
+                { name: '阿黑颜/高潮失神', tag: 'ahegao' },
+                { name: '微醺醉酒', tag: 'drunk' }
+            ]
+        },
+        {
+            group: '👄 唇齿口部特征',
+            tags: [
+                { name: '可爱小虎牙/尖牙', tag: 'fangs' },
+                { name: '双虎牙', tag: 'double fangs' },
+                { name: '鲨鱼齿', tag: 'shark teeth' },
+                { name: '微张小嘴', tag: 'open mouth' },
+                { name: '轻启双唇', tag: 'parted lips' },
+                { name: '吐舌 (tongue)', tag: 'tongue' },
+                { name: '顽皮伸舌头', tag: 'tongue out' },
+                { name: '猫咪嘴/波浪嘴 (:3)', tag: ':3' },
+                { name: '咬嘴唇', tag: 'biting lip' },
+                { name: '水润光泽唇彩', tag: 'lip gloss' }
+            ]
+        },
+        {
+            group: '🐾 种族/兽耳与兽尾',
+            tags: [
                 { name: '猫耳', tag: 'cat ears' },
-                { name: '狐狸耳', tag: 'fox ears' },
-                { name: '兔耳', tag: 'rabbit ears' },
-                { name: '恶魔角', tag: 'horns' },
-                { name: '天使光环', tag: 'halo' },
                 { name: '猫尾巴', tag: 'cat tail' },
-                { name: '恶魔尾', tag: 'demon tail' },
-                { name: '翅膀', tag: 'wings' }
+                { name: '狐狸耳', tag: 'fox ears' },
+                { name: '狐狸大尾巴', tag: 'fox tail' },
+                { name: '九尾/多条狐尾', tag: 'multiple tails' },
+                { name: '兔耳 (竖立)', tag: 'rabbit ears' },
+                { name: '垂耳兔耳', tag: 'floppy rabbit ears' },
+                { name: '兔球小尾巴', tag: 'rabbit tail' },
+                { name: '狼耳', tag: 'wolf ears' },
+                { name: '狼尾巴', tag: 'wolf tail' },
+                { name: '狗耳', tag: 'dog ears' },
+                { name: '熊耳', tag: 'bear ears' },
+                { name: '牛耳+牛角', tag: 'cow ears, cow horns' },
+                { name: '毛茸茸兽耳 (通用)', tag: 'animal ears, fluffy ears' },
+                { name: '毛茸茸蓬松大尾巴', tag: 'fluffy tail' }
             ]
         },
         {
-            group: '👙 身材体型',
+            group: '🧝 幻想/神魔与异形',
             tags: [
-                { name: '巨乳', tag: 'large breasts' },
-                { name: '中乳', tag: 'medium breasts' },
-                { name: '贫乳', tag: 'flat chest' },
-                { name: '超大胸部', tag: 'huge breasts' },
-                { name: '修长纤细', tag: 'slender' },
-                { name: '娇小', tag: 'petite' },
-                { name: '丰满S曲线', tag: 'curvy' },
-                { name: '宽臀', tag: 'wide hips' },
-                { name: '白皙皮肤', tag: 'pale skin' },
-                { name: '小麦肤色', tag: 'tan' }
+                { name: '精灵尖耳', tag: 'pointy ears' },
+                { name: '长精灵耳', tag: 'long pointy ears' },
+                { name: '恶魔角', tag: 'demon horns' },
+                { name: '龙角', tag: 'dragon horns' },
+                { name: '羊角/卷曲角', tag: 'sheep horns' },
+                { name: '天使光环 (halo)', tag: 'halo' },
+                { name: '天使白色羽翼', tag: 'angel wings' },
+                { name: '恶魔黑色蝠翼', tag: 'demon wings' },
+                { name: '堕天使黑羽翼', tag: 'black wings' },
+                { name: '透明精灵蝶翼', tag: 'fairy wings' },
+                { name: '巨龙翅膀', tag: 'dragon wings' },
+                { name: '恶魔尾/心形尖尾', tag: 'demon tail' },
+                { name: '龙尾巴', tag: 'dragon tail' },
+                { name: '魅魔特征', tag: 'succubus' },
+                { name: '吸血鬼尖牙', tag: 'vampire' },
+                { name: '机娘/机械体', tag: 'android' },
+                { name: '球形机械关节', tag: 'mechanical joints' },
+                { name: '球体关节人偶', tag: 'doll joints' },
+                { name: '美人鱼/鱼尾', tag: 'mermaid, fish tail' }
             ]
         },
         {
-            group: '🎀 固定饰品',
+            group: '👙 身材体态与胸围',
             tags: [
-                { name: '眼镜', tag: 'glasses' },
-                { name: '发带/蝴蝶结', tag: 'hair ribbon' },
-                { name: '发饰/发卡', tag: 'hair ornament' },
-                { name: '项圈', tag: 'choker' },
-                { name: '耳环', tag: 'earrings' },
-                { name: '十字架项链', tag: 'cross necklace' },
-                { name: '单眼罩', tag: 'eyepatch' }
+                { name: '纤细修长苗条', tag: 'slender' },
+                { name: '娇小可爱身材', tag: 'petite' },
+                { name: '高挑长腿身材', tag: 'tall' },
+                { name: '丰满S曲线 (curvy)', tag: 'curvy' },
+                { name: '沙漏型身材', tag: 'hourglass figure' },
+                { name: '微胖肉感身材', tag: 'plump' },
+                { name: '紧致健美/肌肉线条', tag: 'toned, muscular' },
+                { name: '腹肌/马甲线 (abs)', tag: 'abs' },
+                { name: '平胸/极贫乳', tag: 'flat chest' },
+                { name: '微乳/小胸 (small)', tag: 'small breasts' },
+                { name: '匀称中等胸部 (medium)', tag: 'medium breasts' },
+                { name: '巨乳/丰满 (large)', tag: 'large breasts' },
+                { name: '超大胸部/爆乳 (huge)', tag: 'huge breasts' },
+                { name: '魔乳/绝顶巨大胸 (gigantic)', tag: 'gigantic breasts' }
+            ]
+        },
+        {
+            group: '🌟 身体部位与迷人细节',
+            tags: [
+                { name: '深邃乳沟 (cleavage)', tag: 'cleavage' },
+                { name: '侧乳/侧面露胸 (sideboob)', tag: 'sideboob' },
+                { name: '南半球/下乳 (underboob)', tag: 'underboob' },
+                { name: '精致锁骨', tag: 'collarbone' },
+                { name: '纤细小蛮腰', tag: 'thin waist' },
+                { name: '丰满宽臀/丰臀', tag: 'wide hips' },
+                { name: '紧致翘臀', tag: 'big ass' },
+                { name: '肉感多肉大腿 (肉腿)', tag: 'thick thighs' },
+                { name: '大腿缝', tag: 'thigh gap' },
+                { name: '修长美腿', tag: 'long legs' },
+                { name: '香肩/裸露肩膀', tag: 'bare shoulders' },
+                { name: '性感肚脐', tag: 'navel' },
+                { name: '光滑美背', tag: 'back' },
+                { name: '玉足/精致脚部', tag: 'feet' }
+            ]
+        },
+        {
+            group: '✨ 肤色与身体印记',
+            tags: [
+                { name: '白皙冷白皮', tag: 'pale skin' },
+                { name: '自然透亮肤色', tag: 'fair skin' },
+                { name: '健康小麦肤色 (tan)', tag: 'tan' },
+                { name: '深色黑皮 (dark skin)', tag: 'dark skin' },
+                { name: '日晒微红', tag: 'sunburn' },
+                { name: '比基尼晒痕 (tanlines)', tag: 'tanlines' },
+                { name: '光滑肌肤', tag: 'smooth skin' },
+                { name: '香汗淋漓/微汗 (sweat)', tag: 'sweat' },
+                { name: '油亮光泽肌肤', tag: 'oily skin' },
+                { name: '身体美人痣', tag: 'mole on body' },
+                { name: '胸部上的痣', tag: 'mole on breast' },
+                { name: '大腿上的痣', tag: 'mole on thigh' },
+                { name: '可爱雀斑 (freckles)', tag: 'freckles' },
+                { name: '淫纹/腹部符文', tag: 'womb tattoo' },
+                { name: '正字标记/身体文字', tag: 'body writing' },
+                { name: '个性纹身/刺青', tag: 'tattoo' },
+                { name: '战斗伤痕/伤疤', tag: 'scar' }
+            ]
+        },
+        {
+            group: '🎀 头部与面部配饰',
+            tags: [
+                { name: '经典眼镜', tag: 'glasses' },
+                { name: '半框眼镜', tag: 'semi-rimless glasses' },
+                { name: '无框眼镜', tag: 'rimless glasses' },
+                { name: '复古圆框眼镜', tag: 'round glasses' },
+                { name: '太阳镜/墨镜', tag: 'sunglasses' },
+                { name: '单眼罩 (eyepatch)', tag: 'eyepatch' },
+                { name: '医疗白色眼罩', tag: 'medical eyepatch' },
+                { name: '单片眼镜', tag: 'monocle' },
+                { name: '防尘口罩', tag: 'mask' },
+                { name: '蒙眼布 (blindfold)', tag: 'blindfold' },
+                { name: '发带/丝带 (hair ribbon)', tag: 'hair ribbon' },
+                { name: '大蝴蝶结发饰', tag: 'hair bow' },
+                { name: '精致发卡/发夹', tag: 'hairclip' },
+                { name: '花朵发饰', tag: 'hair flower' },
+                { name: '传统发簪/发针', tag: 'hairpin' },
+                { name: '发箍/头箍 (hairband)', tag: 'hairband' },
+                { name: '小皇冠/发冠 (tiara)', tag: 'tiara' },
+                { name: '白色头纱/面纱 (veil)', tag: 'veil' },
+                { name: '皮质锁骨链/颈圈 (choker)', tag: 'choker' },
+                { name: '皮项圈/带环项圈', tag: 'collar' },
+                { name: '铃铛项圈', tag: 'bell choker' },
+                { name: '精致耳环/耳坠', tag: 'earrings' },
+                { name: '十字架项链', tag: 'cross necklace' }
             ]
         }
     ];
@@ -881,12 +1128,12 @@
         `;
 
         modal.innerHTML = `
-            <div style="background: #1c1d22 !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 14px !important; width: 680px !important; max-width: 95vw !important; max-height: 94vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important; box-sizing: border-box !important;">
-                <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 14px 18px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(121,228,255,0.06) !important;">
+            <div style="background: #1c1d22 !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 14px !important; width: 740px !important; max-width: 95vw !important; max-height: 94vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important; box-sizing: border-box !important;">
+                <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 18px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(121,228,255,0.06) !important;">
                     <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                         <i class="fa-solid fa-user-plus"></i> ${isEdit ? `编辑角色档案 — 「${escapeHtml(char.name || '未命名')}」` : '✨ 拼装创造新角色'}
                     </strong>
-                    <button class="menu_button" id="rbq-cw-ce-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                    <button class="cw-wb-btn close" id="rbq-cw-ce-close">✕</button>
                 </div>
 
                 <div style="padding: 16px 18px !important; overflow-y: auto !important; display: flex !important; flex-direction: column !important; gap: 14px !important;">
@@ -911,21 +1158,21 @@
                             <label style="font-size: 12.5px !important; font-weight: bold !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
                                 <span>💇</span> 固定外貌特征 (Base Tags)：
                             </label>
-                            <button class="menu_button" id="rbq-cw-pick-base-wb" type="button" style="padding: 2px 8px !important; font-size: 11px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.35) !important; border-radius: 4px !important; cursor: pointer !important;">
+                            <button class="cw-wb-btn cyan" id="rbq-cw-pick-base-wb" type="button">
                                 <i class="fa-solid fa-book-open"></i> 从世界书挑选外貌词条
                             </button>
                         </div>
 
                         <!-- Visual Quick-Pick Chips for Base -->
-                        <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.25) !important; padding: 8px !important; border-radius: 6px !important; border: 1px solid rgba(255,255,255,0.05) !important;">
-                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold !important;">🎨 常用外貌特征快速点选 (点击即可加入/移除)：</div>
-                            <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; max-height: 150px !important; overflow-y: auto !important;">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.3) !important; padding: 10px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold !important;">🎨 全量外貌特征分类点选 (点击快速添加/移除)：</div>
+                            <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; max-height: 220px !important; overflow-y: auto !important;">
                                 ${BASE_TRAIT_PRESETS.map(group => `
-                                    <div style="display: flex !important; gap: 4px !important; align-items: center !important; flex-wrap: wrap !important;">
-                                        <span style="font-size: 10.5px !important; color: #ffb86c !important; font-weight: bold !important; width: 85px !important; flex-shrink: 0 !important;">${escapeHtml(group.group)}:</span>
+                                    <div style="display: flex !important; gap: 6px !important; align-items: flex-start !important; flex-wrap: wrap !important; background: rgba(255,255,255,0.02) !important; padding: 4px 6px !important; border-radius: 6px !important;">
+                                        <span style="font-size: 10.5px !important; color: #ffb86c !important; font-weight: bold !important; min-width: 90px !important; flex-shrink: 0 !important; padding-top: 2px !important;">${escapeHtml(group.group)}:</span>
                                         <div style="display: flex !important; gap: 4px !important; flex-wrap: wrap !important; flex: 1 !important;">
                                             ${group.tags.map(t => `
-                                                <button class="menu_button rbq-cw-base-chip-btn" data-tag="${escapeHtml(t.tag)}" type="button" style="padding: 1px 7px !important; font-size: 10.5px !important; margin: 0 !important; background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; cursor: pointer !important;">${escapeHtml(t.name)}</button>
+                                                <button class="cw-btn sm rbq-cw-base-chip-btn" data-tag="${escapeHtml(t.tag)}" type="button" style="background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; cursor: pointer !important;">${escapeHtml(t.name)}</button>
                                             `).join('')}
                                         </div>
                                     </div>
@@ -943,7 +1190,7 @@
                             <label style="font-size: 12.5px !important; font-weight: bold !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 6px !important;">
                                 <span>👗</span> 默认服装 (Outfit Tags)：
                             </label>
-                            <button class="menu_button" id="rbq-cw-pick-outfit-wb" type="button" style="padding: 2px 8px !important; font-size: 11px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important; border-radius: 4px !important; cursor: pointer !important;">
+                            <button class="cw-wb-btn orange" id="rbq-cw-pick-outfit-wb" type="button">
                                 <i class="fa-solid fa-book-open"></i> 从世界书挑选服装
                             </button>
                         </div>
@@ -957,7 +1204,7 @@
                                         <span style="font-size: 10.5px !important; color: #a3d4ff !important; font-weight: bold !important; width: 85px !important; flex-shrink: 0 !important;">${escapeHtml(group.group)}:</span>
                                         <div style="display: flex !important; gap: 4px !important; flex-wrap: wrap !important; flex: 1 !important;">
                                             ${group.tags.map(t => `
-                                                <button class="menu_button rbq-cw-outfit-chip-btn" data-tag="${escapeHtml(t.tag)}" type="button" style="padding: 1px 7px !important; font-size: 10.5px !important; margin: 0 !important; background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; cursor: pointer !important;">${escapeHtml(t.name)}</button>
+                                                <button class="cw-btn sm rbq-cw-outfit-chip-btn" data-tag="${escapeHtml(t.tag)}" type="button" style="background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; cursor: pointer !important;">${escapeHtml(t.name)}</button>
                                             `).join('')}
                                         </div>
                                     </div>
@@ -970,12 +1217,12 @@
 
                     <!-- Test Button & Save Actions -->
                     <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; margin-top: 6px !important; padding-top: 8px !important; border-top: 1px solid rgba(255,255,255,0.08) !important; flex-wrap: wrap !important; gap: 8px !important;">
-                        <button class="menu_button" id="rbq-cw-test-single-char" type="button" style="padding: 6px 14px !important; font-size: 11px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.3) !important; cursor: pointer !important;">
+                        <button class="cw-wb-btn cyan" id="rbq-cw-test-single-char" type="button">
                             <i class="fa-solid fa-wand-magic-sparkles"></i> 测试生成单人立绘
                         </button>
                         <div style="display: flex !important; gap: 8px !important;">
-                            <button class="menu_button" id="rbq-cw-ce-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
-                            <button class="menu_button" id="rbq-cw-ce-save" type="button" style="padding: 6px 20px !important; font-size: 12px !important; background: rgba(100,255,100,0.2) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.4) !important; font-weight: bold !important; cursor: pointer !important;">💾 保存角色档案</button>
+                            <button class="cw-wb-btn close" id="rbq-cw-ce-cancel" type="button">取消</button>
+                            <button class="cw-wb-btn green" id="rbq-cw-ce-save" type="button">💾 保存角色档案</button>
                         </div>
                     </div>
                 </div>
@@ -987,6 +1234,26 @@
         modal.querySelector('#rbq-cw-ce-cancel')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
+        // Helper to update active chip highlights
+        function refreshChipActiveState() {
+            const baseText = (modal.querySelector('#rbq-cw-char-base')?.value || '').toLowerCase();
+            modal.querySelectorAll('.rbq-cw-base-chip-btn').forEach(btn => {
+                const tag = (btn.dataset.tag || '').toLowerCase();
+                const isSelected = baseText.split(',').map(s => s.trim()).includes(tag);
+                if (isSelected) {
+                    btn.style.setProperty('background', 'rgba(121,228,255,0.25)', 'important');
+                    btn.style.setProperty('border-color', 'rgba(121,228,255,0.6)', 'important');
+                    btn.style.setProperty('color', '#79e4ff', 'important');
+                    btn.style.setProperty('font-weight', 'bold', 'important');
+                } else {
+                    btn.style.setProperty('background', 'rgba(255,255,255,0.04)', 'important');
+                    btn.style.setProperty('border-color', 'rgba(255,255,255,0.1)', 'important');
+                    btn.style.setProperty('color', 'rgba(255,255,255,0.7)', 'important');
+                    btn.style.setProperty('font-weight', 'normal', 'important');
+                }
+            });
+        }
+
         // Quick Chip Toggle Handlers
         modal.querySelectorAll('.rbq-cw-base-chip-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -994,9 +1261,13 @@
                 const baseArea = modal.querySelector('#rbq-cw-char-base');
                 if (baseArea && tag) {
                     baseArea.value = appendOrToggleTag(baseArea.value, tag);
+                    refreshChipActiveState();
                 }
             });
         });
+
+        modal.querySelector('#rbq-cw-char-base')?.addEventListener('input', refreshChipActiveState);
+        refreshChipActiveState();
 
         modal.querySelectorAll('.rbq-cw-outfit-chip-btn').forEach(btn => {
             btn.addEventListener('click', () => {

@@ -147,6 +147,11 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
   }]
 }`;
 
+    const CONSISTENT_SYSTEM_PROMPT_V22 = CONSISTENT_SYSTEM_PROMPT.replace(
+        '顺序: girl/boy(不带数字) → 族裔/国籍/面相(依剧情背景与人名合理推断，如 japanese, east asian, chinese, caucasian；默认日系二次元角色自动追加 japanese 或 delicate_face 锁定日系动漫面相) → 年龄段(teenager/mature_female)',
+        '顺序: girl/boy(不带数字) → 年龄段(teenager/mature_female)'
+    );
+
     const STORYBOARDER_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
@@ -486,6 +491,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     const SYSTEM_PROMPT_PRESETS = {
         consistent: { label: 'V23-国籍面相版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        v22: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
         zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
         grok_nl: { label: 'Grok-自然语言', prompt: GROK_NL_PROMPT },
         storyboarder: { label: 'V21-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
@@ -6364,7 +6370,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V23-国籍面相版 (推荐)</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

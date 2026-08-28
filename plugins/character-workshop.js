@@ -867,293 +867,217 @@
         document.body.appendChild(modal);
     }
 
-    // ── Main Workshop Workspace Modal (工坊主面板) ────────────
-    function openCharacterWorkshopModal(initialTab = 'composer') {
-        const existing = document.getElementById('rbq-character-workshop-modal');
-        if (existing) existing.remove();
+    // ── Tab 1: 多角色组合台 ────────────────────────────────
+    function renderComposerTab(comp, charList) {
+        const slots = Array.isArray(comp.slots) ? comp.slots : [];
+        const finalPrompt = composeFinalPrompt(comp);
 
-        const store = getStore();
-        let currentTab = initialTab;
-
-        const modal = document.createElement('div');
-        modal.id = 'rbq-character-workshop-modal';
-        modal.style.cssText = `
-            position: fixed !important; inset: 0 !important; z-index: 100000010 !important;
-            background: rgba(0,0,0,0.85) !important; display: flex !important;
-            align-items: center !important; justify-content: center !important;
-            padding: 16px !important; box-sizing: border-box !important;
-            backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important;
-        `;
-
-        function renderModalHtml() {
-            const charList = Object.values(store.characters || {});
-            const comp = store.activeComposer;
-
-            return `
-                <div style="background: #16171d !important; border: 1px solid rgba(121,228,255,0.35) !important; border-radius: 16px !important; width: 920px !important; max-width: 96vw !important; height: 88vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 25px 70px rgba(0,0,0,0.95) !important; box-sizing: border-box !important;">
-                    <!-- Header -->
-                    <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 20px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: linear-gradient(90deg, rgba(121,228,255,0.12), rgba(255,184,108,0.08)) !important;">
-                        <div style="display: flex !important; align-items: center !important; gap: 12px !important;">
-                            <strong style="font-size: 16px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
-                                <i class="fa-solid fa-palette"></i> 角色工坊 (Character Workshop)
-                            </strong>
-                            <div style="display: flex !important; gap: 6px !important; background: rgba(0,0,0,0.4) !important; padding: 3px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.08) !important;">
-                                <button class="menu_button rbq-cw-nav-tab ${currentTab === 'composer' ? 'active' : ''}" data-tab="composer" style="padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; ${currentTab === 'composer' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; font-weight: bold !important;' : ''}">
-                                    <i class="fa-solid fa-puzzle-piece"></i> 多角色组合台
-                                </button>
-                                <button class="menu_button rbq-cw-nav-tab ${currentTab === 'characters' ? 'active' : ''}" data-tab="characters" style="padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; ${currentTab === 'characters' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; font-weight: bold !important;' : ''}">
-                                    <i class="fa-solid fa-users"></i> 角色档案库 (${charList.length})
-                                </button>
-                                <button class="menu_button rbq-cw-nav-tab ${currentTab === 'presets' ? 'active' : ''}" data-tab="presets" style="padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; ${currentTab === 'presets' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; font-weight: bold !important;' : ''}">
-                                    <i class="fa-solid fa-bookmark"></i> 组合预设库 (${store.presets.length})
-                                </button>
-                            </div>
-                        </div>
-                        <button class="menu_button" id="rbq-cw-main-close" style="padding: 4px 10px !important; font-size: 14px !important; cursor: pointer !important;">✕</button>
-                    </div>
-
-                    <!-- Body Content -->
-                    <div id="rbq-cw-main-body" style="flex: 1 !important; overflow-y: auto !important; padding: 18px 20px !important; display: flex !important; flex-direction: column !important; gap: 16px !important;">
-                        ${currentTab === 'composer' ? renderComposerTab(comp, charList) : ''}
-                        ${currentTab === 'characters' ? renderCharactersTab(charList) : ''}
-                        ${currentTab === 'presets' ? renderPresetsTab() : ''}
-                    </div>
-                </div>
-            `;
-        }
-
-        // ── Tab 1: 多角色组合台 ────────────────────────────────
-        function renderComposerTab(comp, charList) {
-            const slots = Array.isArray(comp.slots) ? comp.slots : [];
-            const finalPrompt = composeFinalPrompt(comp);
-
-            return `
-                <div style="display: flex !important; flex-direction: column !important; gap: 16px !important;">
-                    <!-- Global Environment & Scene Settings -->
-                    <div style="background: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 14px 16px !important; display: flex !important; flex-direction: column !important; gap: 10px !important;">
-                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 8px !important;">
-                            <strong style="font-size: 13.5px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 6px !important;">
-                                <i class="fa-solid fa-mountain-sun"></i> 场景环境与全局构图 (Scene & Global Caption)
-                            </strong>
-                            <div style="display: flex !important; gap: 6px !important;">
-                                <button class="menu_button" id="rbq-cw-pick-scene-wb" type="button" style="padding: 2px 9px !important; font-size: 11px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important;"><i class="fa-solid fa-book-open"></i> 从世界书选场景</button>
-                                <button class="menu_button" id="rbq-cw-pick-pose-wb" type="button" style="padding: 2px 9px !important; font-size: 11px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.35) !important;"><i class="fa-solid fa-people-arrows"></i> 🤝 双人互动体位库</button>
-                            </div>
-                        </div>
-                        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 10px !important;">
-                            <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
-                                <span style="font-size: 11px !important; opacity: 0.8 !important;">场景背景 Tags (indoors, beach, night...)：</span>
-                                <input id="rbq-cw-comp-scene" type="text" value="${escapeHtml(comp.scene)}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
-                            </div>
-                            <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
-                                <span style="font-size: 11px !important; opacity: 0.8 !important;">镜头视角 (POV, from above, close-up...)：</span>
-                                <input id="rbq-cw-comp-camera" type="text" value="${escapeHtml(comp.camera)}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Character Slots Grid -->
-                    <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                        <strong style="font-size: 14px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
-                            <i class="fa-solid fa-users-viewfinder"></i> 角色拼装槽位 (Char 1 ~ ${slots.length})
-                        </strong>
-                        <button class="menu_button" id="rbq-cw-add-slot-btn" type="button" style="padding: 4px 12px !important; font-size: 11.5px !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important;">
-                            <i class="fa-solid fa-plus"></i> 添加角色槽位
-                        </button>
-                    </div>
-
-                    <div style="display: grid !important; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important; gap: 12px !important;">
-                        ${slots.map((slot, idx) => {
-                            const charObj = store.characters[slot.charId];
-                            return `
-                                <div class="rbq-cw-slot-card" data-index="${idx}" style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(121,228,255,0.2) !important; border-radius: 12px !important; padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
-                                    <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                                        <div style="display: flex !important; align-items: center !important; gap: 6px !important;">
-                                            <span style="background: rgba(121,228,255,0.2) !important; color: #79e4ff !important; font-size: 11px !important; font-weight: bold !important; padding: 1px 6px !important; border-radius: 4px !important;">Char ${idx + 1}</span>
-                                            <strong style="font-size: 13px !important; color: #fff !important;">${escapeHtml(charObj?.name || slot.customName || `角色 ${idx + 1}`)}</strong>
-                                        </div>
-                                        ${slots.length > 1 ? `
-                                            <button class="menu_button rbq-cw-remove-slot-btn" data-index="${idx}" type="button" style="padding: 1px 6px !important; font-size: 11px !important; color: #ff8585 !important; cursor: pointer !important;">✕ 移除</button>
-                                        ` : ''}
-                                    </div>
-
-                                    <!-- Character Selector -->
-                                    <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
-                                        <select class="rbq-cw-slot-char-select" data-index="${idx}" style="flex: 1 !important; height: 30px !important; font-size: 11.5px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 6px !important; color: #fff !important;">
-                                            <option value="">👤 [自定义角色 / 未建档]</option>
-                                            ${charList.map(c => `
-                                                <option value="${escapeHtml(c.id)}" ${slot.charId === c.id ? 'selected' : ''}>👤 ${escapeHtml(c.name)}</option>
-                                            `).join('')}
-                                        </select>
-                                    </div>
-
-                                    <!-- Action / Pose -->
-                                    <div style="display: flex !important; flex-direction: column !important; gap: 3px !important;">
-                                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                                            <span style="font-size: 11px !important; opacity: 0.75 !important;">动作/姿势 (Action)：</span>
-                                            <button class="menu_button rbq-cw-pick-slot-action-wb" data-index="${idx}" type="button" style="padding: 1px 6px !important; font-size: 10px !important; color: #79e4ff !important; background: rgba(121,228,255,0.12) !important;"><i class="fa-solid fa-book-open"></i> 选动作</button>
-                                        </div>
-                                        <input class="rbq-cw-slot-action-input" data-index="${idx}" type="text" placeholder="standing, blush, hands on hips..." value="${escapeHtml(slot.action)}" style="height: 28px !important; padding: 2px 6px !important; font-size: 11px !important; font-family: monospace !important; background: rgba(0,0,0,0.3) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; color: #fff !important;" />
-                                    </div>
-
-                                    <!-- Spatial Coordinate Grid Picker -->
-                                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important; background: rgba(0,0,0,0.2) !important; padding: 6px 8px !important; border-radius: 6px !important;">
-                                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                                            <span style="font-size: 10.5px !important; opacity: 0.8 !important;">📍 站位坐标：</span>
-                                            <span style="font-size: 10.5px !important; color: #79e4ff !important; font-weight: bold !important;">${formatCoordLabel(slot.center || 'C3')}</span>
-                                        </div>
-                                        <div style="display: flex !important; gap: 4px !important; justify-content: space-between !important;">
-                                            ${['B3', 'C3', 'D3', 'A2', 'E2'].map(pos => `
-                                                <button class="menu_button rbq-cw-slot-pos-btn ${slot.center === pos ? 'active' : ''}" data-index="${idx}" data-pos="${pos}" type="button" style="padding: 2px 6px !important; font-size: 10px !important; ${slot.center === pos ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important;' : ''}">${pos}</button>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-
-                    <!-- Formatted Prompt Preview -->
-                    <div style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
-                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                            <span style="font-size: 11.5px !important; color: rgba(255,255,255,0.85) !important; font-weight: bold !important;">
-                                🚀 合成提示词预览 (NAI V4.5 Native Multi-Char Format)：
-                            </span>
-                            <button class="menu_button" id="rbq-cw-copy-prompt" type="button" style="padding: 2px 8px !important; font-size: 11px !important;"><i class="fa-regular fa-copy"></i> 复制提示词</button>
-                        </div>
-                        <div id="rbq-cw-prompt-preview" style="font-size: 11.5px !important; font-family: monospace !important; color: #a3d4ff !important; line-height: 1.4 !important; max-height: 70px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(finalPrompt)}</div>
-                    </div>
-
-                    <!-- Bottom Action Buttons -->
-                    <div style="display: flex !important; justify-content: flex-end !important; align-items: center !important; gap: 10px !important; flex-wrap: wrap !important;">
-                        <button class="menu_button" id="rbq-cw-save-scene-preset" type="button" style="padding: 8px 16px !important; font-size: 12px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important;">
-                            <i class="fa-solid fa-floppy-disk"></i> 保存为组合预设
-                        </button>
-                        <button class="menu_button" id="rbq-cw-generate-now" type="button" style="padding: 8px 24px !important; font-size: 13px !important; font-weight: bold !important; background: linear-gradient(135deg, rgba(121,228,255,0.3), rgba(100,255,100,0.3)) !important; color: #fff !important; border: 1px solid rgba(121,228,255,0.5) !important; box-shadow: 0 4px 15px rgba(121,228,255,0.2) !important; cursor: pointer !important;">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即合成并生图
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-
-        // ── Tab 2: 角色档案库 ──────────────────────────────────
-        function renderCharactersTab(charList) {
-            return `
-                <div style="display: flex !important; flex-direction: column !important; gap: 14px !important;">
+        return `
+            <div style="display: flex !important; flex-direction: column !important; gap: 16px !important;">
+                <!-- Global Environment & Scene Settings -->
+                <div style="background: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 14px 16px !important; display: flex !important; flex-direction: column !important; gap: 10px !important;">
                     <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 8px !important;">
-                        <span style="font-size: 13px !important; opacity: 0.8 !important;">管理你创造和保存的角色档案库，可随时在组合台中调用。</span>
-                        <div style="display: flex !important; gap: 8px !important;">
-                            <button class="menu_button" id="rbq-cw-import-st-chars" type="button" style="padding: 5px 12px !important; font-size: 12px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important;">
-                                <i class="fa-solid fa-file-import"></i> 从酒馆角色卡导入
-                            </button>
-                            <button class="menu_button" id="rbq-cw-create-new-char" type="button" style="padding: 5px 16px !important; font-size: 12px !important; background: rgba(100,255,100,0.2) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important;">
-                                <i class="fa-solid fa-plus"></i> 创造新角色
-                            </button>
+                        <strong style="font-size: 13.5px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 6px !important;">
+                            <i class="fa-solid fa-mountain-sun"></i> 场景环境与全局构图 (Scene & Global Caption)
+                        </strong>
+                        <div style="display: flex !important; gap: 6px !important;">
+                            <button class="menu_button" id="rbq-cw-pick-scene-wb" type="button" style="padding: 2px 9px !important; font-size: 11px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important;"><i class="fa-solid fa-book-open"></i> 从世界书选场景</button>
+                            <button class="menu_button" id="rbq-cw-pick-pose-wb" type="button" style="padding: 2px 9px !important; font-size: 11px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.35) !important;"><i class="fa-solid fa-people-arrows"></i> 🤝 双人互动体位库</button>
                         </div>
                     </div>
-
-                    <div style="display: grid !important; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important; gap: 12px !important;">
-                        ${charList.length === 0 ? `
-                            <div style="grid-column: 1 / -1 !important; text-align: center !important; opacity: 0.5 !important; padding: 40px 0 !important; font-size: 13px !important;">
-                                暂无角色档案，点击上方「创造新角色」或「从酒馆角色卡导入」开始创建！
-                            </div>
-                        ` : charList.map(c => `
-                            <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
-                                <div style="display: flex !important; gap: 10px !important; align-items: center !important;">
-                                    <div style="width: 44px !important; height: 44px !important; border-radius: 8px !important; background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.15) !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 18px !important; overflow: hidden !important; flex-shrink: 0 !important;">
-                                        ${c.avatarUrl ? `<img src="${escapeHtml(c.avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />` : '👤'}
-                                    </div>
-                                    <div style="flex: 1 !important; min-width: 0 !important;">
-                                        <strong style="font-size: 14px !important; color: #79e4ff !important; display: block !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">${escapeHtml(c.name)}</strong>
-                                        <small style="opacity: 0.6 !important; font-size: 11px !important; display: block !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">外貌: ${escapeHtml(c.baseTags || '未设置')}</small>
-                                    </div>
-                                </div>
-                                <div style="display: flex !important; justify-content: flex-end !important; gap: 6px !important; border-top: 1px solid rgba(255,255,255,0.05) !important; padding-top: 6px !important;">
-                                    <button class="menu_button rbq-cw-send-to-slot" data-id="${escapeHtml(c.id)}" type="button" style="padding: 2px 8px !important; font-size: 10.5px !important; background: rgba(121,228,255,0.15) !important; color: #79e4ff !important;">+ 放入组合台</button>
-                                    <button class="menu_button rbq-cw-edit-char-btn" data-id="${escapeHtml(c.id)}" type="button" style="padding: 2px 8px !important; font-size: 10.5px !important;">编辑</button>
-                                    <button class="menu_button rbq-cw-del-char-btn" data-id="${escapeHtml(c.id)}" type="button" style="padding: 2px 8px !important; font-size: 10.5px !important; color: #ff8585 !important;">删除</button>
-                                </div>
-                            </div>
-                        `).join('')}
+                    <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 10px !important;">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                            <span style="font-size: 11px !important; opacity: 0.8 !important;">场景背景 Tags (indoors, beach, night...)：</span>
+                            <input id="rbq-cw-comp-scene" type="text" value="${escapeHtml(comp.scene)}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
+                        </div>
+                        <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                            <span style="font-size: 11px !important; opacity: 0.8 !important;">镜头视角 (POV, from above, close-up...)：</span>
+                            <input id="rbq-cw-comp-camera" type="text" value="${escapeHtml(comp.camera)}" style="height: 32px !important; padding: 4px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important;" />
+                        </div>
                     </div>
                 </div>
-            `;
-        }
 
-        // ── Tab 3: 组合预设库 ──────────────────────────────────
-        function renderPresetsTab() {
-            const presets = store.presets || [];
-            return `
-                <div style="display: flex !important; flex-direction: column !important; gap: 12px !important;">
-                    <div style="font-size: 13px !important; opacity: 0.8 !important;">保存的常用多角色组合场景预设：</div>
-                    <div style="display: grid !important; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; gap: 12px !important;">
-                        ${presets.length === 0 ? `
-                            <div style="grid-column: 1 / -1 !important; text-align: center !important; opacity: 0.5 !important; padding: 40px 0 !important; font-size: 13px !important;">
-                                暂无保存的组合预设，在「多角色组合台」配置好后点击「保存为组合预设」即可添加到此处！
-                            </div>
-                        ` : presets.map((p, idx) => `
-                            <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
-                                <strong style="color: #ffb86c !important; font-size: 13px !important;">🔖 ${escapeHtml(p.name)}</strong>
-                                <div style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important;">包含 ${p.slots?.length || 0} 位角色</div>
-                                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; margin-top: 4px !important;">
-                                    <span style="font-size: 10.5px !important; opacity: 0.6 !important;">${p.scene ? escapeHtml(p.scene.slice(0, 30)) + '...' : ''}</span>
-                                    <div style="display: flex !important; gap: 4px !important;">
-                                        <button class="menu_button rbq-cw-load-preset-btn" data-index="${idx}" type="button" style="padding: 2px 10px !important; font-size: 11px !important; background: rgba(100,255,100,0.15) !important; color: #a3ffa3 !important;">载入组合台</button>
-                                        <button class="menu_button rbq-cw-del-preset-btn" data-index="${idx}" type="button" style="padding: 2px 8px !important; font-size: 11px !important; color: #ff8585 !important;">删除</button>
+                <!-- Character Slots Grid -->
+                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                    <strong style="font-size: 14px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
+                        <i class="fa-solid fa-users-viewfinder"></i> 角色拼装槽位 (Char 1 ~ ${slots.length})
+                    </strong>
+                    <button class="menu_button" id="rbq-cw-add-slot-btn" type="button" style="padding: 4px 12px !important; font-size: 11.5px !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important;">
+                        <i class="fa-solid fa-plus"></i> 添加角色槽位
+                    </button>
+                </div>
+
+                <div style="display: grid !important; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important; gap: 12px !important;">
+                    ${slots.map((slot, idx) => {
+                        const charObj = store.characters[slot.charId];
+                        return `
+                            <div class="rbq-cw-slot-card" data-index="${idx}" style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(121,228,255,0.2) !important; border-radius: 12px !important; padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                                    <div style="display: flex !important; align-items: center !important; gap: 6px !important;">
+                                        <span style="background: rgba(121,228,255,0.2) !important; color: #79e4ff !important; font-size: 11px !important; font-weight: bold !important; padding: 1px 6px !important; border-radius: 4px !important;">Char ${idx + 1}</span>
+                                        <strong style="font-size: 13px !important; color: #fff !important;">${escapeHtml(charObj?.name || slot.customName || `角色 ${idx + 1}`)}</strong>
+                                    </div>
+                                    ${slots.length > 1 ? `
+                                        <button class="menu_button rbq-cw-remove-slot-btn" data-index="${idx}" type="button" style="padding: 1px 6px !important; font-size: 11px !important; color: #ff8585 !important; cursor: pointer !important;">✕ 移除</button>
+                                    ` : ''}
+                                </div>
+
+                                <!-- Character Selector -->
+                                <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
+                                    <select class="rbq-cw-slot-char-select" data-index="${idx}" style="flex: 1 !important; height: 30px !important; font-size: 11.5px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 6px !important; color: #fff !important;">
+                                        <option value="">👤 [自定义角色 / 未建档]</option>
+                                        ${charList.map(c => `
+                                            <option value="${escapeHtml(c.id)}" ${slot.charId === c.id ? 'selected' : ''}>👤 ${escapeHtml(c.name)}</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+
+                                <!-- Action / Pose -->
+                                <div style="display: flex !important; flex-direction: column !important; gap: 3px !important;">
+                                    <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                                        <span style="font-size: 11px !important; opacity: 0.75 !important;">动作/姿势 (Action)：</span>
+                                        <button class="menu_button rbq-cw-pick-slot-action-wb" data-index="${idx}" type="button" style="padding: 1px 6px !important; font-size: 10px !important; color: #79e4ff !important; background: rgba(121,228,255,0.12) !important;"><i class="fa-solid fa-book-open"></i> 选动作</button>
+                                    </div>
+                                    <input class="rbq-cw-slot-action-input" data-index="${idx}" type="text" placeholder="standing, blush, hands on hips..." value="${escapeHtml(slot.action)}" style="height: 28px !important; padding: 2px 6px !important; font-size: 11px !important; font-family: monospace !important; background: rgba(0,0,0,0.3) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; color: #fff !important;" />
+                                </div>
+
+                                <!-- Spatial Coordinate Grid Picker -->
+                                <div style="display: flex !important; flex-direction: column !important; gap: 4px !important; background: rgba(0,0,0,0.2) !important; padding: 6px 8px !important; border-radius: 6px !important;">
+                                    <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                                        <span style="font-size: 10.5px !important; opacity: 0.8 !important;">📍 站位坐标：</span>
+                                        <span style="font-size: 10.5px !important; color: #79e4ff !important; font-weight: bold !important;">${formatCoordLabel(slot.center || 'C3')}</span>
+                                    </div>
+                                    <div style="display: flex !important; gap: 4px !important; justify-content: space-between !important;">
+                                        ${['B3', 'C3', 'D3', 'A2', 'E2'].map(pos => `
+                                            <button class="menu_button rbq-cw-slot-pos-btn ${slot.center === pos ? 'active' : ''}" data-index="${idx}" data-pos="${pos}" type="button" style="padding: 2px 6px !important; font-size: 10px !important; ${slot.center === pos ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important;' : ''}">${pos}</button>
+                                        `).join('')}
                                     </div>
                                 </div>
                             </div>
-                        `).join('')}
+                        `;
+                    }).join('')}
+                </div>
+
+                <!-- Formatted Prompt Preview -->
+                <div style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
+                    <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                        <span style="font-size: 11.5px !important; color: rgba(255,255,255,0.85) !important; font-weight: bold !important;">
+                            🚀 合成提示词预览 (NAI V4.5 Native Multi-Char Format)：
+                        </span>
+                        <button class="menu_button" id="rbq-cw-copy-prompt" type="button" style="padding: 2px 8px !important; font-size: 11px !important;"><i class="fa-regular fa-copy"></i> 复制提示词</button>
+                    </div>
+                    <div id="rbq-cw-prompt-preview" style="font-size: 11.5px !important; font-family: monospace !important; color: #a3d4ff !important; line-height: 1.4 !important; max-height: 70px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(finalPrompt)}</div>
+                </div>
+
+                <!-- Bottom Action Buttons -->
+                <div style="display: flex !important; justify-content: flex-end !important; align-items: center !important; gap: 10px !important; flex-wrap: wrap !important;">
+                    <button class="menu_button" id="rbq-cw-save-scene-preset" type="button" style="padding: 8px 16px !important; font-size: 12px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important;">
+                        <i class="fa-solid fa-floppy-disk"></i> 保存为组合预设
+                    </button>
+                    <button class="menu_button" id="rbq-cw-generate-now" type="button" style="padding: 8px 24px !important; font-size: 13px !important; font-weight: bold !important; background: linear-gradient(135deg, rgba(121,228,255,0.3), rgba(100,255,100,0.3)) !important; color: #fff !important; border: 1px solid rgba(121,228,255,0.5) !important; box-shadow: 0 4px 15px rgba(121,228,255,0.2) !important; cursor: pointer !important;">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即合成并生图
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    // ── Tab 2: 角色档案库 ──────────────────────────────────
+    function renderCharactersTab(charList) {
+        return `
+            <div style="display: flex !important; flex-direction: column !important; gap: 14px !important;">
+                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 8px !important;">
+                    <span style="font-size: 13px !important; opacity: 0.8 !important;">管理你创造和保存的角色档案库，可随时在组合台中调用。</span>
+                    <div style="display: flex !important; gap: 8px !important;">
+                        <button class="menu_button" id="rbq-cw-import-st-chars" type="button" style="padding: 5px 12px !important; font-size: 12px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important;">
+                            <i class="fa-solid fa-file-import"></i> 从酒馆角色卡导入
+                        </button>
+                        <button class="menu_button" id="rbq-cw-create-new-char" type="button" style="padding: 5px 16px !important; font-size: 12px !important; background: rgba(100,255,100,0.2) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important;">
+                            <i class="fa-solid fa-plus"></i> 创造新角色
+                        </button>
                     </div>
                 </div>
-            `;
-        }
 
-        function composeFinalPrompt(comp) {
-            const slots = Array.isArray(comp.slots) ? comp.slots : [];
-            const sceneParts = [comp.scene, comp.camera, comp.atmosphere].filter(Boolean).join(', ');
-            const charParts = slots.map((s, idx) => {
-                const charObj = store.characters[s.charId];
-                const base = charObj?.baseTags || '';
-                const outfit = (s.outfitMode === 'custom' ? s.customOutfit : charObj?.currentOutfit) || '';
-                const action = s.action || '';
-                const caption = [base, outfit, action].filter(Boolean).join(', ');
-                const pos = s.center || 'C3';
-                return `Char${idx + 1}:${caption}|centers:${pos}`;
-            });
+                <div style="display: grid !important; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important; gap: 12px !important;">
+                    ${charList.length === 0 ? `
+                        <div style="grid-column: 1 / -1 !important; text-align: center !important; opacity: 0.5 !important; padding: 40px 0 !important; font-size: 13px !important;">
+                            暂无角色档案，点击上方「创造新角色」或「从酒馆角色卡导入」开始创建！
+                        </div>
+                    ` : charList.map(c => `
+                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                            <div style="display: flex !important; gap: 10px !important; align-items: center !important;">
+                                <div style="width: 44px !important; height: 44px !important; border-radius: 8px !important; background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.15) !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 18px !important; overflow: hidden !important; flex-shrink: 0 !important;">
+                                    ${c.avatarUrl ? `<img src="${escapeHtml(c.avatarUrl)}" style="width:100%;height:100%;object-fit:cover;" />` : '👤'}
+                                </div>
+                                <div style="flex: 1 !important; min-width: 0 !important;">
+                                    <strong style="font-size: 14px !important; color: #79e4ff !important; display: block !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">${escapeHtml(c.name)}</strong>
+                                    <small style="opacity: 0.6 !important; font-size: 11px !important; display: block !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;">外貌: ${escapeHtml(c.baseTags || '未设置')}</small>
+                                </div>
+                            </div>
+                            <div style="display: flex !important; justify-content: flex-end !important; gap: 6px !important; border-top: 1px solid rgba(255,255,255,0.05) !important; padding-top: 6px !important;">
+                                <button class="menu_button rbq-cw-send-to-slot" data-id="${escapeHtml(c.id)}" type="button" style="padding: 2px 8px !important; font-size: 10.5px !important; background: rgba(121,228,255,0.15) !important; color: #79e4ff !important;">+ 放入组合台</button>
+                                <button class="menu_button rbq-cw-edit-char-btn" data-id="${escapeHtml(c.id)}" type="button" style="padding: 2px 8px !important; font-size: 10.5px !important;">编辑</button>
+                                <button class="menu_button rbq-cw-del-char-btn" data-id="${escapeHtml(c.id)}" type="button" style="padding: 2px 8px !important; font-size: 10.5px !important; color: #ff8585 !important;">删除</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
 
-            return [sceneParts ? `Scene:${sceneParts}` : '', ...charParts].filter(Boolean).join('; ');
-        }
+    // ── Tab 3: 组合预设库 ──────────────────────────────────
+    function renderPresetsTab() {
+        const presets = store.presets || [];
+        return `
+            <div style="display: flex !important; flex-direction: column !important; gap: 12px !important;">
+                <div style="font-size: 13px !important; opacity: 0.8 !important;">保存的常用多角色组合场景预设：</div>
+                <div style="display: grid !important; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; gap: 12px !important;">
+                    ${presets.length === 0 ? `
+                        <div style="grid-column: 1 / -1 !important; text-align: center !important; opacity: 0.5 !important; padding: 40px 0 !important; font-size: 13px !important;">
+                            暂无保存的组合预设，在「多角色组合台」配置好后点击「保存为组合预设」即可添加到此处！
+                        </div>
+                    ` : presets.map((p, idx) => `
+                        <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
+                            <strong style="color: #ffb86c !important; font-size: 13px !important;">🔖 ${escapeHtml(p.name)}</strong>
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important;">包含 ${p.slots?.length || 0} 位角色</div>
+                            <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; margin-top: 4px !important;">
+                                <span style="font-size: 10.5px !important; opacity: 0.6 !important;">${p.scene ? escapeHtml(p.scene.slice(0, 30)) + '...' : ''}</span>
+                                <div style="display: flex !important; gap: 4px !important;">
+                                    <button class="menu_button rbq-cw-load-preset-btn" data-index="${idx}" type="button" style="padding: 2px 10px !important; font-size: 11px !important; background: rgba(100,255,100,0.15) !important; color: #a3ffa3 !important;">载入组合台</button>
+                                    <button class="menu_button rbq-cw-del-preset-btn" data-index="${idx}" type="button" style="padding: 2px 8px !important; font-size: 11px !important; color: #ff8585 !important;">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
 
-        function updateModalView() {
-            modal.innerHTML = renderModalHtml();
-            bindModalEvents();
-        }
+    function composeFinalPrompt(comp) {
+        const slots = Array.isArray(comp.slots) ? comp.slots : [];
+        const sceneParts = [comp.scene, comp.camera, comp.atmosphere].filter(Boolean).join(', ');
+        const charParts = slots.map((s, idx) => {
+            const charObj = store.characters[s.charId];
+            const base = charObj?.baseTags || '';
+            const outfit = (s.outfitMode === 'custom' ? s.customOutfit : charObj?.currentOutfit) || '';
+            const action = s.action || '';
+            const caption = [base, outfit, action].filter(Boolean).join(', ');
+            const pos = s.center || 'C3';
+            return `Char${idx + 1}:${caption}|centers:${pos}`;
+        });
 
-        function bindModalEvents() {
-            modal.querySelector('#rbq-cw-main-close')?.addEventListener('click', () => modal.remove());
-            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        return [sceneParts ? `Scene:${sceneParts}` : '', ...charParts].filter(Boolean).join('; ');
+    }
 
-            modal.querySelectorAll('.rbq-cw-nav-tab').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currentTab = btn.dataset.tab;
-                    updateModalView();
-                });
-            });
+    function renderWorkshopInnerHtml(activeTab) {
+        const charList = Object.values(store.characters || {});
+        const comp = store.activeComposer;
 
-            // Composer Events
-            modal.querySelector('#rbq-cw-comp-scene')?.addEventListener('input', (e) => {
-                store.activeComposer.scene = e.target.value;
-                save();
-                refreshPromptPreview();
-        function renderWorkshopInnerHtml(activeTab) {
-            const charList = Object.values(store.characters || {});
-            const comp = store.activeComposer;
-
-            return `
-                <div class="rbq-cw-wrapper" style="display: flex !important; flex-direction: column !important; gap: 14px !important; width: 100% !important; box-sizing: border-box !important; padding: 4px 0 !important;">
-                    <!-- Top Navigation Bar -->
+        return `
+            <div class="rbq-cw-wrapper" style="display: flex !important; flex-direction: column !important; gap: 14px !important; width: 100% !important; box-sizing: border-box !important; padding: 4px 0 !important;">
+                <!-- Top Navigation Bar -->
                     <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 16px !important; border-radius: 10px !important; background: linear-gradient(90deg, rgba(121,228,255,0.12), rgba(255,184,108,0.08)) !important; border: 1px solid rgba(255,255,255,0.08) !important; flex-wrap: wrap !important; gap: 10px !important;">
                         <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                             <i class="fa-solid fa-palette"></i> 角色工坊 (Character Workshop)

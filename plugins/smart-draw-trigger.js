@@ -6364,7 +6364,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset">${Object.entries(SYSTEM_PROMPT_PRESETS).map(([k, v]) => `<option value="${k}">${escapeHtml(v.label)}</option>`).join('')}</select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
@@ -6709,6 +6709,22 @@ SCHEMA:
             document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
             toastr.success(`已重置为所选内置 Prompt：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
         };
+        document.getElementById('rbq-sdt-system-preset').addEventListener('change', (e) => {
+            const presetKey = e.target.value;
+            const presetObj = SYSTEM_PROMPT_PRESETS[presetKey];
+            if (!presetObj) return;
+            const promptArea = document.getElementById('rbq-sdt-system-prompt');
+            if (promptArea) {
+                promptArea.value = presetObj.prompt;
+                document.getElementById('rbq-sdt-system-prompt-version').textContent = `${presetObj.label} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（已切换）`;
+            }
+            const s = getStore();
+            s.systemPromptPreset = presetKey;
+            s.systemPrompt = presetObj.prompt;
+            s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+            save();
+            toastr.success(`已切换并应用内置档位：${presetObj.label}`, PLUGIN_NAME);
+        });
         document.getElementById('rbq-sdt-reset-jailbreak').onclick = () => {
             const s = getStore();
             s.geminiJailbreakPrompt = DEFAULT_JAILBREAK_PROMPT;

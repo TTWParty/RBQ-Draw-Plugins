@@ -2656,29 +2656,152 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.body.appendChild(modal);
     }
 
-    function extractLorebookCategory(comment) {
-        if (!comment) return '综合';
-        const c = comment.trim();
+    const SDT_LOREBOOK_TAXONOMY = {
+        appearance: {
+            id: 'appearance',
+            name: '外貌特征',
+            icon: 'fa-solid fa-user-astronaut',
+            color: '#79e4ff',
+            subcategories: [
+                { id: 'hair', name: '发型发色', keywords: ['发型', '发色', '双马尾', '单马尾', '短发', '长发', '马尾', '刘海', '编发', '呆毛', '渐变发', '发饰', '发', '头发互动'], tagRegex: /\b(hair|twintails|ponytail|bangs|braid|ahoge|bob_cut|drill_hair|messy_hair|bun|ahoge|sidelocks)\b/i },
+                { id: 'eyes', name: '眼部瞳色', keywords: ['眼', '瞳', '瞳色', '异色瞳', '眼睛', '红瞳', '蓝瞳', '金瞳', '绿瞳', '爱心眼', '魔眼', '眼罩', '眼睛倒映', '猫眼'], tagRegex: /\b(eyes|heterochromia|heart-shaped_pupils|slit_pupils|glowing_eyes|empty_eyes|eyepatch)\b/i },
+                { id: 'face', name: '面部表情', keywords: ['表情', '脸部', '脸红', '微笑', '哭', '生气', '张嘴', '吐舌', '高潮脸', '害羞', '傲娇', '面部', '脸', '头部动作', '生理反应', '微细节'], tagRegex: /\b(blush|smile|grin|frown|tears|crying|open_mouth|tongue|ahegao|smug|embarrassed)\b/i },
+                { id: 'race', name: '种族特征', keywords: ['种族', '特征', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '角', '恶魔角', '光环', '天使', '魅魔', '机娘', '兽人', '耳朵', '耳朵/尾巴', '触手特征', '人外', '福瑞', '龙娘', '龙族', '扶她', '精灵', '恶魔/吸血鬼', '吸血鬼', '恶魔'], tagRegex: /\b(animal_ears|cat_ears|fox_ears|rabbit_ears|wolf_ears|elf_ears|tail|cat_tail|fox_tail|wings|horns|demon_horns|halo|angel_wings|demon_tail|prolapse|furry|centaur|lamia|kitsune|succubus|vampire)\b/i },
+                { id: 'body', name: '身材体型', keywords: ['身材', '体型', '胸部', '胸部动作', '胸部特征', '胸部状态', '乳房', '巨乳', '贫乳', '爆乳', '微乳', '腹肌', '肉感', '大腿', '长腿', '身高', '肤色', '黑皮', '白皙', '肌肉', '美腿', '锁骨', '私处', '私处特征', '臀部', '屁股', '伪娘', '男娘', '人妖', '痕迹', '年龄触发', '流浪汉', '部位强调'], tagRegex: /\b(breasts|large_breasts|small_breasts|flat_chest|huge_breasts|thick_thighs|abs|muscular|dark_skin|pale_skin|curvy|cleavage|pussy|butt|ass|crossdressing)\b/i },
+            ]
+        },
+        outfit: {
+            id: 'outfit',
+            name: '服装穿搭',
+            icon: 'fa-solid fa-shirt',
+            color: '#ffb86c',
+            subcategories: [
+                { id: 'casual', name: '日常私服', keywords: ['日常服', '常服', '私服', '日常', 'T恤', '卫衣', '衬衫', '毛衣', '外套', '夹克', '大衣', '牛仔裤', '短裙', '百褶裙', '连衣裙', '裙子', '上装', '下装', '着装', '着装状态', '材质', '和服', '汉服'], tagRegex: /\b(casual|t-shirt|shirt|hoodie|sweater|jacket|coat|jeans|skirt|miniskirt|dress|sundress|blouse|pants|shorts)\b/i },
+                { id: 'uniform', name: '制服职业', keywords: ['制服', '校服', '水手服', '西装', '女仆', '女仆装', '护士', '修女', '警服', '旗袍', '和服', '巫女', '军服', '职场', 'OL', '兔女郎', '体操服', '运动服', '幻想系职业', '职业', '身份'], tagRegex: /\b(uniform|school_uniform|serafuku|maid|nurse|nun|police|cheongsam|kimono|miko|military_uniform|office_lady|bunny_suit|gym_uniform|tracksuit)\b/i },
+                { id: 'swimwear', name: '泳装内衣', keywords: ['泳装', '泳衣', '比基尼', '死库水', '内衣', '文胸', '胸罩', '内裤', '胖次', '情趣内衣', '蕾丝内衣', '吊带睡衣', '睡衣', '浴袍', '下着', '乳贴'], tagRegex: /\b(swimsuit|bikini|school_swimsuit|underwear|bra|panties|lingerie|negligee|sleepwear|bathrobe)\b/i },
+                { id: 'accessories', name: '鞋袜饰品', keywords: ['鞋袜', '丝袜', '黑丝', '白丝', '过膝袜', '短袜', '吊袜带', '高跟鞋', '靴子', '手套', '项圈', '手镯', '项链', '耳环', '帽子', '头饰', '眼镜', '首饰', '饰品', '发饰', '乳头配饰', '链条'], tagRegex: /\b(socks|stockings|pantyhose|thighhighs|garter_straps|high_heels|boots|gloves|collar|choker|glasses|hat|headdress|hair_ornament|earrings|necklace)\b/i },
+                { id: 'costume', name: '情趣装扮', keywords: ['情趣', '变装', '胶衣', '紧身衣', '皮衣', '魅魔装', '透视装', '镂空', '拘束装', '破损衣服', '裸体围裙', '皮甲', '机甲', '避孕套', '假阳具', '振动器', '飞机杯', '情趣用品', '私处刺激道具', '穿戴阳具', '贞操带', '束缚限制道具', '口部限制道具', '武器', '刀剑', '冷兵器', '热武器/现代'], tagRegex: /\b(latex|bodysuit|leotard|revealing|see-through|torn_clothes|naked_apron|mecha_clothes|armor|dildo|vibrator|chastity)\b/i },
+            ]
+        },
+        pose: {
+            id: 'pose',
+            name: '日常动作',
+            icon: 'fa-solid fa-person-walking',
+            color: '#a3ffa3',
+            subcategories: [
+                { id: 'single_action', name: '单人姿态', keywords: ['动作', '姿势', '动作/姿势', '站姿', '坐姿', '躺姿', '躺', '卧', '趴姿', '趴', '跪姿', '跪', '倾靠', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '腿部姿势', '手部动作', '手臂动作', '腿部动作', '手动作', '指向', '倒立', '造型', '基本动作', '其他姿势', '动作（着装互动）', '展示', '引导动作/抓动作', '孕期', '药物'], tagRegex: /\b(standing|sitting|lying|walking|running|jumping|squatting|waving|peace_sign|salute|reaching|kneeling|on_all_fours|crossed_arms|pointing|leaning)\b/i },
+                { id: 'dynamic_pose', name: '动态战斗', keywords: ['战斗', '拔刀', '施法', '跳跃', '飞踢', '回眸', '冲刺', '防守', '持枪', '持剑', '蓄力', '踢击', '拳击', '冷兵器战斗', '射击/瞄准', '训练/突进', '控制'], tagRegex: /\b(fighting_stance|sword|weapon|casting_spell|looking_back|dashing|combat|holding_weapon)\b/i },
+            ]
+        },
+        interaction: {
+            id: 'interaction',
+            name: '双人互动',
+            icon: 'fa-solid fa-people-arrows',
+            color: '#79e4ff',
+            subcategories: [
+                { id: 'duo_gentle', name: '亲密温情', keywords: ['互动', '双人', '胸部动作与互动', '胸部互动', '牵手', '拥抱', '相拥', '依偎', '接吻', '亲吻', '对视', '摸头', '公主抱', '背着', '靠肩', '共伞', '耳语', '双人姿势', '双人互动', '亲吻亲昵', '抱人/背负', '手部', '坐互动', '摸头', '隔衣抚摸', '露出/暴露', '暴露/偷窥'], tagRegex: /\b(holding_hands|hug|embracing|kiss|kissing|eye_contact|headpat|princess_carry|piggyback|whispering|intertwined_fingers)\b/i },
+                { id: 'duo_daily', name: '日常社交', keywords: ['对话', '聊天', '打闹', '并肩', '跳舞', '递东西', '敬酒', '拍照', '合影', '共进晚餐', '友好互动', '互动（杂项）'], tagRegex: /\b(talking|dancing|cheering|selfie|taking_picture|sharing|feeding)\b/i },
+            ]
+        },
+        nsfw: {
+            id: 'nsfw',
+            name: '互动体位',
+            icon: 'fa-solid fa-heart-pulse',
+            color: '#ff79c6',
+            subcategories: [
+                { id: 'positions', name: '经典体位', keywords: ['体位', '正常位', '传教士', '骑乘', '骑乘位', '后入', '后背位', '狗爬', '侧入', '站交', '站立位', '火车便当', '女上男下', '体位模板', 'SEX模板', 'SEX', '做爱', '交配', '性爱', '整体体位', '插入', '性交'], tagRegex: /\b(missionary|cowgirl_position|doggystyle|standing_sex|mating_press|spooning|sex_from_behind|sex|penetration|vaginal)\b/i },
+                { id: 'service', name: '口交服务', keywords: ['口交', '深喉', '手交', '乳交', '足交', '侍奉', '舔舐', '咬住', '射精', '颜射', '内射', '中出', '吞精', '打飞机', '哺乳', '自慰'], tagRegex: /\b(fellatio|deepthroat|handjob|paizuri|footjob|oral|cum|cum_in_mouth|facial|creampie|bukkake)\b/i },
+                { id: 'kinky', name: '束缚情调', keywords: ['束缚', '绳缚', '拘束', '手铐', '蒙眼', '项圈牵引', '调教', '触手', '兽交', '群交', '轮奸', '自慰', '假阳具', '跳蛋', '玩具', '异种奸', '脱垂', '强奸猥亵', '特殊癖好', '群体共用', '猎奇'], tagRegex: /\b(bondage|ropes|handcuffs|blindfold|tentacles|gangbang|masturbation|dildo|vibrator|collar_leash|prolapse|rape)\b/i },
+                { id: 'states', name: '涩涩状态', keywords: ['高潮', '绝顶', '流汗', '爱液', '潮吹', '受孕', '阿黑颜', '失神', 'X光', '透视', '身体流汗', '胸部状态与液体', '液体状态', '液体', '剖面图'], tagRegex: /\b(orgasm|sweat|body_fluids|squirt|impregnation|ahegao|x-ray|heavy_breathing)\b/i },
+            ]
+        },
+        scene: {
+            id: 'scene',
+            name: '场景环境',
+            icon: 'fa-solid fa-mountain-sun',
+            color: '#f1fa8c',
+            subcategories: [
+                { id: 'indoor', name: '室内场所', keywords: ['室内', '房间', '卧室', '床', '教室', '学校', '浴室', '浴室/温泉', '温泉', '厨房', '客厅', '客厅/沙发', '办公室', '图书馆', '咖啡厅', '酒吧', '情趣酒店', '酒店', '地牢', '走廊', '阳台', '车内', '电车/公交', '电梯', '楼梯间', '试衣间', '电影院', '餐厅/居酒屋', '教堂', '神社/寺庙', '实验室', '窗边', '公共场所', '背景'], tagRegex: /\b(indoors|room|bedroom|bed|classroom|school|bathroom|onsen|hot_springs|kitchen|living_room|office|library|cafe|bar|love_hotel|dungeon|hallway|balcony|elevator|stairwell|restaurant|cathedral|shrine)\b/i },
+                { id: 'outdoor', name: '室外自然', keywords: ['室外', '户外', '海滩', '海边', '海滩/泳池', '海', '森林', '树林', '公园', '公园/长椅', '街道', '城市', '小巷', '屋顶', '天台', '草地', '花园', '夜景', '星空', '夕阳', '黄昏', '下雨', '雨天', '下雪', '雪景', '天气', '自然景观', '人造户外', '交通工具', '背景类(人物)'], tagRegex: /\b(outdoors|beach|ocean|sea|forest|park|street|city|alley|rooftop|grass|garden|night_sky|starry_sky|sunset|dusk|raining|snowing|winter)\b/i },
+                { id: 'fantasy', name: '奇幻科幻', keywords: ['奇幻', '科幻', '废墟', '废墟/战后', '城堡', '宫殿', '神殿', '太空', '宇宙', '飞船', '魔法阵', '赛博朋克', '异世界', '末世', '神圣', '特殊虚构'], tagRegex: /\b(fantasy|sci-fi|ruins|castle|palace|temple|space|spaceship|magic_circle|cyberpunk)\b/i },
+            ]
+        },
+        camera: {
+            id: 'camera',
+            name: '镜头光影',
+            icon: 'fa-solid fa-camera',
+            color: '#bd93f9',
+            subcategories: [
+                { id: 'camera_angle', name: '镜头视角', keywords: ['视角', '机位', '构图', '特写', '面部特写', '半身', '全身', '俯视', '仰视', 'POV', '第一人称', '侧面', '背影', '荷兰角', '鱼眼', '广角', '对焦', '速查表-镜子', '速查表-窗户', '速查表-门缝偷窥', '速查表-车后视镜', '速查表-猫眼', '速查表-钥匙孔', '速查表-前置自拍', '速查表-镜子自拍', '速查表-望远镜', '速查表-透视眼镜', '速查表-透视手机'], tagRegex: /\b(close-up|face_focus|upper_body|full_body|from_above|from_below|pov|profile|from_behind|dutch_angle|fisheye|wide_angle|mirror|through_window)\b/i },
+                { id: 'lighting', name: '光影氛围', keywords: ['光影', '光照', '逆光', '丁达尔', '体积光', '发光', '荧光', '霓虹', '暗色调', '明亮', '柔光', '电影感', '镜头光晕', '氛围', '滤镜', '速查表-水中倒影', '动态效果'], tagRegex: /\b(lighting|backlighting|volumetric_lighting|glowing|neon|dark|bright|soft_light|cinematic_lighting|lens_flare|reflection)\b/i },
+                { id: 'style', name: '艺术画风', keywords: ['画风', '风格', '复古', '90年代', '厚涂', '水彩', '像素', '线稿', '黑白', '赛璐珞', '油画', '插画', '速查表', '速查表-透明底', '速查表-立绘', '速查表-照片', '速查表-聊天记录', '速查表-直播', '速查表-手机屏幕', '速查表-画框', '速查表-杂志/封面', '速查表-电视画面/直播', '速查表-通缉令', '速查表-录像/拍摄', '速查表-占卜', '速查表-游戏状态栏', '速查表-社交媒体帖子', '速查表-视频通话', '速查表- 梦境泡泡/回忆画面', '速查表-明信片/贺卡', '速查表-AV', '文字渲染', '设定'], tagRegex: /\b(artstyle|retro|watercolor|pixel_art|lineart|monochrome|cell_shading|oil_painting|magazine_cover|livestream|transparent_background)\b/i },
+            ]
+        }
+    };
 
-        // 1. [着装]：xxx or [动作/姿势]：xxx
+    function classifySDTLorebookEntry(comment, content, keys = []) {
+        const c = String(comment || '').trim();
+        const body = String(content || '').trim();
+        const keyList = Array.isArray(keys) ? keys.map(k => String(k).trim()).filter(Boolean) : [];
+
         const bracketMatch = c.match(/^\[([^\]]+)\]/);
-        if (bracketMatch) return bracketMatch[1].trim();
-
-        // 2. *服装-xxx or 日常服-xxx or 兽奸-xxx or 口交-xxx
         const prefixMatch = c.match(/^[\*#\s]*([^\-\—\－\:\：\s\(\)\[\]]{2,8})[\-\—\－\:\：]/);
-        if (prefixMatch) return prefixMatch[1].trim();
+        const titleCat = (bracketMatch ? bracketMatch[1] : (prefixMatch ? prefixMatch[1] : '')).toLowerCase();
 
-        // 3. Keywords prefix
-        const keywords = [
-            '日常服', '日常服装', '日常', '服装', '泳装', '内衣', '睡衣', '礼服', '制服', '女仆', '旗袍', '西装', '校服', '婚纱',
-            '口交', '手交', '乳交', '足交', '肛交', '自慰', '骑乘', '后入', '侧入', '坐姿', '群交', '轮奸', '兽奸', '触手', '调教',
-            '构图', '视角', '动作', '表情', '发型', '眼睛', '背景', '光影', '特效', '纹身', '束缚', '人物转化'
-        ];
-        for (const kw of keywords) {
-            if (c.startsWith(kw)) return kw;
+        let bestMatch = null;
+        let highestScore = 0;
+
+        for (const [mainKey, mainGroup] of Object.entries(SDT_LOREBOOK_TAXONOMY)) {
+            for (const sub of mainGroup.subcategories) {
+                let score = 0;
+
+                if (titleCat) {
+                    if (titleCat.includes(sub.name.toLowerCase()) || sub.keywords.some(kw => titleCat.includes(kw.toLowerCase()))) {
+                        score += 30;
+                    }
+                    if (titleCat.includes(mainGroup.name.toLowerCase())) {
+                        score += 15;
+                    }
+                }
+
+                for (const kw of sub.keywords) {
+                    const kwLower = kw.toLowerCase();
+                    if (c.toLowerCase().includes(kwLower)) score += 10;
+                    if (keyList.some(k => k.toLowerCase().includes(kwLower))) score += 8;
+                }
+
+                if (sub.tagRegex && sub.tagRegex.test(body)) {
+                    score += 6;
+                }
+
+                if (score > highestScore) {
+                    highestScore = score;
+                    bestMatch = {
+                        mainId: mainGroup.id,
+                        mainName: mainGroup.name,
+                        subId: sub.id,
+                        subName: sub.name,
+                        icon: mainGroup.icon,
+                        color: mainGroup.color,
+                        badgeText: `${mainGroup.name} · ${sub.name}`
+                    };
+                }
+            }
         }
 
-        return '综合';
+        if (bestMatch && highestScore >= 6) {
+            return bestMatch;
+        }
+
+        return {
+            mainId: 'other',
+            mainName: '其它/未分类',
+            subId: 'other',
+            subName: '综合词条',
+            icon: 'fa-solid fa-cubes',
+            color: '#8be9fd',
+            badgeText: titleCat ? `分类: ${titleCat}` : '综合'
+        };
     }
 
     function openLorebookSearchModal(initialSourceId = null, onSelectEntry = null) {
@@ -2692,7 +2815,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         let selectedSourceId = initialSourceId || 'all';
-        let selectedCategory = 'all';
+        let selectedMainCategory = 'all';
+        let selectedSubCategory = 'all';
         let searchQuery = '';
 
         const getAllEntries = () => {
@@ -2702,20 +2826,13 @@ Zimage 擅长理解复杂的英文长句和语境。
                 try {
                     const parsed = parseLorebookRawJson(src.rawJson, src.name);
                     for (const e of parsed.entries) {
-                        list.push({ ...e, sourceName: src.name, category: extractLorebookCategory(e.comment) });
+                        const keys = Array.isArray(e.key) ? e.key : (typeof e.key === 'string' ? e.key.split(',') : []);
+                        const classification = classifySDTLorebookEntry(e.comment, e.content, keys);
+                        list.push({ ...e, sourceName: src.name, classification });
                     }
                 } catch (_e) { /* noop */ }
             }
             return list;
-        };
-
-        const getCategories = (entries) => {
-            const catMap = {};
-            for (const e of entries) {
-                const cat = e.category || '综合';
-                catMap[cat] = (catMap[cat] || 0) + 1;
-            }
-            return Object.entries(catMap).sort((a, b) => b[1] - a[1]);
         };
 
         const modal = document.createElement('div');
@@ -2729,7 +2846,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             width: 100vw !important;
             height: 100vh !important;
             z-index: 99999999 !important;
-            background: rgba(0,0,0,0.82) !important;
+            background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
@@ -2741,10 +2858,37 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         const renderModal = () => {
             const allEntries = getAllEntries();
-            const categories = getCategories(allEntries);
+
+            // Compute main category counts
+            const mainCounts = { all: allEntries.length, other: 0 };
+            for (const key of Object.keys(SDT_LOREBOOK_TAXONOMY)) {
+                mainCounts[key] = 0;
+            }
+            for (const e of allEntries) {
+                const mId = e.classification?.mainId || 'other';
+                mainCounts[mId] = (mainCounts[mId] || 0) + 1;
+            }
+
+            // Compute subcategory counts
+            const subCounts = { all: 0 };
+            const currentMainDef = SDT_LOREBOOK_TAXONOMY[selectedMainCategory];
+            if (currentMainDef) {
+                currentMainDef.subcategories.forEach(sub => { subCounts[sub.id] = 0; });
+                for (const e of allEntries) {
+                    if (e.classification?.mainId === selectedMainCategory) {
+                        subCounts.all++;
+                        const sId = e.classification?.subId;
+                        if (sId && subCounts[sId] !== undefined) subCounts[sId]++;
+                    }
+                }
+            }
+
             const q = searchQuery.toLowerCase().trim();
             const filtered = allEntries.filter(e => {
-                if (selectedCategory !== 'all' && e.category !== selectedCategory) return false;
+                if (selectedMainCategory !== 'all') {
+                    if (e.classification?.mainId !== selectedMainCategory) return false;
+                    if (selectedSubCategory !== 'all' && e.classification?.subId !== selectedSubCategory) return false;
+                }
                 if (!q) return true;
                 const c = (e.comment || '').toLowerCase();
                 const cont = (e.content || '').toLowerCase();
@@ -2758,15 +2902,16 @@ Zimage 擅长理解复杂的英文长句和语境。
                     background: #1e1f24 !important;
                     border: 1px solid rgba(255,255,255,0.18) !important;
                     border-radius: 14px !important;
-                    width: 760px !important;
-                    max-width: 95vw !important;
-                    height: 86vh !important;
+                    width: 780px !important;
+                    max-width: 96vw !important;
+                    height: 88vh !important;
                     display: flex !important;
                     flex-direction: column !important;
                     overflow: hidden !important;
                     box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
                     box-sizing: border-box !important;
                 ">
+                    <!-- Header -->
                     <div style="
                         display: flex !important;
                         align-items: center !important;
@@ -2779,54 +2924,76 @@ Zimage 擅长理解复杂的英文长句和语境。
                             <span>📚</span> ${onSelectEntry ? '从世界书中选择服装/词条预设' : '世界书词条库与分类浏览'}
                             <span style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;">(共 ${filtered.length}/${allEntries.length} 条)</span>
                         </strong>
-                        <button class="menu_button" id="rbq-sdt-lb-search-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                        <button type="button" id="rbq-sdt-lb-search-close" style="background: rgba(255,255,255,0.1) !important; border: none !important; color: #fff !important; border-radius: 6px !important; padding: 4px 10px !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                     </div>
 
+                    <!-- Search Bar & Worldbook Selector -->
                     <div style="padding: 10px 18px !important; display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
-                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 制服, 紧身裙, 拳击, 跳蛋, 姿势, 视角, vibrator)..." style="flex: 1 !important; min-width: 180px !important; height: 32px !important; margin: 0 !important; font-size: 13px !important; padding: 0 10px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 制服, 紧身裙, 拳击, 跳蛋, 姿势, 视角, 兽耳, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 34px !important; margin: 0 !important; font-size: 13px !important; padding: 0 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
                         
-                        <select id="rbq-sdt-lb-search-source" style="height: 32px !important; margin: 0 !important; font-size: 12px !important; max-width: 160px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                        <select id="rbq-sdt-lb-search-source" style="height: 34px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #79e4ff !important;">
                             <option value="all" ${selectedSourceId === 'all' ? 'selected' : ''}>🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
                             ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>📖 ${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
                         </select>
-
-                        <select id="rbq-sdt-lb-search-category" style="height: 32px !important; margin: 0 !important; font-size: 12px !important; max-width: 160px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,184,108,0.3) !important; border-radius: 8px !important; color: #ffb86c !important;">
-                            <option value="all" ${selectedCategory === 'all' ? 'selected' : ''}>🏷️ 全部分类 (${allEntries.length})</option>
-                            ${categories.map(([catName, count]) => `<option value="${escapeHtml(catName)}" ${selectedCategory === catName ? 'selected' : ''}>🏷️ ${escapeHtml(catName)} (${count})</option>`).join('')}
-                        </select>
                     </div>
 
-                    <div style="padding: 6px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.15) !important; align-items: center !important; white-space: nowrap !important;">
-                        <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">分类:</span>
-                        <button class="menu_button rbq-sdt-cat-chip" data-cat="all" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; ${selectedCategory === 'all' ? 'background: rgba(104,215,255,0.25) !important; color: #79e4ff !important; border: 1px solid #79e4ff !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.05) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.1) !important;'}">全部 (${allEntries.length})</button>
-                        ${categories.slice(0, 18).map(([catName, count]) => `
-                            <button class="menu_button rbq-sdt-cat-chip" data-cat="${escapeHtml(catName)}" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; ${selectedCategory === catName ? 'background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.05) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.1) !important;'}">${escapeHtml(catName)} (${count})</button>
-                        `).join('')}
+                    <!-- Tier 1: Main Category Tabs -->
+                    <div style="padding: 8px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.25) !important; align-items: center !important; white-space: nowrap !important;">
+                        <button class="rbq-sdt-main-cat-btn" data-cat="all" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'all' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid #79e4ff !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}">🌐 全部 (${mainCounts.all || 0})</button>
+                        ${Object.values(SDT_LOREBOOK_TAXONOMY).map(group => {
+                            const isAct = selectedMainCategory === group.id;
+                            const count = mainCounts[group.id] || 0;
+                            return `
+                                <button class="rbq-sdt-main-cat-btn" data-cat="${group.id}" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${isAct ? `background: ${group.color}25 !important; color: ${group.color} !important; border: 1px solid ${group.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}"><i class="${group.icon}"></i> ${group.name} (${count})</button>
+                            `;
+                        }).join('')}
+                        ${mainCounts.other > 0 ? `
+                            <button class="rbq-sdt-main-cat-btn" data-cat="other" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'other' ? 'background: rgba(139,233,253,0.25) !important; color: #8be9fd !important; border: 1px solid #8be9fd !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}"><i class="fa-solid fa-cubes"></i> 其它 (${mainCounts.other})</button>
+                        ` : ''}
                     </div>
 
+                    <!-- Tier 2: Subcategory Chips (when a main category is selected) -->
+                    ${currentMainDef ? `
+                        <div style="padding: 6px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.15) !important; align-items: center !important; white-space: nowrap !important;">
+                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">子分类:</span>
+                            <button class="rbq-sdt-sub-cat-chip" data-sub="all" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedSubCategory === 'all' ? `background: ${currentMainDef.color}30 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部${currentMainDef.name} (${subCounts.all || 0})</button>
+                            ${currentMainDef.subcategories.map(sub => {
+                                const isSubAct = selectedSubCategory === sub.id;
+                                const count = subCounts[sub.id] || 0;
+                                return `
+                                    <button class="rbq-sdt-sub-cat-chip" data-sub="${sub.id}" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${isSubAct ? `background: ${currentMainDef.color}25 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${sub.name} (${count})</button>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : ''}
+
+                    <!-- Results List -->
                     <div id="rbq-sdt-lb-search-results" style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
                         ${filtered.length === 0 ? `
                             <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
                         ` : filtered.slice(0, 100).map((e, idx) => {
                             const subVariants = extractLorebookSubVariants(e.content);
                             const hasMultiple = subVariants.length > 1;
+                            const badgeColor = e.classification?.color || '#79e4ff';
+                            const badgeIcon = e.classification?.icon || 'fa-solid fa-tag';
+                            const badgeText = e.classification?.badgeText || '综合';
                             return `
                             <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                                 <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
                                     <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important;">
                                         <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
                                         <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
-                                        <span style="font-size: 11px !important; background: rgba(104,215,255,0.1) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.2) !important; padding: 1px 6px !important; border-radius: 4px !important;">🏷️ ${escapeHtml(e.category)}</span>
+                                        <span style="font-size: 11px !important; background: ${badgeColor}15 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}35 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: 500 !important;"><i class="${badgeIcon}"></i> ${escapeHtml(badgeText)}</span>
                                         ${hasMultiple ? `
                                             <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
                                         ` : ''}
                                     </div>
-                                    <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
+                                    <div style="display: flex !important; gap: 6px !important; align-items: center !important; flex-shrink: 0 !important;">
                                         ${onSelectEntry ? `
-                                            <button class="menu_button rbq-sdt-select-lb-entry" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" type="button" style="padding: 3px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-solid fa-check"></i> ${hasMultiple ? '选择具体姿势' : '选用此词条'}</button>
+                                            <button class="rbq-sdt-select-lb-entry" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-solid fa-check"></i> ${hasMultiple ? '选择具体姿势' : '选用此词条'}</button>
                                         ` : ''}
-                                        <button class="menu_button rbq-sdt-test-entry-btn" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" data-comment="${escapeHtml(e.comment || '')}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${hasMultiple ? '挑选姿势测试' : '测试生图'}</button>
-                                        <button class="menu_button rbq-sdt-copy-entry-tags" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 3px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important;"><i class="fa-regular fa-copy"></i> 复制</button>
+                                        <button class="rbq-sdt-test-entry-btn" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" data-comment="${escapeHtml(e.comment || '')}" type="button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${hasMultiple ? '挑选姿势测试' : '测试生图'}</button>
+                                        <button class="rbq-sdt-copy-entry-tags" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; color: #79e4ff !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-regular fa-copy"></i> 复制</button>
                                     </div>
                                 </div>
                                 <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important;">
@@ -2869,22 +3036,23 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (sourceSelect) {
                 sourceSelect.addEventListener('change', (e) => {
                     selectedSourceId = e.target.value;
-                    selectedCategory = 'all';
+                    selectedMainCategory = 'all';
+                    selectedSubCategory = 'all';
                     renderModal();
                 });
             }
 
-            const categorySelect = modal.querySelector('#rbq-sdt-lb-search-category');
-            if (categorySelect) {
-                categorySelect.addEventListener('change', (e) => {
-                    selectedCategory = e.target.value;
+            modal.querySelectorAll('.rbq-sdt-main-cat-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selectedMainCategory = btn.dataset.cat;
+                    selectedSubCategory = 'all';
                     renderModal();
                 });
-            }
+            });
 
-            modal.querySelectorAll('.rbq-sdt-cat-chip').forEach(chip => {
+            modal.querySelectorAll('.rbq-sdt-sub-cat-chip').forEach(chip => {
                 chip.addEventListener('click', () => {
-                    selectedCategory = chip.dataset.cat;
+                    selectedSubCategory = chip.dataset.sub;
                     renderModal();
                 });
             });

@@ -2671,39 +2671,57 @@ Zimage 擅长理解复杂的英文长句和语境。
                 },
                 { 
                     id: 'service', 
-                    name: '侍奉服务/器官交', 
-                    keywords: ['口交', '深喉', '舔穴', '男口女', '女口男', '手交', '打飞机', '乳交', '揉胸', '抓乳', '腿交', '足交', '耳交', '发交', '侍奉', '舔舐', '咬住', '吸吮', '舔脚', '胸部动作', '掰开小穴', '展示小穴', '母牛挤奶', '母牛榨乳', '挤奶', '胀乳', '哺乳', '扒开', '送奶', '足穴', '臀交', '擦拭阴部', '肛门展示', '胸部拔剑'],
+                    name: '口交/侍奉与器官交', 
+                    keywords: ['口交', '深喉', '舔穴', '男口女', '女口男', '手交', '打飞机', '乳交', '揉胸', '抓乳', '腿交', '足交', '耳交', '发交', '侍奉', '舔舐', '咬住', '吸吮', '舔脚', '胸部动作', '掰开小穴', '展示小穴', '母牛挤奶', '母牛榨乳', '挤奶', '胀乳', '哺乳', '扒开', '送奶', '足穴', '臀交', '擦拭阴部', '肛门展示', '胸部拔剑', '协作/侍奉'],
                     tagRegex: /\b(fellatio|deepthroat|cunnilingus|handjob|paizuri|footjob|thighjob|oral|licking|breast_grab|nipple_tweak|lactation)\b/i 
                 },
                 { 
-                    id: 'fluids', 
+                    id: 'masturbation_fluids', 
                     name: '自慰/高潮与精液', 
                     keywords: ['自慰', '手淫', '跳蛋', '假阳具', '振动棒', '情趣玩具', '高潮', '绝顶', '潮吹', '失神', '受孕', '孕肚', '分娩', '产卵', '阿黑颜', '颜射', '饮精', '内射', '中出', '精液', '精液浴', '尿', '放尿', '屎', '排泄', '精液混合食物', '事后', '事后性爱', '处女膜'],
                     tagRegex: /\b(masturbation|dildo|vibrator|orgasm|squirt|impregnation|pregnant|giving_birth|ahegao|facial|creampie|bukkake|cum|pee|aftersex)\b/i 
                 },
                 { 
-                    id: 'bdsm', 
+                    id: 'beast_monster', 
+                    name: '兽交与动物交配', 
+                    keywords: ['兽奸', '狗', '狗丈夫', '犬交', '马交', '猪', '兽人交配', '人兽', '兽交', '母猪装'],
+                    tagRegex: /\b(bestiality|dog|horse)\b/i 
+                },
+                { 
+                    id: 'tentacles_creature', 
+                    name: '触手与异种魔物', 
+                    keywords: ['触手', '触手交', '史莱姆', '史莱姆娘', '异形', '寄生', '产卵', '人外交配', '虫奸', '异种奸', '魔物娘', '兽人', '宝箱怪'],
+                    tagRegex: /\b(tentacles|tentacle_sex|slime|monster|alien|parasite|oviposition|creature)\b/i 
+                },
+                { 
+                    id: 'bdsm_control', 
                     name: '调教/拘束与BDSM', 
-                    keywords: ['调教', '宠物调教', '拘束', '拘束放置', '束缚', '肉便器', '绳缚', '手铐', '项圈', '牵引', '刑罚', '殴打', '暴力', '绑架', '截肢', '人棍', '人槛', '秀色', '穿环', '扩张带', '异物插入', '肛门拔剑', '小穴拔剑', '宫脱', '脱垂', '子宫脱垂', '催眠', '洗脑', '性玩具', 'BDSM', 'BDSM道具', '羞辱', '支配', '臣服', '女奴', '窒息', '放置吊缚', '胁迫', '灌肠', '阴道书法', '胯绳'],
-                    tagRegex: /\b(bondage|ropes|handcuffs|blindfold|collar_leash|bdsm|humiliation|submissive|torture|amputation|piercing|hypnosis|mind_control|prolapse)\b/i 
+                    keywords: ['调教', '宠物调教', '拘束', '拘束放置', '束缚', '肉便器', '绳缚', '手铐', '项圈', '牵引', '性玩具', 'BDSM', 'BDSM道具', '羞辱', '支配', '臣服', '女奴', '窒息', '放置吊缚', '胁迫', '灌肠', '阴道书法', '胯绳', '扩张带', '异物插入', '肛门拔剑', '小穴拔剑', '宫脱', '脱垂', '子宫脱垂'],
+                    tagRegex: /\b(bondage|ropes|handcuffs|blindfold|collar_leash|bdsm|humiliation|submissive|piercing|prolapse)\b/i 
                 },
                 { 
-                    id: 'monsters', 
-                    name: '触手/异种与兽奸', 
-                    keywords: ['兽奸', '狗', '狗丈夫', '犬交', '马交', '猪', '触手', '触手交', '史莱姆', '史莱姆娘', '异形', '寄生', '产卵', '人外交配', '虫奸', '兽人交配', '异种奸', '魔物娘', '兽人', '宝箱怪'],
-                    tagRegex: /\b(bestiality|dog|horse|tentacles|tentacle_sex|slime|monster|alien|parasite|oviposition|creature)\b/i 
+                    id: 'extreme_guro', 
+                    name: '截肢/人棍与极端重口', 
+                    keywords: ['截肢', '人棍', '截肢/人棍', '人槛', '秀色', '杀害', '刑罚', '殴打', '暴力', '肉体改造', '机械奸改造', '机械奸', '血腥', '猎奇'],
+                    tagRegex: /\b(amputation|guro|torture|snuff|meat_toilet)\b/i 
                 },
                 { 
-                    id: 'group', 
-                    name: '群交/轮奸与多P', 
+                    id: 'group_ntr', 
+                    name: '多人轮奸与群交', 
                     keywords: ['多p', '多p/轮奸', '轮奸', '群交', '多男一女', '多女一男', '双飞', '3p', '前后夹击', '群交前后夹击', '百合', '女同', '群P', '混交', '乱交', '婊子滥交组件', '婊子组件', '露出', '偷拍', '偷窥', '绿帽', 'NTR'],
                     tagRegex: /\b(gangbang|group_sex|threesome|ffm_threesome|mmf_threesome|double_penetration|yuri|lesbian|exhibitionism|voyeurism|ntr)\b/i 
                 },
                 { 
-                    id: 'situations', 
-                    name: '情境与另类性爱', 
-                    keywords: ['另类日常', '诱惑', '猥亵', '强奸', '迷奸', '醉酒', '睡眠性爱', '睡眠睡奸', '睡眠口交', '睡眠颜射', '时间停止', '电梯', '野外', '车震', '女体盛', '钢管舞', '肉体改造', '机械奸', '雌小鬼', '小正太', '婴儿退行', '人格排泄', '录像性爱', '避孕套', '买避孕套', '卡在洗衣机', '仙女涩涩版'],
-                    tagRegex: /\b(seduction|molestation|rape|sleep_sex|somnophilia|elevator|public_sex|nyotaimori|pole_dancing|mecha_sex)\b/i 
+                    id: 'forced_crime', 
+                    name: '强奸/猥亵与催眠', 
+                    keywords: ['猥亵', '强奸', '迷奸', '催眠', '洗脑', '绑架', '胁迫', '下药', '电车猥亵', '公车猥亵'],
+                    tagRegex: /\b(molestation|rape|hypnosis|mind_control|blackmail)\b/i 
+                },
+                { 
+                    id: 'alternative_daily', 
+                    name: '另类日常与情境性爱', 
+                    keywords: ['另类日常', '诱惑', '醉酒', '睡眠性爱', '睡眠睡奸', '睡眠口交', '睡眠颜射', '时间停止', '电梯', '野外', '车震', '女体盛', '钢管舞', '雌小鬼', '小正太', '婴儿退行', '人格排泄', '录像性爱', '避孕套', '买避孕套', '卡在洗衣机', '仙女涩涩版'],
+                    tagRegex: /\b(seduction|sleep_sex|somnophilia|elevator|public_sex|nyotaimori|pole_dancing|mecha_sex)\b/i 
                 }
             ]
         },
@@ -2722,12 +2740,12 @@ Zimage 擅长理解复杂的英文长句和语境。
         },
         pose: {
             id: 'pose',
-            name: '日常动作',
+            name: '日常姿态',
             icon: 'fa-solid fa-person-walking',
             color: '#a3ffa3',
             subcategories: [
-                { id: 'single_action', name: '单人姿态', keywords: ['动作', '姿势', '动作/姿势', '站姿', '坐姿', '躺姿', '趴姿', '跪姿', '倾靠', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '腿部动作', '手臂动作', '手动作', '指向', '倒立', '造型', '基本动作', '健身', '跑步', '拔刀', '洗车', '土下座'] },
-                { id: 'dynamic_pose', name: '动态战斗', keywords: ['战斗', '拔刀', '施法', '跳跃', '飞踢', '回眸', '冲刺', '防守', '持枪', '持剑', '蓄力', '踢击', '拳击', '挥刀', '射击', '冲锋', '打斗', '杀害'] }
+                { id: 'single_action', name: '单人动作', keywords: ['动作', '姿势', '动作/姿势', '站姿', '坐姿', '躺姿', '趴姿', '跪姿', '倾靠', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '腿部动作', '手臂动作', '手动作', '指向', '倒立', '造型', '基本动作', '健身', '跑步', '拔刀', '洗车', '土下座'] },
+                { id: 'dynamic_combat', name: '战斗动态', keywords: ['战斗', '拔刀', '施法', '跳跃', '飞踢', '回眸', '冲刺', '防守', '持枪', '持剑', '蓄力', '踢击', '拳击', '挥刀', '射击', '冲锋', '打斗', '杀害'] }
             ]
         },
         interaction: {
@@ -2777,15 +2795,23 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
     };
 
+    function extractNativeTopic(comment) {
+        if (!comment) return '综合';
+        const c = comment.trim();
+        const bm = c.match(/^\[([^\]]+)\]/);
+        if (bm) return bm[1].trim();
+        const pm = c.match(/^[\*#\s]*([^\-\—\－\:\：\s\(\)\[\]]{2,14})[\-\—\－\:\：]/);
+        if (pm) return pm[1].trim();
+        return c.slice(0, 8);
+    }
+
     function classifySDTLorebookEntry(comment, content, keys = []) {
         const c = String(comment || '').trim();
         const body = String(content || '').trim();
         const keyList = Array.isArray(keys) ? keys.map(k => String(k).trim()).filter(Boolean) : [];
 
-        // 1. Extract title prefix
-        const bracketMatch = c.match(/^\[([^\]]+)\]/);
-        const prefixMatch = c.match(/^[\*#\s]*([^\-\—\－\:\：\s\(\)\[\]]{2,14})[\-\—\－\:\：]/);
-        const titlePrefix = (bracketMatch ? bracketMatch[1] : (prefixMatch ? prefixMatch[1] : '')).toLowerCase();
+        const nativeTopic = extractNativeTopic(comment);
+        const titleLower = nativeTopic.toLowerCase();
         const commentLower = c.toLowerCase();
 
         let bestMatch = null;
@@ -2795,15 +2821,15 @@ Zimage 擅长理解复杂的英文长句和语境。
             for (const sub of mainGroup.subcategories) {
                 let score = 0;
 
-                // 1. Title prefix exact or substring match (ABSOLUTE HIGHEST PRIORITY: +200)
-                if (titlePrefix) {
-                    if (titlePrefix === sub.name.toLowerCase() || titlePrefix.includes(sub.name.toLowerCase())) {
-                        score += 250;
+                // 1. Title prefix exact or substring match (ABSOLUTE HIGHEST PRIORITY: +250)
+                if (titleLower) {
+                    if (titleLower === sub.name.toLowerCase() || titleLower.includes(sub.name.toLowerCase())) {
+                        score += 300;
                     }
                     for (const kw of sub.keywords) {
                         const kwL = kw.toLowerCase();
-                        if (titlePrefix === kwL || titlePrefix.startsWith(kwL) || titlePrefix.includes(kwL)) {
-                            score += 200;
+                        if (titleLower === kwL || titleLower.startsWith(kwL) || titleLower.includes(kwL)) {
+                            score += 250;
                             break;
                         }
                     }
@@ -2820,7 +2846,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
                 }
 
-                // 3. Tag Regex match in body (Low Priority: +5, will NOT override title prefix)
+                // 3. Tag Regex match in body (Low Priority: +5)
                 if (sub.tagRegex && sub.tagRegex.test(body)) {
                     score += 5;
                 }
@@ -2832,6 +2858,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                         mainName: mainGroup.name,
                         subId: sub.id,
                         subName: sub.name,
+                        nativeTopic: nativeTopic,
                         icon: mainGroup.icon,
                         color: mainGroup.color,
                         badgeText: `${mainGroup.name} · ${sub.name}`
@@ -2849,9 +2876,10 @@ Zimage 擅长理解复杂的英文长句和语境。
             mainName: '其它/未分类',
             subId: 'other',
             subName: '综合词条',
+            nativeTopic: nativeTopic,
             icon: 'fa-solid fa-cubes',
             color: '#8be9fd',
-            badgeText: titlePrefix ? `分类: ${titlePrefix}` : '综合'
+            badgeText: `分类: ${nativeTopic}`
         };
     }
 
@@ -2868,6 +2896,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         let selectedSourceId = initialSourceId || 'all';
         let selectedMainCategory = 'all';
         let selectedSubCategory = 'all';
+        let selectedNativeTopic = 'all';
         let searchQuery = '';
 
         const getAllEntries = () => {
@@ -2934,11 +2963,27 @@ Zimage 擅长理解复杂的英文长句和语境。
                 }
             }
 
+            // Compute Tier 3 native topics within current selection
+            const tier3Candidates = allEntries.filter(e => {
+                if (selectedMainCategory !== 'all' && e.classification?.mainId !== selectedMainCategory) return false;
+                if (selectedSubCategory !== 'all' && e.classification?.subId !== selectedSubCategory) return false;
+                return true;
+            });
+            const topicCounts = { all: tier3Candidates.length };
+            tier3Candidates.forEach(e => {
+                const t = e.classification?.nativeTopic || '未命名';
+                topicCounts[t] = (topicCounts[t] || 0) + 1;
+            });
+            const nativeTopicList = Object.entries(topicCounts)
+                .filter(([k]) => k !== 'all')
+                .sort((a, b) => b[1] - a[1]);
+
             const q = searchQuery.toLowerCase().trim();
             const filtered = allEntries.filter(e => {
                 if (selectedMainCategory !== 'all') {
                     if (e.classification?.mainId !== selectedMainCategory) return false;
                     if (selectedSubCategory !== 'all' && e.classification?.subId !== selectedSubCategory) return false;
+                    if (selectedNativeTopic !== 'all' && e.classification?.nativeTopic !== selectedNativeTopic) return false;
                 }
                 if (!q) return true;
                 const c = (e.comment || '').toLowerCase();
@@ -2953,7 +2998,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     background: #1e1f24 !important;
                     border: 1px solid rgba(255,255,255,0.18) !important;
                     border-radius: 14px !important;
-                    width: 780px !important;
+                    width: 800px !important;
                     max-width: 96vw !important;
                     height: 88vh !important;
                     display: flex !important;
@@ -2980,7 +3025,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
                     <!-- Search Bar & Worldbook Selector -->
                     <div style="padding: 10px 18px !important; display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
-                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 制服, 紧身裙, 拳击, 跳蛋, 姿势, 视角, 兽耳, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 34px !important; margin: 0 !important; font-size: 13px !important; padding: 0 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 另类日常, 兽奸, 猥亵, 拘束, 紧身裙, 拳击, 跳蛋, 视角, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 34px !important; margin: 0 !important; font-size: 13px !important; padding: 0 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
                         
                         <select id="rbq-sdt-lb-search-source" style="height: 34px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #79e4ff !important;">
                             <option value="all" ${selectedSourceId === 'all' ? 'selected' : ''}>🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
@@ -2988,7 +3033,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                         </select>
                     </div>
 
-                    <!-- Tier 1: Main Category Tabs -->
+                    <!-- Tier 1: Main Category Tabs (一级大类) -->
                     <div style="padding: 8px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.25) !important; align-items: center !important; white-space: nowrap !important;">
                         <button class="rbq-sdt-main-cat-btn" data-cat="all" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'all' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid #79e4ff !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}">🌐 全部 (${mainCounts.all || 0})</button>
                         ${Object.values(SDT_LOREBOOK_TAXONOMY).map(group => {
@@ -3003,16 +3048,30 @@ Zimage 擅长理解复杂的英文长句和语境。
                         ` : ''}
                     </div>
 
-                    <!-- Tier 2: Subcategory Chips (when a main category is selected) -->
+                    <!-- Tier 2: Subcategory Chips (二级细分子分类) -->
                     ${currentMainDef ? `
                         <div style="padding: 6px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.15) !important; align-items: center !important; white-space: nowrap !important;">
-                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">子分类:</span>
+                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">二级分类:</span>
                             <button class="rbq-sdt-sub-cat-chip" data-sub="all" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedSubCategory === 'all' ? `background: ${currentMainDef.color}30 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部${currentMainDef.name} (${subCounts.all || 0})</button>
                             ${currentMainDef.subcategories.map(sub => {
                                 const isSubAct = selectedSubCategory === sub.id;
                                 const count = subCounts[sub.id] || 0;
                                 return `
                                     <button class="rbq-sdt-sub-cat-chip" data-sub="${sub.id}" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${isSubAct ? `background: ${currentMainDef.color}25 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${sub.name} (${count})</button>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : ''}
+
+                    <!-- Tier 3: Native Topic Chips (三级原生主题前缀筛选) -->
+                    ${nativeTopicList.length > 1 ? `
+                        <div style="padding: 5px 18px !important; display: flex !important; gap: 5px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.1) !important; align-items: center !important; white-space: nowrap !important;">
+                            <span style="font-size: 10px !important; color: rgba(255,184,108,0.7) !important; margin-right: 2px !important;"><i class="fa-solid fa-tags"></i> 原生主题:</span>
+                            <button class="rbq-sdt-topic-chip" data-topic="all" type="button" style="padding: 1px 7px !important; margin: 0 !important; font-size: 10px !important; border-radius: 10px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedNativeTopic === 'all' ? 'background: rgba(255,184,108,0.3) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.5) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部 (${topicCounts.all})</button>
+                            ${nativeTopicList.slice(0, 25).map(([topicName, count]) => {
+                                const isTopAct = selectedNativeTopic === topicName;
+                                return `
+                                    <button class="rbq-sdt-topic-chip" data-topic="${escapeHtml(topicName)}" type="button" style="padding: 1px 7px !important; margin: 0 !important; font-size: 10px !important; border-radius: 10px !important; cursor: pointer !important; white-space: nowrap !important; ${isTopAct ? 'background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${escapeHtml(topicName)} (${count})</button>
                                 `;
                             }).join('')}
                         </div>
@@ -3028,6 +3087,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                             const badgeColor = e.classification?.color || '#79e4ff';
                             const badgeIcon = e.classification?.icon || 'fa-solid fa-tag';
                             const badgeText = e.classification?.badgeText || '综合';
+                            const nativeTopic = e.classification?.nativeTopic || '';
                             return `
                             <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                                 <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
@@ -3035,6 +3095,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                                         <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
                                         <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
                                         <span style="font-size: 11px !important; background: ${badgeColor}15 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}35 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: 500 !important;"><i class="${badgeIcon}"></i> ${escapeHtml(badgeText)}</span>
+                                        ${nativeTopic ? `
+                                            <span style="font-size: 10px !important; background: rgba(255,184,108,0.12) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.25) !important; padding: 1px 5px !important; border-radius: 4px !important;">🏷️ ${escapeHtml(nativeTopic)}</span>
+                                        ` : ''}
                                         ${hasMultiple ? `
                                             <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
                                         ` : ''}
@@ -3089,6 +3152,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     selectedSourceId = e.target.value;
                     selectedMainCategory = 'all';
                     selectedSubCategory = 'all';
+                    selectedNativeTopic = 'all';
                     renderModal();
                 });
             }
@@ -3097,6 +3161,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 btn.addEventListener('click', () => {
                     selectedMainCategory = btn.dataset.cat;
                     selectedSubCategory = 'all';
+                    selectedNativeTopic = 'all';
                     renderModal();
                 });
             });
@@ -3104,6 +3169,14 @@ Zimage 擅长理解复杂的英文长句和语境。
             modal.querySelectorAll('.rbq-sdt-sub-cat-chip').forEach(chip => {
                 chip.addEventListener('click', () => {
                     selectedSubCategory = chip.dataset.sub;
+                    selectedNativeTopic = 'all';
+                    renderModal();
+                });
+            });
+
+            modal.querySelectorAll('.rbq-sdt-topic-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    selectedNativeTopic = chip.dataset.topic;
                     renderModal();
                 });
             });

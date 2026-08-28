@@ -1147,24 +1147,72 @@
                 store.activeComposer.scene = e.target.value;
                 save();
                 refreshPromptPreview();
-            });
-            modal.querySelector('#rbq-cw-comp-camera')?.addEventListener('input', (e) => {
-                store.activeComposer.camera = e.target.value;
-                save();
-                refreshPromptPreview();
-            });
+        function renderWorkshopInnerHtml(activeTab) {
+            const charList = Object.values(store.characters || {});
+            const comp = store.activeComposer;
 
-            modal.querySelector('#rbq-cw-pick-scene-wb')?.addEventListener('click', () => {
-                openWorldbookPickerModal({ title: '选择场景环境', defaultCategory: '场景环境' }, (selected) => {
-                    store.activeComposer.scene = selected.tags;
-                    save();
-                    updateModalView();
+            return `
+                <div class="rbq-cw-wrapper" style="display: flex !important; flex-direction: column !important; gap: 14px !important; width: 100% !important; box-sizing: border-box !important; padding: 4px 0 !important;">
+                    <!-- Top Navigation Bar -->
+                    <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 16px !important; border-radius: 10px !important; background: linear-gradient(90deg, rgba(121,228,255,0.12), rgba(255,184,108,0.08)) !important; border: 1px solid rgba(255,255,255,0.08) !important; flex-wrap: wrap !important; gap: 10px !important;">
+                        <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                            <i class="fa-solid fa-palette"></i> 角色工坊 (Character Workshop)
+                        </strong>
+                        <div style="display: flex !important; gap: 6px !important; background: rgba(0,0,0,0.4) !important; padding: 3px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.08) !important;">
+                            <button class="menu_button rbq-cw-nav-tab ${activeTab === 'composer' ? 'active' : ''}" data-tab="composer" style="padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; ${activeTab === 'composer' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; font-weight: bold !important;' : ''}">
+                                <i class="fa-solid fa-puzzle-piece"></i> 多角色组合台
+                            </button>
+                            <button class="menu_button rbq-cw-nav-tab ${activeTab === 'characters' ? 'active' : ''}" data-tab="characters" style="padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; ${activeTab === 'characters' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; font-weight: bold !important;' : ''}">
+                                <i class="fa-solid fa-users"></i> 角色档案库 (${charList.length})
+                            </button>
+                            <button class="menu_button rbq-cw-nav-tab ${activeTab === 'presets' ? 'active' : ''}" data-tab="presets" style="padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; ${activeTab === 'presets' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; font-weight: bold !important;' : ''}">
+                                <i class="fa-solid fa-bookmark"></i> 组合预设库 (${store.presets.length})
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Active Tab Body -->
+                    <div id="rbq-cw-main-body" style="display: flex !important; flex-direction: column !important; gap: 14px !important;">
+                        ${activeTab === 'composer' ? renderComposerTab(comp, charList) : ''}
+                        ${activeTab === 'characters' ? renderCharactersTab(charList) : ''}
+                        ${activeTab === 'presets' ? renderPresetsTab() : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function bindWorkshopEvents(container, activeTab, onRefresh) {
+            container.querySelectorAll('.rbq-cw-nav-tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+                    if (tab) onRefresh(tab);
                 });
             });
 
-            modal.querySelector('#rbq-cw-pick-pose-wb')?.addEventListener('click', () => {
+            // Composer Events
+            container.querySelector('#rbq-cw-comp-scene')?.addEventListener('input', (e) => {
+                store.activeComposer.scene = e.target.value;
+                save();
+                const previewEl = container.querySelector('#rbq-cw-prompt-preview');
+                if (previewEl) previewEl.textContent = composeFinalPrompt(store.activeComposer);
+            });
+            container.querySelector('#rbq-cw-comp-camera')?.addEventListener('input', (e) => {
+                store.activeComposer.camera = e.target.value;
+                save();
+                const previewEl = container.querySelector('#rbq-cw-prompt-preview');
+                if (previewEl) previewEl.textContent = composeFinalPrompt(store.activeComposer);
+            });
+
+            container.querySelector('#rbq-cw-pick-scene-wb')?.addEventListener('click', () => {
+                openWorldbookPickerModal({ title: '选择场景环境', defaultCategory: '场景环境' }, (selected) => {
+                    store.activeComposer.scene = selected.tags;
+                    save();
+                    onRefresh(activeTab);
+                });
+            });
+
+            container.querySelector('#rbq-cw-pick-pose-wb')?.addEventListener('click', () => {
                 openWorldbookPickerModal({ title: '选择双人/多人互动体位', defaultCategory: '动作体位' }, (selected) => {
-                    // Try to split Char1/Char2 if present
                     const raw = selected.tags;
                     const char1Match = raw.match(/Char1:\s*([^;]+)/i);
                     const char2Match = raw.match(/Char2:\s*([^;]+)/i);
@@ -1178,12 +1226,12 @@
                         store.activeComposer.slots[0].action = raw;
                     }
                     save();
-                    updateModalView();
+                    onRefresh(activeTab);
                     toastr.success(`已应用互动姿势「${selected.title}」`, PLUGIN_NAME);
                 });
             });
 
-            modal.querySelector('#rbq-cw-add-slot-btn')?.addEventListener('click', () => {
+            container.querySelector('#rbq-cw-add-slot-btn')?.addEventListener('click', () => {
                 const slots = store.activeComposer.slots;
                 if (slots.length >= 5) {
                     toastr.warning('最多支持 5 位角色同时组合', PLUGIN_NAME);
@@ -1191,66 +1239,67 @@
                 }
                 slots.push({ charId: '', customName: `角色 ${slots.length + 1}`, outfitMode: 'current', customOutfit: '', action: '', center: 'C3', uc: '' });
                 save();
-                updateModalView();
+                onRefresh(activeTab);
             });
 
-            modal.querySelectorAll('.rbq-cw-remove-slot-btn').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-remove-slot-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const idx = Number(btn.dataset.index);
                     store.activeComposer.slots.splice(idx, 1);
                     save();
-                    updateModalView();
+                    onRefresh(activeTab);
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-slot-char-select').forEach(sel => {
+            container.querySelectorAll('.rbq-cw-slot-char-select').forEach(sel => {
                 sel.addEventListener('change', () => {
                     const idx = Number(sel.dataset.index);
                     if (store.activeComposer.slots[idx]) {
                         store.activeComposer.slots[idx].charId = sel.value;
                         save();
-                        updateModalView();
+                        onRefresh(activeTab);
                     }
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-slot-action-input').forEach(inp => {
+            container.querySelectorAll('.rbq-cw-slot-action-input').forEach(inp => {
                 inp.addEventListener('input', () => {
                     const idx = Number(inp.dataset.index);
                     if (store.activeComposer.slots[idx]) {
                         store.activeComposer.slots[idx].action = inp.value;
                         save();
-                        refreshPromptPreview();
+                        const previewEl = container.querySelector('#rbq-cw-prompt-preview');
+                        if (previewEl) previewEl.textContent = composeFinalPrompt(store.activeComposer);
                     }
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-pick-slot-action-wb').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-pick-slot-action-wb').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const idx = Number(btn.dataset.index);
                     openWorldbookPickerModal({ title: `为 Char ${idx + 1} 选择动作`, defaultCategory: '动作体位' }, (selected) => {
                         if (store.activeComposer.slots[idx]) {
                             store.activeComposer.slots[idx].action = selected.tags;
                             save();
-                            updateModalView();
+                            onRefresh(activeTab);
                         }
                     });
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-slot-pos-btn').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-slot-pos-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const idx = Number(btn.dataset.index);
                     const pos = btn.dataset.pos;
                     if (store.activeComposer.slots[idx]) {
                         store.activeComposer.slots[idx].center = pos;
                         save();
-                        updateModalView();
+                        onRefresh(activeTab);
                     }
                 });
             });
 
-            modal.querySelector('#rbq-cw-copy-prompt')?.addEventListener('click', () => {
+            container.querySelector('#rbq-cw-copy-prompt')?.addEventListener('click', () => {
                 const prompt = composeFinalPrompt(store.activeComposer);
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(prompt).then(() => toastr.success('已复制多角色合成提示词', PLUGIN_NAME));
@@ -1259,7 +1308,7 @@
                 }
             });
 
-            modal.querySelector('#rbq-cw-generate-now')?.addEventListener('click', async () => {
+            container.querySelector('#rbq-cw-generate-now')?.addEventListener('click', async () => {
                 const finalPrompt = composeFinalPrompt(store.activeComposer);
                 toastr.info('🚀 正在调用 RBQ 生图引擎生成多角色画作...', PLUGIN_NAME);
                 try {
@@ -1270,7 +1319,7 @@
                 }
             });
 
-            modal.querySelector('#rbq-cw-save-scene-preset')?.addEventListener('click', () => {
+            container.querySelector('#rbq-cw-save-scene-preset')?.addEventListener('click', () => {
                 const name = prompt('请输入该组合场景的预设名称：', `组合场景 - ${new Date().toLocaleDateString()}`);
                 if (!name) return;
                 store.presets.push({
@@ -1285,41 +1334,40 @@
             });
 
             // Character Tab Events
-            modal.querySelector('#rbq-cw-create-new-char')?.addEventListener('click', () => {
-                openCharacterEditorModal(null, () => updateModalView());
+            container.querySelector('#rbq-cw-create-new-char')?.addEventListener('click', () => {
+                openCharacterEditorModal(null, () => onRefresh(activeTab));
             });
 
-            modal.querySelectorAll('.rbq-cw-edit-char-btn').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-edit-char-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const charId = btn.dataset.id;
-                    openCharacterEditorModal(charId, () => updateModalView());
+                    openCharacterEditorModal(charId, () => onRefresh(activeTab));
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-del-char-btn').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-del-char-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const charId = btn.dataset.id;
                     delete store.characters[charId];
                     save();
-                    updateModalView();
+                    onRefresh(activeTab);
                     toastr.info('角色档案已删除', PLUGIN_NAME);
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-send-to-slot').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-send-to-slot').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const charId = btn.dataset.id;
                     if (store.activeComposer.slots[0]) {
                         store.activeComposer.slots[0].charId = charId;
                     }
-                    currentTab = 'composer';
                     save();
-                    updateModalView();
+                    onRefresh('composer');
                     toastr.success('已放入组合台 Char 1', PLUGIN_NAME);
                 });
             });
 
-            modal.querySelector('#rbq-cw-import-st-chars')?.addEventListener('click', () => {
+            container.querySelector('#rbq-cw-import-st-chars')?.addEventListener('click', () => {
                 try {
                     const ctx = RBQ.api.getContext();
                     const characters = ctx?.characters;
@@ -1343,7 +1391,7 @@
                         }
                     }
                     save();
-                    updateModalView();
+                    onRefresh(activeTab);
                     toastr.success(`成功导入 ${imported} 位酒馆角色卡！`, PLUGIN_NAME);
                 } catch (e) {
                     toastr.error(`导入失败: ${e.message || e}`, PLUGIN_NAME);
@@ -1351,7 +1399,7 @@
             });
 
             // Presets Tab Events
-            modal.querySelectorAll('.rbq-cw-load-preset-btn').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-load-preset-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const idx = Number(btn.dataset.index);
                     const preset = store.presets[idx];
@@ -1359,66 +1407,124 @@
                         store.activeComposer.scene = preset.scene || '';
                         store.activeComposer.camera = preset.camera || '';
                         store.activeComposer.slots = JSON.parse(JSON.stringify(preset.slots || []));
-                        currentTab = 'composer';
                         save();
-                        updateModalView();
+                        onRefresh('composer');
                         toastr.success(`已载入预设「${preset.name}」`, PLUGIN_NAME);
                     }
                 });
             });
 
-            modal.querySelectorAll('.rbq-cw-del-preset-btn').forEach(btn => {
+            container.querySelectorAll('.rbq-cw-del-preset-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const idx = Number(btn.dataset.index);
                     store.presets.splice(idx, 1);
                     save();
-                    updateModalView();
+                    onRefresh(activeTab);
                     toastr.info('预设已删除', PLUGIN_NAME);
                 });
             });
         }
 
-        function refreshPromptPreview() {
-            const previewEl = modal.querySelector('#rbq-cw-prompt-preview');
-            if (previewEl) {
-                previewEl.textContent = composeFinalPrompt(store.activeComposer);
-            }
-        }
+        // ── Render into Standalone Modal ──────────────────────
+        function openCharacterWorkshopModal(initialTab = 'composer') {
+            const existing = document.getElementById('rbq-character-workshop-modal');
+            if (existing) existing.remove();
 
-        modal.innerHTML = renderModalHtml();
-        document.body.appendChild(modal);
-        bindModalEvents();
-    }
-
-    // ── Inject Workshop Button into RBQ UI ───────────────────
-    function injectWorkshopEntryButtons() {
-        if (document.getElementById('rbq-open-character-workshop-btn')) return;
-
-        // Try to insert into RBQ Control Panel
-        const panel = document.getElementById('rbq-control-panel') || document.querySelector('.rbq-control-panel-actions');
-        if (panel) {
-            const btn = document.createElement('button');
-            btn.id = 'rbq-open-character-workshop-btn';
-            btn.className = 'menu_button';
-            btn.type = 'button';
-            btn.innerHTML = `<i class="fa-solid fa-palette"></i> 角色工坊`;
-            btn.title = '打开角色工坊：角色创造、差分衣柜与多角色拼装生图';
-            btn.style.cssText = `
-                background: linear-gradient(135deg, rgba(121,228,255,0.18), rgba(255,184,108,0.15)) !important;
-                border: 1px solid rgba(121,228,255,0.4) !important;
-                color: #79e4ff !important;
-                font-weight: bold !important;
+            let currentTab = initialTab;
+            const modal = document.createElement('div');
+            modal.id = 'rbq-character-workshop-modal';
+            modal.style.cssText = `
+                position: fixed !important; inset: 0 !important; z-index: 100000010 !important;
+                background: rgba(0,0,0,0.85) !important; display: flex !important;
+                align-items: center !important; justify-content: center !important;
+                padding: 16px !important; box-sizing: border-box !important;
+                backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important;
             `;
-            btn.addEventListener('click', () => openCharacterWorkshopModal());
-            panel.appendChild(btn);
+
+            function update() {
+                modal.innerHTML = `
+                    <div style="background: #16171d !important; border: 1px solid rgba(121,228,255,0.35) !important; border-radius: 16px !important; width: 920px !important; max-width: 96vw !important; height: 88vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 25px 70px rgba(0,0,0,0.95) !important; box-sizing: border-box !important;">
+                        <div style="display: flex !important; justify-content: flex-end !important; padding: 8px 12px 0 0 !important;">
+                            <button class="menu_button" id="rbq-cw-main-close" style="padding: 4px 10px !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                        </div>
+                        <div id="rbq-cw-modal-scrollable" style="flex: 1 !important; overflow-y: auto !important; padding: 0 20px 20px 20px !important;">
+                            ${renderWorkshopInnerHtml(currentTab)}
+                        </div>
+                    </div>
+                `;
+                modal.querySelector('#rbq-cw-main-close')?.addEventListener('click', () => modal.remove());
+                modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+                bindWorkshopEvents(modal, currentTab, (newTab) => {
+                    currentTab = newTab;
+                    update();
+                });
+            }
+
+            update();
+            document.body.appendChild(modal);
         }
-    }
 
-    // Init & Lifecycle
-    $(document).ready(() => {
-        setTimeout(injectWorkshopEntryButtons, 1500);
-        setInterval(injectWorkshopEntryButtons, 4000);
-    });
+        // ── Render into Control Panel Tab ─────────────────────
+        let currentSettingTab = 'composer';
 
-    console.info(`[${PLUGIN_NAME}] 插件已就绪`);
-})(window.RBQ, window.jQuery, window.toastr);
+        function switchRbqTab(tab) {
+            document.querySelectorAll('[data-kite-tab]').forEach((element) => {
+                if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kiteTab === tab);
+            });
+            document.querySelectorAll('[data-kite-panel]').forEach((element) => {
+                if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kitePanel === tab);
+            });
+        }
+
+        function ensureSettingsPanel() {
+            const rail = document.querySelector('.st-scene-trigger-tab-rail');
+            const content = document.querySelector('.st-scene-trigger-modal-content');
+            if (!(rail instanceof HTMLElement) || !(content instanceof HTMLElement)) return null;
+
+            let button = document.querySelector('[data-kite-tab="character-workshop"]');
+            if (!(button instanceof HTMLButtonElement)) {
+                button = document.createElement('button');
+                button.className = 'st-scene-trigger-tab-button';
+                button.dataset.kiteTab = 'character-workshop';
+                button.type = 'button';
+                button.innerHTML = '<i class="fa-solid fa-palette"></i><span>角色工坊</span>';
+                button.addEventListener('click', () => {
+                    switchRbqTab('character-workshop');
+                    renderWorkshopInSettingsPanel();
+                });
+
+                const targetBtn = rail.querySelector('[data-kite-tab="smart-draw"]') || rail.querySelector('[data-kite-tab="extensions"]');
+                if (targetBtn?.nextSibling) {
+                    rail.insertBefore(button, targetBtn.nextSibling);
+                } else {
+                    rail.append(button);
+                }
+            }
+
+            let panel = document.querySelector('[data-kite-panel="character-workshop"]');
+            if (!(panel instanceof HTMLElement)) {
+                panel = document.createElement('section');
+                panel.className = 'st-scene-trigger-modal-panel';
+                panel.dataset.kitePanel = 'character-workshop';
+                content.append(panel);
+                renderWorkshopInSettingsPanel();
+            }
+            return panel;
+        }
+
+        function renderWorkshopInSettingsPanel() {
+            const panel = document.querySelector('[data-kite-panel="character-workshop"]');
+            if (!panel) return;
+            panel.innerHTML = renderWorkshopInnerHtml(currentSettingTab);
+            bindWorkshopEvents(panel, currentSettingTab, (newTab) => {
+                currentSettingTab = newTab;
+                renderWorkshopInSettingsPanel();
+            });
+        }
+
+        // Periodic check to ensure tab is present whenever settings modal is open
+        setInterval(ensureSettingsPanel, 1000);
+        $(document).ready(() => setTimeout(ensureSettingsPanel, 1200));
+
+        console.info(`[${PLUGIN_NAME}] 插件已就绪`);
+    })(window.RBQ, window.jQuery, window.toastr);

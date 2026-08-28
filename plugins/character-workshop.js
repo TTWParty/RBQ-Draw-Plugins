@@ -774,6 +774,7 @@
                 { name: '高双马尾', tag: 'high twintails' },
                 { name: '低双马尾', tag: 'low twintails' },
                 { name: '短双马尾', tag: 'short twintails' },
+                { name: '双马尾前搭', tag: 'twin tails over shoulders' },
                 { name: '单马尾', tag: 'ponytail' },
                 { name: '侧马尾', tag: 'side ponytail' },
                 { name: '高单马尾', tag: 'high ponytail' },
@@ -781,10 +782,14 @@
                 { name: '黑长直/直发', tag: 'straight hair' },
                 { name: '姬发式/公主切', tag: 'hime cut' },
                 { name: '波波头/短鲍伯', tag: 'bob cut' },
+                { name: '狼尾头 (wolf cut)', tag: 'wolf cut' },
+                { name: '水母头发型', tag: 'jellyfish haircut' },
+                { name: '半扎发/公主头', tag: 'half updo' },
                 { name: '麻花辫', tag: 'braid' },
                 { name: '双麻花辫', tag: 'twin braids' },
                 { name: '侧编单辫', tag: 'single side braid' },
                 { name: '法式盘发辫', tag: 'french braid' },
+                { name: '环形王冠发辫', tag: 'crown braid' },
                 { name: '单丸子头', tag: 'hair bun' },
                 { name: '双丸子头/包子头', tag: 'double bun' },
                 { name: '波浪大卷发', tag: 'wavy hair' },
@@ -808,6 +813,7 @@
                 { name: '单眼遮发', tag: 'hair over one eye' },
                 { name: '双眼遮发 (看不见眼)', tag: 'hair over eyes' },
                 { name: '鬓角长发', tag: 'sidelocks' },
+                { name: '单侧撩发/露耳', tag: 'hair behind ear' },
                 { name: '露额头', tag: 'forehead' },
                 { name: '发梢微翘', tag: 'flipped hair' }
             ]
@@ -828,7 +834,7 @@
                 { name: '黑瞳', tag: 'black eyes' },
                 { name: '银瞳/灰瞳', tag: 'silver eyes' },
                 { name: '橙瞳', tag: 'orange eyes' },
-                { name: '白瞳', tag: 'white eyes' }
+                { name: '白瞳/无色瞳', tag: 'white eyes' }
             ]
         },
         {
@@ -842,6 +848,9 @@
                 { name: '发光魔眼', tag: 'glowing eyes' },
                 { name: '渐变色双瞳', tag: 'gradient eyes' },
                 { name: '空洞无光瞳/失神瞳', tag: 'empty eyes' },
+                { name: '死鱼眼/鄙视无高光', tag: 'jitome' },
+                { name: '圈圈眼/眩晕眼', tag: 'swirl eyes' },
+                { name: '钱形眼 ($$眼)', tag: 'dollar sign eyes' },
                 { name: '收缩惊恐瞳', tag: 'constricted pupils' },
                 { name: '同心圆瞳', tag: 'ringed eyes' }
             ]
@@ -852,6 +861,9 @@
                 { name: '吊眼梢/猫眼 (tsurime)', tag: 'tsurime' },
                 { name: '下垂眼/无辜眼 (tareme)', tag: 'tareme' },
                 { name: '三白眼', tag: 'sanpaku' },
+                { name: '斜视/侧目偷看', tag: 'sidelong glance' },
+                { name: '泪眼汪汪', tag: 'watery eyes' },
+                { name: '闪烁大眼', tag: 'sparkling eyes' },
                 { name: '泪痣 (眼下小痣)', tag: 'mole under eye' },
                 { name: '左眼泪痣', tag: 'mole under left eye' },
                 { name: '右眼泪痣', tag: 'mole under right eye' },
@@ -873,6 +885,7 @@
                 { name: '浅浅浅笑', tag: 'light smile' },
                 { name: '温柔微笑', tag: 'gentle smile' },
                 { name: '灿烂阳光笑容', tag: 'beaming smile' },
+                { name: '捂嘴轻笑', tag: 'covering mouth, smile' },
                 { name: '得意自信笑 (smug)', tag: 'smug' },
                 { name: '调皮wink', tag: 'wink' },
                 { name: '坏笑/邪魅笑', tag: 'evil smile' },
@@ -889,6 +902,7 @@
                 { name: '傲娇神情', tag: 'tsundere' },
                 { name: '慌张不知所措', tag: 'flustered' },
                 { name: '气鼓鼓/嘟嘴 (pout)', tag: 'pout' },
+                { name: '鼓起单腮', tag: 'puffed cheeks' },
                 { name: '别过脸去/移开视线', tag: 'looking away, blush' }
             ]
         },
@@ -906,6 +920,9 @@
                 { name: '震惊呆住', tag: 'shocked' },
                 { name: '害怕恐惧', tag: 'scared' },
                 { name: '病娇狂气 (yandere)', tag: 'yandere' },
+                { name: '病娇狂笑', tag: 'crazy smile' },
+                { name: '流鼻血 (nosebleed)', tag: 'nosebleed' },
+                { name: '流口水 (drooling)', tag: 'drooling' },
                 { name: '阿黑颜/高潮失神', tag: 'ahegao' },
                 { name: '微醺醉酒', tag: 'drunk' }
             ]
@@ -915,6 +932,7 @@
             tags: [
                 { name: '可爱小虎牙/尖牙', tag: 'fangs' },
                 { name: '双虎牙', tag: 'double fangs' },
+                { name: '吐舌露虎牙', tag: 'tongue out, fangs' },
                 { name: '鲨鱼齿', tag: 'shark teeth' },
                 { name: '微张小嘴', tag: 'open mouth' },
                 { name: '轻启双唇', tag: 'parted lips' },
@@ -922,6 +940,7 @@
                 { name: '顽皮伸舌头', tag: 'tongue out' },
                 { name: '猫咪嘴/波浪嘴 (:3)', tag: ':3' },
                 { name: '咬嘴唇', tag: 'biting lip' },
+                { name: '咬手套/咬手绢', tag: 'biting glove' },
                 { name: '水润光泽唇彩', tag: 'lip gloss' }
             ]
         },
@@ -941,6 +960,7 @@
                 { name: '狗耳', tag: 'dog ears' },
                 { name: '熊耳', tag: 'bear ears' },
                 { name: '牛耳+牛角', tag: 'cow ears, cow horns' },
+                { name: '人鱼鳍耳 (fin ears)', tag: 'fin ears' },
                 { name: '毛茸茸兽耳 (通用)', tag: 'animal ears, fluffy ears' },
                 { name: '毛茸茸蓬松大尾巴', tag: 'fluffy tail' }
             ]
@@ -951,6 +971,7 @@
                 { name: '精灵尖耳', tag: 'pointy ears' },
                 { name: '长精灵耳', tag: 'long pointy ears' },
                 { name: '恶魔角', tag: 'demon horns' },
+                { name: '鬼角 (oni horns)', tag: 'oni horns' },
                 { name: '龙角', tag: 'dragon horns' },
                 { name: '羊角/卷曲角', tag: 'sheep horns' },
                 { name: '天使光环 (halo)', tag: 'halo' },
@@ -962,7 +983,8 @@
                 { name: '恶魔尾/心形尖尾', tag: 'demon tail' },
                 { name: '龙尾巴', tag: 'dragon tail' },
                 { name: '魅魔特征', tag: 'succubus' },
-                { name: '吸血鬼尖牙', tag: 'vampire' },
+                { name: '吸血鬼特征', tag: 'vampire' },
+                { name: '脸部兽纹/魔纹', tag: 'facial markings' },
                 { name: '机娘/机械体', tag: 'android' },
                 { name: '球形机械关节', tag: 'mechanical joints' },
                 { name: '球体关节人偶', tag: 'doll joints' },
@@ -978,6 +1000,7 @@
                 { name: '丰满S曲线 (curvy)', tag: 'curvy' },
                 { name: '沙漏型身材', tag: 'hourglass figure' },
                 { name: '微胖肉感身材', tag: 'plump' },
+                { name: '肉肉小肚子 (软肚)', tag: 'tummy, soft belly' },
                 { name: '紧致健美/肌肉线条', tag: 'toned, muscular' },
                 { name: '腹肌/马甲线 (abs)', tag: 'abs' },
                 { name: '平胸/极贫乳', tag: 'flat chest' },
@@ -996,9 +1019,12 @@
                 { name: '南半球/下乳 (underboob)', tag: 'underboob' },
                 { name: '精致锁骨', tag: 'collarbone' },
                 { name: '纤细小蛮腰', tag: 'thin waist' },
+                { name: '脊椎线条/背沟', tag: 'spine' },
+                { name: '微显肋骨', tag: 'ribs' },
                 { name: '丰满宽臀/丰臀', tag: 'wide hips' },
-                { name: '紧致翘臀', tag: 'big ass' },
+                { name: '紧致翘臀/大屁股', tag: 'big ass' },
                 { name: '肉感多肉大腿 (肉腿)', tag: 'thick thighs' },
+                { name: '大腿勒肉感', tag: 'thigh strap, indented flesh' },
                 { name: '大腿缝', tag: 'thigh gap' },
                 { name: '修长美腿', tag: 'long legs' },
                 { name: '香肩/裸露肩膀', tag: 'bare shoulders' },
@@ -1024,9 +1050,11 @@
                 { name: '大腿上的痣', tag: 'mole on thigh' },
                 { name: '可爱雀斑 (freckles)', tag: 'freckles' },
                 { name: '淫纹/腹部符文', tag: 'womb tattoo' },
+                { name: '舌钉 (tongue piercing)', tag: 'tongue piercing' },
+                { name: '肚脐钉', tag: 'navel piercing' },
                 { name: '正字标记/身体文字', tag: 'body writing' },
                 { name: '个性纹身/刺青', tag: 'tattoo' },
-                { name: '战斗伤痕/伤疤', tag: 'scar' }
+                { name: '战斗伤痕/创口贴', tag: 'scar, bandaid' }
             ]
         },
         {
@@ -1037,6 +1065,9 @@
                 { name: '无框眼镜', tag: 'rimless glasses' },
                 { name: '复古圆框眼镜', tag: 'round glasses' },
                 { name: '太阳镜/墨镜', tag: 'sunglasses' },
+                { name: '护目镜 (goggles)', tag: 'goggles' },
+                { name: '头戴式耳机', tag: 'headphones' },
+                { name: '猫耳耳机', tag: 'cat ear headphones' },
                 { name: '单眼罩 (eyepatch)', tag: 'eyepatch' },
                 { name: '医疗白色眼罩', tag: 'medical eyepatch' },
                 { name: '单片眼镜', tag: 'monocle' },

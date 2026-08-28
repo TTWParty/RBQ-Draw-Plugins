@@ -942,7 +942,9 @@
   .cw-chars-grid{grid-template-columns:1fr}
   .cw-header{flex-direction:column;align-items:stretch}
   .cw-nav{justify-content:center}
-}
+/* ── Panel Container Control ── */
+.st-scene-trigger-modal-panel[data-kite-panel="character-workshop"]{display:none!important;width:100%!important;box-sizing:border-box!important}
+.st-scene-trigger-modal-panel[data-kite-panel="character-workshop"].active{display:flex!important;flex-direction:column!important}
         `;
         document.head.appendChild(style);
     })();
@@ -1437,13 +1439,7 @@
                 if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kiteTab === tab);
             });
             document.querySelectorAll('[data-kite-panel]').forEach((element) => {
-                if (element instanceof HTMLElement) {
-                    const isActive = element.dataset.kitePanel === tab;
-                    element.classList.toggle('active', isActive);
-                    if (element.dataset.kitePanel === 'character-workshop') {
-                        element.style.display = isActive ? 'flex' : 'none';
-                    }
-                }
+                if (element instanceof HTMLElement) element.classList.toggle('active', element.dataset.kitePanel === tab);
             });
         }
 
@@ -1477,7 +1473,6 @@
                 panel = document.createElement('section');
                 panel.className = 'st-scene-trigger-modal-panel';
                 panel.dataset.kitePanel = 'character-workshop';
-                panel.style.cssText = 'width: 100% !important; box-sizing: border-box !important; flex-direction: column !important;';
                 content.append(panel);
                 renderWorkshopInSettingsPanel();
             }
@@ -1487,12 +1482,6 @@
         function renderWorkshopInSettingsPanel() {
             const panel = document.querySelector('[data-kite-panel="character-workshop"]');
             if (!panel) return;
-            const isActive = panel.classList.contains('active');
-            panel.style.display = isActive ? 'flex' : 'none';
-            panel.style.flexDirection = 'column';
-            panel.style.width = '100%';
-            panel.style.boxSizing = 'border-box';
-            panel.style.overflowY = 'auto';
             panel.innerHTML = renderWorkshopInnerHtml(currentSettingTab);
             bindWorkshopEvents(panel, currentSettingTab, (newTab) => {
                 currentSettingTab = newTab;

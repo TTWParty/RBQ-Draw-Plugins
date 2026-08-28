@@ -78,11 +78,11 @@
             icon: 'fa-solid fa-user-astronaut',
             color: '#79e4ff',
             subcategories: [
-                { id: 'hair', name: '发型发色', keywords: ['发型', '发色', '双马尾', '单马尾', '短发', '长发', '马尾', '刘海', '编发', '呆毛', '渐变发', '发饰', '发'], tagRegex: /\b(hair|twintails|ponytail|bangs|braid|ahoge|bob_cut|drill_hair|messy_hair|bun|ahoge|sidelocks)\b/i },
-                { id: 'eyes', name: '眼部瞳色', keywords: ['眼', '瞳', '瞳色', '异色瞳', '眼睛', '红瞳', '蓝瞳', '金瞳', '绿瞳', '爱心眼', '魔眼'], tagRegex: /\b(eyes|heterochromia|heart-shaped_pupils|slit_pupils|glowing_eyes|empty_eyes)\b/i },
-                { id: 'face', name: '面部表情', keywords: ['表情', '脸部', '脸红', '微笑', '哭', '生气', '张嘴', '吐舌', '高潮脸', '害羞', '傲娇', '面部', '脸'], tagRegex: /\b(blush|smile|grin|frown|tears|crying|open_mouth|tongue|ahegao|smug|embarrassed)\b/i },
-                { id: 'race', name: '种族特征', keywords: ['种族', '特征', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '角', '恶魔角', '光环', '天使', '魅魔', '机娘', '兽人', '耳朵', '耳朵/尾巴', '触手特征'], tagRegex: /\b(animal_ears|cat_ears|fox_ears|rabbit_ears|wolf_ears|elf_ears|tail|cat_tail|fox_tail|wings|horns|demon_horns|halo|angel_wings|demon_tail|prolapse)\b/i },
-                { id: 'body', name: '身材体型', keywords: ['身材', '体型', '胸部', '胸部动作', '胸部特征', '胸部状态', '乳房', '巨乳', '贫乳', '爆乳', '微乳', '腹肌', '肉感', '大腿', '长腿', '身高', '肤色', '黑皮', '白皙', '肌肉', '美腿', '锁骨', '私处', '私处特征', '臀部', '屁股'], tagRegex: /\b(breasts|large_breasts|small_breasts|flat_chest|huge_breasts|thick_thighs|abs|muscular|dark_skin|pale_skin|curvy|cleavage|pussy|butt|ass)\b/i },
+                { id: 'hair', name: '发型发色', keywords: ['发型', '发色', '双马尾', '单马尾', '短发', '长发', '马尾', '刘海', '编发', '呆毛', '渐变发', '发饰', '发', '头发互动'], tagRegex: /\b(hair|twintails|ponytail|bangs|braid|ahoge|bob_cut|drill_hair|messy_hair|bun|ahoge|sidelocks)\b/i },
+                { id: 'eyes', name: '眼部瞳色', keywords: ['眼', '瞳', '瞳色', '异色瞳', '眼睛', '红瞳', '蓝瞳', '金瞳', '绿瞳', '爱心眼', '魔眼', '眼罩', '眼睛倒映', '猫眼'], tagRegex: /\b(eyes|heterochromia|heart-shaped_pupils|slit_pupils|glowing_eyes|empty_eyes|eyepatch)\b/i },
+                { id: 'face', name: '面部表情', keywords: ['表情', '脸部', '脸红', '微笑', '哭', '生气', '张嘴', '吐舌', '高潮脸', '害羞', '傲娇', '面部', '脸', '头部动作', '生理反应', '微细节'], tagRegex: /\b(blush|smile|grin|frown|tears|crying|open_mouth|tongue|ahegao|smug|embarrassed)\b/i },
+                { id: 'race', name: '种族特征', keywords: ['种族', '特征', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '角', '恶魔角', '光环', '天使', '魅魔', '机娘', '兽人', '耳朵', '耳朵/尾巴', '触手特征', '人外', '福瑞', '龙娘', '龙族', '扶她', '精灵', '恶魔/吸血鬼', '吸血鬼', '恶魔'], tagRegex: /\b(animal_ears|cat_ears|fox_ears|rabbit_ears|wolf_ears|elf_ears|tail|cat_tail|fox_tail|wings|horns|demon_horns|halo|angel_wings|demon_tail|prolapse|furry|centaur|lamia|kitsune|succubus|vampire)\b/i },
+                { id: 'body', name: '身材体型', keywords: ['身材', '体型', '胸部', '胸部动作', '胸部特征', '胸部状态', '乳房', '巨乳', '贫乳', '爆乳', '微乳', '腹肌', '肉感', '大腿', '长腿', '身高', '肤色', '黑皮', '白皙', '肌肉', '美腿', '锁骨', '私处', '私处特征', '臀部', '屁股', '伪娘', '男娘', '人妖', '痕迹', '年龄触发', '流浪汉', '部位强调'], tagRegex: /\b(breasts|large_breasts|small_breasts|flat_chest|huge_breasts|thick_thighs|abs|muscular|dark_skin|pale_skin|curvy|cleavage|pussy|butt|ass|crossdressing)\b/i },
             ]
         },
         outfit: {
@@ -91,11 +91,11 @@
             icon: 'fa-solid fa-shirt',
             color: '#ffb86c',
             subcategories: [
-                { id: 'casual', name: '日常私服', keywords: ['日常服', '常服', '私服', '日常', 'T恤', '卫衣', '衬衫', '毛衣', '外套', '夹克', '大衣', '牛仔裤', '短裙', '百褶裙', '连衣裙', '裙子', '上装', '下装', '着装'], tagRegex: /\b(casual|t-shirt|shirt|hoodie|sweater|jacket|coat|jeans|skirt|miniskirt|dress|sundress|blouse|pants|shorts)\b/i },
-                { id: 'uniform', name: '制服职业', keywords: ['制服', '校服', '水手服', '西装', '女仆', '女仆装', '护士', '修女', '警服', '旗袍', '和服', '巫女', '军服', '职场', 'OL', '兔女郎', '体操服', '运动服'], tagRegex: /\b(uniform|school_uniform|serafuku|maid|nurse|nun|police|cheongsam|kimono|miko|military_uniform|office_lady|bunny_suit|gym_uniform|tracksuit)\b/i },
-                { id: 'swimwear', name: '泳装内衣', keywords: ['泳装', '泳衣', '比基尼', '死库水', '内衣', '文胸', '胸罩', '内裤', '胖次', '情趣内衣', '蕾丝内衣', '吊带睡衣', '睡衣', '浴袍', '下着'], tagRegex: /\b(swimsuit|bikini|school_swimsuit|underwear|bra|panties|lingerie|negligee|sleepwear|bathrobe)\b/i },
-                { id: 'accessories', name: '鞋袜饰品', keywords: ['鞋袜', '丝袜', '黑丝', '白丝', '过膝袜', '短袜', '吊袜带', '高跟鞋', '靴子', '手套', '项圈', '手镯', '项链', '耳环', '帽子', '头饰', '眼镜', '首饰', '饰品', '发饰'], tagRegex: /\b(socks|stockings|pantyhose|thighhighs|garter_straps|high_heels|boots|gloves|collar|choker|glasses|hat|headdress|hair_ornament|earrings|necklace)\b/i },
-                { id: 'costume', name: '情趣装扮', keywords: ['情趣', '变装', '胶衣', '紧身衣', '皮衣', '魅魔装', '透视装', '镂空', '拘束装', '破损衣服', '裸体围裙', '皮甲', '机甲'], tagRegex: /\b(latex|bodysuit|leotard|revealing|see-through|torn_clothes|naked_apron|mecha_clothes|armor)\b/i },
+                { id: 'casual', name: '日常私服', keywords: ['日常服', '常服', '私服', '日常', 'T恤', '卫衣', '衬衫', '毛衣', '外套', '夹克', '大衣', '牛仔裤', '短裙', '百褶裙', '连衣裙', '裙子', '上装', '下装', '着装', '着装状态', '材质', '和服', '汉服'], tagRegex: /\b(casual|t-shirt|shirt|hoodie|sweater|jacket|coat|jeans|skirt|miniskirt|dress|sundress|blouse|pants|shorts)\b/i },
+                { id: 'uniform', name: '制服职业', keywords: ['制服', '校服', '水手服', '西装', '女仆', '女仆装', '护士', '修女', '警服', '旗袍', '和服', '巫女', '军服', '职场', 'OL', '兔女郎', '体操服', '运动服', '幻想系职业', '职业', '身份'], tagRegex: /\b(uniform|school_uniform|serafuku|maid|nurse|nun|police|cheongsam|kimono|miko|military_uniform|office_lady|bunny_suit|gym_uniform|tracksuit)\b/i },
+                { id: 'swimwear', name: '泳装内衣', keywords: ['泳装', '泳衣', '比基尼', '死库水', '内衣', '文胸', '胸罩', '内裤', '胖次', '情趣内衣', '蕾丝内衣', '吊带睡衣', '睡衣', '浴袍', '下着', '乳贴'], tagRegex: /\b(swimsuit|bikini|school_swimsuit|underwear|bra|panties|lingerie|negligee|sleepwear|bathrobe)\b/i },
+                { id: 'accessories', name: '鞋袜饰品', keywords: ['鞋袜', '丝袜', '黑丝', '白丝', '过膝袜', '短袜', '吊袜带', '高跟鞋', '靴子', '手套', '项圈', '手镯', '项链', '耳环', '帽子', '头饰', '眼镜', '首饰', '饰品', '发饰', '乳头配饰', '链条'], tagRegex: /\b(socks|stockings|pantyhose|thighhighs|garter_straps|high_heels|boots|gloves|collar|choker|glasses|hat|headdress|hair_ornament|earrings|necklace)\b/i },
+                { id: 'costume', name: '情趣装扮', keywords: ['情趣', '变装', '胶衣', '紧身衣', '皮衣', '魅魔装', '透视装', '镂空', '拘束装', '破损衣服', '裸体围裙', '皮甲', '机甲', '避孕套', '假阳具', '振动器', '飞机杯', '情趣用品', '私处刺激道具', '穿戴阳具', '贞操带', '束缚限制道具', '口部限制道具', '武器', '刀剑', '冷兵器', '热武器/现代'], tagRegex: /\b(latex|bodysuit|leotard|revealing|see-through|torn_clothes|naked_apron|mecha_clothes|armor|dildo|vibrator|chastity)\b/i },
             ]
         },
         pose: {
@@ -104,8 +104,8 @@
             icon: 'fa-solid fa-person-walking',
             color: '#a3ffa3',
             subcategories: [
-                { id: 'single_action', name: '单人姿态', keywords: ['动作', '姿势', '动作/姿势', '站姿', '坐姿', '躺', '卧', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '趴', '跪', '腿部姿势', '手部动作'], tagRegex: /\b(standing|sitting|lying|walking|running|jumping|squatting|waving|peace_sign|salute|reaching|kneeling|on_all_fours|crossed_arms)\b/i },
-                { id: 'dynamic_pose', name: '动态战斗', keywords: ['战斗', '拔刀', '施法', '跳跃', '飞踢', '回眸', '冲刺', '防守', '持枪', '持剑', '蓄力'], tagRegex: /\b(fighting_stance|sword|weapon|casting_spell|looking_back|dashing|combat|holding_weapon)\b/i },
+                { id: 'single_action', name: '单人姿态', keywords: ['动作', '姿势', '动作/姿势', '站姿', '坐姿', '躺姿', '躺', '卧', '趴姿', '趴', '跪姿', '跪', '倾靠', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '腿部姿势', '手部动作', '手臂动作', '腿部动作', '手动作', '指向', '倒立', '造型', '基本动作', '其他姿势', '动作（着装互动）', '展示', '引导动作/抓动作', '孕期', '药物'], tagRegex: /\b(standing|sitting|lying|walking|running|jumping|squatting|waving|peace_sign|salute|reaching|kneeling|on_all_fours|crossed_arms|pointing|leaning)\b/i },
+                { id: 'dynamic_pose', name: '动态战斗', keywords: ['战斗', '拔刀', '施法', '跳跃', '飞踢', '回眸', '冲刺', '防守', '持枪', '持剑', '蓄力', '踢击', '拳击', '冷兵器战斗', '射击/瞄准', '训练/突进', '控制'], tagRegex: /\b(fighting_stance|sword|weapon|casting_spell|looking_back|dashing|combat|holding_weapon)\b/i },
             ]
         },
         interaction: {
@@ -114,8 +114,8 @@
             icon: 'fa-solid fa-people-arrows',
             color: '#79e4ff',
             subcategories: [
-                { id: 'duo_gentle', name: '亲密温情', keywords: ['互动', '双人', '胸部动作与互动', '胸部互动', '牵手', '拥抱', '相拥', '依偎', '接吻', '亲吻', '对视', '摸头', '公主抱', '背着', '靠肩', '共伞', '耳语', '双人姿势', '双人互动'], tagRegex: /\b(holding_hands|hug|embracing|kiss|kissing|eye_contact|headpat|princess_carry|piggyback|whispering|intertwined_fingers)\b/i },
-                { id: 'duo_daily', name: '日常社交', keywords: ['对话', '聊天', '打闹', '并肩', '跳舞', '递东西', '敬酒', '拍照', '合影', '共进晚餐'], tagRegex: /\b(talking|dancing|cheering|selfie|taking_picture|sharing|feeding)\b/i },
+                { id: 'duo_gentle', name: '亲密温情', keywords: ['互动', '双人', '胸部动作与互动', '胸部互动', '牵手', '拥抱', '相拥', '依偎', '接吻', '亲吻', '对视', '摸头', '公主抱', '背着', '靠肩', '共伞', '耳语', '双人姿势', '双人互动', '亲吻亲昵', '抱人/背负', '手部', '坐互动', '摸头', '隔衣抚摸', '露出/暴露', '暴露/偷窥'], tagRegex: /\b(holding_hands|hug|embracing|kiss|kissing|eye_contact|headpat|princess_carry|piggyback|whispering|intertwined_fingers)\b/i },
+                { id: 'duo_daily', name: '日常社交', keywords: ['对话', '聊天', '打闹', '并肩', '跳舞', '递东西', '敬酒', '拍照', '合影', '共进晚餐', '友好互动', '互动（杂项）'], tagRegex: /\b(talking|dancing|cheering|selfie|taking_picture|sharing|feeding)\b/i },
             ]
         },
         nsfw: {
@@ -124,10 +124,10 @@
             icon: 'fa-solid fa-heart-pulse',
             color: '#ff79c6',
             subcategories: [
-                { id: 'positions', name: '经典体位', keywords: ['体位', '正常位', '传教士', '骑乘', '骑乘位', '后入', '后背位', '狗爬', '侧入', '站交', '站立位', '火车便当', '女上男下', '体位模板', 'SEX模板', 'SEX', '做爱', '交配'], tagRegex: /\b(missionary|cowgirl_position|doggystyle|standing_sex|mating_press|spooning|sex_from_behind|sex|penetration|vaginal)\b/i },
-                { id: 'service', name: '口交服务', keywords: ['口交', '深喉', '手交', '乳交', '足交', '侍奉', '舔舐', '咬住', '射精', '颜射', '内射', '中出', '吞精', '打飞机'], tagRegex: /\b(fellatio|deepthroat|handjob|paizuri|footjob|oral|cum|cum_in_mouth|facial|creampie|bukkake)\b/i },
-                { id: 'kinky', name: '束缚情调', keywords: ['束缚', '绳缚', '拘束', '手铐', '蒙眼', '项圈牵引', '调教', '触手', '兽交', '群交', '轮奸', '自慰', '假阳具', '跳蛋', '玩具', '异种奸', '脱垂'], tagRegex: /\b(bondage|ropes|handcuffs|blindfold|tentacles|gangbang|masturbation|dildo|vibrator|collar_leash|prolapse)\b/i },
-                { id: 'states', name: '涩涩状态', keywords: ['高潮', '绝顶', '流汗', '爱液', '潮吹', '受孕', '阿黑颜', '失神', 'X光', '透视', '身体流汗', '胸部状态与液体', '液体状态', '液体'], tagRegex: /\b(orgasm|sweat|body_fluids|squirt|impregnation|ahegao|x-ray|heavy_breathing)\b/i },
+                { id: 'positions', name: '经典体位', keywords: ['体位', '正常位', '传教士', '骑乘', '骑乘位', '后入', '后背位', '狗爬', '侧入', '站交', '站立位', '火车便当', '女上男下', '体位模板', 'SEX模板', 'SEX', '做爱', '交配', '性爱', '整体体位', '插入', '性交'], tagRegex: /\b(missionary|cowgirl_position|doggystyle|standing_sex|mating_press|spooning|sex_from_behind|sex|penetration|vaginal)\b/i },
+                { id: 'service', name: '口交服务', keywords: ['口交', '深喉', '手交', '乳交', '足交', '侍奉', '舔舐', '咬住', '射精', '颜射', '内射', '中出', '吞精', '打飞机', '哺乳', '自慰'], tagRegex: /\b(fellatio|deepthroat|handjob|paizuri|footjob|oral|cum|cum_in_mouth|facial|creampie|bukkake)\b/i },
+                { id: 'kinky', name: '束缚情调', keywords: ['束缚', '绳缚', '拘束', '手铐', '蒙眼', '项圈牵引', '调教', '触手', '兽交', '群交', '轮奸', '自慰', '假阳具', '跳蛋', '玩具', '异种奸', '脱垂', '强奸猥亵', '特殊癖好', '群体共用', '猎奇'], tagRegex: /\b(bondage|ropes|handcuffs|blindfold|tentacles|gangbang|masturbation|dildo|vibrator|collar_leash|prolapse|rape)\b/i },
+                { id: 'states', name: '涩涩状态', keywords: ['高潮', '绝顶', '流汗', '爱液', '潮吹', '受孕', '阿黑颜', '失神', 'X光', '透视', '身体流汗', '胸部状态与液体', '液体状态', '液体', '剖面图'], tagRegex: /\b(orgasm|sweat|body_fluids|squirt|impregnation|ahegao|x-ray|heavy_breathing)\b/i },
             ]
         },
         scene: {
@@ -136,9 +136,9 @@
             icon: 'fa-solid fa-mountain-sun',
             color: '#f1fa8c',
             subcategories: [
-                { id: 'indoor', name: '室内场所', keywords: ['室内', '房间', '卧室', '床', '教室', '学校', '浴室', '浴室/温泉', '温泉', '厨房', '客厅', '办公室', '图书馆', '咖啡厅', '酒吧', '情趣酒店', '地牢', '走廊', '阳台'], tagRegex: /\b(indoors|room|bedroom|bed|classroom|school|bathroom|onsen|hot_springs|kitchen|living_room|office|library|cafe|bar|love_hotel|dungeon|hallway|balcony)\b/i },
-                { id: 'outdoor', name: '室外自然', keywords: ['室外', '户外', '海滩', '海边', '海', '森林', '树林', '公园', '街道', '城市', '小巷', '屋顶', '天台', '草地', '花园', '夜景', '星空', '夕阳', '黄昏', '下雨', '雨天', '下雪', '雪景', '天气'], tagRegex: /\b(outdoors|beach|ocean|sea|forest|park|street|city|alley|rooftop|grass|garden|night_sky|starry_sky|sunset|dusk|raining|snowing|winter)\b/i },
-                { id: 'fantasy', name: '奇幻科幻', keywords: ['奇幻', '科幻', '废墟', '城堡', '宫殿', '神殿', '太空', '宇宙', '飞船', '魔法阵', '赛博朋克', '异世界', '末世', '神圣'], tagRegex: /\b(fantasy|sci-fi|ruins|castle|palace|temple|space|spaceship|magic_circle|cyberpunk)\b/i },
+                { id: 'indoor', name: '室内场所', keywords: ['室内', '房间', '卧室', '床', '教室', '学校', '浴室', '浴室/温泉', '温泉', '厨房', '客厅', '客厅/沙发', '办公室', '图书馆', '咖啡厅', '酒吧', '情趣酒店', '酒店', '地牢', '走廊', '阳台', '车内', '电车/公交', '电梯', '楼梯间', '试衣间', '电影院', '餐厅/居酒屋', '教堂', '神社/寺庙', '实验室', '窗边', '公共场所', '背景'], tagRegex: /\b(indoors|room|bedroom|bed|classroom|school|bathroom|onsen|hot_springs|kitchen|living_room|office|library|cafe|bar|love_hotel|dungeon|hallway|balcony|elevator|stairwell|restaurant|cathedral|shrine)\b/i },
+                { id: 'outdoor', name: '室外自然', keywords: ['室外', '户外', '海滩', '海边', '海滩/泳池', '海', '森林', '树林', '公园', '公园/长椅', '街道', '城市', '小巷', '屋顶', '天台', '草地', '花园', '夜景', '星空', '夕阳', '黄昏', '下雨', '雨天', '下雪', '雪景', '天气', '自然景观', '人造户外', '交通工具', '背景类(人物)'], tagRegex: /\b(outdoors|beach|ocean|sea|forest|park|street|city|alley|rooftop|grass|garden|night_sky|starry_sky|sunset|dusk|raining|snowing|winter)\b/i },
+                { id: 'fantasy', name: '奇幻科幻', keywords: ['奇幻', '科幻', '废墟', '废墟/战后', '城堡', '宫殿', '神殿', '太空', '宇宙', '飞船', '魔法阵', '赛博朋克', '异世界', '末世', '神圣', '特殊虚构'], tagRegex: /\b(fantasy|sci-fi|ruins|castle|palace|temple|space|spaceship|magic_circle|cyberpunk)\b/i },
             ]
         },
         camera: {
@@ -147,9 +147,9 @@
             icon: 'fa-solid fa-camera',
             color: '#bd93f9',
             subcategories: [
-                { id: 'camera_angle', name: '镜头视角', keywords: ['视角', '机位', '构图', '特写', '面部特写', '半身', '全身', '俯视', '仰视', 'POV', '第一人称', '侧面', '背影', '荷兰角', '鱼眼', '广角', '对焦'], tagRegex: /\b(close-up|face_focus|upper_body|full_body|from_above|from_below|pov|profile|from_behind|dutch_angle|fisheye|wide_angle)\b/i },
-                { id: 'lighting', name: '光影氛围', keywords: ['光影', '光照', '逆光', '丁达尔', '体积光', '发光', '荧光', '霓虹', '暗色调', '明亮', '柔光', '电影感', '镜头光晕', '氛围', '滤镜'], tagRegex: /\b(lighting|backlighting|volumetric_lighting|glowing|neon|dark|bright|soft_light|cinematic_lighting|lens_flare)\b/i },
-                { id: 'style', name: '艺术画风', keywords: ['画风', '风格', '复古', '90年代', '厚涂', '水彩', '像素', '线稿', '黑白', '赛璐珞', '油画', '插画'], tagRegex: /\b(artstyle|retro|watercolor|pixel_art|lineart|monochrome|cell_shading|oil_painting)\b/i },
+                { id: 'camera_angle', name: '镜头视角', keywords: ['视角', '机位', '构图', '特写', '面部特写', '半身', '全身', '俯视', '仰视', 'POV', '第一人称', '侧面', '背影', '荷兰角', '鱼眼', '广角', '对焦', '速查表-镜子', '速查表-窗户', '速查表-门缝偷窥', '速查表-车后视镜', '速查表-猫眼', '速查表-钥匙孔', '速查表-前置自拍', '速查表-镜子自拍', '速查表-望远镜', '速查表-透视眼镜', '速查表-透视手机'], tagRegex: /\b(close-up|face_focus|upper_body|full_body|from_above|from_below|pov|profile|from_behind|dutch_angle|fisheye|wide_angle|mirror|through_window)\b/i },
+                { id: 'lighting', name: '光影氛围', keywords: ['光影', '光照', '逆光', '丁达尔', '体积光', '发光', '荧光', '霓虹', '暗色调', '明亮', '柔光', '电影感', '镜头光晕', '氛围', '滤镜', '速查表-水中倒影', '动态效果'], tagRegex: /\b(lighting|backlighting|volumetric_lighting|glowing|neon|dark|bright|soft_light|cinematic_lighting|lens_flare|reflection)\b/i },
+                { id: 'style', name: '艺术画风', keywords: ['画风', '风格', '复古', '90年代', '厚涂', '水彩', '像素', '线稿', '黑白', '赛璐珞', '油画', '插画', '速查表', '速查表-透明底', '速查表-立绘', '速查表-照片', '速查表-聊天记录', '速查表-直播', '速查表-手机屏幕', '速查表-画框', '速查表-杂志/封面', '速查表-电视画面/直播', '速查表-通缉令', '速查表-录像/拍摄', '速查表-占卜', '速查表-游戏状态栏', '速查表-社交媒体帖子', '速查表-视频通话', '速查表- 梦境泡泡/回忆画面', '速查表-明信片/贺卡', '速查表-AV', '文字渲染', '设定'], tagRegex: /\b(artstyle|retro|watercolor|pixel_art|lineart|monochrome|cell_shading|oil_painting|magazine_cover|livestream|transparent_background)\b/i },
             ]
         }
     };

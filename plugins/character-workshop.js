@@ -88,18 +88,27 @@
     function getAllAvailableWorldbookEntries() {
         const s = RBQ.api.getSettings();
         const sdtStore = s[SDT_STORAGE_KEY];
-        const sources = Array.isArray(sdtStore?.lorebookSources) ? sdtStore.lorebookSources : [];
+        const cwStore = s[STORAGE_KEY];
+        const sdtSources = Array.isArray(sdtStore?.lorebookSources) ? sdtStore.lorebookSources : [];
+        const cwSources = Array.isArray(cwStore?.lorebookSources) ? cwStore.lorebookSources : [];
+        const combinedSources = [...sdtSources, ...cwSources];
         const allEntries = [];
+        const seenKeys = new Set();
 
-        for (const src of sources) {
+        // 1. Read from Plugin Lorebook Stores
+        for (const src of combinedSources) {
             if (src && src.enabled !== false && src.rawJson) {
                 try {
                     const parsed = JSON.parse(src.rawJson);
                     const entries = parsed?.entries && typeof parsed.entries === 'object' ? parsed.entries : {};
                     for (const [uidKey, e] of Object.entries(entries)) {
                         if (!e || e.disabled || !e.content) continue;
+                        const keyId = `${src.name || 'WB'}:${e.uid ?? uidKey}`;
+                        if (seenKeys.has(keyId)) continue;
+                        seenKeys.add(keyId);
+
                         allEntries.push({
-                            sourceId: src.id,
+                            sourceId: src.id || 'wb-src',
                             sourceName: src.name || '世界书',
                             uid: e.uid ?? uidKey,
                             comment: String(e.comment || ''),
@@ -111,6 +120,30 @@
                 } catch (_err) { /* ignore parse error */ }
             }
         }
+
+        // 2. Read from SillyTavern Native World Info / Character Attached Books
+        try {
+            const ctx = RBQ.api.getContext?.();
+            const charBook = ctx?.character?.data?.character_book?.entries || ctx?.characters?.[ctx?.characterId]?.data?.character_book?.entries;
+            if (Array.isArray(charBook)) {
+                for (const e of charBook) {
+                    if (!e || !e.content) continue;
+                    const keyId = `ST_CharBook:${e.id ?? e.comment}`;
+                    if (seenKeys.has(keyId)) continue;
+                    seenKeys.add(keyId);
+                    allEntries.push({
+                        sourceId: 'st-char-book',
+                        sourceName: '角色卡内置世界书',
+                        uid: e.id || uid('st-cb'),
+                        comment: String(e.comment || ''),
+                        content: String(e.content || '').trim(),
+                        key: Array.isArray(e.keys) ? e.keys : (Array.isArray(e.key) ? e.key : []),
+                        category: extractLorebookCategory(e.comment || '角色卡内置世界书')
+                    });
+                }
+            }
+        } catch (_stErr) { /* ignore */ }
+
         return allEntries;
     }
 
@@ -222,7 +255,13 @@
                         <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                             <i class="fa-solid fa-book-open"></i> ${options.title || '从世界书选择词条'}
                         </strong>
-                        <button class="menu_button" id="rbq-cw-wb-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                        <div style="display: flex !important; align-items: center !important; gap: 8px !important;">
+                            <label class="menu_button" style="padding: 2px 10px !important; font-size: 11px !important; margin: 0 !important; cursor: pointer !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;">
+                                <i class="fa-solid fa-file-arrow-up"></i> 导入世界书 (.json)
+                                <input type="file" id="rbq-cw-wb-file-input" accept=".json" style="display: none !important;" />
+                            </label>
+                            <button class="menu_button" id="rbq-cw-wb-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                        </div>
                     </div>
 
                     <div style="padding: 12px 18px !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; display: flex !important; flex-direction: column !important; gap: 10px !important; background: rgba(0,0,0,0.2) !important;">
@@ -285,6 +324,38 @@
         function bindEvents() {
             modal.querySelector('#rbq-cw-wb-close')?.addEventListener('click', () => modal.remove());
             modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+            const fileInput = modal.querySelector('#rbq-cw-wb-file-input');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const raw = JSON.parse(evt.target.result);
+                            const name = file.name.replace(/\.json$/i, '');
+                            const s = RBQ.api.getSettings();
+                            if (!s[STORAGE_KEY]) s[STORAGE_KEY] = {};
+                            if (!Array.isArray(s[STORAGE_KEY].lorebookSources)) s[STORAGE_KEY].lorebookSources = [];
+                            s[STORAGE_KEY].lorebookSources.push({
+                                id: uid('wb'),
+                                name: name,
+                                enabled: true,
+                                rawJson: JSON.stringify(raw),
+                                importedAt: Date.now()
+                            });
+                            save();
+                            toastr.success(`世界书「${name}」导入成功！`, PLUGIN_NAME);
+                            modal.remove();
+                            openWorldbookPickerModal(options, onSelectCallback);
+                        } catch (err) {
+                            toastr.error(`世界书解析失败: ${err.message || err}`, PLUGIN_NAME);
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            }
 
             const searchInput = modal.querySelector('#rbq-cw-wb-search');
             if (searchInput) {

@@ -852,6 +852,23 @@
     // ── Pre-defined Danbooru Trait Presets (全量外貌特征体系化点选词库) ────
     const BASE_TRAIT_PRESETS = [
         {
+            group: '🌏 族裔与面部特征',
+            tags: [
+                { name: '日系美少女', tag: 'japanese, bishoujo, delicate face' },
+                { name: '日系 (japanese)', tag: 'japanese' },
+                { name: '东亚 (east asian)', tag: 'east asian' },
+                { name: '中式古典 (chinese)', tag: 'chinese' },
+                { name: '韩系精致 (korean)', tag: 'korean' },
+                { name: '欧美白人 (caucasian)', tag: 'caucasian' },
+                { name: '混血儿 (half-japanese)', tag: 'half-japanese' },
+                { name: '精致小脸 (delicate face)', tag: 'delicate face' },
+                { name: '日系萌脸 (cute face)', tag: 'cute face' },
+                { name: '柔和五官', tag: 'soft facial features' },
+                { name: '傲娇猫眼/吊眼 (tsurime)', tag: 'tsurime' },
+                { name: '治愈无辜垂眼 (tareme)', tag: 'tareme' }
+            ]
+        },
+        {
             group: '🌟 基础/体态',
             tags: [
                 { name: '单人女性 (1girl)', tag: '1girl' },

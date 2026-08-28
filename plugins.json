@@ -27,9 +27,9 @@
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "无需让正文输出长 tag。支持短标记和自动定位两种模式，调用 OpenAI 兼容或自定义 HTTP tagger API 生成 prompt，并在正文中插入 RBQ 生图卡片。",
-    "version": "5.28.1",
+    "version": "5.29.0",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=5.28.1"
+    "main": "plugins/smart-draw-trigger.js?v=5.29.0"
   },
   {
     "id": "rbq-multi-char",
@@ -59,8 +59,8 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集角色创造、外貌定制、世界书搭积木点选与多角色拼装生图于一体的专属工坊。支持点选世界书发型服装、5x5 站位网格、双人互动体位库与 NAI 多角色一键合成。",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=1.2.1"
+    "main": "plugins/character-workshop.js?v=1.2.2"
   }
 ]

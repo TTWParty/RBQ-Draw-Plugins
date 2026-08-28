@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 22;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 23;
     const CONSISTENT_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
@@ -50,7 +50,7 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板库（服装/场景/多角�
 ⛔ 禁填中文名 ⛔ 禁省略作品名/original后缀 ⛔ 禁在 base 中重复填写姓名
 
 **base**（→ char_caption 外貌防伪码，跨图绝对锁定不变）
-顺序: girl/boy(不带数字) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
+顺序: girl/boy(不带数字) → 族裔/国籍/面相特征(必须根据角色背景/姓名/语境明确指定，如 japanese, east asian, chinese, caucasian 等；二次元日系角色必须前置 japanese 或 bishoujo, delicate_features 锁定正统日系二次元小巧五官，防止模型默认生成欧美写实面孔) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
 ⚠️ 穷举所有维度，缺失则推断！遗漏任何维度=角色变脸！
 ⚠️ 原创角色差异化: 基本特征之外追加 5~10 专属 Tag（标志性发型/异色瞳/专属配饰/身体特征）作为视觉防伪码
 ⛔ 禁在此处写服装/动作/表情——属于 outfit/action，混入会污染记忆
@@ -120,7 +120,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     "scene": "nsfw, exhibitionism, solo, outdoors, alley, brick_wall, wet, late_at_night, pink_neon_light, toplighting, cast_shadows, third-person_view, from_front, low-angle_shot, cowboy_shot, dutch_angle, depth_of_field",
     "characters": [{
       "name": "Fujiwara Chika (Kaguya-sama: Love Is War)",
-      "base": "girl, bishoujo, long_hair, pink_hair, hair_ribbon, black_bow, blue_eyes, large_breasts, heavy_breasts, glistening_skin",
+      "base": "girl, japanese, bishoujo, delicate_features, long_hair, pink_hair, hair_ribbon, black_bow, blue_eyes, large_breasts, heavy_breasts, glistening_skin",
       "outfit": "serafuku, pink_serafuku, white_sailor_collar, crop_top, wet_clothes, 1.2::see-through_shirt::, visible_through_clothes, bra, pink_lace_bra, skirt, pink_micro_skirt, pleated_skirt, -2::panties::, pussy, clitoris, thighhighs, white_thighhighs",
       "action": "in_centers, looking_at_viewer, facing_viewer, 1.2::standing, against_wall::, head_back, 1.4::fingering, masturbation::, one_hand, fingers_in_own_pussy, female_ejaculation, 1.3::splashing_fluids::, other_hand, 1.3::grasping_breast::, hand_on_own_breast, aroused, ahegao, blush, rolling_eyes, tears, open_mouth, drooling, 1.2::steaming_body, sweat::, trembling, spasm, motion_lines",
       "center": "C3",
@@ -138,7 +138,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     "scene": "nsfw, sex, hetero, 1boy 1girl, pov, pov_crotch, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background, 1.2::large_penis::, erection, ejaculation, pov_hands",
     "characters": [{
       "name": "Kato (original)",
-      "base": "girl, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
+      "base": "girl, japanese, adolescent, delicate_face, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
       "outfit": "blouse, white_blouse, collared_blouse, 1.2::unbuttoned, open_blouse::, -2::bra::, bare_breasts, nipples, nipple_erection",
       "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::fellatio, handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
       "center": "C3",
@@ -485,7 +485,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        consistent: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT },
+        consistent: { label: 'V23-族裔面相强化版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
         zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
         grok_nl: { label: 'Grok-自然语言', prompt: GROK_NL_PROMPT },
         storyboarder: { label: 'V21-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },

@@ -50,7 +50,7 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板库（服装/场景/多角�
 ⛔ 禁填中文名 ⛔ 禁省略作品名/original后缀 ⛔ 禁在 base 中重复填写姓名
 
 **base**（→ char_caption 外貌防伪码，跨图绝对锁定不变）
-顺序: girl/boy(不带数字) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
+顺序: girl/boy(不带数字) → 族裔/国籍(依人设推断如 japanese/caucasian等) → 年龄段(teenager/mature_female) → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围(flat_chest/large_breasts) → 体格(petite/tall) → 肤色 → 标志修饰(mole/scar/tattoo)
 ⚠️ 穷举所有维度，缺失则推断！遗漏任何维度=角色变脸！
 ⚠️ 原创角色差异化: 基本特征之外追加 5~10 专属 Tag（标志性发型/异色瞳/专属配饰/身体特征）作为视觉防伪码
 ⛔ 禁在此处写服装/动作/表情——属于 outfit/action，混入会污染记忆
@@ -138,7 +138,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
     "scene": "nsfw, sex, hetero, 1boy 1girl, pov, pov_crotch, from_above, close-up, indoors, living_room, wooden_floor, 0.8::window::, night, 0.6::warm_lighting::, sidelighting, dramatic_shadows, dynamic_angle, blurry_background, 1.2::large_penis::, erection, ejaculation, pov_hands",
     "characters": [{
       "name": "Kato (original)",
-      "base": "girl, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
+      "base": "girl, japanese, adolescent, medium_hair, white_hair, wavy_hair, crossed_bangs, short_sidetail, blue_streaked_hair, blue_hair_ribbon, blue_eyes, medium_breasts, gyaru, dark_skin, tan, purple_eyeshadow, pink_fingernails",
       "outfit": "blouse, white_blouse, collared_blouse, 1.2::unbuttoned, open_blouse::, -2::bra::, bare_breasts, nipples, nipple_erection",
       "action": "face_focus, in_centers, looking_up, facing_viewer, 1.2::kneeling, on_floor::, leaning_forward, 1.3::fellatio, handjob::, deepthroat, oral, hands, 1.4::grabbing_penis::, hands_on_another's_penis, penis_in_mouth, surprised, blush, wide-eyed, tears, open_mouth, cum, excessive_cum, cum_in_mouth, cum_overflow, 1.2::steaming_body, sweat::, spoken_heart",
       "center": "C3",
@@ -173,7 +173,7 @@ lorebook: payload.lorebook 含匹配到的 Tag 模板库（服装/场景/多角�
 ⚠️ pov 模式: 男主身体部位(large_penis, veiny_penis 等)写入 scene 作为环境道具
 
 **base**（→ char_caption 固定部分，跨图锁定不变）
-顺序: girl/boy(不带数字) → 发长+发型+发色 → 瞳色 → 体型+罩杯 → 肤色 → 修饰(痣/疤/纹身)
+顺序: girl/boy(不带数字) → 族裔/国籍(japanese/caucasian等) → 发长+发型+发色 → 瞳色 → 体型+罩杯 → 肤色 → 修饰(痣/疤/纹身)
 
 **outfit**（→ char_caption 服装部分，随场景变化）
 顺序: 主要服装(款式+颜色+细节) → 次要服装/配饰 → 穿着状态(open/off/half-off) → 裸露部位+细节

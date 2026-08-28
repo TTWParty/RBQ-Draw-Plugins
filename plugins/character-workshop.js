@@ -852,48 +852,35 @@
     // ── Pre-defined Danbooru Trait Presets (全量外貌特征体系化点选词库) ────
     const BASE_TRAIT_PRESETS = [
         {
-            group: '🌏 族裔与面相定位 (防欧美写实)',
+            group: '🌏 族裔与面相',
             tags: [
-                { name: '日系美少女 (japanese)', tag: 'japanese' },
-                { name: '精致小脸 (delicate face)', tag: 'delicate face' },
-                { name: '甜美萌脸 (cute face)', tag: 'cute face' },
-                { name: '傲娇猫眼/吊眼 (tsurime)', tag: 'tsurime' },
-                { name: '无辜垂眼 (tareme)', tag: 'tareme' },
-                { name: '东亚少女 (east asian)', tag: 'east asian' },
-                { name: '中式古典美 (chinese)', tag: 'chinese' },
-                { name: '韩系精致 (korean)', tag: 'korean' },
-                { name: '欧美白人 (caucasian)', tag: 'caucasian' },
-                { name: '混血儿 (half-japanese)', tag: 'half-japanese' },
-                { name: '柔和五官 (soft facial features)', tag: 'soft facial features' },
-                { name: '二次元动漫脸 (anime face)', tag: 'anime face' }
+                { name: '日系美少女', tag: 'japanese' },
+                { name: '东亚面孔', tag: 'east asian' },
+                { name: '中式美', tag: 'chinese' },
+                { name: '韩系美', tag: 'korean' },
+                { name: '欧美白人', tag: 'caucasian' },
+                { name: '精致小脸', tag: 'delicate face' },
+                { name: '柔和五官', tag: 'soft facial features' },
+                { name: '甜美萌脸', tag: 'cute face' },
+                { name: '傲娇猫眼/吊眼', tag: 'tsurime' },
+                { name: '无辜垂眼', tag: 'tareme' },
+                { name: '动漫大眼', tag: 'anime eyes' }
             ]
         },
         {
-            group: '🎂 年龄段与身份 (Age & Identity)',
-            tags: [
-                { name: 'JK/女高中生 (teenager)', tag: 'teenager' },
-                { name: '青涩少女 (young girl)', tag: 'young girl' },
-                { name: '年轻女郎/大学 (young woman)', tag: 'young woman' },
-                { name: '御姐/成熟女性 (mature female)', tag: 'mature female' },
-                { name: '少妇/人妻/熟女 (milf)', tag: 'milf' },
-                { name: '萌系萝莉 (loli)', tag: 'loli' },
-                { name: '小女孩/幼女 (little girl)', tag: 'little girl' },
-                { name: '少年/男高中生 (teenager boy)', tag: 'teenager boy' },
-                { name: '正太/小男孩 (shota)', tag: 'shota' },
-                { name: '青年帅哥 (young man)', tag: 'young man' },
-                { name: '成熟大叔 (mature male)', tag: 'mature male' }
-            ]
-        },
-        {
-            group: '🌟 角色基底与体态',
+            group: '🌟 基础/体态',
             tags: [
                 { name: '单人女性 (1girl)', tag: '1girl' },
                 { name: '单人男性 (1boy)', tag: '1boy' },
                 { name: '单人 (solo)', tag: 'solo' },
-                { name: '美少女 (bishoujo)', tag: 'bishoujo' },
-                { name: '帅哥 (ikemen)', tag: 'ikemen' },
+                { name: '美少女', tag: 'bishoujo' },
+                { name: '萝莉 (loli)', tag: 'loli' },
+                { name: '少女 (young girl)', tag: 'young girl' },
+                { name: '御姐 (mature female)', tag: 'mature female' },
                 { name: '辣妹 (gyaru)', tag: 'gyaru' },
-                { name: '大和抚子 (yamato nadeshiko)', tag: 'yamato nadeshiko' }
+                { name: '少妇/熟女 (milf)', tag: 'milf' },
+                { name: '正太 (shota)', tag: 'shota' },
+                { name: '美少年/帅哥 (ikemen)', tag: 'ikemen' }
             ]
         },
         {

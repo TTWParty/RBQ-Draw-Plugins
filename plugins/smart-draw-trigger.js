@@ -2271,23 +2271,43 @@ Zimage 擅长理解复杂的英文长句和语境。
         let currentTitle = '';
         let currentTags = [];
 
+        function isTagLine(line) {
+            if (/\d+(\.\d+)?::/.test(line) || /-\d+::/.test(line)) return true;
+            if ((line.match(/,/g) || []).length >= 2) return true;
+            const eng = (line.match(/[a-zA-Z_]/g) || []).length;
+            const ch = (line.match(/[\u4e00-\u9fa5]/g) || []).length;
+            if (eng > 10 && ch === 0) return true;
+            return false;
+        }
+
         for (let rawLine of lines) {
             let line = rawLine.trim();
             if (!line) continue;
-            // Ignore top-level worldbook single header "# 后入位"
-            if (line.startsWith('# ') && !currentTitle) continue;
+
+            if (/^#+\s+[\u4e00-\u9fa5a-zA-Z0-9_\-]+$/.test(line) && !currentTitle && !variants.length) {
+                continue;
+            }
 
             const chineseCount = (line.match(/[\u4e00-\u9fa5]/g) || []).length;
             const englishCount = (line.match(/[a-zA-Z]/g) || []).length;
+            const isTag = isTagLine(line);
 
-            const isHeader = (
-                line.startsWith('##') ||
-                (line.startsWith('#') && !line.startsWith('# ')) ||
-                /^(\d+[\.\、]|[-*]\s+|【|\[)/.test(line) ||
-                /^(默认\d*|变体\d*|机位\d*|视角\d*)/.test(line) ||
-                (chineseCount >= 2 && englishCount < 15) ||
-                (/^[\u4e00-\u9fa5]+[：:]/.test(line))
-            );
+            let isHeader = false;
+            if (!isTag) {
+                if (line.startsWith('##') || line.startsWith('###')) {
+                    isHeader = true;
+                } else if (/^[【\[（\(][^】\]）\)]+[】\]）\)]/.test(line) && chineseCount >= 2) {
+                    isHeader = true;
+                } else if (/^(\d+[\.\、\s]|[-*]\s+)[^\d]/i.test(line) && (chineseCount >= 2 || englishCount < 10)) {
+                    isHeader = true;
+                } else if (/^(默认\d*|变体\d*|机位\d*|视角\d*|版本\d*|服装\d*|姿势\d*|动作\d*|Char\d*)/i.test(line)) {
+                    isHeader = true;
+                } else if (chineseCount >= 2 && englishCount <= 6 && !line.includes(',')) {
+                    isHeader = true;
+                } else if (/^[\u4e00-\u9fa5a-zA-Z0-9_\-\s]+[：:]$/.test(line)) {
+                    isHeader = true;
+                }
+            }
 
             if (isHeader) {
                 if (currentTitle && currentTags.length > 0) {
@@ -2412,9 +2432,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                         <div id="rbq-sdt-wb-test-char-preview" style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important; font-family: monospace !important; word-break: break-all !important; padding-left: 2px !important;"></div>
                     </div>
 
-                    <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 4px !important;">
-                        <button class="menu_button" id="rbq-sdt-wb-test-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
-                        <button class="menu_button" id="rbq-sdt-wb-test-submit" type="button" style="padding: 6px 20px !important; font-size: 12px !important; background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即开始测试生图</button>
+                    <div style="display: flex !important; justify-content: flex-end !important; align-items: center !important; gap: 10px !important; margin-top: 6px !important; width: 100% !important; flex-wrap: nowrap !important;">
+                        <button class="menu_button" id="rbq-sdt-wb-test-cancel" type="button" style="padding: 8px 16px !important; font-size: 12px !important; white-space: nowrap !important; margin: 0 !important; flex-shrink: 0 !important; cursor: pointer !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-wb-test-submit" type="button" style="padding: 8px 18px !important; font-size: 12px !important; background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; font-weight: bold !important; white-space: nowrap !important; margin: 0 !important; flex-shrink: 0 !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即开始测试生图</button>
                     </div>
                 </div>
             </div>

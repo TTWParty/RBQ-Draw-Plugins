@@ -6,10 +6,16 @@
     // ── Storage ──
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', globalPositive: '', globalNegative: '', presets: [] };
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', globalPositivePrefix: '', globalPositiveSuffix: '', globalNegative: '', presets: [] };
         const store = s[STORAGE_KEY];
         let mutated = false;
-        if (typeof store.globalPositive !== 'string') { store.globalPositive = ''; mutated = true; }
+        if (store.globalPositive && !store.globalPositivePrefix) {
+            store.globalPositivePrefix = store.globalPositive;
+            delete store.globalPositive;
+            mutated = true;
+        }
+        if (typeof store.globalPositivePrefix !== 'string') { store.globalPositivePrefix = ''; mutated = true; }
+        if (typeof store.globalPositiveSuffix !== 'string') { store.globalPositiveSuffix = ''; mutated = true; }
         if (typeof store.globalNegative !== 'string') { store.globalNegative = ''; mutated = true; }
         const seenIds = new Set();
         store.presets = (Array.isArray(store.presets) ? store.presets : []).map((item) => {
@@ -124,14 +130,20 @@
             .join(', ');
     }
 
-    function resolvePositivePrompt(original, presetText, globalText, position) {
+    function resolvePositivePrompt(original, presetText, globalPrefix, globalSuffix, position) {
         const orig = (original || '').trim();
         const preset = (presetText || '').trim();
-        const global = (globalText || '').trim();
-        if (!preset && !global) return orig;
-        return position === 'prepend'
-            ? combineParts(global, preset, orig)
-            : combineParts(orig, preset, global);
+        const gPre = (globalPrefix || '').trim();
+        const gSuf = (globalSuffix || '').trim();
+
+        let middle = orig;
+        if (preset) {
+            middle = position === 'prepend'
+                ? combineParts(preset, orig)
+                : combineParts(orig, preset);
+        }
+
+        return combineParts(gPre, middle, gSuf);
     }
 
     function resolveNegativePrompt(original, presetText, globalText) {
@@ -147,28 +159,29 @@
         const store = getStore();
         const preset = getActivePreset();
         const pos = store.position || 'prepend';
-        const globalPos = store.globalPositive || '';
-        const globalNeg = store.globalNegative || '';
+        const gPre = store.globalPositivePrefix || '';
+        const gSuf = store.globalPositiveSuffix || '';
+        const gNeg = store.globalNegative || '';
         const presetPos = preset ? (preset.positive || '') : '';
         const presetNeg = preset ? (preset.negative || '') : '';
 
-        if (globalPos || presetPos) {
-            payload.input = resolvePositivePrompt(payload.input, presetPos, globalPos, pos);
+        if (gPre || gSuf || presetPos) {
+            payload.input = resolvePositivePrompt(payload.input, presetPos, gPre, gSuf, pos);
             if (payload.parameters?.v4_prompt?.caption) {
                 payload.parameters.v4_prompt.caption.base_caption = resolvePositivePrompt(
-                    payload.parameters.v4_prompt.caption.base_caption, presetPos, globalPos, pos
+                    payload.parameters.v4_prompt.caption.base_caption, presetPos, gPre, gSuf, pos
                 );
             }
         }
-        if (globalNeg || presetNeg) {
+        if (gNeg || presetNeg) {
             if (payload.parameters) {
                 payload.parameters.negative_prompt = resolveNegativePrompt(
-                    payload.parameters.negative_prompt, presetNeg, globalNeg
+                    payload.parameters.negative_prompt, presetNeg, gNeg
                 );
             }
             if (payload.parameters?.v4_negative_prompt?.caption) {
                 payload.parameters.v4_negative_prompt.caption.base_caption = resolveNegativePrompt(
-                    payload.parameters.v4_negative_prompt.caption.base_caption, presetNeg, globalNeg
+                    payload.parameters.v4_negative_prompt.caption.base_caption, presetNeg, gNeg
                 );
             }
         }
@@ -180,16 +193,17 @@
         const store = getStore();
         const preset = getActivePreset();
         const pos = store.position || 'prepend';
-        const globalPos = store.globalPositive || '';
-        const globalNeg = store.globalNegative || '';
+        const gPre = store.globalPositivePrefix || '';
+        const gSuf = store.globalPositiveSuffix || '';
+        const gNeg = store.globalNegative || '';
         const presetPos = preset ? (preset.positive || '') : '';
         const presetNeg = preset ? (preset.negative || '') : '';
 
-        if (globalPos || presetPos) {
-            payload.positive_prompt = resolvePositivePrompt(payload.positive_prompt, presetPos, globalPos, pos);
+        if (gPre || gSuf || presetPos) {
+            payload.positive_prompt = resolvePositivePrompt(payload.positive_prompt, presetPos, gPre, gSuf, pos);
         }
-        if (globalNeg || presetNeg) {
-            payload.negative_prompt = resolveNegativePrompt(payload.negative_prompt, presetNeg, globalNeg);
+        if (gNeg || presetNeg) {
+            payload.negative_prompt = resolveNegativePrompt(payload.negative_prompt, presetNeg, gNeg);
         }
         console.info('[Prompt Presets] Free payload modified with presets/global prompts');
         return payload;
@@ -199,8 +213,9 @@
         const store = getStore();
         const preset = getActivePreset();
         const pos = store.position || 'prepend';
-        const globalPos = store.globalPositive || '';
-        const globalNeg = store.globalNegative || '';
+        const gPre = store.globalPositivePrefix || '';
+        const gSuf = store.globalPositiveSuffix || '';
+        const gNeg = store.globalNegative || '';
         const presetPos = preset ? (preset.positive || '') : '';
         const presetNeg = preset ? (preset.negative || '') : '';
 
@@ -210,10 +225,10 @@
                 const isNeg = Object.values(payload).some(n =>
                     n?.inputs?.negative && Array.isArray(n.inputs.negative) && n.inputs.negative[0] === key
                 );
-                if (isNeg && (globalNeg || presetNeg)) {
-                    node.inputs.text = resolveNegativePrompt(node.inputs.text, presetNeg, globalNeg);
-                } else if (!isNeg && (globalPos || presetPos)) {
-                    node.inputs.text = resolvePositivePrompt(node.inputs.text, presetPos, globalPos, pos);
+                if (isNeg && (gNeg || presetNeg)) {
+                    node.inputs.text = resolveNegativePrompt(node.inputs.text, presetNeg, gNeg);
+                } else if (!isNeg && (gPre || gSuf || presetPos)) {
+                    node.inputs.text = resolvePositivePrompt(node.inputs.text, presetPos, gPre, gSuf, pos);
                 }
             }
         }
@@ -322,12 +337,16 @@
                 </div>
                 <div class="st-scene-trigger-modal-grid">
                     <label class="st-scene-trigger-field wide">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局正面提示词</span>
-                        <textarea id="rbq-pp-global-positive" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality... (生图时自动拼接)"></textarea>
+                        <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局正面提示词 (前置 / Prefix)</span>
+                        <textarea id="rbq-pp-global-pos-prefix" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
+                    </label>
+                    <label class="st-scene-trigger-field wide">
+                        <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局正面提示词 (后置 / Suffix)</span>
+                        <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                     </label>
                     <label class="st-scene-trigger-field wide">
                         <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局负面提示词</span>
-                        <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" placeholder="例如: lowres, bad anatomy, worst quality... (生图时自动拼接)"></textarea>
+                        <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
                     </label>
                 </div>
             </div>
@@ -378,7 +397,8 @@
         container.addEventListener('change', (e) => e.stopPropagation());
         container.addEventListener('input', (e) => e.stopPropagation());
 
-        const globalPosInput = document.getElementById('rbq-pp-global-positive');
+        const globalPosPreInput = document.getElementById('rbq-pp-global-pos-prefix');
+        const globalPosSufInput = document.getElementById('rbq-pp-global-pos-suffix');
         const globalNegInput = document.getElementById('rbq-pp-global-negative');
         const select = document.getElementById('rbq-pp-select');
         const posSelect = document.getElementById('rbq-pp-position');
@@ -388,8 +408,13 @@
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
 
-        globalPosInput?.addEventListener('input', () => {
-            getStore().globalPositive = globalPosInput.value.trim();
+        globalPosPreInput?.addEventListener('input', () => {
+            getStore().globalPositivePrefix = globalPosPreInput.value.trim();
+            save();
+        });
+
+        globalPosSufInput?.addEventListener('input', () => {
+            getStore().globalPositiveSuffix = globalPosSufInput.value.trim();
             save();
         });
 
@@ -468,8 +493,11 @@
 
         function renderSelect() {
             const store = getStore();
-            if (globalPosInput && document.activeElement !== globalPosInput) {
-                globalPosInput.value = store.globalPositive || '';
+            if (globalPosPreInput && document.activeElement !== globalPosPreInput) {
+                globalPosPreInput.value = store.globalPositivePrefix || '';
+            }
+            if (globalPosSufInput && document.activeElement !== globalPosSufInput) {
+                globalPosSufInput.value = store.globalPositiveSuffix || '';
             }
             if (globalNegInput && document.activeElement !== globalNegInput) {
                 globalNegInput.value = store.globalNegative || '';
@@ -683,8 +711,11 @@
                 suffix: s.suffix || '',
                 negative: s.negative || '',
             };
-            if (!store.globalPositive && s.prefix) {
-                store.globalPositive = s.prefix;
+            if (!store.globalPositivePrefix && s.prefix) {
+                store.globalPositivePrefix = s.prefix;
+            }
+            if (!store.globalPositiveSuffix && s.suffix) {
+                store.globalPositiveSuffix = s.suffix;
             }
             if (!store.globalNegative && s.negative) {
                 store.globalNegative = s.negative;

@@ -81,8 +81,8 @@
                 { id: 'hair', name: '发型发色', keywords: ['发型', '发色', '双马尾', '单马尾', '短发', '长发', '马尾', '刘海', '编发', '呆毛', '渐变发', '发饰', '发'], tagRegex: /\b(hair|twintails|ponytail|bangs|braid|ahoge|bob_cut|drill_hair|messy_hair|bun|ahoge|sidelocks)\b/i },
                 { id: 'eyes', name: '眼部瞳色', keywords: ['眼', '瞳', '瞳色', '异色瞳', '眼睛', '红瞳', '蓝瞳', '金瞳', '绿瞳', '爱心眼', '魔眼'], tagRegex: /\b(eyes|heterochromia|heart-shaped_pupils|slit_pupils|glowing_eyes|empty_eyes)\b/i },
                 { id: 'face', name: '面部表情', keywords: ['表情', '脸部', '脸红', '微笑', '哭', '生气', '张嘴', '吐舌', '高潮脸', '害羞', '傲娇', '面部', '脸'], tagRegex: /\b(blush|smile|grin|frown|tears|crying|open_mouth|tongue|ahegao|smug|embarrassed)\b/i },
-                { id: 'race', name: '种族特征', keywords: ['种族', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '角', '恶魔角', '光环', '天使', '魅魔', '机娘', '兽人', '耳朵', '耳朵/尾巴'], tagRegex: /\b(animal_ears|cat_ears|fox_ears|rabbit_ears|wolf_ears|elf_ears|tail|cat_tail|fox_tail|wings|horns|demon_horns|halo|angel_wings|demon_tail)\b/i },
-                { id: 'body', name: '身材体型', keywords: ['身材', '体型', '胸部', '巨乳', '贫乳', '爆乳', '微乳', '腹肌', '肉感', '大腿', '长腿', '身高', '肤色', '黑皮', '白皙', '肌肉', '美腿', '锁骨'], tagRegex: /\b(breasts|large_breasts|small_breasts|flat_chest|huge_breasts|thick_thighs|abs|muscular|dark_skin|pale_skin|curvy|cleavage)\b/i },
+                { id: 'race', name: '种族特征', keywords: ['种族', '特征', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '角', '恶魔角', '光环', '天使', '魅魔', '机娘', '兽人', '耳朵', '耳朵/尾巴', '触手特征'], tagRegex: /\b(animal_ears|cat_ears|fox_ears|rabbit_ears|wolf_ears|elf_ears|tail|cat_tail|fox_tail|wings|horns|demon_horns|halo|angel_wings|demon_tail|prolapse)\b/i },
+                { id: 'body', name: '身材体型', keywords: ['身材', '体型', '胸部', '胸部动作', '胸部特征', '胸部状态', '乳房', '巨乳', '贫乳', '爆乳', '微乳', '腹肌', '肉感', '大腿', '长腿', '身高', '肤色', '黑皮', '白皙', '肌肉', '美腿', '锁骨', '私处', '私处特征', '臀部', '屁股'], tagRegex: /\b(breasts|large_breasts|small_breasts|flat_chest|huge_breasts|thick_thighs|abs|muscular|dark_skin|pale_skin|curvy|cleavage|pussy|butt|ass)\b/i },
             ]
         },
         outfit: {
@@ -91,9 +91,9 @@
             icon: 'fa-solid fa-shirt',
             color: '#ffb86c',
             subcategories: [
-                { id: 'casual', name: '日常私服', keywords: ['日常服', '常服', '私服', '日常', 'T恤', '卫衣', '衬衫', '毛衣', '外套', '夹克', '大衣', '牛仔裤', '短裙', '百褶裙', '连衣裙', '裙子', '上装', '下装'], tagRegex: /\b(casual|t-shirt|shirt|hoodie|sweater|jacket|coat|jeans|skirt|miniskirt|dress|sundress|blouse|pants|shorts)\b/i },
+                { id: 'casual', name: '日常私服', keywords: ['日常服', '常服', '私服', '日常', 'T恤', '卫衣', '衬衫', '毛衣', '外套', '夹克', '大衣', '牛仔裤', '短裙', '百褶裙', '连衣裙', '裙子', '上装', '下装', '着装'], tagRegex: /\b(casual|t-shirt|shirt|hoodie|sweater|jacket|coat|jeans|skirt|miniskirt|dress|sundress|blouse|pants|shorts)\b/i },
                 { id: 'uniform', name: '制服职业', keywords: ['制服', '校服', '水手服', '西装', '女仆', '女仆装', '护士', '修女', '警服', '旗袍', '和服', '巫女', '军服', '职场', 'OL', '兔女郎', '体操服', '运动服'], tagRegex: /\b(uniform|school_uniform|serafuku|maid|nurse|nun|police|cheongsam|kimono|miko|military_uniform|office_lady|bunny_suit|gym_uniform|tracksuit)\b/i },
-                { id: 'swimwear', name: '泳装内衣', keywords: ['泳装', '泳衣', '比基尼', '死库水', '内衣', '文胸', '胸罩', '内裤', '胖次', '情趣内衣', '蕾丝内衣', '吊带睡衣', '睡衣', '浴袍'], tagRegex: /\b(swimsuit|bikini|school_swimsuit|underwear|bra|panties|lingerie|negligee|sleepwear|bathrobe)\b/i },
+                { id: 'swimwear', name: '泳装内衣', keywords: ['泳装', '泳衣', '比基尼', '死库水', '内衣', '文胸', '胸罩', '内裤', '胖次', '情趣内衣', '蕾丝内衣', '吊带睡衣', '睡衣', '浴袍', '下着'], tagRegex: /\b(swimsuit|bikini|school_swimsuit|underwear|bra|panties|lingerie|negligee|sleepwear|bathrobe)\b/i },
                 { id: 'accessories', name: '鞋袜饰品', keywords: ['鞋袜', '丝袜', '黑丝', '白丝', '过膝袜', '短袜', '吊袜带', '高跟鞋', '靴子', '手套', '项圈', '手镯', '项链', '耳环', '帽子', '头饰', '眼镜', '首饰', '饰品', '发饰'], tagRegex: /\b(socks|stockings|pantyhose|thighhighs|garter_straps|high_heels|boots|gloves|collar|choker|glasses|hat|headdress|hair_ornament|earrings|necklace)\b/i },
                 { id: 'costume', name: '情趣装扮', keywords: ['情趣', '变装', '胶衣', '紧身衣', '皮衣', '魅魔装', '透视装', '镂空', '拘束装', '破损衣服', '裸体围裙', '皮甲', '机甲'], tagRegex: /\b(latex|bodysuit|leotard|revealing|see-through|torn_clothes|naked_apron|mecha_clothes|armor)\b/i },
             ]
@@ -104,7 +104,7 @@
             icon: 'fa-solid fa-person-walking',
             color: '#a3ffa3',
             subcategories: [
-                { id: 'single_action', name: '单人姿态', keywords: ['动作', '姿势', '站姿', '坐姿', '躺', '卧', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '趴', '跪'], tagRegex: /\b(standing|sitting|lying|walking|running|jumping|squatting|waving|peace_sign|salute|reaching|kneeling|on_all_fours|crossed_arms)\b/i },
+                { id: 'single_action', name: '单人姿态', keywords: ['动作', '姿势', '动作/姿势', '站姿', '坐姿', '躺', '卧', '走', '跑', '跳', '蹲', '单手插腰', '双手抱胸', '托腮', '挥手', '比心', '敬礼', '伸手', '撩发', '趴', '跪', '腿部姿势', '手部动作'], tagRegex: /\b(standing|sitting|lying|walking|running|jumping|squatting|waving|peace_sign|salute|reaching|kneeling|on_all_fours|crossed_arms)\b/i },
                 { id: 'dynamic_pose', name: '动态战斗', keywords: ['战斗', '拔刀', '施法', '跳跃', '飞踢', '回眸', '冲刺', '防守', '持枪', '持剑', '蓄力'], tagRegex: /\b(fighting_stance|sword|weapon|casting_spell|looking_back|dashing|combat|holding_weapon)\b/i },
             ]
         },
@@ -114,7 +114,7 @@
             icon: 'fa-solid fa-people-arrows',
             color: '#79e4ff',
             subcategories: [
-                { id: 'duo_gentle', name: '亲密温情', keywords: ['互动', '双人', '牵手', '拥抱', '相拥', '依偎', '接吻', '亲吻', '对视', '摸头', '公主抱', '背着', '靠肩', '共伞', '耳语', '双人姿势', '双人互动'], tagRegex: /\b(holding_hands|hug|embracing|kiss|kissing|eye_contact|headpat|princess_carry|piggyback|whispering|intertwined_fingers)\b/i },
+                { id: 'duo_gentle', name: '亲密温情', keywords: ['互动', '双人', '胸部动作与互动', '胸部互动', '牵手', '拥抱', '相拥', '依偎', '接吻', '亲吻', '对视', '摸头', '公主抱', '背着', '靠肩', '共伞', '耳语', '双人姿势', '双人互动'], tagRegex: /\b(holding_hands|hug|embracing|kiss|kissing|eye_contact|headpat|princess_carry|piggyback|whispering|intertwined_fingers)\b/i },
                 { id: 'duo_daily', name: '日常社交', keywords: ['对话', '聊天', '打闹', '并肩', '跳舞', '递东西', '敬酒', '拍照', '合影', '共进晚餐'], tagRegex: /\b(talking|dancing|cheering|selfie|taking_picture|sharing|feeding)\b/i },
             ]
         },
@@ -126,8 +126,8 @@
             subcategories: [
                 { id: 'positions', name: '经典体位', keywords: ['体位', '正常位', '传教士', '骑乘', '骑乘位', '后入', '后背位', '狗爬', '侧入', '站交', '站立位', '火车便当', '女上男下', '体位模板', 'SEX模板', 'SEX', '做爱', '交配'], tagRegex: /\b(missionary|cowgirl_position|doggystyle|standing_sex|mating_press|spooning|sex_from_behind|sex|penetration|vaginal)\b/i },
                 { id: 'service', name: '口交服务', keywords: ['口交', '深喉', '手交', '乳交', '足交', '侍奉', '舔舐', '咬住', '射精', '颜射', '内射', '中出', '吞精', '打飞机'], tagRegex: /\b(fellatio|deepthroat|handjob|paizuri|footjob|oral|cum|cum_in_mouth|facial|creampie|bukkake)\b/i },
-                { id: 'kinky', name: '束缚情调', keywords: ['束缚', '绳缚', '拘束', '手铐', '蒙眼', '项圈牵引', '调教', '触手', '兽交', '群交', '轮奸', '自慰', '假阳具', '跳蛋', '玩具', '异种奸'], tagRegex: /\b(bondage|ropes|handcuffs|blindfold|tentacles|gangbang|masturbation|dildo|vibrator|collar_leash)\b/i },
-                { id: 'states', name: '涩涩状态', keywords: ['高潮', '绝顶', '流汗', '爱液', '潮吹', '受孕', '阿黑颜', '失神', 'X光', '透视', '身体流汗'], tagRegex: /\b(orgasm|sweat|body_fluids|squirt|impregnation|ahegao|x-ray|heavy_breathing)\b/i },
+                { id: 'kinky', name: '束缚情调', keywords: ['束缚', '绳缚', '拘束', '手铐', '蒙眼', '项圈牵引', '调教', '触手', '兽交', '群交', '轮奸', '自慰', '假阳具', '跳蛋', '玩具', '异种奸', '脱垂'], tagRegex: /\b(bondage|ropes|handcuffs|blindfold|tentacles|gangbang|masturbation|dildo|vibrator|collar_leash|prolapse)\b/i },
+                { id: 'states', name: '涩涩状态', keywords: ['高潮', '绝顶', '流汗', '爱液', '潮吹', '受孕', '阿黑颜', '失神', 'X光', '透视', '身体流汗', '胸部状态与液体', '液体状态', '液体'], tagRegex: /\b(orgasm|sweat|body_fluids|squirt|impregnation|ahegao|x-ray|heavy_breathing)\b/i },
             ]
         },
         scene: {
@@ -298,55 +298,62 @@
         let currentTitle = '';
         let currentTags = [];
 
-        function isTagLine(line) {
-            if (/\d+(\.\d+)?::/.test(line) || /-\d+::/.test(line)) return true;
-            if ((line.match(/,/g) || []).length >= 2) return true;
-            const eng = (line.match(/[a-zA-Z_]/g) || []).length;
-            const ch = (line.match(/[\u4e00-\u9fa5]/g) || []).length;
-            if (eng > 10 && ch === 0) return true;
-            return false;
+        function cleanLine(l) {
+            return l.replace(/^[-*•]\s*/, '').replace(/^[#]+\s*/, '').trim();
         }
 
         for (let rawLine of lines) {
             let line = rawLine.trim();
             if (!line) continue;
-            if (/^#+\s+[\u4e00-\u9fa5a-zA-Z0-9_\-]+$/.test(line) && !currentTitle && !variants.length) continue;
-
-            const chineseCount = (line.match(/[\u4e00-\u9fa5]/g) || []).length;
-            const englishCount = (line.match(/[a-zA-Z]/g) || []).length;
-            const isTag = isTagLine(line);
+            // Skip top-level banner comment
+            if (/^#\.\s*[\u4e00-\u9fa5]/.test(line) && !variants.length && !currentTags.length) {
+                continue;
+            }
 
             let isHeader = false;
-            if (!isTag) {
-                if (line.startsWith('##') || line.startsWith('###')) {
-                    isHeader = true;
-                } else if (/^[【\[（\(][^】\]）\)]+[】\]）\)]/.test(line) && chineseCount >= 2) {
-                    isHeader = true;
-                } else if (/^(\d+[\.\、\s]|[-*]\s+)[^\d]/i.test(line) && (chineseCount >= 2 || englishCount < 10)) {
-                    isHeader = true;
-                } else if (/^(默认\d*|变体\d*|机位\d*|视角\d*|版本\d*|服装\d*|姿势\d*|动作\d*|Char\d*)/i.test(line)) {
-                    isHeader = true;
-                } else if (chineseCount >= 2 && englishCount <= 6 && !line.includes(',')) {
-                    isHeader = true;
-                } else if (/^[\u4e00-\u9fa5a-zA-Z0-9_\-\s]+[：:]$/.test(line)) {
-                    isHeader = true;
-                }
+            let headerTitle = '';
+            let inlineTags = '';
+
+            const subHeaderMatch = line.match(/^#{2,4}\.?\s*(\d*[\.\、\s]*)?([^—\-\:\：\n]+)([\—\-\:\：]\s*(.*))?$/);
+            const bracketHeaderMatch = line.match(/^[【\[（\(]([^】\]）\)]+)[】\]）\)]([\—\-\:\：]\s*(.*))?$/);
+            const numHeaderMatch = line.match(/^(\d+[\.\、\s]+)([^—\-\:\：\n]+)([\—\-\:\：]\s*(.*))?$/);
+
+            if (subHeaderMatch) {
+                isHeader = true;
+                headerTitle = subHeaderMatch[2].trim();
+                inlineTags = (subHeaderMatch[4] || '').trim();
+            } else if (bracketHeaderMatch && (line.match(/[\u4e00-\u9fa5]/g) || []).length >= 2) {
+                isHeader = true;
+                headerTitle = bracketHeaderMatch[1].trim();
+                inlineTags = (bracketHeaderMatch[3] || '').trim();
+            } else if (numHeaderMatch && (numHeaderMatch[2].match(/[\u4e00-\u9fa5]/g) || []).length >= 2) {
+                isHeader = true;
+                headerTitle = numHeaderMatch[2].trim();
+                inlineTags = (numHeaderMatch[4] || '').trim();
+            } else if (/^[\u4e00-\u9fa5a-zA-Z0-9_\-\s]{2,14}[：:]$/.test(line)) {
+                isHeader = true;
+                headerTitle = line.replace(/[:：]$/, '').trim();
             }
 
             if (isHeader) {
                 if (currentTitle && currentTags.length > 0) {
                     variants.push({ title: currentTitle, tags: currentTags.join(', ').trim() });
                 }
-                currentTitle = line.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').replace(/[:：]$/, '').trim();
+                currentTitle = headerTitle || '变体';
                 currentTags = [];
+                if (inlineTags) {
+                    currentTags.push(inlineTags.replace(/^[-*•—–]\s*/, ''));
+                }
             } else {
                 if (!currentTitle) currentTitle = '默认变体';
-                currentTags.push(line.replace(/^[-*]\s*/, ''));
+                currentTags.push(cleanLine(line));
             }
         }
+
         if (currentTitle && currentTags.length > 0) {
             variants.push({ title: currentTitle, tags: currentTags.join(', ').trim() });
         }
+
         return variants.length > 0 ? variants : [{ title: '默认', tags: content.trim() }];
     }
 
@@ -402,22 +409,22 @@
             const activeTaxGroup = LOREBOOK_TAXONOMY[currentMainCat];
 
             return `
-                <div style="background: #18191f !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 14px !important; width: 720px !important; max-width: 95vw !important; max-height: 90vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important; box-sizing: border-box !important;">
+                <div style="background: #18191f !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 14px !important; width: 740px !important; max-width: 95vw !important; max-height: 90vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important; box-sizing: border-box !important;">
                     <!-- Header -->
                     <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 18px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(121,228,255,0.06) !important; flex-wrap: wrap !important; gap: 8px !important;">
-                        <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important; white-space: nowrap !important;">
                             <i class="fa-solid fa-book-open"></i> ${options.title || '从世界书选择词条'}
                         </strong>
-                        <div style="display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <div style="display: flex !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
                             <select id="rbq-cw-wb-source-select" style="height: 28px !important; font-size: 11px !important; background: rgba(0,0,0,0.5) !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 6px !important; color: #79e4ff !important; padding: 2px 8px !important; max-width: 160px !important;">
                                 <option value="all">📚 全部世界书 (${allEntries.length})</option>
                                 ${sources.map(s => `<option value="${escapeHtml(s)}" ${currentSource === s ? 'selected' : ''}>📖 ${escapeHtml(s)}</option>`).join('')}
                             </select>
-                            <label class="menu_button" style="padding: 3px 10px !important; font-size: 11px !important; margin: 0 !important; cursor: pointer !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; border-radius: 6px !important;">
-                                <i class="fa-solid fa-file-arrow-up"></i> 导入
+                            <label class="cw-wb-btn green" style="cursor: pointer !important;">
+                                <i class="fa-solid fa-file-arrow-up"></i> 导入世界书
                                 <input type="file" id="rbq-cw-wb-file-input" accept=".json" style="display: none !important;" />
                             </label>
-                            <button class="menu_button" id="rbq-cw-wb-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important; border-radius: 6px !important;">✕</button>
+                            <button class="cw-wb-btn close" id="rbq-cw-wb-close">✕</button>
                         </div>
                     </div>
 
@@ -484,17 +491,17 @@
                             return `
                                 <div style="background: rgba(255,255,255,0.025) !important; border: 1px solid rgba(255,255,255,0.06) !important; border-radius: 8px !important; padding: 10px 12px !important; display: flex !important; flex-direction: column !important; gap: 6px !important; transition: border-color 0.15s !important;">
                                     <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
-                                        <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important;">
-                                            <strong style="font-size: 13px !important; color: #fff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
-                                            <span style="font-size: 10px !important; background: ${badgeColor}22 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}44 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;">🏷️ ${escapeHtml(e.badgeText || e.mainName)}</span>
-                                            <span style="font-size: 10px !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.65) !important; padding: 1px 5px !important; border-radius: 4px !important;">📖 ${escapeHtml(e.sourceName)}</span>
-                                            ${hasMultiple ? `<span style="font-size: 10px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; padding: 1px 5px !important; border-radius: 4px !important; font-weight: bold !important;">🔥 ${subVariants.length} 种变体</span>` : ''}
+                                        <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important; flex: 1 !important; min-width: 0 !important;">
+                                            <strong style="font-size: 13px !important; color: #fff !important; word-break: break-all !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
+                                            <span style="font-size: 10px !important; background: ${badgeColor}22 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}44 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important; white-space: nowrap !important;">🏷️ ${escapeHtml(e.badgeText || e.mainName)}</span>
+                                            <span style="font-size: 10px !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.65) !important; padding: 1px 5px !important; border-radius: 4px !important; white-space: nowrap !important;">📖 ${escapeHtml(e.sourceName)}</span>
+                                            ${hasMultiple ? `<span style="font-size: 10px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; padding: 1px 5px !important; border-radius: 4px !important; font-weight: bold !important; white-space: nowrap !important;">🔥 ${subVariants.length} 种变体</span>` : ''}
                                         </div>
-                                        <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
+                                        <div style="display: flex !important; gap: 6px !important; align-items: center !important; flex-shrink: 0 !important;">
                                             ${hasMultiple ? `
-                                                <button class="menu_button rbq-cw-pick-multi-btn" data-index="${idx}" type="button" style="padding: 3px 10px !important; font-size: 11px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.4) !important; font-weight: bold !important; cursor: pointer !important; border-radius: 5px !important;"><i class="fa-solid fa-list-check"></i> 挑选子变体</button>
+                                                <button class="cw-wb-btn orange rbq-cw-pick-multi-btn" data-index="${idx}" type="button"><i class="fa-solid fa-list-check"></i> 挑选子变体</button>
                                             ` : `
-                                                <button class="menu_button rbq-cw-pick-single-btn" data-index="${idx}" type="button" style="padding: 3px 12px !important; font-size: 11px !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important; border-radius: 5px !important;"><i class="fa-solid fa-check"></i> 选用</button>
+                                                <button class="cw-wb-btn green rbq-cw-pick-single-btn" data-index="${idx}" type="button"><i class="fa-solid fa-check"></i> 选用</button>
                                             `}
                                         </div>
                                     </div>
@@ -575,17 +582,17 @@
                             return `
                                 <div style="background: rgba(255,255,255,0.025) !important; border: 1px solid rgba(255,255,255,0.06) !important; border-radius: 8px !important; padding: 10px 12px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
                                     <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
-                                        <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important;">
-                                            <strong style="font-size: 13px !important; color: #fff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
-                                            <span style="font-size: 10px !important; background: ${badgeColor}22 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}44 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;">🏷️ ${escapeHtml(e.badgeText || e.mainName)}</span>
-                                            <span style="font-size: 10px !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.65) !important; padding: 1px 5px !important; border-radius: 4px !important;">📖 ${escapeHtml(e.sourceName)}</span>
-                                            ${hasMultiple ? `<span style="font-size: 10px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; padding: 1px 5px !important; border-radius: 4px !important; font-weight: bold !important;">🔥 ${subVariants.length} 种变体</span>` : ''}
+                                        <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important; flex: 1 !important; min-width: 0 !important;">
+                                            <strong style="font-size: 13px !important; color: #fff !important; word-break: break-all !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
+                                            <span style="font-size: 10px !important; background: ${badgeColor}22 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}44 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important; white-space: nowrap !important;">🏷️ ${escapeHtml(e.badgeText || e.mainName)}</span>
+                                            <span style="font-size: 10px !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.65) !important; padding: 1px 5px !important; border-radius: 4px !important; white-space: nowrap !important;">📖 ${escapeHtml(e.sourceName)}</span>
+                                            ${hasMultiple ? `<span style="font-size: 10px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; padding: 1px 5px !important; border-radius: 4px !important; font-weight: bold !important; white-space: nowrap !important;">🔥 ${subVariants.length} 种变体</span>` : ''}
                                         </div>
-                                        <div style="display: flex !important; gap: 6px !important; align-items: center !important;">
+                                        <div style="display: flex !important; gap: 6px !important; align-items: center !important; flex-shrink: 0 !important;">
                                             ${hasMultiple ? `
-                                                <button class="menu_button rbq-cw-pick-multi-btn" data-index="${idx}" type="button" style="padding: 3px 10px !important; font-size: 11px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.4) !important; font-weight: bold !important; cursor: pointer !important; border-radius: 5px !important;"><i class="fa-solid fa-list-check"></i> 挑选子变体</button>
+                                                <button class="cw-wb-btn orange rbq-cw-pick-multi-btn" data-index="${idx}" type="button"><i class="fa-solid fa-list-check"></i> 挑选子变体</button>
                                             ` : `
-                                                <button class="menu_button rbq-cw-pick-single-btn" data-index="${idx}" type="button" style="padding: 3px 12px !important; font-size: 11px !important; background: rgba(100,255,100,0.18) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important; border-radius: 5px !important;"><i class="fa-solid fa-check"></i> 选用</button>
+                                                <button class="cw-wb-btn green rbq-cw-pick-single-btn" data-index="${idx}" type="button"><i class="fa-solid fa-check"></i> 选用</button>
                                             `}
                                         </div>
                                     </div>
@@ -661,19 +668,19 @@
                 align-items: center !important; justify-content: center !important; padding: 16px !important;
             `;
             subModal.innerHTML = `
-                <div style="background: #202128 !important; border: 1px solid rgba(255,184,108,0.4) !important; border-radius: 12px !important; width: 540px !important; max-width: 95vw !important; max-height: 80vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 15px 50px rgba(0,0,0,0.9) !important;">
+                <div style="background: #202128 !important; border: 1px solid rgba(255,184,108,0.4) !important; border-radius: 12px !important; width: 560px !important; max-width: 95vw !important; max-height: 80vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 15px 50px rgba(0,0,0,0.9) !important;">
                     <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; padding: 12px 16px !important; background: rgba(255,184,108,0.08) !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important;">
-                        <strong style="color: #ffb86c !important; font-size: 14px !important;">📌 挑选子变体 — ${escapeHtml(entryTitle)}</strong>
-                        <button class="menu_button" id="rbq-cw-subv-close" style="padding: 2px 8px !important; font-size: 12px !important;">✕</button>
+                        <strong style="color: #ffb86c !important; font-size: 14px !important; white-space: nowrap !important;">📌 挑选子变体 — ${escapeHtml(entryTitle)}</strong>
+                        <button class="cw-wb-btn close" id="rbq-cw-subv-close">✕</button>
                     </div>
                     <div style="padding: 14px 16px !important; overflow-y: auto !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                         ${variants.map((v, vIdx) => `
                             <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 8px !important; padding: 10px !important; display: flex !important; flex-direction: column !important; gap: 6px !important;">
-                                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                                    <strong style="color: #fff !important; font-size: 13px !important;">#${vIdx + 1} ${escapeHtml(v.title)}</strong>
-                                    <button class="menu_button rbq-cw-pick-v-btn" data-vidx="${vIdx}" type="button" style="padding: 3px 10px !important; font-size: 11px !important; background: rgba(100,255,100,0.2) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.35) !important; font-weight: bold !important; cursor: pointer !important;">选用此变体</button>
+                                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important;">
+                                    <strong style="color: #fff !important; font-size: 13px !important; flex: 1 !important;">#${vIdx + 1} ${escapeHtml(v.title)}</strong>
+                                    <button class="cw-wb-btn green rbq-cw-pick-v-btn" data-vidx="${vIdx}" type="button">选用此变体</button>
                                 </div>
-                                <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-family: monospace !important; background: rgba(0,0,0,0.3) !important; padding: 4px 8px !important; border-radius: 4px !important;">${escapeHtml(v.tags)}</div>
+                                <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-family: monospace !important; background: rgba(0,0,0,0.3) !important; padding: 4px 8px !important; border-radius: 4px !important; word-break: break-all !important;">${escapeHtml(v.tags)}</div>
                             </div>
                         `).join('')}
                     </div>
@@ -1140,6 +1147,13 @@
   .cw-chars-grid{grid-template-columns:1fr}
   .cw-header{flex-direction:column;align-items:stretch}
   .cw-nav{justify-content:center}
+/* ── Worldbook Picker Modal CSS ── */
+.cw-wb-btn{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;white-space:nowrap!important;flex-shrink:0!important;border-radius:6px!important;cursor:pointer!important;border:1px solid transparent!important;transition:all .15s!important;box-sizing:border-box!important;min-width:max-content!important}
+.cw-wb-btn.green{background:rgba(100,255,100,.18)!important;color:#a3ffa3!important;border-color:rgba(100,255,100,.35)!important;padding:4px 12px!important;font-size:11.5px!important;font-weight:700!important}
+.cw-wb-btn.orange{background:rgba(255,184,108,.2)!important;color:#ffb86c!important;border-color:rgba(255,184,108,.4)!important;padding:4px 10px!important;font-size:11.5px!important;font-weight:700!important}
+.cw-wb-btn.cyan{background:rgba(121,228,255,.2)!important;color:#79e4ff!important;border-color:rgba(121,228,255,.4)!important;padding:4px 10px!important;font-size:11.5px!important}
+.cw-wb-btn.close{background:rgba(255,255,255,.08)!important;color:rgba(255,255,255,.7)!important;border-color:rgba(255,255,255,.15)!important;padding:3px 8px!important;font-size:13px!important}
+.cw-wb-btn:hover{filter:brightness(1.25)!important}
 /* ── Panel Container Control ── */
 .st-scene-trigger-modal-panel[data-kite-panel="character-workshop"]{display:none!important;width:100%!important;box-sizing:border-box!important}
 .st-scene-trigger-modal-panel[data-kite-panel="character-workshop"].active{display:flex!important;flex-direction:column!important}

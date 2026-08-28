@@ -71,6 +71,20 @@
     }
 
     // ── Worldbook Integration (读取已导入世界书) ──────────────
+    const CATEGORY_GROUPS = {
+        '外貌特征': ['外貌特征', '发型', '发色', '瞳色', '脸部', '面部', '耳朵', '身材', '种族', '饰品', '发饰', '体型', '胸部', '肤色', '眼睛', '表情', '头部', '特征', '外貌', '发', '瞳', '耳'],
+        '服装': ['服装', '穿搭', '常服', '泳装', '制服', '下装', '上装', '鞋袜', '内衣', '饰品', '首饰', '帽子', '套装', '情趣', '衣服', '着装'],
+        '动作体位': ['动作体位', '动作', '姿势', '体位', '互动', '手部动作', '腿部动作', 'SEX模板', '常规模板', '双人体位', '单人动作', '体位模板'],
+        '场景环境': ['场景环境', '场景', '背景', '地点', '室内', '室外', '光影', '天气', '构图', '视角', '氛围', '环境']
+    };
+
+    function isCategoryInGroup(cat, groupName) {
+        if (!cat || !groupName) return false;
+        if (cat === groupName) return true;
+        const members = CATEGORY_GROUPS[groupName] || [];
+        return members.some(m => cat.includes(m) || m.includes(cat));
+    }
+
     function getAllAvailableWorldbookEntries() {
         const s = RBQ.api.getSettings();
         const sdtStore = s[SDT_STORAGE_KEY];
@@ -107,11 +121,11 @@
         if (bracketMatch) return bracketMatch[1].trim();
         const prefixMatch = c.match(/^[\*#\s]*([^\-\—\－\:\：\s\(\)\[\]]{2,8})[\-\—\－\:\：]/);
         if (prefixMatch) return prefixMatch[1].trim();
-        if (c.includes('服装') || c.includes('穿搭') || c.includes('常服') || c.includes('泳装') || c.includes('制服')) return '服装';
-        if (c.includes('发型') || c.includes('发色') || c.includes('瞳') || c.includes('脸') || c.includes('耳') || c.includes('身材') || c.includes('外貌')) return '外貌特征';
+        if (c.includes('服装') || c.includes('穿搭') || c.includes('常服') || c.includes('泳装') || c.includes('制服') || c.includes('裙') || c.includes('装')) return '服装';
+        if (c.includes('发型') || c.includes('发色') || c.includes('发') || c.includes('瞳') || c.includes('脸') || c.includes('耳') || c.includes('身材') || c.includes('胸') || c.includes('外貌') || c.includes('种族')) return '外貌特征';
         if (c.includes('体位') || c.includes('动作') || c.includes('姿势') || c.includes('互动') || c.includes('sex') || c.includes('Sex') || c.includes('SEX')) return '动作体位';
         if (c.includes('场景') || c.includes('背景') || c.includes('地点') || c.includes('室内') || c.includes('室外') || c.includes('光影')) return '场景环境';
-        return '综合词条';
+        return '综合';
     }
 
     function extractLorebookSubVariants(content) {
@@ -193,7 +207,7 @@
 
         function renderContent() {
             const filtered = allEntries.filter(e => {
-                if (currentCat !== 'all' && e.category !== currentCat) return false;
+                if (currentCat !== 'all' && e.category !== currentCat && !isCategoryInGroup(e.category, currentCat)) return false;
                 if (!searchQuery) return true;
                 const q = searchQuery.toLowerCase();
                 return (e.comment && e.comment.toLowerCase().includes(q))
@@ -217,7 +231,13 @@
                         </div>
                         <div style="display: flex !important; gap: 6px !important; overflow-x: auto !important; padding-bottom: 4px !important;">
                             <button class="menu_button rbq-cw-cat-btn ${currentCat === 'all' ? 'active' : ''}" data-cat="all" style="padding: 3px 10px !important; font-size: 11px !important; white-space: nowrap !important; ${currentCat === 'all' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important;' : ''}">全部 (${allEntries.length})</button>
-                            ${categories.map(cat => {
+                            ${Object.keys(CATEGORY_GROUPS).map(grp => {
+                                const count = allEntries.filter(e => isCategoryInGroup(e.category, grp)).length;
+                                if (count === 0) return '';
+                                const isActive = currentCat === grp;
+                                return `<button class="menu_button rbq-cw-cat-btn ${isActive ? 'active' : ''}" data-cat="${escapeHtml(grp)}" style="padding: 3px 10px !important; font-size: 11px !important; white-space: nowrap !important; font-weight: bold !important; ${isActive ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important;' : 'background: rgba(255,255,255,0.05) !important;'};">📁 ${escapeHtml(grp)} (${count})</button>`;
+                            }).join('')}
+                            ${categories.filter(c => !Object.keys(CATEGORY_GROUPS).includes(c)).map(cat => {
                                 const count = allEntries.filter(e => e.category === cat).length;
                                 const isActive = currentCat === cat;
                                 return `<button class="menu_button rbq-cw-cat-btn ${isActive ? 'active' : ''}" data-cat="${escapeHtml(cat)}" style="padding: 3px 10px !important; font-size: 11px !important; white-space: nowrap !important; ${isActive ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important;' : ''}">${escapeHtml(cat)} (${count})</button>`;
@@ -410,6 +430,157 @@
         bindEvents();
     }
 
+    // ── Pre-defined Danbooru Trait Presets (可视化点选词库) ────
+    const BASE_TRAIT_PRESETS = [
+        {
+            group: '🌟 基础',
+            tags: [
+                { name: '女性 (1girl)', tag: '1girl' },
+                { name: '男性 (1boy)', tag: '1boy' },
+                { name: '单人 (solo)', tag: 'solo' },
+                { name: '美少女', tag: 'bishoujo' },
+                { name: '萝莉', tag: 'loli' },
+                { name: '御姐', tag: 'mature female' }
+            ]
+        },
+        {
+            group: '💇 发色',
+            tags: [
+                { name: '银发', tag: 'silver hair' },
+                { name: '金发', tag: 'blonde hair' },
+                { name: '黑发', tag: 'black hair' },
+                { name: '粉发', tag: 'pink hair' },
+                { name: '蓝发', tag: 'blue hair' },
+                { name: '白发', tag: 'white hair' },
+                { name: '紫发', tag: 'purple hair' },
+                { name: '棕发', tag: 'brown hair' },
+                { name: '红发', tag: 'red hair' },
+                { name: '渐变发', tag: 'two-tone hair' },
+                { name: '挑染', tag: 'streaked hair' }
+            ]
+        },
+        {
+            group: '💇 发型',
+            tags: [
+                { name: '双马尾', tag: 'twintails' },
+                { name: '长发', tag: 'long hair' },
+                { name: '短发', tag: 'short hair' },
+                { name: '单马尾', tag: 'ponytail' },
+                { name: '侧马尾', tag: 'side ponytail' },
+                { name: '姬发式', tag: 'hime cut' },
+                { name: '波波头', tag: 'bob cut' },
+                { name: '麻花辫', tag: 'braid' },
+                { name: '波浪卷', tag: 'wavy hair' },
+                { name: '齐刘海', tag: 'blunt bangs' },
+                { name: '呆毛', tag: 'ahoge' },
+                { name: '碎发', tag: 'messy hair' }
+            ]
+        },
+        {
+            group: '👁️ 瞳色/面部',
+            tags: [
+                { name: '红瞳', tag: 'red eyes' },
+                { name: '蓝瞳', tag: 'blue eyes' },
+                { name: '金瞳', tag: 'golden eyes' },
+                { name: '绿瞳', tag: 'green eyes' },
+                { name: '紫瞳', tag: 'purple eyes' },
+                { name: '粉瞳', tag: 'pink eyes' },
+                { name: '异色瞳', tag: 'heterochromia' },
+                { name: '心形瞳', tag: 'heart-shaped pupils' },
+                { name: '泪痣', tag: 'mole under eye' },
+                { name: '脸红', tag: 'blush' },
+                { name: '小虎牙', tag: 'fangs' },
+                { name: '猫嘴', tag: ':3' }
+            ]
+        },
+        {
+            group: '🐾 种族/特征',
+            tags: [
+                { name: '精灵耳', tag: 'pointy ears' },
+                { name: '猫耳', tag: 'cat ears' },
+                { name: '狐狸耳', tag: 'fox ears' },
+                { name: '兔耳', tag: 'rabbit ears' },
+                { name: '恶魔角', tag: 'horns' },
+                { name: '天使光环', tag: 'halo' },
+                { name: '猫尾巴', tag: 'cat tail' },
+                { name: '恶魔尾', tag: 'demon tail' },
+                { name: '翅膀', tag: 'wings' }
+            ]
+        },
+        {
+            group: '👙 身材体型',
+            tags: [
+                { name: '巨乳', tag: 'large breasts' },
+                { name: '中乳', tag: 'medium breasts' },
+                { name: '贫乳', tag: 'flat chest' },
+                { name: '超大胸部', tag: 'huge breasts' },
+                { name: '修长纤细', tag: 'slender' },
+                { name: '娇小', tag: 'petite' },
+                { name: '丰满S曲线', tag: 'curvy' },
+                { name: '宽臀', tag: 'wide hips' },
+                { name: '白皙皮肤', tag: 'pale skin' },
+                { name: '小麦肤色', tag: 'tan' }
+            ]
+        },
+        {
+            group: '🎀 固定饰品',
+            tags: [
+                { name: '眼镜', tag: 'glasses' },
+                { name: '发带/蝴蝶结', tag: 'hair ribbon' },
+                { name: '发饰/发卡', tag: 'hair ornament' },
+                { name: '项圈', tag: 'choker' },
+                { name: '耳环', tag: 'earrings' },
+                { name: '十字架项链', tag: 'cross necklace' },
+                { name: '单眼罩', tag: 'eyepatch' }
+            ]
+        }
+    ];
+
+    const OUTFIT_TRAIT_PRESETS = [
+        {
+            group: '👗 常见服装',
+            tags: [
+                { name: '水手服', tag: 'sailor suit, pleated skirt' },
+                { name: '西装校服', tag: 'school uniform, blazer, necktie' },
+                { name: '女仆装', tag: 'maid outfit, frilled apron, maid headdress' },
+                { name: '兔女郎', tag: 'bunny suit, bunny ears, fishnet pantyhose' },
+                { name: '修女袍', tag: 'nun habit, veil, long dress, cross necklace' },
+                { name: '哥特裙', tag: 'gothic dress, black lace, frills, ribbon' },
+                { name: '比基尼', tag: 'bikini, side-tie bikini bottom' },
+                { name: '死库水', tag: 'school swimsuit' },
+                { name: '日常卫衣', tag: 'casual clothes, hoodie, short shorts' },
+                { name: '露肩毛衣', tag: 'off-shoulder sweater, knit sweater' },
+                { name: '晚礼服', tag: 'evening gown, elegant dress, bare shoulders' },
+                { name: '旗袍', tag: 'china dress, cheongsam, high slit' },
+                { name: '和服/浴衣', tag: 'kimono, floral print, obi' }
+            ]
+        },
+        {
+            group: '🧦 鞋袜配饰',
+            tags: [
+                { name: '白丝过膝袜', tag: 'white thighhighs' },
+                { name: '黑丝过膝袜', tag: 'black thighhighs' },
+                { name: '透肉黑丝', tag: 'sheer black pantyhose' },
+                { name: '渔网袜', tag: 'fishnet stockings' },
+                { name: '吊带袜', tag: 'garter straps, thighhighs' },
+                { name: '高跟鞋', tag: 'high heels' },
+                { name: '乐福鞋', tag: 'loafers' },
+                { name: '长筒靴', tag: 'boots' }
+            ]
+        }
+    ];
+
+    function appendOrToggleTag(currentText, newTag) {
+        if (!currentText) return newTag;
+        const list = currentText.split(',').map(s => s.trim()).filter(Boolean);
+        const exists = list.some(item => item.toLowerCase() === newTag.toLowerCase());
+        if (exists) {
+            return list.filter(item => item.toLowerCase() !== newTag.toLowerCase()).join(', ');
+        } else {
+            return [...list, newTag].join(', ');
+        }
+    }
+
     // ── Character Creator Modal (角色创建/编辑) ───────────────
     function openCharacterEditorModal(charId = null, onSaved) {
         const store = getStore();
@@ -434,7 +605,7 @@
         `;
 
         modal.innerHTML = `
-            <div style="background: #1c1d22 !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 14px !important; width: 620px !important; max-width: 95vw !important; max-height: 92vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important; box-sizing: border-box !important;">
+            <div style="background: #1c1d22 !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 14px !important; width: 680px !important; max-width: 95vw !important; max-height: 94vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important; box-sizing: border-box !important;">
                 <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 14px 18px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(121,228,255,0.06) !important;">
                     <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                         <i class="fa-solid fa-user-plus"></i> ${isEdit ? `编辑角色档案 — 「${escapeHtml(char.name || '未命名')}」` : '✨ 拼装创造新角色'}
@@ -442,7 +613,7 @@
                     <button class="menu_button" id="rbq-cw-ce-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                 </div>
 
-                <div style="padding: 16px 18px !important; overflow-y: auto !important; display: flex !important; flex-direction: column !important; gap: 12px !important;">
+                <div style="padding: 16px 18px !important; overflow-y: auto !important; display: flex !important; flex-direction: column !important; gap: 14px !important;">
                     <!-- Basic Info -->
                     <div style="display: flex !important; gap: 12px !important; align-items: center !important;">
                         <div style="display: flex !important; flex-direction: column !important; align-items: center !important; gap: 6px !important;">
@@ -459,29 +630,65 @@
                     </div>
 
                     <!-- Base Appearance Tags (外貌基础特征) -->
-                    <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.2) !important; padding: 10px 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
-                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                            <label style="font-size: 12px !important; font-weight: bold !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
+                    <div style="display: flex !important; flex-direction: column !important; gap: 8px !important; background: rgba(0,0,0,0.2) !important; padding: 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 6px !important;">
+                            <label style="font-size: 12.5px !important; font-weight: bold !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
                                 <span>💇</span> 固定外貌特征 (Base Tags)：
                             </label>
-                            <button class="menu_button" id="rbq-cw-pick-base-wb" type="button" style="padding: 2px 8px !important; font-size: 11px !important; background: rgba(121,228,255,0.15) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.3) !important; border-radius: 4px !important; cursor: pointer !important;">
-                                <i class="fa-solid fa-book-open"></i> 从世界书点选发型/外貌
+                            <button class="menu_button" id="rbq-cw-pick-base-wb" type="button" style="padding: 2px 8px !important; font-size: 11px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.35) !important; border-radius: 4px !important; cursor: pointer !important;">
+                                <i class="fa-solid fa-book-open"></i> 从世界书挑选外貌词条
                             </button>
                         </div>
-                        <textarea id="rbq-cw-char-base" placeholder="例如: 1girl, silver hair, red eyes, twin tails, slender, pointy ears, blush" style="width: 100% !important; min-height: 55px !important; padding: 6px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important; box-sizing: border-box !important;">${escapeHtml(char.baseTags)}</textarea>
+
+                        <!-- Visual Quick-Pick Chips for Base -->
+                        <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.25) !important; padding: 8px !important; border-radius: 6px !important; border: 1px solid rgba(255,255,255,0.05) !important;">
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold !important;">🎨 常用外貌特征快速点选 (点击即可加入/移除)：</div>
+                            <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; max-height: 150px !important; overflow-y: auto !important;">
+                                ${BASE_TRAIT_PRESETS.map(group => `
+                                    <div style="display: flex !important; gap: 4px !important; align-items: center !important; flex-wrap: wrap !important;">
+                                        <span style="font-size: 10.5px !important; color: #ffb86c !important; font-weight: bold !important; width: 85px !important; flex-shrink: 0 !important;">${escapeHtml(group.group)}:</span>
+                                        <div style="display: flex !important; gap: 4px !important; flex-wrap: wrap !important; flex: 1 !important;">
+                                            ${group.tags.map(t => `
+                                                <button class="menu_button rbq-cw-base-chip-btn" data-tag="${escapeHtml(t.tag)}" type="button" style="padding: 1px 7px !important; font-size: 10.5px !important; margin: 0 !important; background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; cursor: pointer !important;">${escapeHtml(t.name)}</button>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <textarea id="rbq-cw-char-base" placeholder="例如: 1girl, silver hair, red eyes, twin tails, slender, pointy ears, blush" style="width: 100% !important; min-height: 60px !important; padding: 6px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important; box-sizing: border-box !important;">${escapeHtml(char.baseTags)}</textarea>
                         <small style="opacity: 0.6 !important; font-size: 10.5px !important;">跨场景固定的外貌特征：发色、发型、瞳色、身材、种族（兽耳/精灵耳）等。</small>
                     </div>
 
                     <!-- Current Outfit Tags (当前穿着服装) -->
-                    <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.2) !important; padding: 10px 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
-                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
-                            <label style="font-size: 12px !important; font-weight: bold !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 6px !important;">
+                    <div style="display: flex !important; flex-direction: column !important; gap: 8px !important; background: rgba(0,0,0,0.2) !important; padding: 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 6px !important;">
+                            <label style="font-size: 12.5px !important; font-weight: bold !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 6px !important;">
                                 <span>👗</span> 默认服装 (Outfit Tags)：
                             </label>
-                            <button class="menu_button" id="rbq-cw-pick-outfit-wb" type="button" style="padding: 2px 8px !important; font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; border-radius: 4px !important; cursor: pointer !important;">
-                                <i class="fa-solid fa-book-open"></i> 从世界书点选服装
+                            <button class="menu_button" id="rbq-cw-pick-outfit-wb" type="button" style="padding: 2px 8px !important; font-size: 11px !important; background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.35) !important; border-radius: 4px !important; cursor: pointer !important;">
+                                <i class="fa-solid fa-book-open"></i> 从世界书挑选服装
                             </button>
                         </div>
+
+                        <!-- Visual Quick-Pick Chips for Outfit -->
+                        <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.25) !important; padding: 8px !important; border-radius: 6px !important; border: 1px solid rgba(255,255,255,0.05) !important;">
+                            <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold !important;">👗 常见服装快速点选：</div>
+                            <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; max-height: 120px !important; overflow-y: auto !important;">
+                                ${OUTFIT_TRAIT_PRESETS.map(group => `
+                                    <div style="display: flex !important; gap: 4px !important; align-items: center !important; flex-wrap: wrap !important;">
+                                        <span style="font-size: 10.5px !important; color: #a3d4ff !important; font-weight: bold !important; width: 85px !important; flex-shrink: 0 !important;">${escapeHtml(group.group)}:</span>
+                                        <div style="display: flex !important; gap: 4px !important; flex-wrap: wrap !important; flex: 1 !important;">
+                                            ${group.tags.map(t => `
+                                                <button class="menu_button rbq-cw-outfit-chip-btn" data-tag="${escapeHtml(t.tag)}" type="button" style="padding: 1px 7px !important; font-size: 10.5px !important; margin: 0 !important; background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; cursor: pointer !important;">${escapeHtml(t.name)}</button>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
                         <textarea id="rbq-cw-char-outfit" placeholder="例如: gothic dress, black ribbon, white thighhighs, frilled sleeves" style="width: 100% !important; min-height: 55px !important; padding: 6px 8px !important; font-size: 11.5px !important; font-family: monospace !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; color: #fff !important; box-sizing: border-box !important;">${escapeHtml(char.currentOutfit)}</textarea>
                     </div>
 
@@ -503,6 +710,27 @@
         modal.querySelector('#rbq-cw-ce-close')?.addEventListener('click', close);
         modal.querySelector('#rbq-cw-ce-cancel')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+        // Quick Chip Toggle Handlers
+        modal.querySelectorAll('.rbq-cw-base-chip-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tag = btn.dataset.tag;
+                const baseArea = modal.querySelector('#rbq-cw-char-base');
+                if (baseArea && tag) {
+                    baseArea.value = appendOrToggleTag(baseArea.value, tag);
+                }
+            });
+        });
+
+        modal.querySelectorAll('.rbq-cw-outfit-chip-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tag = btn.dataset.tag;
+                const outfitArea = modal.querySelector('#rbq-cw-char-outfit');
+                if (outfitArea && tag) {
+                    outfitArea.value = appendOrToggleTag(outfitArea.value, tag);
+                }
+            });
+        });
 
         // Worldbook pickers
         modal.querySelector('#rbq-cw-pick-base-wb')?.addEventListener('click', () => {

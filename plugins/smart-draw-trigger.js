@@ -2925,6 +2925,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         let selectedSubCategory = 'all';
         let selectedNativeTopic = 'all';
         let searchQuery = '';
+        let isComposing = false;
 
         const getAllEntries = () => {
             const list = [];
@@ -2935,7 +2936,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     for (const e of parsed.entries) {
                         const keys = Array.isArray(e.key) ? e.key : (typeof e.key === 'string' ? e.key.split(',') : []);
                         const classification = classifySDTLorebookEntry(e.comment, e.content, keys);
-                        list.push({ ...e, sourceName: src.name, classification });
+                        list.push({ ...e, sourceName: src.name, sourceId: src.id, classification });
                     }
                 } catch (_e) { /* noop */ }
             }
@@ -2963,7 +2964,61 @@ Zimage 擅长理解复杂的英文长句和语境。
             -webkit-backdrop-filter: blur(6px) !important;
         `;
 
-        const renderModal = () => {
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(255,255,255,0.18) !important;
+                border-radius: 14px !important;
+                width: 800px !important;
+                max-width: 96vw !important;
+                height: 88vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
+                box-sizing: border-box !important;
+            ">
+                <!-- Header -->
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(255,255,255,0.03) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <span>📚</span> ${onSelectEntry ? '从世界书中选择服装/词条预设' : '世界书词条库与分类浏览'}
+                        <span id="rbq-sdt-lb-count-badge" style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;"></span>
+                    </strong>
+                    <button type="button" id="rbq-sdt-lb-search-close" style="background: rgba(255,255,255,0.1) !important; border: none !important; color: #fff !important; border-radius: 6px !important; padding: 4px 10px !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                <!-- Search Bar & Worldbook Selector -->
+                <div style="padding: 10px 18px !important; display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
+                    <input id="rbq-sdt-lb-search-input" type="text" placeholder="🔍 输入关键词实时搜索 (如: 另类日常, 兽奸, 猥亵, 拘束, 紧身裙, 拳击, 跳蛋, 视角, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 34px !important; margin: 0 !important; font-size: 13px !important; padding: 0 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
+                    
+                    <select id="rbq-sdt-lb-search-source" style="height: 34px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #79e4ff !important;">
+                        <option value="all">🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
+                        ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>📖 ${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
+                    </select>
+                </div>
+
+                <!-- Tier 1: Main Category Tabs Container (一级大类) -->
+                <div id="rbq-sdt-main-cats-bar" style="padding: 8px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.25) !important; align-items: center !important; white-space: nowrap !important;"></div>
+
+                <!-- Tier 2: Subcategory Chips Container (二级细分子分类) -->
+                <div id="rbq-sdt-sub-cats-bar" style="display: none; padding: 6px 18px !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.15) !important; align-items: center !important; white-space: nowrap !important;"></div>
+
+                <!-- Tier 3: Native Topic Chips Container (三级原生主题前缀筛选) -->
+                <div id="rbq-sdt-topics-bar" style="display: none; padding: 5px 18px !important; gap: 5px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.1) !important; align-items: center !important; white-space: nowrap !important;"></div>
+
+                <!-- Results List -->
+                <div id="rbq-sdt-lb-search-results" style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;"></div>
+            </div>
+        `;
+
+        const refreshUI = () => {
             const allEntries = getAllEntries();
 
             // Compute main category counts
@@ -3005,235 +3060,203 @@ Zimage 擅长理解复杂的英文长句和语境。
                 .filter(([k]) => k !== 'all')
                 .sort((a, b) => b[1] - a[1]);
 
-            const q = searchQuery.toLowerCase().trim();
+            // Filter entries (Properly decoupled category & native topic filtering)
+            const q = (searchQuery || '').toLowerCase().trim();
             const filtered = allEntries.filter(e => {
-                if (selectedMainCategory !== 'all') {
-                    if (e.classification?.mainId !== selectedMainCategory) return false;
-                    if (selectedSubCategory !== 'all' && e.classification?.subId !== selectedSubCategory) return false;
-                    if (selectedNativeTopic !== 'all' && e.classification?.nativeTopic !== selectedNativeTopic) return false;
-                }
+                if (selectedMainCategory !== 'all' && e.classification?.mainId !== selectedMainCategory) return false;
+                if (selectedSubCategory !== 'all' && e.classification?.subId !== selectedSubCategory) return false;
+                if (selectedNativeTopic !== 'all' && e.classification?.nativeTopic !== selectedNativeTopic) return false;
                 if (!q) return true;
                 const c = (e.comment || '').toLowerCase();
                 const cont = (e.content || '').toLowerCase();
                 const k = (e.key || []).join(' ').toLowerCase();
                 const sk = (e.keysecondary || []).join(' ').toLowerCase();
-                return c.includes(q) || cont.includes(q) || k.includes(q) || sk.includes(q);
+                const topic = (e.classification?.nativeTopic || '').toLowerCase();
+                const btext = (e.classification?.badgeText || '').toLowerCase();
+                return c.includes(q) || cont.includes(q) || k.includes(q) || sk.includes(q) || topic.includes(q) || btext.includes(q);
             });
 
-            modal.innerHTML = `
-                <div style="
-                    background: #1e1f24 !important;
-                    border: 1px solid rgba(255,255,255,0.18) !important;
-                    border-radius: 14px !important;
-                    width: 800px !important;
-                    max-width: 96vw !important;
-                    height: 88vh !important;
-                    display: flex !important;
-                    flex-direction: column !important;
-                    overflow: hidden !important;
-                    box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
-                    box-sizing: border-box !important;
-                ">
-                    <!-- Header -->
-                    <div style="
-                        display: flex !important;
-                        align-items: center !important;
-                        justify-content: space-between !important;
-                        padding: 14px 18px !important;
-                        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-                        background: rgba(255,255,255,0.03) !important;
-                    ">
-                        <strong style="font-size: 15px !important; color: #fff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
-                            <span>📚</span> ${onSelectEntry ? '从世界书中选择服装/词条预设' : '世界书词条库与分类浏览'}
-                            <span style="font-size: 12px !important; color: rgba(255,255,255,0.6) !important; font-weight: normal !important;">(共 ${filtered.length}/${allEntries.length} 条)</span>
-                        </strong>
-                        <button type="button" id="rbq-sdt-lb-search-close" style="background: rgba(255,255,255,0.1) !important; border: none !important; color: #fff !important; border-radius: 6px !important; padding: 4px 10px !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
-                    </div>
+            // Update Count Badge
+            const countBadge = modal.querySelector('#rbq-sdt-lb-count-badge');
+            if (countBadge) {
+                countBadge.textContent = `(共 ${filtered.length}/${allEntries.length} 条)`;
+            }
 
-                    <!-- Search Bar & Worldbook Selector -->
-                    <div style="padding: 10px 18px !important; display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
-                        <input id="rbq-sdt-lb-search-input" type="text" value="${escapeHtml(searchQuery)}" placeholder="🔍 输入关键词实时搜索 (如: 另类日常, 兽奸, 猥亵, 拘束, 紧身裙, 拳击, 跳蛋, 视角, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 34px !important; margin: 0 !important; font-size: 13px !important; padding: 0 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
-                        
-                        <select id="rbq-sdt-lb-search-source" style="height: 34px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #79e4ff !important;">
-                            <option value="all" ${selectedSourceId === 'all' ? 'selected' : ''}>🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
-                            ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>📖 ${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
-                        </select>
-                    </div>
+            // Render Tier 1 Main Cats
+            const mainCatsBar = modal.querySelector('#rbq-sdt-main-cats-bar');
+            if (mainCatsBar) {
+                mainCatsBar.innerHTML = `
+                    <button class="rbq-sdt-main-cat-btn" data-cat="all" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'all' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid #79e4ff !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}">🌐 全部 (${mainCounts.all || 0})</button>
+                    ${Object.values(SDT_LOREBOOK_TAXONOMY).map(group => {
+                        const isAct = selectedMainCategory === group.id;
+                        const count = mainCounts[group.id] || 0;
+                        return `
+                            <button class="rbq-sdt-main-cat-btn" data-cat="${group.id}" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${isAct ? `background: ${group.color}25 !important; color: ${group.color} !important; border: 1px solid ${group.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}"><i class="${group.icon}"></i> ${group.name} (${count})</button>
+                        `;
+                    }).join('')}
+                    ${mainCounts.other > 0 ? `
+                        <button class="rbq-sdt-main-cat-btn" data-cat="other" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'other' ? 'background: rgba(139,233,253,0.25) !important; color: #8be9fd !important; border: 1px solid #8be9fd !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}"><i class="fa-solid fa-cubes"></i> 其它 (${mainCounts.other})</button>
+                    ` : ''}
+                `;
+                mainCatsBar.querySelectorAll('.rbq-sdt-main-cat-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        selectedMainCategory = btn.dataset.cat;
+                        selectedSubCategory = 'all';
+                        selectedNativeTopic = 'all';
+                        refreshUI();
+                    });
+                });
+            }
 
-                    <!-- Tier 1: Main Category Tabs (一级大类) -->
-                    <div style="padding: 8px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.25) !important; align-items: center !important; white-space: nowrap !important;">
-                        <button class="rbq-sdt-main-cat-btn" data-cat="all" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'all' ? 'background: rgba(121,228,255,0.25) !important; color: #79e4ff !important; border: 1px solid #79e4ff !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}">🌐 全部 (${mainCounts.all || 0})</button>
-                        ${Object.values(SDT_LOREBOOK_TAXONOMY).map(group => {
-                            const isAct = selectedMainCategory === group.id;
-                            const count = mainCounts[group.id] || 0;
+            // Render Tier 2 Sub Cats
+            const subCatsBar = modal.querySelector('#rbq-sdt-sub-cats-bar');
+            if (subCatsBar) {
+                if (currentMainDef) {
+                    subCatsBar.style.display = 'flex';
+                    subCatsBar.innerHTML = `
+                        <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">二级分类:</span>
+                        <button class="rbq-sdt-sub-cat-chip" data-sub="all" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedSubCategory === 'all' ? `background: ${currentMainDef.color}30 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部${currentMainDef.name} (${subCounts.all || 0})</button>
+                        ${currentMainDef.subcategories.map(sub => {
+                            const isSubAct = selectedSubCategory === sub.id;
+                            const count = subCounts[sub.id] || 0;
                             return `
-                                <button class="rbq-sdt-main-cat-btn" data-cat="${group.id}" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${isAct ? `background: ${group.color}25 !important; color: ${group.color} !important; border: 1px solid ${group.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}"><i class="${group.icon}"></i> ${group.name} (${count})</button>
+                                <button class="rbq-sdt-sub-cat-chip" data-sub="${sub.id}" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${isSubAct ? `background: ${currentMainDef.color}25 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${sub.name} (${count})</button>
                             `;
                         }).join('')}
-                        ${mainCounts.other > 0 ? `
-                            <button class="rbq-sdt-main-cat-btn" data-cat="other" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important; border-radius: 8px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedMainCategory === 'other' ? 'background: rgba(139,233,253,0.25) !important; color: #8be9fd !important; border: 1px solid #8be9fd !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important;'}"><i class="fa-solid fa-cubes"></i> 其它 (${mainCounts.other})</button>
-                        ` : ''}
-                    </div>
+                    `;
+                    subCatsBar.querySelectorAll('.rbq-sdt-sub-cat-chip').forEach(chip => {
+                        chip.addEventListener('click', () => {
+                            selectedSubCategory = chip.dataset.sub;
+                            selectedNativeTopic = 'all';
+                            refreshUI();
+                        });
+                    });
+                } else {
+                    subCatsBar.style.display = 'none';
+                    subCatsBar.innerHTML = '';
+                }
+            }
 
-                    <!-- Tier 2: Subcategory Chips (二级细分子分类) -->
-                    ${currentMainDef ? `
-                        <div style="padding: 6px 18px !important; display: flex !important; gap: 6px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.15) !important; align-items: center !important; white-space: nowrap !important;">
-                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; margin-right: 2px !important;">二级分类:</span>
-                            <button class="rbq-sdt-sub-cat-chip" data-sub="all" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedSubCategory === 'all' ? `background: ${currentMainDef.color}30 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部${currentMainDef.name} (${subCounts.all || 0})</button>
-                            ${currentMainDef.subcategories.map(sub => {
-                                const isSubAct = selectedSubCategory === sub.id;
-                                const count = subCounts[sub.id] || 0;
-                                return `
-                                    <button class="rbq-sdt-sub-cat-chip" data-sub="${sub.id}" type="button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 11px !important; border-radius: 12px !important; cursor: pointer !important; white-space: nowrap !important; ${isSubAct ? `background: ${currentMainDef.color}25 !important; color: ${currentMainDef.color} !important; border: 1px solid ${currentMainDef.color} !important; font-weight: bold !important;` : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${sub.name} (${count})</button>
-                                `;
-                            }).join('')}
-                        </div>
-                    ` : ''}
-
-                    <!-- Tier 3: Native Topic Chips (三级原生主题前缀筛选) -->
-                    ${nativeTopicList.length > 1 ? `
-                        <div style="padding: 5px 18px !important; display: flex !important; gap: 5px !important; overflow-x: auto !important; border-bottom: 1px solid rgba(255,255,255,0.06) !important; background: rgba(0,0,0,0.1) !important; align-items: center !important; white-space: nowrap !important;">
-                            <span style="font-size: 10px !important; color: rgba(255,184,108,0.7) !important; margin-right: 2px !important;"><i class="fa-solid fa-tags"></i> 原生主题:</span>
-                            <button class="rbq-sdt-topic-chip" data-topic="all" type="button" style="padding: 1px 7px !important; margin: 0 !important; font-size: 10px !important; border-radius: 10px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedNativeTopic === 'all' ? 'background: rgba(255,184,108,0.3) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.5) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部 (${topicCounts.all})</button>
-                            ${nativeTopicList.slice(0, 25).map(([topicName, count]) => {
-                                const isTopAct = selectedNativeTopic === topicName;
-                                return `
-                                    <button class="rbq-sdt-topic-chip" data-topic="${escapeHtml(topicName)}" type="button" style="padding: 1px 7px !important; margin: 0 !important; font-size: 10px !important; border-radius: 10px !important; cursor: pointer !important; white-space: nowrap !important; ${isTopAct ? 'background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${escapeHtml(topicName)} (${count})</button>
-                                `;
-                            }).join('')}
-                        </div>
-                    ` : ''}
-
-                    <!-- Results List -->
-                    <div id="rbq-sdt-lb-search-results" style="padding: 14px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
-                        ${filtered.length === 0 ? `
-                            <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
-                        ` : filtered.slice(0, 100).map((e, idx) => {
-                            const subVariants = extractLorebookSubVariants(e.content);
-                            const hasMultiple = subVariants.length > 1;
-                            const badgeColor = e.classification?.color || '#79e4ff';
-                            const badgeIcon = e.classification?.icon || 'fa-solid fa-tag';
-                            const badgeText = e.classification?.badgeText || '综合';
-                            const nativeTopic = e.classification?.nativeTopic || '';
+            // Render Tier 3 Native Topics
+            const topicsBar = modal.querySelector('#rbq-sdt-topics-bar');
+            if (topicsBar) {
+                if (nativeTopicList.length > 1) {
+                    topicsBar.style.display = 'flex';
+                    topicsBar.innerHTML = `
+                        <span style="font-size: 10px !important; color: rgba(255,184,108,0.7) !important; margin-right: 2px !important;"><i class="fa-solid fa-tags"></i> 原生主题:</span>
+                        <button class="rbq-sdt-topic-chip" data-topic="all" type="button" style="padding: 1px 7px !important; margin: 0 !important; font-size: 10px !important; border-radius: 10px !important; cursor: pointer !important; white-space: nowrap !important; ${selectedNativeTopic === 'all' ? 'background: rgba(255,184,108,0.3) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.5) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">全部 (${topicCounts.all})</button>
+                        ${nativeTopicList.slice(0, 30).map(([topicName, count]) => {
+                            const isTopAct = selectedNativeTopic === topicName;
                             return `
-                            <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
-                                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
-                                    <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important;">
-                                        <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
-                                        <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
-                                        <span style="font-size: 11px !important; background: ${badgeColor}15 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}35 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: 500 !important;"><i class="${badgeIcon}"></i> ${escapeHtml(badgeText)}</span>
-                                        ${nativeTopic ? `
-                                            <span style="font-size: 10px !important; background: rgba(255,184,108,0.12) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.25) !important; padding: 1px 5px !important; border-radius: 4px !important;">🏷️ ${escapeHtml(nativeTopic)}</span>
-                                        ` : ''}
-                                        ${hasMultiple ? `
-                                            <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
-                                        ` : ''}
-                                    </div>
-                                    <div style="display: flex !important; gap: 6px !important; align-items: center !important; flex-shrink: 0 !important;">
-                                        ${onSelectEntry ? `
-                                            <button class="rbq-sdt-select-lb-entry" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-solid fa-check"></i> ${hasMultiple ? '选择具体姿势' : '选用此词条'}</button>
-                                        ` : ''}
-                                        <button class="rbq-sdt-test-entry-btn" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" data-comment="${escapeHtml(e.comment || '')}" type="button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${hasMultiple ? '挑选姿势测试' : '测试生图'}</button>
-                                        <button class="rbq-sdt-copy-entry-tags" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; color: #79e4ff !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-regular fa-copy"></i> 复制</button>
-                                    </div>
-                                </div>
-                                <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important;">
-                                    <span style="opacity: 0.8;">🔑 触发词:</span>
-                                    ${(e.key || []).map(k => `<span style="background: rgba(100,255,100,0.1) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.2) !important; padding: 1px 5px !important; border-radius: 4px !important;">${escapeHtml(k)}</span>`).join('')}
-                                    ${(e.keysecondary && e.keysecondary.length > 0) ? `
-                                        <span style="opacity: 0.8; margin-left: 4px;">➕ 次触发:</span>
-                                        ${e.keysecondary.map(sk => `<span style="background: rgba(255,200,100,0.1) !important; color: #ffd685 !important; border: 1px solid rgba(255,200,100,0.2) !important; padding: 1px 5px !important; border-radius: 4px !important;">${escapeHtml(sk)}</span>`).join('')}
-                                    ` : ''}
-                                </div>
-                                <div style="background: rgba(0,0,0,0.35) !important; padding: 8px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 90px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(e.content)}</div>
+                                <button class="rbq-sdt-topic-chip" data-topic="${escapeHtml(topicName)}" type="button" style="padding: 1px 7px !important; margin: 0 !important; font-size: 10px !important; border-radius: 10px !important; cursor: pointer !important; white-space: nowrap !important; ${isTopAct ? 'background: rgba(255,184,108,0.25) !important; color: #ffb86c !important; border: 1px solid #ffb86c !important; font-weight: bold !important;' : 'background: rgba(255,255,255,0.04) !important; color: rgba(255,255,255,0.6) !important; border: 1px solid rgba(255,255,255,0.08) !important;'}">${escapeHtml(topicName)} (${count})</button>
+                            `;
+                        }).join('')}
+                    `;
+                    topicsBar.querySelectorAll('.rbq-sdt-topic-chip').forEach(chip => {
+                        chip.addEventListener('click', () => {
+                            selectedNativeTopic = chip.dataset.topic;
+                            refreshUI();
+                        });
+                    });
+                } else {
+                    topicsBar.style.display = 'none';
+                    topicsBar.innerHTML = '';
+                }
+            }
+
+            // Render Results List
+            const resultsContainer = modal.querySelector('#rbq-sdt-lb-search-results');
+            if (resultsContainer) {
+                resultsContainer.innerHTML = filtered.length === 0 ? `
+                    <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
+                ` : filtered.slice(0, 100).map((e, idx) => {
+                    const subVariants = extractLorebookSubVariants(e.content);
+                    const hasMultiple = subVariants.length > 1;
+                    const badgeColor = e.classification?.color || '#79e4ff';
+                    const badgeIcon = e.classification?.icon || 'fa-solid fa-tag';
+                    const badgeText = e.classification?.badgeText || '综合';
+                    const nativeTopic = e.classification?.nativeTopic || '';
+                    return `
+                    <div style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; padding: 12px 14px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; gap: 8px !important; flex-wrap: wrap !important;">
+                            <div style="display: flex !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important;">
+                                <strong style="font-size: 13px !important; color: #79e4ff !important;">📌 ${escapeHtml(e.comment || '未命名词条')}</strong>
+                                <span style="font-size: 11px !important; background: rgba(255,255,255,0.08) !important; color: rgba(255,255,255,0.7) !important; padding: 2px 6px !important; border-radius: 4px !important;">${escapeHtml(e.sourceName)}</span>
+                                <span style="font-size: 11px !important; background: ${badgeColor}15 !important; color: ${badgeColor} !important; border: 1px solid ${badgeColor}35 !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: 500 !important;"><i class="${badgeIcon}"></i> ${escapeHtml(badgeText)}</span>
+                                ${nativeTopic ? `
+                                    <span style="font-size: 10px !important; background: rgba(255,184,108,0.12) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.25) !important; padding: 1px 5px !important; border-radius: 4px !important;">🏷️ ${escapeHtml(nativeTopic)}</span>
+                                ` : ''}
+                                ${hasMultiple ? `
+                                    <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
+                                ` : ''}
                             </div>
-                        `;}).join('')}
-                        ${filtered.length > 100 ? `
-                            <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 10px 0 !important; font-size: 12px !important;">已展示前 100 条匹配结果，请输入更精确的关键词以进一步筛选</div>
-                        ` : ''}
+                            <div style="display: flex !important; gap: 6px !important; align-items: center !important; flex-shrink: 0 !important;">
+                                ${onSelectEntry ? `
+                                    <button class="rbq-sdt-select-lb-entry" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(100,255,100,0.18) !important; border: 1px solid rgba(100,255,100,0.35) !important; color: #a3ffa3 !important; font-weight: bold !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-solid fa-check"></i> ${hasMultiple ? '选择具体姿势' : '选用此词条'}</button>
+                                ` : ''}
+                                <button class="rbq-sdt-test-entry-btn" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" data-comment="${escapeHtml(e.comment || '')}" type="button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(255,184,108,0.15) !important; border: 1px solid rgba(255,184,108,0.3) !important; color: #ffb86c !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${hasMultiple ? '挑选姿势测试' : '测试生图'}</button>
+                                <button class="rbq-sdt-copy-entry-tags" data-index="${idx}" data-multi="${hasMultiple ? '1' : '0'}" data-tags="${escapeHtml(e.content)}" type="button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 11px !important; white-space: nowrap !important; flex-shrink: 0 !important; background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.3) !important; color: #79e4ff !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; border-radius: 6px !important;"><i class="fa-regular fa-copy"></i> 复制</button>
+                            </div>
+                        </div>
+                        <div style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; display: flex !important; flex-wrap: wrap !important; gap: 4px !important; align-items: center !important;">
+                            <span style="opacity: 0.8;">🔑 触发词:</span>
+                            ${(e.key || []).map(k => `<span style="background: rgba(100,255,100,0.1) !important; color: #a3ffa3 !important; border: 1px solid rgba(100,255,100,0.2) !important; padding: 1px 5px !important; border-radius: 4px !important;">${escapeHtml(k)}</span>`).join('')}
+                            ${(e.keysecondary && e.keysecondary.length > 0) ? `
+                                <span style="opacity: 0.8; margin-left: 4px;">➕ 次触发:</span>
+                                ${e.keysecondary.map(sk => `<span style="background: rgba(255,200,100,0.1) !important; color: #ffd685 !important; border: 1px solid rgba(255,200,100,0.2) !important; padding: 1px 5px !important; border-radius: 4px !important;">${escapeHtml(sk)}</span>`).join('')}
+                            ` : ''}
+                        </div>
+                        <div style="background: rgba(0,0,0,0.35) !important; padding: 8px 10px !important; border-radius: 6px !important; font-family: monospace !important; font-size: 11px !important; color: rgba(255,255,255,0.85) !important; line-height: 1.4 !important; max-height: 90px !important; overflow-y: auto !important; word-break: break-all !important; white-space: pre-wrap !important;">${escapeHtml(e.content)}</div>
                     </div>
-                </div>
-            `;
+                `;}).join('') + (filtered.length > 100 ? `
+                    <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 10px 0 !important; font-size: 12px !important;">已展示前 100 条匹配结果，请输入更精确的关键词以进一步筛选</div>
+                ` : '');
 
-            modal.querySelector('#rbq-sdt-lb-search-close')?.addEventListener('click', () => modal.remove());
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) modal.remove();
-            });
-
-            const searchInput = modal.querySelector('#rbq-sdt-lb-search-input');
-            if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    searchQuery = e.target.value;
-                    renderModal();
-                    const newInput = modal.querySelector('#rbq-sdt-lb-search-input');
-                    if (newInput) {
-                        newInput.focus();
-                        newInput.setSelectionRange(newInput.value.length, newInput.value.length);
-                    }
-                });
-            }
-
-            const sourceSelect = modal.querySelector('#rbq-sdt-lb-search-source');
-            if (sourceSelect) {
-                sourceSelect.addEventListener('change', (e) => {
-                    selectedSourceId = e.target.value;
-                    selectedMainCategory = 'all';
-                    selectedSubCategory = 'all';
-                    selectedNativeTopic = 'all';
-                    renderModal();
-                });
-            }
-
-            modal.querySelectorAll('.rbq-sdt-main-cat-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    selectedMainCategory = btn.dataset.cat;
-                    selectedSubCategory = 'all';
-                    selectedNativeTopic = 'all';
-                    renderModal();
-                });
-            });
-
-            modal.querySelectorAll('.rbq-sdt-sub-cat-chip').forEach(chip => {
-                chip.addEventListener('click', () => {
-                    selectedSubCategory = chip.dataset.sub;
-                    selectedNativeTopic = 'all';
-                    renderModal();
-                });
-            });
-
-            modal.querySelectorAll('.rbq-sdt-topic-chip').forEach(chip => {
-                chip.addEventListener('click', () => {
-                    selectedNativeTopic = chip.dataset.topic;
-                    renderModal();
-                });
-            });
-
-            modal.querySelectorAll('.rbq-sdt-select-lb-entry').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = Number(btn.dataset.index);
-                    const targetEntry = filtered[idx];
-                    if (!targetEntry) return;
-                    const isMulti = btn.dataset.multi === '1';
-                    if (isMulti) {
-                        openSubVariantPickerModal(targetEntry, (chosenEntry) => {
+                resultsContainer.querySelectorAll('.rbq-sdt-select-lb-entry').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const idx = Number(btn.dataset.index);
+                        const targetEntry = filtered[idx];
+                        if (!targetEntry) return;
+                        const isMulti = btn.dataset.multi === '1';
+                        if (isMulti) {
+                            openSubVariantPickerModal(targetEntry, (chosenEntry) => {
+                                if (typeof onSelectEntry === 'function') {
+                                    onSelectEntry(chosenEntry);
+                                    modal.remove();
+                                }
+                            }, true);
+                        } else {
                             if (typeof onSelectEntry === 'function') {
-                                onSelectEntry(chosenEntry);
+                                onSelectEntry(targetEntry);
                                 modal.remove();
                             }
-                        }, true);
-                    } else {
-                        if (typeof onSelectEntry === 'function') {
-                            onSelectEntry(targetEntry);
-                            modal.remove();
                         }
-                    }
+                    });
                 });
-            });
 
-            modal.querySelectorAll('.rbq-sdt-test-entry-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    try {
+                resultsContainer.querySelectorAll('.rbq-sdt-test-entry-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        try {
+                            const idx = Number(btn.dataset.index);
+                            const targetEntry = filtered[idx];
+                            if (!targetEntry) return;
+                            const isMulti = btn.dataset.multi === '1';
+                            if (isMulti) {
+                                openSubVariantPickerModal(targetEntry, null, false);
+                            } else {
+                                const comment = targetEntry.comment || '世界书测试';
+                                openWorldbookEntryTestModal(comment, targetEntry.content || '');
+                            }
+                        } catch (err) {
+                            console.error('[RBQ SDT] 测试生图点击失败:', err);
+                            toastr.error(`测试生图失败: ${err.message || err}`, PLUGIN_NAME);
+                        }
+                    });
+                });
+
+                resultsContainer.querySelectorAll('.rbq-sdt-copy-entry-tags').forEach(btn => {
+                    btn.addEventListener('click', () => {
                         const idx = Number(btn.dataset.index);
                         const targetEntry = filtered[idx];
                         if (!targetEntry) return;
@@ -3241,43 +3264,58 @@ Zimage 擅长理解复杂的英文长句和语境。
                         if (isMulti) {
                             openSubVariantPickerModal(targetEntry, null, false);
                         } else {
-                            const comment = targetEntry.comment || '世界书测试';
-                            openWorldbookEntryTestModal(comment, targetEntry.content || '');
-                        }
-                    } catch (err) {
-                        console.error('[RBQ SDT] 测试生图点击失败:', err);
-                        toastr.error(`测试生图失败: ${err.message || err}`, PLUGIN_NAME);
-                    }
-                });
-            });
-
-            modal.querySelectorAll('.rbq-sdt-copy-entry-tags').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = Number(btn.dataset.index);
-                    const targetEntry = filtered[idx];
-                    if (!targetEntry) return;
-                    const isMulti = btn.dataset.multi === '1';
-                    if (isMulti) {
-                        openSubVariantPickerModal(targetEntry, null, false);
-                    } else {
-                        const tags = targetEntry.content || '';
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(tags).then(() => {
-                                toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
-                            }).catch(() => {
+                            const tags = targetEntry.content || '';
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(tags).then(() => {
+                                    toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
+                                }).catch(() => {
+                                    toastr.info(tags.slice(0, 100), '词条内容');
+                                });
+                            } else {
                                 toastr.info(tags.slice(0, 100), '词条内容');
-                            });
-                        } else {
-                            toastr.info(tags.slice(0, 100), '词条内容');
+                            }
                         }
-                    }
+                    });
                 });
-            });
+            }
         };
 
-        renderModal();
+        // Bind Search Input & Source Select
+        modal.querySelector('#rbq-sdt-lb-search-close')?.addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+
+        const searchInput = modal.querySelector('#rbq-sdt-lb-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('compositionstart', () => {
+                isComposing = true;
+            });
+            searchInput.addEventListener('compositionend', (e) => {
+                isComposing = false;
+                searchQuery = e.target.value;
+                refreshUI();
+            });
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value;
+                if (isComposing) return;
+                refreshUI();
+            });
+        }
+
+        const sourceSelect = modal.querySelector('#rbq-sdt-lb-search-source');
+        if (sourceSelect) {
+            sourceSelect.addEventListener('change', (e) => {
+                selectedSourceId = e.target.value;
+                selectedMainCategory = 'all';
+                selectedSubCategory = 'all';
+                selectedNativeTopic = 'all';
+                refreshUI();
+            });
+        }
+
+        refreshUI();
         document.body.appendChild(modal);
-        modal.querySelector('#rbq-sdt-lb-search-input')?.focus();
     }
 
     function renderLorebookSourceList() {

@@ -699,8 +699,8 @@
 
             const searchInput = modal.querySelector('#rbq-cw-wb-search');
             if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    searchQuery = e.target.value;
+                let isComposing = false;
+                const doFilter = () => {
                     const list = modal.querySelector('#rbq-cw-wb-list');
                     if (list) {
                         const filtered = getFilteredEntries();
@@ -736,6 +736,20 @@
                         }).join('');
                         bindActionButtons(filtered);
                     }
+                };
+
+                searchInput.addEventListener('compositionstart', () => {
+                    isComposing = true;
+                });
+                searchInput.addEventListener('compositionend', (e) => {
+                    isComposing = false;
+                    searchQuery = e.target.value;
+                    doFilter();
+                });
+                searchInput.addEventListener('input', (e) => {
+                    searchQuery = e.target.value;
+                    if (isComposing) return;
+                    doFilter();
                 });
             }
 

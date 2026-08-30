@@ -753,7 +753,6 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
                 store.systemPrompt = CONSISTENT_SYSTEM_PROMPT;
                 store.systemPromptPreset = 'consistent';
-                debugInfo(`🔄 自动升级 System Prompt 至 v${DEFAULT_SYSTEM_PROMPT_VERSION} (8.30 全能规范版)`);
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -763,11 +762,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
             if (backup.characterMemoryEnabled !== undefined && store.characterMemoryEnabled === false && backup.characterMemoryEnabled === true) {
                 store.characterMemoryEnabled = true;
-                debugInfo('📦 从 localStorage 恢复 characterMemoryEnabled=true');
             }
             if (backup.characterProfiles && Object.keys(store.characterProfiles).length === 0 && Object.keys(backup.characterProfiles).length > 0) {
                 store.characterProfiles = backup.characterProfiles;
-                debugInfo(`📦 从 localStorage 恢复 characterProfiles: ${Object.keys(backup.characterProfiles).length} 个聊天`);
             }
         } catch (_e) { /* noop */ }
 
@@ -3448,13 +3445,17 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function debugInfo(message) {
-        if (!getStore().debugToast) return;
-        console.info(`[${PLUGIN_NAME}] ${message}`);
+        try {
+            if (!RBQ.api.getSettings()?.[STORAGE_KEY]?.debugToast) return;
+            console.info(`[${PLUGIN_NAME}] ${message}`);
+        } catch (_e) {}
     }
 
     function debugWarning(message) {
-        if (!getStore().debugToast) return;
-        console.warn(`[${PLUGIN_NAME}] ${message}`);
+        try {
+            if (!RBQ.api.getSettings()?.[STORAGE_KEY]?.debugToast) return;
+            console.warn(`[${PLUGIN_NAME}] ${message}`);
+        } catch (_e) {}
     }
 
     function getLatestMessageId() {

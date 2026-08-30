@@ -62,7 +62,15 @@
 **characters[i] 字段**：
 1. **name**：精确角色标识。同人角色写 "Name (Series)"；原创角色写 "Name (original)"；配角写 "faceless male" 等。
 2. **base**（外貌防伪码，跨图锁定）：
-   - 顺序：girl/boy → 族裔/国籍/面相（如 japanese, east_asian, delicate_face；日系二次元角色必须包含 japanese 或 delicate_face 锚定动漫美少女面相）→ 年龄段 → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围体型(flat_chest/large_breasts/petite/slender) → 肤色 → 专属身体标记(mole/scar/tattoo)
+   - 必须按 7 维全息外貌公式输出，严禁遗漏任何维度（遗漏任何一项=角色变脸）：
+     ① 性别：girl / boy（禁带数字，1girl/1boy 属于 scene）
+     ② 族裔/国籍/面相（必须推断填写：japanese, east_asian, delicate_face, caucasian, western, chinese 等；日系二次元角色必须带 japanese 或 delicate_face 锚定动漫萌系面相；西方角色带 caucasian 或 western）
+     ③ 年龄阶段（必须填写：adolescent, teenager, young_girl, mature_female, child 等）
+     ④ 发型发色（发长+发型+发色，如 long_hair, blonde_hair, twin_tails）
+     ⑤ 瞳色眼型（如 green_eyes, tareme/tsurime/large_eyes）
+     ⑥ 胸型体态（如 large_breasts, slender/curvy/petite）
+     ⑦ 肤色与专属身体标记（如 fair_skin, pale_skin, mole, freckles）
+   - ⛔ 严禁遗漏族裔面相与年龄段！⛔ 禁写服装/动作/表情（属于 outfit/action）
 3. **outfit**（当前服装，拆解到部件）：
    - 顺序：主服装款式颜色材质 → 次要配饰鞋袜 → 穿着状态(open/off_shoulder/lifted) → 损耗/透视(wet_clothes, see-through) → 裸露梯度
 4. **action**（当前姿态动作，每帧不同）：
@@ -740,7 +748,15 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
-        if (!store.systemPromptVersion) store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+        if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
+            // If user is on default consistent preset or hasn't customized away, auto-upgrade prompt to latest V24
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
+                store.systemPrompt = CONSISTENT_SYSTEM_PROMPT;
+                store.systemPromptPreset = 'consistent';
+                debugInfo(`🔄 自动升级 System Prompt 至 v${DEFAULT_SYSTEM_PROMPT_VERSION} (8.30 全能规范版)`);
+            }
+            store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+        }
 
         // Restore critical settings from localStorage backup (in case saveSettingsDebounced didn't complete)
         try {
@@ -5259,7 +5275,7 @@ SCHEMA:
     function getSystemPromptWithPresets(store, hasCardInfo = false) {
         let systemPrompt = store.systemPrompt || DEFAULT_SYSTEM_PROMPT;
         if (store.injectCharacterCard && hasCardInfo) {
-            systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征（如发色、瞳色、发型、体型、标志性服饰特征等）并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于你脑中的常识和随意猜测。';
+            systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }
         systemPrompt += '\n\n【👗 角色差分衣柜指示】\n当 payload 中包含 `characterWardrobes` 字段时，若剧情场景、动作或台词命中了角色的某套预设服装或触发词（如泳装、睡衣、战斗服等），请优先直接采用该套服装预设中的 `outfit` 提示词，保持角色服饰的一致性与高还原度。';
         if (store.injectPresetsToTagger) {

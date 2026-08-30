@@ -3782,70 +3782,121 @@ Zimage 擅长理解复杂的英文长句和语境。
         let str = String(text || '').trim();
         if (!str) return {};
 
-        // 移除 <think>...</think> 或 <thinking>...</thinking> 思考区，避免提取到思考过程中的草稿 JSON
+        // 1. Remove thinking blocks
         str = str.replace(/<think>[\s\S]*?<\/think>/gi, '')
                  .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
                  .trim();
         if (!str) return {};
 
+        // 2. Remove markdown code blocks if wrapped
+        const mdMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (mdMatch) {
+            str = mdMatch[1].trim();
+        }
+
+        // 3. Direct JSON.parse
         try {
             return JSON.parse(str);
-        } catch (_e) {
-            // fall through
-        }
+        } catch (_e) {}
 
-        const start = str.indexOf('{');
-        if (start < 0) return {};
-
-        let depth = 0;
-        let inString = false;
-        let escaped = false;
-
-        for (let i = start; i < str.length; i++) {
-            const ch = str[i];
-
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                    continue;
-                }
-                if (ch === '\\') {
-                    escaped = true;
-                    continue;
-                }
-                if (ch === '"') {
-                    inString = false;
-                }
-                continue;
-            }
-
-            if (ch === '"') {
-                inString = true;
-                continue;
-            }
-
-            if (ch === '{') {
-                depth++;
-                continue;
-            }
-
-            if (ch === '}') {
-                depth--;
-                if (depth === 0) {
-                    try {
-                        return JSON.parse(str.slice(start, i + 1));
-                    } catch (_e) {
-                        return {};
+        // 4. Clean control characters inside string literals (raw unescaped newlines/tabs/carriage returns)
+        const cleanControlChars = (input) => {
+            let inStr = false;
+            let esc = false;
+            let out = '';
+            for (let i = 0; i < input.length; i++) {
+                const ch = input[i];
+                if (inStr) {
+                    if (esc) {
+                        esc = false;
+                        out += ch;
+                    } else if (ch === '\\') {
+                        esc = true;
+                        out += ch;
+                    } else if (ch === '"') {
+                        inStr = false;
+                        out += ch;
+                    } else if (ch === '\n') {
+                        out += '\\n';
+                    } else if (ch === '\r') {
+                        out += '\\r';
+                    } else if (ch === '\t') {
+                        out += '\\t';
+                    } else if (ch.charCodeAt(0) < 32) {
+                        out += ' ';
+                    } else {
+                        out += ch;
                     }
+                } else {
+                    if (ch === '"') inStr = true;
+                    out += ch;
+                }
+            }
+            return out;
+        };
+
+        // 5. Remove trailing commas before } or ]
+        const removeTrailingCommas = (input) => {
+            return input.replace(/,\s*([}\]])/g, '$1');
+        };
+
+        // 6. Find balanced { ... }
+        const start = str.indexOf('{');
+        if (start >= 0) {
+            let depth = 0;
+            let inString = false;
+            let escaped = false;
+            let end = -1;
+
+            for (let i = start; i < str.length; i++) {
+                const ch = str[i];
+                if (inString) {
+                    if (escaped) { escaped = false; continue; }
+                    if (ch === '\\') { escaped = true; continue; }
+                    if (ch === '"') inString = false;
+                    continue;
+                }
+                if (ch === '"') { inString = true; continue; }
+                if (ch === '{') { depth++; continue; }
+                if (ch === '}') {
+                    depth--;
+                    if (depth === 0) { end = i; break; }
+                }
+            }
+
+            if (end !== -1) {
+                const candidate = str.slice(start, end + 1);
+                try {
+                    return JSON.parse(candidate);
+                } catch (_e) {
+                    try {
+                        return JSON.parse(removeTrailingCommas(cleanControlChars(candidate)));
+                    } catch (_e2) {}
                 }
             }
         }
+
+        // 7. Last resort: try repairing with regex cleanup on full string
+        try {
+            const cleaned = removeTrailingCommas(cleanControlChars(str));
+            const s = cleaned.indexOf('{');
+            const e = cleaned.lastIndexOf('}');
+            if (s >= 0 && e > s) {
+                return JSON.parse(cleaned.slice(s, e + 1));
+            }
+        } catch (_e) {}
 
         return {};
     }
 
     function normalizeTaggerResult(data, matchedLorebooks = []) {
-        const source = data?.choices?.[0]?.message?.content ? extractJson(data.choices[0].message.content) : data;
+        const rawContent = data?.choices?.[0]?.message?.content
+            ?? data?.choices?.[0]?.text
+            ?? data?.choices?.[0]?.delta?.content
+            ?? data?.content;
+        const source = typeof rawContent === 'string'
+            ? extractJson(rawContent)
+            : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {}));
         let segments = Array.isArray(source?.segments)
             ? source.segments.map((item, index) => {
                 const anchor = normalizeAnchor(item?.anchor, index + 1);

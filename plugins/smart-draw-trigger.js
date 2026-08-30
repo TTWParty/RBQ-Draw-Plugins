@@ -647,7 +647,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
-        enhancedContext: 'off', // off | v2 | v5 | v6 | v7 | v8
+        enhancedContext: 'v9', // off | v2 | v7 | v8 | v9
         postProcessEnabled: false,
         postProcessRole: 'assistant',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
@@ -5154,9 +5154,32 @@ SCHEMA:
         return false;
     }
 
+    function getEnhancedContextPayload(ec) {
+        const ecPayloads = {
+            v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits. Critically: identify the EXACT temporal moment of 'currentMessage' (imminent/ongoing/completed) and only use tags matching that moment. Never add cum/climax tags to pre-climax scenes.",
+            v7: "SCENE-AWARE ANALYSIS: Before JSON output, perform a three-layer analysis chain: Layer 1 Scene Selection, Layer 2 Frame Reconstruction, Layer 3 POV Determination.",
+            v8: "CHAIN-OF-THOUGHT: Before JSON output, perform comprehensive reasoning on visual value, temporal state, character continuity, and perspective.",
+            v9: "8.30 FULL SPECTRUM REASONING: Before JSON output, execute 5-step analysis: ① Visual Peak & Media Trigger, ② L0~L2 Anchor State Tracking & Gradual Fading (no abrupt disappearance of sweat/blush), ③ Composition & Lighting Matrix, ④ Visibility Pruning (prune out-of-frame body parts in prompt and inject shoes/feet/face pruning into uc), ⑤ Perspective & Character Bindings.",
+        };
+        return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
+    }
+
+    function getEnhancedContextSystemPrompt(ec) {
+        const ecPrompts = {
+            v9: "【8.30 前情增强思维链分析指令 (V9)】\n在处理 payload 输出 JSON 前，你必须在脑内或思考区（Thinking Process）严格执行以下五步全息推演：\n\n①【分镜高光甄别】：\n- 扫描当前剧情，识别最具视觉冲击力的瞬间（动作突变、情绪高潮、空间转换、关键性互动、或正文提到的照片/截图等视觉媒介）。\n- 若纯对话/独白且无环境与肢体视觉变化，直接判定 shouldDraw: false。\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族、日系动漫面相、发色瞳色、体型体态）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、背位 from_behind）；\n- 为画面智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与负面词隔离（关键必查）】：\n- 景别裁切：特写移除颈以下；近景移除腰以下；中景/牛仔镜移除膝以下脚部并在 Char uc 写入 feet, shoes；下半身 focus 移除面部并在 Char uc 写入 face, eyes；\n- 朝向裁切：背位 from_behind 移除正面表情与瞳色，Char uc 写入 face, eyes, front_view；\n- 冲突下放：全局排斥写 scene，单人排斥只写该角色的 uc，严禁将个人负面全局广播导致穿衣/不同发色的角色被误伤。\n\n⑤【视角与多角色映射】：\n- 确定视角模式（POV 主观视角：摄像机角色不入 characters，可见肢体写入 scene；第三人称：角色全部入 characters，使用 source#/target# 明确施受关系）。\n\n完成上述推演后，严格输出符合 outputSchema 的合法 JSON，禁止输出任何额外文字。",
+            v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
+            v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
+            v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。\n2. 当前帧定位：姿势和动作以 currentMessage 为准。\n3. 情绪独立：每个角色的情绪状态单独判断。\n4. 空间感：center 坐标反映实际位置关系。\n5. 时间帧：只 tag 此刻正在发生的事。\n6. 动作粒度：区分瞬间动作和持续动作。\n7. 动作方向：把 tag 放在正确的角色上。\n8. 忠实程度：按原文程度选 tag。",
+            v5: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，建立当前帧的完整状态快照（场景连续性、衣态追踪、体态位置、情绪基调、时间线定位、动作承接）。生成的 Tag 必须是当前帧状态快照的忠实映射。",
+        };
+        return ecPrompts[ec] || '';
+    }
+
     function buildRequestPayload(messageId, trigger) {
         const store = getStore();
         const current = getMessageSnapshot(messageId);
+        if (!current) throw new Error(`未找到当前消息 #${messageId}`);
+
         const recentMessages = RBQ.api.getRecentMessages(messageId, store.contextCount).map(item => ({
             id: item.id,
             role: item.is_user ? 'user' : 'assistant',
@@ -5185,15 +5208,7 @@ SCHEMA:
             lorebook: lorebook.map(l => ({ name: l.comment || l.sourceName || '角色/设定', keys: l.matchedKeys, tags: String(l.content || '').trim() })),
             contextCount: Number(store.contextCount) || 5,
             ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。` } : {}),
-            ...((ec => {
-                const ecPayloads = {
-                    v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits. Critically: identify the EXACT temporal moment of 'currentMessage' (imminent/ongoing/completed) and only use tags matching that moment. Never add cum/climax tags to pre-climax scenes.",
-                    v5: "Build a state snapshot of the current frame by analyzing 'recentMessages': scene continuity, per-garment clothing status, body type & pose, emotional tone, temporal phase (imminent/ongoing/completed), and action progression. Tags must faithfully map this snapshot \u2014 never add undescribed changes.",
-                    v6: "FRAME-SYNC: Before outputting JSON, internally reconstruct each character's current state by diffing recentMessages against currentMessage. Inherit unchanged attributes (outfit, appearance) from context; update only what the current text explicitly changes. Pose and action come from currentMessage only. Emotions must be individually assessed per character. Spatial positions should reflect the narrative layout. Only tag what is happening NOW in this frame. When multiple segments exist, determine their relationship from the text. Distinguish momentary actions from sustained ones and tag accordingly. Identify who performs each action and who receives the result. Do not escalate intensity beyond what the text describes.",
-                    v7: "SCENE-AWARE ANALYSIS: Before JSON output, perform a three-layer analysis chain:\n\nLAYER 1 \u2014 SCENE SELECTION: Scan currentMessage for visual moments. Mandatory triggers: any mention of photos/pictures/selfies/screenshots/images in the narrative (\u7167\u7247/\u56fe\u7247/\u914d\u56fe/\u81ea\u62cd/\u622a\u56fe/\u753b\u9762/\u624b\u673a\u5c4f\u5e55) \u2192 MUST generate that image as a segment. Visual peaks (action shifts, emotional climax, spatial transitions) \u2192 prioritize. Pure dialogue/monologue with no visual change \u2192 shouldDraw:false.\n\nLAYER 2 \u2014 FRAME RECONSTRUCTION: For each selected scene, reconstruct the complete frame state as a unified snapshot. Diff recentMessages against currentMessage: inherit unchanged attributes, update only what the text explicitly changes. Assess each character's emotion independently. Map spatial positions to center coordinates. Only tag what is happening NOW \u2014 do not add pre/post states. Distinguish momentary vs sustained actions. Identify action performer vs receiver and place tags on the correct character. Never escalate intensity beyond text.\n\nLAYER 3 \u2014 POV DETERMINATION: Determine the camera perspective from the narrative context:\n  \u2460 POV (subjective): camera IS the user/protagonist \u2192 camera character FORBIDDEN in characters array, their visible body parts go into scene (pov_hands, large_penis etc), viewed characters get looking_at_viewer. No source#/target# needed.\n  \u2461 Voyeur/Observer: user watches others interact \u2192 interacting characters in characters array with source#/target# and facing_another, scene adds voyeurism/peeping.\n  \u2462 Third-person (objective): all characters in array, source#/target# bindings, add from_side/facing_another/eye_contact, coordinates B3\u2194D3.\nThe chosen POV directly determines JSON structure \u2014 apply the matching format from the system prompt examples.",
-                };
-                return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
-            })(store.enhancedContext)),
+            ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: {
                 shouldDraw: 'boolean',
                 reason: 'string (中文)',
@@ -5365,14 +5380,9 @@ SCHEMA:
             ? parseJailbreakMessages(store.geminiJailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
 
-        if (['v5','v6','v7','v8'].includes(store.enhancedContext)) {
-            const ecPrompts = {
-                v5: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，建立当前帧的完整状态快照：\n1. 场景连续性：当前空间环境、时间段、氛围基调\n2. 衣态追踪：逐件追踪每个角色的衣物状态（穿着/半脱/脱落/损坏），仅文本明确描述的变化才可更新\n3. 体态与位置：角色的体型特征、当前姿势、空间相对位置\n4. 情绪基调：每个角色此刻的核心情绪（严格区分屈辱/恐惧/快感/愤怒/哀求等，不可混淆）\n5. 时间线定位：当前文本的动作处于哪个阶段——即将发生/正在进行/已经完成，Tag须精确匹配该阶段\n6. 动作承接：上一帧→当前帧之间，什么发生了变化，什么保持不变\n核心原则：生成的Tag必须是当前帧状态快照的忠实映射。文本未描述的变化（衣物/体液/动作/情绪升级）一律不添加。\n最终输出只能是符合 outputSchema 的 JSON，禁止输出任何分析文本。",
-                v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。未提及 = 不变。\n2. 当前帧定位：姿势和动作以 currentMessage 为准，不沿用前文的姿势。\n3. 情绪独立：每个角色的情绪状态单独判断，不能笼统套用同一种情绪。\n4. 空间感：center 坐标要反映角色在场景中的实际位置关系，避免所有人挤在同一个点。\n5. 时间帧：只 tag 此刻正在发生的事，即将发生的不加完成态 tag。\n6. 同层分镜：同一消息多个分镜时，根据正文内容判断它们的关系。\n7. 动作粒度：区分瞬间动作和持续动作，选择匹配的 tag。\n8. 动作方向：分清谁对谁做了什么，结果发生在谁身上，把 tag 放在正确的角色上。\n9. 忠实程度：不要超越文本描述的强度来选 tag，按原文的程度来。\n\n核心：每个 tag 都要有文本依据。禁止输出分析文本，只输出 JSON。",
-                v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
-                v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
-            };
-            messages.push({ role: 'system', content: ecPrompts[store.enhancedContext] });
+        const ecSysPrompt = getEnhancedContextSystemPrompt(store.enhancedContext);
+        if (ecSysPrompt) {
+            messages.push({ role: 'system', content: ecSysPrompt });
         }
 
         messages.push({ role: 'user', content: JSON.stringify(payload, null, 2) });
@@ -6449,7 +6459,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V2: payload 注入时间线定位。V5/V6: 额外 system prompt 注入中文详细分析。V7: 三层分析链。V8: 无条目式综合思维链分析。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v2">V2 · 时间线定位</option><option value="v5">V5 · 状态快照</option><option value="v6">V6 · 帧同步</option><option value="v7">V7 · 场景感知</option><option value="v8">V8 · 综合推理 (推荐)</option></select></label>
+                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V9: 8.30 全能五步思维链推演（推荐）。V8: 综合推理。V7: 三层场景感知。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v9">V9 · 8.30全能思维链推演 (推荐)</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -6567,8 +6577,8 @@ SCHEMA:
         document.getElementById('rbq-sdt-mode').value = store.mode;
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
-        // Backward compat: boolean true → 'v2', removed versions → fallback
-        const ecVal = store.enhancedContext === true ? 'v2' : (['v1','v3','v4'].includes(store.enhancedContext) ? 'v2' : (store.enhancedContext || 'off'));
+        // Backward compat: boolean true → 'v9', removed versions → fallback
+        const ecVal = store.enhancedContext === true ? 'v9' : (['v1','v3','v4','v5','v6'].includes(store.enhancedContext) ? 'v9' : (store.enhancedContext || 'off'));
         document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
@@ -7251,15 +7261,7 @@ SCHEMA:
                 manualInstruction: useContext
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
-                ...((ec => {
-                    const ecPayloads = {
-                        v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits.",
-                        v5: "Build a state snapshot from the user description and any provided context.",
-                        v6: "FRAME-SYNC: Reconstruct character states from context and user description.",
-                        v7: "SCENE-AWARE ANALYSIS: Apply the full three-layer analysis chain to the user's description.",
-                    };
-                    return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
-                })(store.enhancedContext)),
+                ...getEnhancedContextPayload(store.enhancedContext),
                 outputSchema: {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -7294,16 +7296,9 @@ SCHEMA:
                 : [{ role: 'system', content: systemPrompt }];
 
             // Enhanced context system prompts (same as normal flow)
-            if (['v5','v6','v7','v8'].includes(store.enhancedContext)) {
-                const ecPrompts = {
-                    v5: "\u3010\u524d\u60c5\u589e\u5f3a\u5206\u6790\u6307\u4ee4\u3011\n\u5728\u5904\u7406 user \u4f20\u5165\u7684 payload \u65f6\uff0c\u4f60\u5fc5\u987b\u9996\u5148\u5728\u8111\u5185\u5bf9 `recentMessages` \u8fdb\u884c\u9690\u5f0f\u5206\u6790\uff0c\u5efa\u7acb\u5f53\u524d\u5e27\u7684\u5b8c\u6574\u72b6\u6001\u5feb\u7167\u3002\u6838\u5fc3\u539f\u5219\uff1a\u751f\u6210\u7684Tag\u5fc5\u987b\u662f\u5f53\u524d\u5e27\u72b6\u6001\u5feb\u7167\u7684\u5fe0\u5b9e\u6620\u5c04\u3002",
-                    v6: "\u3010\u5e27\u540c\u6b65\u5206\u6790\u3011\n\u5728\u8f93\u51fa JSON \u524d\uff0c\u5148\u5728\u8111\u5185\u5b8c\u6210\u72b6\u6001\u7ee7\u627f\u3001\u5f53\u524d\u5e27\u5b9a\u4f4d\u3001\u60c5\u7eea\u72ec\u7acb\u3001\u7a7a\u95f4\u611f\u3001\u52a8\u4f5c\u7c92\u5ea6\u7b49\u5206\u6790\u3002",
-                    v7: "\u3010\u573a\u666f\u611f\u77e5\u5206\u6790 v7\u3011\n\u6309\u4e09\u5c42\u6d41\u6c34\u7ebf\u5b8c\u6210\u5206\u6790\uff1a\u573a\u666f\u9009\u53d6\u3001\u5e27\u91cd\u5efa\u3001\u89c6\u89d2\u51b3\u7b56\u3002",
-                    v8: "\u3010\u7efc\u5408\u63a8\u7406\u5206\u6790 v8\u3011\n\u8bf7\u8fdb\u884c\u4e00\u6bb5\u8fde\u8d2f\u7684\u601d\u7ef4\u94fe\u7efc\u5408\u5206\u6790\uff1a\u5224\u65ad\u751f\u56fe\u4ef7\u503c\u3001\u6574\u4f53\u91cd\u6784\u753b\u9762\u3001\u51b3\u5b9a\u753b\u9762\u89c6\u89d2\u3002",
-                };
-                if (ecPrompts[store.enhancedContext]) {
-                    messages.push({ role: 'system', content: ecPrompts[store.enhancedContext] });
-                }
+            const ecSysPrompt = getEnhancedContextSystemPrompt(store.enhancedContext);
+            if (ecSysPrompt) {
+                messages.push({ role: 'system', content: ecSysPrompt });
             }
 
             messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });

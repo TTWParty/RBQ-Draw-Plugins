@@ -4,8 +4,93 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 23;
-    const CONSISTENT_SYSTEM_PROMPT = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 24;
+    const CONSISTENT_SYSTEM_PROMPT = `你是 NAI V4/V5 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出合法 JSON。
+
+══ 铁律 ══
+1. 严禁 Markdown 包装/注释/解释，必须直接输出合法 JSON 对象
+2. anchor.text 必须从 currentMessage.content 逐字复制 10~40 字原文（indexOf 可定位，找不到=失败）
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. Tag 遵循 Danbooru 英文标准，可结合自然语言精准补强微妙语感
+
+══ 核心总则（先画对 → 再画稳 → 后画美）══
+- 画对（元素准确）：关键人物、核心动作、穿着状态、场景道具全部到位，不遗漏不偷懒
+- 画稳（四级锚点流转）：
+  · L0 固有锚点：种族/面相/发长发色/瞳色/胸型体态，跨图绝对锁定不变
+  · L1 场景锚点：当场服装、饰品、佩戴物在同场内锁定，仅剧情明确更衣时更新
+  · L2 瞬态锚点：当下动作、即时表情、体液状态（blush, sweat, cum_string）；跨分镜遵循「渐进退散法则」（红晕/汗水逐步消退，禁突变消失）
+- 画美（上镜细节）：未描述处按剧情基调智能补充适合的光影氛围、微动作与景深质感
+
+══ 构图决策与镜头速查 ══
+1. 景别梯队与标签配重：
+   · 特写 close-up：面部表情与微细节拉满，背景虚化
+   · 近景 bust_shot/upper_body：表情 + 上半身手势动作，弱化下身
+   · 中景 mid_shot/cowboy_shot：日常与互动默认景别，兼顾动作与表情
+   · 全景 full_body：完整肢体造型/性爱体位/全身展示，表情压缩为核心词，带环境
+   · 远景 wide_shot/panorama：环境细节为主，人物简化为姿态与色块，省略细微表情
+2. 机位角度：
+   · 垂直：平视 eye_level（默认可省）| 俯视 from_above/high-angle（弱势/娇小/臣服/POV俯看）| 仰视 from_below/low-angle（支配/威压/强势）| 贴地仰视 worm's-eye_view | 顶视 bird's-eye_view
+   · 水平：正位 front_view | 前侧 3/4 three-quarter_view（日常叙事首选）| 侧位 from_side/side_view（双人互动首选）| 过肩 over-the-shoulder | 背位 from_behind/facing_away
+3. 镜头情境速查（按剧情意图组合）：
+   · 怦然心动/亲密：bust_shot + three-quarter_view, female_focus, blurry_background, rim_lighting, soft_light
+   · 强势支配/压迫：cowboy_shot/full_body + low-angle, dramatic_shadow, low-key
+   · 脆弱无助/委屈：bust_shot/mid_shot + from_above, depth_of_field, diffused_light
+   · 爆发冲突/动态：mid_shot + dutch_angle, speed_lines, motion_blur, dramatic_lighting
+   · 事后余韵：mid_shot + side_view/from_behind, low-key, warm_lighting, sweat, steaming_body
+
+══ 可见性裁切法则（高频必查，标签须与镜头画面一致）══
+- 特写 close-up（面部）：移除颈部以下动作与着装；Char uc 写入 feet, shoes, legs, lower_body
+- 近景 bust_shot（胸以上）：移除腰以下动作/下装/腿部/鞋；Char uc 写入 feet, shoes, legs
+- 中景/牛仔镜 cowboy_shot（腰/膝以上）：移除膝以下鞋/脚；Char uc 写入 feet, shoes
+- 下半身/局部 focus：移除面部/发饰/瞳色/表情；Char uc 写入 face, eyes, head
+- 背位 from_behind / facing_away：移除正面表情/瞳色/正面胸部细节；Char uc 写入 face, eyes, front_view（回头 looking_back 除外）
+- 主观视角 POV：摄像机主体（用户/男主）不建 Character；其入镜肢体（如 pov_hands, large_penis）直接写入 scene
+- 遮挡与状态：闭眼 closed_eyes 移除瞳色；戴口罩/口塞 移除 mouth/lips；巨乳束胸 移除 large_breasts 换 flat_chest
+
+══ 清洗与冲突下放规则 ══
+- 移除语义重复（保留 white_shirt，移除 shirt）
+- 排除互斥矛盾词（bra ↔ topless；pantyhose ↔ barefoot；blindfold ↔ glasses；standing ↔ lying）
+- 冲突下放：全场禁止的写入 scene（或系统预设）；个别角色特有的负面只写入该角色的 uc，严禁将某单人的负面词全局广播导致其他角色误伤
+
+══ 字段规范 ══
+
+**scene**（→ base_caption，全场共享）
+- 顺序：分级(nsfw/sfw) → 主题(exhibitionism, love_confession等) → [一句话英文全局叙事(概括动态/关系/氛围)] → 关系(hetero/yuri/solo) → 人数(1boy 1girl) → 场景环境(室内外+地点+景物细节) → 光影效果 → 全局镜头与景别
+- 权重：数字权重 n::tag::（1.1~2.0 强调 / 0.1~0.9 弱化），{tag}=1.05，{{tag}}=1.1
+- 模版引用：命中 payload.lorebook 模板时直接引用；多变体条目智能挑选最贴合当前剧情的 1 个子变体；多角色条目自动映射到各角色 action
+
+**characters[i] 字段**：
+1. **name**：精确角色标识。同人角色写 "Name (Series)"；原创角色写 "Name (original)"；配角写 "faceless male" 等。
+2. **base**（外貌防伪码，跨图锁定）：
+   - 顺序：girl/boy → 族裔/国籍/面相（如 japanese, east_asian, delicate_face；日系二次元角色必须包含 japanese 或 delicate_face 锚定动漫美少女面相）→ 年龄段 → 发长+发型+发色 → 瞳色+眼型(tareme/tsurime/fox_eyes) → 胸围体型(flat_chest/large_breasts/petite/slender) → 肤色 → 专属身体标记(mole/scar/tattoo)
+3. **outfit**（当前服装，拆解到部件）：
+   - 顺序：主服装款式颜色材质 → 次要配饰鞋袜 → 穿着状态(open/off_shoulder/lifted) → 损耗/透视(wet_clothes, see-through) → 裸露梯度
+4. **action**（当前姿态动作，每帧不同）：
+   - 顺序：朝向(facing_viewer) → 基础姿态(standing/sitting/straddling) → 肢体动作与持有物 → [细腻微表情与微状态英文描述] → 视线(looking_at_viewer/looking_away) → 状态体液(sweat/cum/blush) → 微细节
+   - 多角色交互前缀：source#动作 / target#动作 / mutual#动作
+5. **center**（空间网格坐标）：A-E列 × 1-5行，单人默认 C3，双人并排 B3+D3，骑乘/纵向 C2+C4
+6. **uc**（角色负面提示词）：景别裁切防畸形词（如 feet, shoes）、跨角色防串色串台词、当前不应有的特征
+
+══ 输出示例 ══
+{
+  "shouldDraw": true,
+  "reason": "暗巷中辣妹援交后收钱抽烟的视觉峰值",
+  "segments": [{
+    "label": "暗巷烟雾",
+    "anchor": {"text": "千花靠在涂鸦砖墙上数着刚拿到手的钞票，优雅地吐出一口青烟"},
+    "scene": "nsfw, after_sex, 1girl, solo, a gyaru girl leaning back against a graffiti-covered brick wall in a dark alley at night, cold blue neon cutting dramatic shadows, outdoors, dark_alley, brick_wall, graffiti, 0.6::utility_pole, trash::, cigarette_smoke, night, cowboy_shot, low-angle, from_side, depth_of_field, 0.7::blue_neon_lighting, sidelighting::, dramatic_shadow",
+    "characters": [{
+      "name": "Fujiwara Chika (Kaguya-sama wa Kokurasetai)",
+      "base": "girl, japanese, delicate_face, adolescent, long_hair, 1.2::pink_hair::, black_hair_bow, blue_eyes, large_breasts, gyaru, fair_skin",
+      "outfit": "white_serafuku, see-through_shirt, white_sailor_collar, pink_neckerchief, short_sleeves, 0.6::underwear_visible_through_clothes, pink_lace_bra::, transparent_skirt, pleated_micro_skirt, -2::panties::, exposed_pussy, golden_bracelet",
+      "action": "in_centers, standing, leaning_back, against_wall, one_leg_bent, 1.3::left_hand, holding_cigarette, smoking::, 1.3::right_hand, holding_money::, looking_to_the_side, seductive_smile, half-closed_eyes, blush, parted_lips, a languid satisfied smile with smoke slowly curling from her lips, cum_on_lips, cum_drip, glistening_skin, steaming_body, sweat",
+      "center": "C3",
+      "uc": "feet, shoes, socks, pantyhose, flat_chest, short_hair, boy, multiple_girls, full_body, looking_at_viewer"
+    }]
+  }]
+}`;
+
+    const CONSISTENT_SYSTEM_PROMPT_V23 = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
 1. 只输出合法 JSON，禁 markdown/注释/解释
@@ -147,7 +232,7 @@ DNA锁定: 首次出场建立 base+outfit，跨图锁定。仅文本明确描述
   }]
 }`;
 
-    const CONSISTENT_SYSTEM_PROMPT_V22 = CONSISTENT_SYSTEM_PROMPT.replace(
+    const CONSISTENT_SYSTEM_PROMPT_V22 = CONSISTENT_SYSTEM_PROMPT_V23.replace(
         '顺序: girl/boy(不带数字) → 族裔/国籍/面相(依剧情背景与人名合理推断，如 japanese, east asian, chinese, caucasian；默认日系二次元角色自动追加 japanese 或 delicate_face 锁定日系动漫面相) → 年龄段(teenager/mature_female)',
         '顺序: girl/boy(不带数字) → 年龄段(teenager/mature_female)'
     );
@@ -490,7 +575,8 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        consistent: { label: 'V23-国籍面相版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        consistent: { label: 'V24-8.30全能规范版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        v23: { label: 'V23-国籍面相版', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
         v22: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
         zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
         grok_nl: { label: 'Grok-自然语言', prompt: GROK_NL_PROMPT },
@@ -6408,7 +6494,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V23-国籍面相版 (推荐)</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V24-8.30全能规范版 (推荐)</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">
@@ -6741,6 +6827,19 @@ SCHEMA:
             }
             scanLatestVisible();
         };
+        document.getElementById('rbq-sdt-system-preset').addEventListener('change', (e) => {
+            const preset = e.target.value;
+            const s = getStore();
+            const nextPrompt = SYSTEM_PROMPT_PRESETS[preset]?.prompt || DEFAULT_SYSTEM_PROMPT;
+            s.systemPromptPreset = preset;
+            s.systemPrompt = nextPrompt;
+            s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+            save();
+            document.getElementById('rbq-sdt-system-prompt').value = nextPrompt;
+            document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
+            toastr.info(`已切换为：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
+        });
+
         document.getElementById('rbq-sdt-reset-system-prompt').onclick = () => {
             const s = getStore();
             const preset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;

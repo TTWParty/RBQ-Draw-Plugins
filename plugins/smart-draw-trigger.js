@@ -43,18 +43,15 @@
    · 爆发冲突/动态：mid_shot + dutch_angle, speed_lines, motion_blur, dramatic_lighting
    · 事后余韵：mid_shot + side_view/from_behind, low-key, warm_lighting, sweat, steaming_body
 
-══ 视角与机位铁律（极重要：杜绝木偶摆拍）══
-1. 旁观/窥视视角（用户在旁观察他人互动，如NTR/逼迫/公开处刑）：
-   · 观察者（用户）不入 characters 数组
-   · scene 必须加入 voyeurism, peeping, from_side 或 over-the-shoulder，营造沉浸旁观感
-   · 互动角色必须面向彼此（facing_another, profile, looking_at_partner, eye_contact），⛔严禁全部画成正对镜头看观众（facing_viewer）！
-2. 局部聚焦与反差（手部/足部/器官特写）：
-   · 当正文重点描写手部握持、大小悬殊、肤色对比（黑白反差）、足部挑弄等局部接触时：
-   · 景别必须设为 close-up 或 focus（如 hand_focus, holding_hands, interlocked_fingers, skin_tone_contrast, dark_skin_male_hand, pale_skin_female_hand）
-   · 局部特写时严格执行「可见性裁切」：移除面部与全身体态，Char uc 写入 face, eyes, head，将视觉张力 100% 聚焦在核心接触部位！
-3. 双人交互姿态（拒绝重叠与木偶）：
-   · 两人产生握手/拥抱/交谈/对峙等交互时，站位和机位默认使用侧面（from_side, profile）或斜侧 3/4，两人相互面对（facing_another）；
-   · 严禁让一人呆滞站在另一人正后方并排伸手面向镜头！
+══ 视角与机位法则 ══
+1. 叙事视角与视线：
+   · 主观第一人称 (POV)：以用户/主角第一视角观察 → 摄像机主体不建 Character，入镜肢体（如 pov_hands）写入 scene，被看者加 looking_at_viewer
+   · 客观/旁观视角 (Observer / Third-Person)：观察他人互动 → 观察者不建 Character；scene 选用侧面(from_side)、斜侧(three-quarter_view)或过肩(over-the-shoulder)；出镜角色视线与朝向面向彼此或互动目标（facing_another, eye_contact, looking_at_partner），严禁无故正面直视镜头(facing_viewer)
+2. 景别与焦点匹配：
+   · 叙事聚焦于局部肢体/动作细节（如手部、触摸、特写动作、道具等）时，景别选用局部特写 (close-up / focus)，并对出画部位执行可见性裁切；
+   · 叙事聚焦于全身动态或空间交互时，选用中景(cowboy_shot)或全景(full_body)。
+3. 双人与多人交互：
+   · 存在肢体交互或对话时，人物朝向与站位遵循自然物理逻辑（互相面对 facing_another / 侧位 profile），禁止无逻辑重叠或正向并排。
 
 ══ 可见性裁切法则（高频必查，标签须与镜头画面一致）══
 - 特写 close-up（面部）：移除颈部以下动作与着装；Char uc 写入 feet, shoes, legs, lower_body
@@ -5281,7 +5278,7 @@ SCHEMA:
 
     function getEnhancedContextSystemPrompt(ec) {
         const ecPrompts = {
-            v9: "【8.30 前情增强思维链推演 (V9)】\n在输出 JSON 前，在思考区执行五步推演：\n\n①【视觉时刻多段选取】：\n扫描 currentMessage 正文，识别所有值得生图的视觉时刻（每个选定画面对应 1 个 segment，全部输出到 segments 数组）：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/射精/特写等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用，输出所有选定的 segments！\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族/国籍面相/发色瞳色/体型）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、过肩 over-the-shoulder、背位 from_behind）；\n- 智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与负面词隔离】：\n- 景别裁切：特写移除颈以下；近景移除腰以下；中景/牛仔镜移除膝以下脚部并在 Char uc 写入 feet, shoes；手部/局部 focus 移除面部并在 Char uc 写入 face, eyes, head；\n- 朝向裁切：背位 from_behind 移除正面表情与瞳色，Char uc 写入 face, eyes, front_view；\n- 冲突下放：全局排斥写 scene，单人排斥只写该角色的 uc，严禁将个人负面全局广播导致穿衣/不同发色的角色被误伤。\n\n⑤【视角决策与多角色站位（杜绝木偶摆拍）】：\n- 主观视角 POV：摄像机主体（用户/男主）不建 Character，其入镜肢体（如 pov_hands）写入 scene；\n- 旁观/窥视视角（用户在旁看他人互动，如NTR/强迫交互）：观察者（用户）不建 Character；scene 必须加入 voyeurism, peeping, from_side 或 over-the-shoulder；互动角色必须相互面对（facing_another, profile, eye_contact），严禁画成正对镜头看观众（facing_viewer）！\n- 局部特写（手部/足部接触与黑白肤色对比）：当核心描写为手部握持对比时，果断采用 close-up, hand_focus, skin_tone_contrast, holding_hands，裁切面部，聚焦核心冲突！\n- 客观第三人称：出镜角色各入 characters，使用 source#/target# 明确施受关系，并分配网格站位（center: A1-E5，如 B3, C3, D3, E3）。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何额外文字。",
+            v9: "【8.30 前情增强思维链推演 (V9)】\n在输出 JSON 前，在思考区执行五步推演：\n\n①【视觉时刻多段选取】：\n扫描 currentMessage 正文，识别所有值得生图的视觉时刻（每个选定画面对应 1 个 segment，全部输出到 segments 数组）：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/射精/特写等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用，输出所有选定的 segments！\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族/国籍面相/发色瞳色/体型）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、过肩 over-the-shoulder、背位 from_behind）；\n- 智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与负面词隔离】：\n- 景别裁切：特写移除颈以下；近景移除腰以下；中景/牛仔镜移除膝以下脚部并在 Char uc 写入 feet, shoes；局部 focus 移除面部并在 Char uc 写入 face, eyes, head；\n- 朝向裁切：背位 from_behind 移除正面表情与瞳色，Char uc 写入 face, eyes, front_view；\n- 冲突下放：全局排斥写 scene，单人排斥只写该角色的 uc，严禁将个人负面全局广播导致穿衣/不同发色的角色被误伤。\n\n⑤【视角决策与多角色站位】：\n- 主观视角 POV：摄像机主体（用户/主角）不建 Character，其入镜肢体（如 pov_hands）写入 scene；\n- 旁观/第三人称：观察者不建 Character；scene 选用侧面(from_side)、过肩(over-the-shoulder)等机位；互动角色视线与朝向面向彼此（facing_another, eye_contact），避免无故直视镜头(facing_viewer)；\n- 局部焦点：当正文核心描写聚焦在局部肢体或动作细节时，采用对应局部特写并执行可见性裁切；\n- 多人交互：出镜角色各入 characters，使用 source#/target# 明确施受关系，并分配网格站位（center: A1-E5，如 B3, C3, D3, E3）。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何额外文字。",
             v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
             v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
             v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。\n2. 当前帧定位：姿势和动作以 currentMessage 为准。\n3. 情绪独立：每个角色的情绪状态单独判断。\n4. 空间感：center 坐标反映实际位置关系。\n5. 时间帧：只 tag 此刻正在发生的事。\n6. 动作粒度：区分瞬间动作和持续动作。\n7. 动作方向：把 tag 放在正确的角色上。\n8. 忠实程度：按原文程度选 tag。",

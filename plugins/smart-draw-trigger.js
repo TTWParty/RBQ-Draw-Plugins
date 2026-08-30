@@ -6298,7 +6298,13 @@ SCHEMA:
             button.dataset.kiteTab = 'smart-draw';
             button.type = 'button';
             button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>智能触发</span>';
-            button.addEventListener('click', () => switchRbqTab('smart-draw'));
+            button.addEventListener('click', () => {
+                switchRbqTab('smart-draw');
+                const p = document.querySelector('[data-kite-panel="smart-draw"]');
+                if (p && !p.querySelector('#rbq-smart-draw-panel')) {
+                    renderSettings(p);
+                }
+            });
             const promptButton = rail.querySelector('[data-kite-tab="prompt"]');
             if (promptButton?.nextSibling) {
                 rail.insertBefore(button, promptButton.nextSibling);
@@ -6313,6 +6319,9 @@ SCHEMA:
             panel.className = 'st-scene-trigger-modal-panel';
             panel.dataset.kitePanel = 'smart-draw';
             content.append(panel);
+            renderSettings(panel);
+        } else if (!panel.querySelector('#rbq-smart-draw-panel')) {
+            renderSettings(panel);
         }
         return panel;
     }
@@ -6459,7 +6468,7 @@ SCHEMA:
     }
 
     function renderSettings(panel) {
-        if (document.getElementById('rbq-smart-draw-panel')) return;
+        if (!panel || panel.querySelector('#rbq-smart-draw-panel')) return;
         injectStyles();
         const store = getStore();
         const lorebookSources = ensureLorebookStore();
@@ -7527,6 +7536,7 @@ SCHEMA:
     };
 
     waitForPanel();
+    setInterval(ensureSettingsPanel, 1000);
     observeMessages();
     watchForFloatingBall();
     // Startup diagnostic: verify persistent data loaded

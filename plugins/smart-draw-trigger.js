@@ -5174,6 +5174,8 @@ SCHEMA:
     function getEnhancedContextPayload(ec) {
         const ecPayloads = {
             v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits. Critically: identify the EXACT temporal moment of 'currentMessage' (imminent/ongoing/completed) and only use tags matching that moment. Never add cum/climax tags to pre-climax scenes.",
+            v5: "Build a state snapshot from recentMessages and currentMessage before tag generation.",
+            v6: "FRAME-SYNC: Reconstruct character states from context and currentMessage before tag generation.",
             v7: "SCENE-AWARE ANALYSIS: Before JSON output, perform a three-layer analysis chain: Layer 1 Scene Selection, Layer 2 Frame Reconstruction, Layer 3 POV Determination.",
             v8: "CHAIN-OF-THOUGHT: Before JSON output, perform comprehensive reasoning on visual value, temporal state, character continuity, and perspective.",
             v9: "8.30 FULL SPECTRUM REASONING: Before JSON output, execute 5-step analysis: ① Visual Peak & Media Trigger, ② L0~L2 Anchor State Tracking & Gradual Fading (no abrupt disappearance of sweat/blush), ③ Composition & Lighting Matrix, ④ Visibility Pruning (prune out-of-frame body parts in prompt and inject shoes/feet/face pruning into uc), ⑤ Perspective & Character Bindings.",
@@ -6485,7 +6487,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V9: 8.30 全能五步思维链推演（推荐）。V8: 综合推理。V7: 三层场景感知。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v9">V9 · 8.30全能思维链推演 (推荐)</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
+                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V9: 8.30 全能五步思维链推演（推荐）。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v9">V9 · 8.30全能思维链推演 (推荐)</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -6603,8 +6605,8 @@ SCHEMA:
         document.getElementById('rbq-sdt-mode').value = store.mode;
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
-        // Backward compat: boolean true → 'v9', removed versions → fallback
-        const ecVal = store.enhancedContext === true ? 'v9' : (['v1','v3','v4','v5','v6'].includes(store.enhancedContext) ? 'v9' : (store.enhancedContext || 'off'));
+        // Backward compat: boolean true → 'v9', removed legacy versions → fallback
+        const ecVal = store.enhancedContext === true ? 'v9' : (['v1','v3','v4'].includes(store.enhancedContext) ? 'v9' : (store.enhancedContext || 'off'));
         document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;

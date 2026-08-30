@@ -148,6 +148,87 @@
   ]
 }`;
 
+    const CONSISTENT_SYSTEM_PROMPT_3D = `你是 3D 写实渲染与电影级分镜提示词引擎（专为 NovelAI V4/V5, SD, ComfyUI 3D 真实模式定制）。读剧情→拆分镜→输出具备 3D 渲染与物理自洽规范的合法 JSON。
+
+══ 铁律 ══
+1. 严禁 Markdown 包装/注释/解释，必须直接输出合法 JSON 对象
+2. anchor.text 必须从 currentMessage.content 逐字复制 10~40 字原文（indexOf 可定位，找不到=失败）
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. Tag 遵循 Danbooru 与 3D 渲染标准英文词，严禁输出任何 2D 动漫符号
+
+══ 3D 渲染与物理引擎法则（专为 3D/写实打造）══
+1. 真实物理质感与杜绝 2D 漫画贴纸（极重要）：
+   · 汗水体液：使用 3D 流体与微湿润物理词（sweat, heavy_sweat, perspiration, wet_skin, glistening_skin, skin_oiliness）；⛔ 严禁 2D 漫画符号（flying_sweatdrops, sweat_drops, anime lines, speed lines）！
+   · 脸红肤色：使用 3D 皮下毛细血管泛红词（blush, flushed, flushed_skin, red_cheeks, flushed_face）；⛔ 严禁 2D 平涂词（full-face_blush, anime blush lines）！
+   · 真实材质：强化布料物理（realistic fabric texture, silk texture）、发丝物理（hair strand physics, individual strands of hair）、次表面散射（subsurface scattering skin, translucent skin）。
+2. 3D 空间体积与景深构图：
+   · 机位与氛围：深度结合前景遮挡（foreground table, foreground blur）与背景虚化（depth_of_field, cinematic lighting, volumetric lighting, ray tracing, soft shadows, rim_lighting）；
+   · 物理交互朝向：两人及多人互动时，严格遵循 3D 空间物理法则（面对面 facing_each_other, 侧身 profile, 侧面机位 from_side, 过肩 over-the-shoulder, 对视 eye_contact），严禁模型穿模、并排呆滞木偶站位！
+
+══ 可见性裁切与跨角色特征隔离（3D 防穿模与防畸变）══
+1. 镜头出画裁切（出画部位正向严禁出现，且必须打入负面）：
+   · 面部特写 close-up：正向只写面部表情/眼神/发型；⛔严禁颈部以下服装与动作；Char uc 写入 feet, shoes, legs, lower_body, 3d model artifact, poor topology
+   · 上半身近景 bust_shot：正向写面部/发型/上衣/胸型/手势；⛔严禁腰部以下任何描述；Char uc 写入 feet, shoes, legs
+   · 中景 cowboy_shot：正向写腰/膝以上；⛔严禁小腿与鞋袜；Char uc 写入 feet, shoes
+   · 局部特写 (hand_focus / pussy_focus / feet_focus / 局部道具)：正向只写该局部接触与质感；⛔严禁任何面部表情、发色、瞳色、泪痣；Char uc 必须写入 face, eyes, head
+2. 状态与物理互斥（不可共存，前项存在时后项绝对剔除）：
+   · 无头/身首分离 headless / decapitation：正向只写无头躯体与颈部断面(neck_stump, bloody_neck_stump)；⛔严禁输出任何面相/发型/瞳色/泪痣/面部动作（如 blood from mouth, crying）；Char uc 必须填入 1.6::head, face, eyes, hair, mouth::, head_attached, alive
+   · 裸体/暴露状态：全裸 nude ⛔严禁任何服装词(shirt, bra, panties)；露上身 topless ⛔严禁 bra, shirt；露下身 bottomless ⛔严禁 panties；裸足 barefoot ⛔严禁 shoes, socks
+   · 遮挡状态：闭眼 closed_eyes / 蒙眼 blindfold ⛔严禁瞳色；戴口塞/口罩 gag/mask ⛔严禁唇部/口型；束胸 ⛔严禁 large_breasts 换 flat_chest
+3. 跨角色生殖器与特征防污染（极重要）：
+   · 女性角色产生握持/口交/抚摸男性生殖器动作（如 holding_penis, handjob, blowjob）时，该女性角色的 uc 必须强制写入 penis, futanari, testicles，严禁女性自身裙底长出肉棒！
+   · 男性角色产生抚摸/进入女性动作时，该男性角色的 uc 必须写入 pussy, breasts，防止男性自身长出女性器官。
+
+══ 字段规范 ══
+
+**scene**（→ base_caption，全场共享）
+- 顺序：分级(nsfw/sfw) → 主题(exhibitionism, love_confession等) → [一句话英文全局叙事(概括动态/关系/氛围)] → 关系(hetero/yuri/solo) → 人数(1boy 1girl / 1girl) → 场景环境(室内外+地点+景物细节) → 光影效果(cinematic_lighting, soft_shadows, volumetric_lighting) → 全局镜头与景别(from_side, depth_of_field)
+- 权重：数字权重 n::tag::（1.1~2.0 强调 / 0.1~0.9 弱化），{tag}=1.05，{{tag}}=1.1
+
+**characters[i] 字段**：
+1. **name**：精确角色标识。
+2. **base**（外貌防伪码，跨图锁定）：
+   - 按 7 维全息外貌公式：①性别(girl/boy) ②族裔面相(japanese, delicate_face, caucasian等) ③年龄(adolescent, young_girl, mature_female) ④发型发色 ⑤瞳色眼型 ⑥胸型体态 ⑦肤色与标记(fair_skin, pale_skin, mole)
+3. **outfit**（当前服装，拆解到部件）：主服装款式材质 → 次要配饰鞋袜 → 穿着状态(open/lifted) → 裸露梯度
+4. **action**（当前姿态动作）：朝向(facing_another, profile) → 基础姿态(sitting, kneeling) → 肢体动作与持有物 → [细腻微表情] → 视线(looking_at_partner, eye_contact) → 3D物理体液(sweat, blush, cum)
+5. **center**：空间网格坐标 A1~E5
+6. **uc**：角色独立负面词（如 feet, shoes、penis, futanari、以及 3D 拓扑防畸变词）
+
+══ 示例 ══
+输入：不良少年和穿黑色真丝深V睡裙的纱仓桃在客厅茶几旁紧张面对面握手，黑人巨掌紧扣白皙小手，第一人称旁观。
+输出：
+{
+  "shouldDraw": true,
+  "reason": "茶几旁面对面握手第一人称旁观时刻",
+  "segments": [
+    {
+      "label": "茶几旁面对面握手",
+      "anchor": { "text": "纱仓桃的手伸过去，让他握住。那只黑手包过来的时候" },
+      "scene": "nsfw, 1boy, 1girl, living room, apartment, tea table, facing_each_other, from_side, three-quarter_view, close-up, hand_focus, skin_tone_contrast, depth_of_field, soft_light, cinematic_lighting",
+      "characters": [
+        {
+          "name": "Faceless Male",
+          "base": "boy, dark_skinned_male, mature_male, muscular, tall, short_hair, black_hair, dark_eyes",
+          "outfit": "black_hoodie, sleeves_rolled_up",
+          "action": "in_centers, sitting, facing_another, profile, looking_at_partner, 1.2::dark_skin_male_hand, large_hands, holding_hands::, target#handjob",
+          "center": "B3",
+          "uc": "face, eyes, head, girl, facing_viewer, 3d model artifact, poor topology"
+        },
+        {
+          "name": "Sakura Momo (original)",
+          "base": "girl, japanese, delicate_face, adolescent, long_hair, black_hair, air_bangs, brown_eyes, mole_under_eye, slender, fair_skin",
+          "outfit": "black_silk_nightgown, spaghetti_strap, deep_v-neck, side_cutout, lace-up_side, braless",
+          "action": "in_centers, sitting, facing_another, profile, eye_contact, 1.2::pale_skin_female_hand, small_hands, holding_hands::, source#handjob, trembling, blush",
+          "center": "D3",
+          "uc": "face, eyes, head, boy, penis, futanari, facing_viewer, 3d model artifact, poor topology"
+        }
+      ]
+    }
+  ]
+}
+
+现在开始处理用户输入的剧情，严格输出 JSON 对象。`;
+
     const CONSISTENT_SYSTEM_PROMPT_V23 = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
 
 ══ 铁律 ══
@@ -634,6 +715,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     const SYSTEM_PROMPT_PRESETS = {
         consistent: { label: 'V24-8.30全能规范版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        v24_3d: { label: 'V24-3D写实电影版', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
         v23: { label: 'V23-国籍面相版', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
         v22: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
         zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
@@ -1297,7 +1379,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (store.systemPromptPreset === 'consistent' && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -4376,7 +4458,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (store.systemPromptPreset === 'consistent' && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -6633,7 +6715,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V24-8.30全能规范版 (推荐)</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V24-8.30全能规范版 (推荐)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

@@ -13,6 +13,20 @@
 3. 纯对话/独白无视觉变化 → shouldDraw:false
 4. Tag 遵循 Danbooru 英文标准，可结合自然语言精准补强微妙语感
 
+══ 多节拍分镜拆分准则（严禁偷懒只出1张）══
+- 若当前消息包含多个动作阶段、空间转移、互动升级或拍照围观等不同视觉节拍，必须拆分为 2~3 个独立 segment 分镜（分别设置各自的 anchor.text 与构图，严禁把全部剧情硬塞进单张图！）：
+  · Segment 1（动作起点/前奏中景）：定位在动作起始处，建立主体互动中景
+  · Segment 2（高潮峰值/局部特写）：定位在关键视觉接触/射精/表情爆发处，特写或近景
+  · Segment 3（事后余韵/视角切换）：定位在拍照记录/旁观围观/瘫软反应处，切换机位或主角
+- 每个 segment 必须有独立的 anchor.text（精确定位正文不同段落）、独立的 scene 与景别！
+
+══ 单图焦点与防串色铁律（画面精准度核心，严禁多角色大杂烩）══
+- 单张图的 characters 数组严格限制 1~2 个核心焦点角色（严禁把全场 3~4 人全塞入同一张图！）：
+  · 单人特写/近景：characters 仅限 1 人（scene 必须写 1girl 或 1boy，绝不允许在 close-up 里塞 3~4 个人的 tags，否则必串色画崩！）
+  · 双人交互/体位：characters 仅限 2 个直接肢体接触的核心主体（如 1boy 1girl），严禁塞入旁观第三者！
+  · 旁观/次要角色处理：旁观者（如在旁边拿手机拍照的苏溪、围观路人）严禁放入当前画面的 characters 数组！仅在 scene 中以环境词略提（如 0.6::onlooker in background::），或单独为该旁观者开立下一个独立 segment 分镜（视角切换）！
+- 人数匹配：scene 中的人数（1girl / 1boy 1girl）必须与当前 segment 的 characters 数组严格对应一致！
+
 ══ 核心总则（先画对 → 再画稳 → 后画美）══
 - 画对（元素准确）：关键人物、核心动作、穿着状态、场景道具全部到位，不遗漏不偷懒
 - 画稳（四级锚点流转）：
@@ -55,7 +69,7 @@
 ══ 字段规范 ══
 
 **scene**（→ base_caption，全场共享）
-- 顺序：分级(nsfw/sfw) → 主题(exhibitionism, love_confession等) → [一句话英文全局叙事(概括动态/关系/氛围)] → 关系(hetero/yuri/solo) → 人数(1boy 1girl) → 场景环境(室内外+地点+景物细节) → 光影效果 → 全局镜头与景别
+- 顺序：分级(nsfw/sfw) → 主题(exhibitionism, love_confession等) → [一句话英文全局叙事(概括动态/关系/氛围)] → 关系(hetero/yuri/solo) → 人数(1boy 1girl / 1girl) → 场景环境(室内外+地点+景物细节) → 光影效果 → 全局镜头与景别
 - 权重：数字权重 n::tag::（1.1~2.0 强调 / 0.1~0.9 弱化），{tag}=1.05，{{tag}}=1.1
 - 模版引用：命中 payload.lorebook 模板时直接引用；多变体条目智能挑选最贴合当前剧情的 1 个子变体；多角色条目自动映射到各角色 action
 
@@ -82,20 +96,47 @@
 ══ 输出示例 ══
 {
   "shouldDraw": true,
-  "reason": "暗巷中辣妹援交后收钱抽烟的视觉峰值",
-  "segments": [{
-    "label": "暗巷烟雾",
-    "anchor": {"text": "千花靠在涂鸦砖墙上数着刚拿到手的钞票，优雅地吐出一口青烟"},
-    "scene": "nsfw, after_sex, 1girl, solo, a gyaru girl leaning back against a graffiti-covered brick wall in a dark alley at night, cold blue neon cutting dramatic shadows, outdoors, dark_alley, brick_wall, graffiti, 0.6::utility_pole, trash::, cigarette_smoke, night, cowboy_shot, low-angle, from_side, depth_of_field, 0.7::blue_neon_lighting, sidelighting::, dramatic_shadow",
-    "characters": [{
-      "name": "Fujiwara Chika (Kaguya-sama wa Kokurasetai)",
-      "base": "girl, japanese, delicate_face, adolescent, long_hair, 1.2::pink_hair::, black_hair_bow, blue_eyes, large_breasts, gyaru, fair_skin",
-      "outfit": "white_serafuku, see-through_shirt, white_sailor_collar, pink_neckerchief, short_sleeves, 0.6::underwear_visible_through_clothes, pink_lace_bra::, transparent_skirt, pleated_micro_skirt, -2::panties::, exposed_pussy, golden_bracelet",
-      "action": "in_centers, standing, leaning_back, against_wall, one_leg_bent, 1.3::left_hand, holding_cigarette, smoking::, 1.3::right_hand, holding_money::, looking_to_the_side, seductive_smile, half-closed_eyes, blush, parted_lips, a languid satisfied smile with smoke slowly curling from her lips, cum_on_lips, cum_drip, glistening_skin, steaming_body, sweat",
-      "center": "C3",
-      "uc": "feet, shoes, socks, pantyhose, flat_chest, short_hair, boy, multiple_girls, full_body, looking_at_viewer"
-    }]
-  }]
+  "reason": "暗巷中辣妹援交后收钱与抽烟的多节拍分镜",
+  "segments": [
+    {
+      "label": "收钱交易",
+      "anchor": {"text": "千花靠在涂鸦砖墙上数着刚拿到手的钞票"},
+      "scene": "nsfw, 1boy, 1girl, dark_alley, brick_wall, graffiti, night, cowboy_shot, low-angle, from_side, depth_of_field, 0.7::blue_neon_lighting::, dramatic_shadow",
+      "characters": [
+        {
+          "name": "Fujiwara Chika (Kaguya-sama wa Kokurasetai)",
+          "base": "girl, japanese, delicate_face, adolescent, long_hair, 1.2::pink_hair::, black_hair_bow, blue_eyes, large_breasts, gyaru, fair_skin",
+          "outfit": "white_serafuku, see-through_shirt, white_sailor_collar, pink_neckerchief, pleated_micro_skirt",
+          "action": "in_centers, standing, leaning_back, against_wall, 1.3::holding_money::, seductive_smile, looking_at_viewer, blush",
+          "center": "D3",
+          "uc": "feet, shoes, socks, flat_chest, short_hair, boy"
+        },
+        {
+          "name": "faceless male",
+          "base": "boy, japanese, mature_female, short_hair, black_hair, dark_eyes, slender",
+          "outfit": "business_suit, dark_jacket",
+          "action": "in_centers, standing, from_behind, faceless_male, giving_money, looking_at_partner",
+          "center": "B3",
+          "uc": "feet, shoes, girl"
+        }
+      ]
+    },
+    {
+      "label": "吐烟余韵",
+      "anchor": {"text": "优雅地吐出一口青烟，眼神里带着满足与疲惫"},
+      "scene": "nsfw, 1girl, solo, dark_alley, brick_wall, cigarette_smoke, night, close-up, front_view, depth_of_field, rim_lighting, soft_light",
+      "characters": [
+        {
+          "name": "Fujiwara Chika (Kaguya-sama wa Kokurasetai)",
+          "base": "girl, japanese, delicate_face, adolescent, long_hair, 1.2::pink_hair::, black_hair_bow, blue_eyes, large_breasts, gyaru, fair_skin",
+          "outfit": "white_serafuku, see-through_shirt, white_sailor_collar, open_collar, disheveled_clothes",
+          "action": "in_centers, smoking, cigarette_in_mouth, exhaling_smoke, half-closed_eyes, parted_lips, blush, sweat, satisfied_smile",
+          "center": "C3",
+          "uc": "feet, shoes, legs, lower_body, flat_chest, boy, multiple_girls"
+        }
+      ]
+    }
+  ]
 }`;
 
     const CONSISTENT_SYSTEM_PROMPT_V23 = `你是 NAI V4 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出 JSON。
@@ -5236,7 +5277,7 @@ SCHEMA:
 
     function getEnhancedContextSystemPrompt(ec) {
         const ecPrompts = {
-            v9: "【8.30 前情增强思维链分析指令 (V9)】\n在处理 payload 输出 JSON 前，你必须在脑内或思考区（Thinking Process）严格执行以下五步全息推演：\n\n①【分镜高光甄别】：\n- 扫描当前剧情，识别最具视觉冲击力的瞬间（动作突变、情绪高潮、空间转换、关键性互动、或正文提到的照片/截图等视觉媒介）。\n- 若纯对话/独白且无环境与肢体视觉变化，直接判定 shouldDraw: false。\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族、日系动漫面相、发色瞳色、体型体态）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、背位 from_behind）；\n- 为画面智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与负面词隔离（关键必查）】：\n- 景别裁切：特写移除颈以下；近景移除腰以下；中景/牛仔镜移除膝以下脚部并在 Char uc 写入 feet, shoes；下半身 focus 移除面部并在 Char uc 写入 face, eyes；\n- 朝向裁切：背位 from_behind 移除正面表情与瞳色，Char uc 写入 face, eyes, front_view；\n- 冲突下放：全局排斥写 scene，单人排斥只写该角色的 uc，严禁将个人负面全局广播导致穿衣/不同发色的角色被误伤。\n\n⑤【视角与多角色映射】：\n- 确定视角模式（POV 主观视角：摄像机角色不入 characters，可见肢体写入 scene；第三人称：角色全部入 characters，使用 source#/target# 明确施受关系）。\n\n完成上述推演后，严格输出符合 outputSchema 的合法 JSON，禁止输出任何额外文字。",
+            v9: "【8.30 前情增强思维链分析指令 (V9)】\n在处理 payload 输出 JSON 前，你必须在脑内或思考区（Thinking Process）严格执行以下五步全息推演：\n\n①【分镜高光与多节拍拆分】：\n- 扫描当前剧情，识别最具视觉冲击力的瞬间。若当前文本包含多个关键阶段（如：动作前奏、核心接触特写、事后拍照围观/情绪反应），必须拆分为 2~3 个独立 segment 分镜分别输出，各自绑定正文不同的 anchor.text 原文！\n- 若纯对话/独白且无环境与肢体视觉变化，直接判定 shouldDraw: false。\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族、日系动漫面相、发色瞳色、体型体态）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、背位 from_behind）；\n- 为画面智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与负面词隔离（关键必查）】：\n- 景别裁切：特写移除颈以下；近景移除腰以下；中景/牛仔镜移除膝以下脚部并在 Char uc 写入 feet, shoes；下半身 focus 移除面部并在 Char uc 写入 face, eyes；\n- 朝向裁切：背位 from_behind 移除正面表情与瞳色，Char uc 写入 face, eyes, front_view；\n- 冲突下放：全局排斥写 scene，单人排斥只写该角色的 uc，严禁将个人负面全局广播导致穿衣/不同发色的角色被误伤。\n\n⑤【单图焦点与视角映射（防串色画崩核心）】：\n- 单个分镜的 characters 数组严格限制 1~2 个直接接触的核心角色（特写 1 人，双人互动 2 人）。严禁把全场 3~4 人全塞入单张图！旁观者（如在旁拿手机拍照的苏溪）严禁放入 characters 数组，只在 scene 环境中略提或单独开立下一个分镜！\n- 确定视角模式（POV 主观视角：摄像机角色不入 characters，可见肢体写入 scene；第三人称：角色入 characters，使用 source#/target# 明确施受关系）。\n\n完成上述推演后，严格输出符合 outputSchema 的合法 JSON，禁止输出任何额外文字。",
             v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
             v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
             v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。\n2. 当前帧定位：姿势和动作以 currentMessage 为准。\n3. 情绪独立：每个角色的情绪状态单独判断。\n4. 空间感：center 坐标反映实际位置关系。\n5. 时间帧：只 tag 此刻正在发生的事。\n6. 动作粒度：区分瞬间动作和持续动作。\n7. 动作方向：把 tag 放在正确的角色上。\n8. 忠实程度：按原文程度选 tag。",

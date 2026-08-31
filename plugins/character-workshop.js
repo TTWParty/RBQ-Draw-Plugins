@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.2';
+    const VERSION = '2.0.3';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1024,15 +1024,8 @@
                                     <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="sitting, facing_another, looking_at_partner..." value="${esc(slot.action || '')}" />
                                 </div>
                                 <div style="grid-column:1/-1">
-                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                                        <label style="font-size:10.5px;font-weight:bold;color:#f87171">角色独立 UC (防穿模):</label>
-                                        <div style="display:flex;gap:3px">
-                                            <button class="cw-chip cw-quick-uc" data-idx="${i}" data-uc="penis, futanari, testicles">♀防肉棒</button>
-                                            <button class="cw-chip cw-quick-uc" data-idx="${i}" data-uc="feet, shoes, legs, lower_body">防漏脚</button>
-                                            <button class="cw-chip cw-quick-uc" data-idx="${i}" data-uc="face, eyes, head">防长头</button>
-                                        </div>
-                                    </div>
-                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="penis, futanari, feet, shoes..." value="${esc(slot.uc || '')}" />
+                                    <label style="font-size:10.5px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC):</label>
+                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词，如 penis, futanari..." value="${esc(slot.uc || '')}" />
                                 </div>
                             </div>
                         </div>`;
@@ -1204,12 +1197,6 @@
         // Slot UC
         container.querySelectorAll('.cw-slot-uc').forEach(inp => inp.addEventListener('input', () => {
             const i = +inp.dataset.idx; if (comp.slots[i]) { comp.slots[i].uc = inp.value; wsSave(); updatePreview(container); }
-        }));
-
-        // Quick UC chips
-        container.querySelectorAll('.cw-quick-uc').forEach(b => b.addEventListener('click', () => {
-            const i = +b.dataset.idx;
-            if (comp.slots[i]) { comp.slots[i].uc = toggleTag(comp.slots[i].uc, b.dataset.uc); wsSave(); refresh('composer'); }
         }));
 
         // Pick action from worldbook

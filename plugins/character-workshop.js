@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.6';
+    const VERSION = '2.0.7';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -354,9 +354,229 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Image Viewer & Popup Modal
+    //  Portrait Test Modes, Suite Generator & Tabbed Gallery
     // ══════════════════════════════════════════════════════════
-    function showGeneratedImageModal(title, prompt, result, onSetAvatar = null) {
+    const TEST_PRESETS = {
+        portrait: {
+            title: '肖像特写',
+            desc: '上半身特写，检验发色、瞳色、五官细节与发型',
+            tags: '1girl, solo, looking_at_viewer, upper_body, portrait, simple_background, best_quality, masterpiece'
+        },
+        fullbody: {
+            title: '全身立绘',
+            desc: '站立全景，检验完整服装、鞋袜搭配与身材比例',
+            tags: '1girl, solo, looking_at_viewer, full_body, standing, simple_background, best_quality, masterpiece'
+        },
+        dynamic: {
+            title: '动态姿态',
+            desc: '微表情与动作姿势，检验角色生动的神态与衣服摆动',
+            tags: '1girl, solo, slight_smile, dynamic_pose, upper_body, looking_at_viewer, expressive, simple_background, best_quality, masterpiece'
+        }
+    };
+
+    function openPortraitTestModal(name, baseTags, outfitTags, onSetAvatar = null, triggerBtn = null) {
+        const cleanName = (name || 'Character').trim();
+        const existing = document.getElementById('cw-test-mode-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'cw-test-mode-modal';
+        modal.className = 'cw-modal-mask';
+        modal.style.zIndex = '100000060';
+        modal.innerHTML = `
+            <div class="cw-modal" style="width:480px;max-width:95vw">
+                <div class="cw-modal-hd">
+                    <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-palette"></i> 选择立绘测试视角 · ${esc(cleanName)}</strong>
+                    <button class="cw-btn sm" id="cw-test-mode-close">✕</button>
+                </div>
+                <div class="cw-modal-bd" style="gap:10px">
+                    <div style="font-size:12px;opacity:.75;margin-bottom:2px">请选择本次测试生成的视角模式或一键全景套图：</div>
+                    
+                    <button class="cw-btn cw-test-opt" data-mode="portrait" type="button" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px">
+                        <div>
+                            <div style="font-weight:bold;color:#38bdf8;font-size:13px"><i class="fa-solid fa-user"></i> 👤 肖像特写 (Portrait)</div>
+                            <div style="font-size:11px;opacity:.7;margin-top:2px">上半身特写，检验发色、瞳色、五官细节与发型</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right" style="opacity:.4"></i>
+                    </button>
+
+                    <button class="cw-btn cw-test-opt" data-mode="fullbody" type="button" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px">
+                        <div>
+                            <div style="font-weight:bold;color:#f472b6;font-size:13px"><i class="fa-solid fa-person-dress"></i> 👗 全身立绘 (Full Body)</div>
+                            <div style="font-size:11px;opacity:.7;margin-top:2px">站立全景，检验完整服装、鞋袜搭配与身材比例</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right" style="opacity:.4"></i>
+                    </button>
+
+                    <button class="cw-btn cw-test-opt" data-mode="dynamic" type="button" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px">
+                        <div>
+                            <div style="font-weight:bold;color:#4ade80;font-size:13px"><i class="fa-solid fa-person-running"></i> 💃 动态姿态 (Dynamic Pose)</div>
+                            <div style="font-size:11px;opacity:.7;margin-top:2px">微表情与动作姿势，检验角色生动的神态与衣服摆动</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right" style="opacity:.4"></i>
+                    </button>
+
+                    <button class="cw-btn cw-test-opt" data-mode="all" type="button" style="padding:11px 14px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:linear-gradient(135deg, rgba(2,132,199,.25), rgba(56,189,248,.15));border:1px solid rgba(56,189,248,.4);border-radius:8px">
+                        <div>
+                            <div style="font-weight:bold;color:#fff;font-size:13px"><i class="fa-solid fa-wand-magic-sparkles" style="color:#38bdf8"></i> 📦 一键生成全景套图 (3张)</div>
+                            <div style="font-size:11px;opacity:.8;margin-top:2px">依次生成【特写 + 全身 + 动态】3张分镜，在弹窗画廊中对比切换与挑选头像</div>
+                        </div>
+                        <i class="fa-solid fa-angles-right" style="color:#38bdf8"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        modal.querySelector('#cw-test-mode-close')?.addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+        modal.querySelectorAll('.cw-test-opt').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                modal.remove();
+                executePortraitTest(cleanName, baseTags, outfitTags, mode, onSetAvatar, triggerBtn);
+            });
+        });
+
+        document.body.appendChild(modal);
+    }
+
+    async function executePortraitTest(cleanName, baseTags, outfitTags, mode = 'portrait', onSetAvatar = null, triggerBtn = null) {
+        const origHtml = triggerBtn ? triggerBtn.innerHTML : '';
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 准备生图...';
+        }
+
+        try {
+            const modesToRun = mode === 'all' ? ['portrait', 'fullbody', 'dynamic'] : [mode];
+            const results = [];
+
+            for (let i = 0; i < modesToRun.length; i++) {
+                const currentMode = modesToRun[i];
+                const preset = TEST_PRESETS[currentMode] || TEST_PRESETS.portrait;
+
+                if (triggerBtn) {
+                    triggerBtn.innerHTML = mode === 'all'
+                        ? `<i class="fa-solid fa-spinner fa-spin"></i> [${i + 1}/3] ${preset.title}...`
+                        : `<i class="fa-solid fa-spinner fa-spin"></i> 生成中...`;
+                }
+
+                toastr.info(`正在为「${cleanName}」生成 ${preset.title}...`, PLUGIN_NAME);
+
+                const prompt = [cleanName, baseTags, outfitTags, preset.tags].filter(Boolean).join(', ');
+
+                const result = await RBQ.api.generateImage(prompt, 'cw-portrait-test', {}, (progress) => {
+                    if (triggerBtn && typeof progress === 'string') {
+                        const prefix = mode === 'all' ? `[${i + 1}/3] ` : '';
+                        triggerBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${prefix}${progress.slice(0, 10)}...`;
+                    }
+                });
+
+                if (result && result.url) {
+                    results.push({
+                        title: preset.title,
+                        modeKey: currentMode,
+                        url: result.url,
+                        prompt
+                    });
+                }
+            }
+
+            if (results.length === 0) {
+                throw new Error('生图未返回有效图片地址');
+            }
+
+            showPortraitTestGalleryModal(cleanName, results, onSetAvatar);
+            toastr.success(`「${cleanName}」测试生图完成！共生成 ${results.length} 张图片`, PLUGIN_NAME);
+        } catch (err) {
+            console.error('[Character Workshop] 角色测试生图失败:', err);
+            toastr.error('角色测试生图失败: ' + (err.message || String(err)), PLUGIN_NAME);
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = origHtml;
+            }
+        }
+    }
+
+    function showPortraitTestGalleryModal(cleanName, results, onSetAvatar = null) {
+        if (!results || results.length === 0) return;
+
+        let activeIndex = 0;
+        const hasMultiple = results.length > 1;
+
+        const existing = document.getElementById('cw-image-viewer-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'cw-image-viewer-modal';
+        modal.className = 'cw-modal-mask';
+        modal.style.zIndex = '100000070';
+
+        function renderGallery() {
+            const currentItem = results[activeIndex] || results[0];
+            const tabsHtml = hasMultiple ? `
+                <div class="cw-tabs" style="padding:4px 8px;margin:0 14px;overflow-x:auto;background:rgba(0,0,0,.35)">
+                    ${results.map((it, idx) => `
+                        <button class="cw-tab ${idx === activeIndex ? 'on' : ''} cw-gallery-tab" data-idx="${idx}" type="button">
+                            ${esc(it.title)}
+                        </button>
+                    `).join('')}
+                </div>
+            ` : '';
+
+            modal.innerHTML = `
+                <div class="cw-modal" style="width:680px;max-width:96vw">
+                    <div class="cw-modal-hd">
+                        <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-palette"></i> 角色立绘测试画廊 · ${esc(cleanName)} ${hasMultiple ? `(${activeIndex + 1}/${results.length})` : ''}</strong>
+                        <button class="cw-btn sm" id="cw-gal-close">✕</button>
+                    </div>
+                    ${tabsHtml}
+                    <div class="cw-modal-bd" style="align-items:center;gap:10px">
+                        <div style="width:100%;max-height:55vh;min-height:220px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
+                            <img src="${esc(currentItem.url)}" style="max-width:100%;max-height:55vh;object-fit:contain;display:block" alt="Test Result" />
+                        </div>
+                        <div style="width:100%;background:rgba(0,0,0,0.35);padding:8px 12px;border-radius:6px;font-size:11px;color:rgba(255,255,255,0.7);max-height:75px;overflow-y:auto;word-break:break-all">
+                            <strong style="color:#38bdf8">【${esc(currentItem.title)}】测试提示词：</strong> ${esc(currentItem.prompt)}
+                        </div>
+                    </div>
+                    <div class="cw-modal-ft" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+                        <a href="${esc(currentItem.url)}" target="_blank" class="cw-btn sm cy" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> 查看原图</a>
+                        ${onSetAvatar ? `<button class="cw-btn sm gn" id="cw-gal-set-avatar"><i class="fa-solid fa-user-check"></i> 设为角色头像</button>` : ''}
+                        <button class="cw-btn sm" id="cw-gal-copy-prompt"><i class="fa-regular fa-copy"></i> 复制提示词</button>
+                        <button class="cw-btn sm pri" id="cw-gal-done">完成</button>
+                    </div>
+                </div>
+            `;
+
+            modal.querySelector('#cw-gal-close')?.addEventListener('click', () => modal.remove());
+            modal.querySelector('#cw-gal-done')?.addEventListener('click', () => modal.remove());
+            modal.querySelector('#cw-gal-copy-prompt')?.addEventListener('click', () => {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(currentItem.prompt).then(() => toastr.success('已复制提示词', PLUGIN_NAME));
+                }
+            });
+            if (onSetAvatar) {
+                modal.querySelector('#cw-gal-set-avatar')?.addEventListener('click', () => {
+                    onSetAvatar(currentItem.url);
+                    toastr.success(`已将【${currentItem.title}】设为角色头像！`, PLUGIN_NAME);
+                });
+            }
+            modal.querySelectorAll('.cw-gallery-tab').forEach(b => {
+                b.addEventListener('click', () => {
+                    activeIndex = +b.dataset.idx;
+                    renderGallery();
+                });
+            });
+        }
+
+        renderGallery();
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+    }
+
+    function showGeneratedImageModal(title, prompt, result) {
         const url = result?.url || (typeof result === 'string' ? result : null);
         if (!url) {
             toastr.warning('生图未返回有效图片地址', PLUGIN_NAME);
@@ -369,7 +589,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.zIndex = '100000050';
+        modal.style.zIndex = '100000070';
         modal.innerHTML = `
             <div class="cw-modal" style="width:680px;max-width:95vw">
                 <div class="cw-modal-hd">
@@ -386,7 +606,6 @@
                 </div>
                 <div class="cw-modal-ft" style="justify-content:flex-end;gap:8px">
                     <a href="${esc(url)}" target="_blank" class="cw-btn sm cy" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> 查看原图</a>
-                    ${onSetAvatar ? `<button class="cw-btn sm gn" id="cw-img-set-avatar"><i class="fa-solid fa-user-check"></i> 设为角色头像</button>` : ''}
                     <button class="cw-btn sm" id="cw-img-copy-prompt"><i class="fa-regular fa-copy"></i> 复制提示词</button>
                     <button class="cw-btn sm pri" id="cw-img-ok">完成</button>
                 </div>
@@ -400,13 +619,6 @@
                 navigator.clipboard.writeText(prompt).then(() => toastr.success('已复制提示词', PLUGIN_NAME));
             }
         });
-        if (onSetAvatar) {
-            modal.querySelector('#cw-img-set-avatar')?.addEventListener('click', () => {
-                onSetAvatar(url);
-                toastr.success('已设置为角色头像！', PLUGIN_NAME);
-                modal.remove();
-            });
-        }
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
     }
@@ -714,41 +926,22 @@
                 }
             });
 
-            // Test solo portrait with Popup Gallery Modal & Avatar Sync
-            mask.querySelector('#cw-ce-test')?.addEventListener('click', async (ev) => {
+            // Test solo portrait with Perspective Selector Modal & Multi-Tab Gallery
+            mask.querySelector('#cw-ce-test')?.addEventListener('click', (ev) => {
                 const btn = ev.currentTarget;
-                const origHtml = btn.innerHTML;
                 const name = draft.displayName || 'Character';
                 const outfit = draft.wardrobe[activeWIdx]?.outfit || draft.wardrobe[activeWIdx]?.tags || '';
-                const prompt = [draft.baseTags, outfit, 'solo, standing, looking at viewer, simple background, upper body'].filter(Boolean).join(', ');
-
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成立绘...';
-                toastr.info(`正在为「${name}」生成单人立绘测试...`, PLUGIN_NAME);
-
-                try {
-                    const result = await RBQ.api.generateImage(prompt, 'cw-test', {}, (progress) => {
-                        if (typeof progress === 'string') btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 10)}...`;
-                    });
-
-                    if (result && result.url) {
-                        showGeneratedImageModal(`单人立绘测试 · ${name}`, prompt, result, (newAvatarUrl) => {
-                            draft.avatarUrl = newAvatarUrl;
-                            const urlEl = mask.querySelector('#cw-ce-avatar-url');
-                            if (urlEl) urlEl.value = newAvatarUrl;
-                            const ab = mask.querySelector('#cw-ce-avatar-box');
-                            if (ab) ab.innerHTML = `<img src="${esc(newAvatarUrl)}"/>`;
-                        });
-                        toastr.success('立绘生成完毕！', PLUGIN_NAME);
-                    } else {
-                        throw new Error('生图未返回有效图片地址');
-                    }
-                } catch (e) {
-                    toastr.error('生成失败: ' + (e.message || e), PLUGIN_NAME);
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = origHtml;
+                if (!draft.baseTags && !outfit) {
+                    return toastr.warning('请先输入角色的固有外貌或服装 Tags', PLUGIN_NAME);
                 }
+
+                openPortraitTestModal(name, draft.baseTags, outfit, (newAvatarUrl) => {
+                    draft.avatarUrl = newAvatarUrl;
+                    const urlEl = mask.querySelector('#cw-ce-avatar-url');
+                    if (urlEl) urlEl.value = newAvatarUrl;
+                    const ab = mask.querySelector('#cw-ce-avatar-box');
+                    if (ab) ab.innerHTML = `<img src="${esc(newAvatarUrl)}"/>`;
+                }, btn);
             });
 
             // Save — write directly to SDT profiles
@@ -817,7 +1010,8 @@
                                     <span style="font-size:10.5px;color:#ffb86c">👗 当前: <strong>${esc(activeOutfitName)}</strong> <span style="opacity:0.6">(${wCount}套)</span></span>
                                 </div>
                             </div>
-                            <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">
+                            <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px;flex-wrap:wrap">
+                                <button class="cw-btn sm cw-test-dossier-char" data-name="${esc(n)}" title="测试该角色立绘"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试</button>
                                 <button class="cw-btn cy sm cw-send-to-stage" data-name="${esc(n)}" title="将该角色放入空间舞台"><i class="fa-solid fa-chess-board"></i> 放入舞台</button>
                                 <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
                                 <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}"><i class="fa-solid fa-trash"></i></button>
@@ -1238,6 +1432,20 @@
 
         // ── Dossier Events ──
         container.querySelector('#cw-create-char')?.addEventListener('click', () => openCharacterEditor(null, () => refresh('dossier')));
+
+        container.querySelectorAll('.cw-test-dossier-char').forEach(b => b.addEventListener('click', (ev) => {
+            const btn = ev.currentTarget;
+            const charName = b.dataset.name;
+            const p = profiles[charName];
+            if (!p) return;
+            const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
+            const outfit = activeW?.outfit || activeW?.tags || p.currentOutfit || '';
+            openPortraitTestModal(p.displayName || charName, p.baseTags, outfit, (newAvatarUrl) => {
+                p.avatarUrl = newAvatarUrl;
+                saveProfile(charName, p);
+                refresh('dossier');
+            }, btn);
+        }));
 
         container.querySelectorAll('.cw-send-to-stage').forEach(b => b.addEventListener('click', () => {
             const charName = b.dataset.name;

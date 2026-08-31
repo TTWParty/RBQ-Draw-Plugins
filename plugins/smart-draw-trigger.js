@@ -1487,7 +1487,25 @@ Zimage 擅长理解复杂的英文长句和语境。
                     const promptMessages = [
                         {
                             role: 'system',
-                            content: '你是一个专业的 Danbooru/NovelAI 动漫提示词提取专家。请从给定的角色卡和世界书描述中，提取该角色的：\n1. base: 角色固定的基础外貌特征（如 1girl, blonde hair, long hair, blue eyes, large breasts 等特征标签）\n2. outfit: 初始或默认服装设定（如 school uniform, white shirt, pleated skirt 等）\n输出要求：只输出标准英文 tag，用逗号隔开。输出必须为纯 JSON 格式：{"base": "...", "outfit": "..."}，严禁输出任何分析或额外文本。'
+                            content: `你是一个顶级的 Danbooru / NovelAI 动漫外貌提示词提炼专家。
+请深度阅读角色设定与世界书，严格按照【7 维全息外貌公式】提炼角色的固有外貌与初始服装：
+
+1. base（固有外貌 - 跨分镜锁定不变）：
+   请按顺序提炼标准 Danbooru 英文 Tag：
+   ① 性别族裔 (1girl/1boy, japanese/chinese/caucasian, delicate_face)
+   ② 年龄阶段 (adolescent/mature_female/petite/milf)
+   ③ 发型发色 (hair color, hair length, hair style, bangs)
+   ④ 瞳色眼型 (eye color, tareme/tsurime)
+   ⑤ 身材胸围 (flat_chest/small_breasts/medium_breasts/large_breasts, slender/curvy)
+   ⑥ 肤色标记 (pale_skin/fair_skin/tan, mole_under_eye/freckles 等)
+   ⑦ 种族特征 (cat_ears/pointy_ears/demon_horns 等幻想特征，若有)
+
+2. outfit（初始/默认服装）：
+   提炼角色的默认衣着部件 (如 school_uniform, sailor_suit, pleated_skirt, thighhighs 等)。
+
+输出要求：
+- 只输出标准 Danbooru 英文 tag，用逗号隔开。
+- 必须为纯 JSON 格式：{"base": "tag1, tag2...", "outfit": "tag1, tag2..."}，严禁任何额外分析。`
                         },
                         {
                             role: 'user',
@@ -7501,6 +7519,10 @@ SCHEMA:
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);
+    };
+
+    RBQ.api.importCharacterFromCurrentCard = () => {
+        return importCharacterFromCurrentCard();
     };
 
     waitForPanel();

@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.5';
+    const VERSION = '2.0.6';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -671,23 +671,47 @@
                 }, 'outfit');
             });
 
-            // Import from SillyTavern character card
-            mask.querySelector('#cw-ce-import-card')?.addEventListener('click', () => {
+            // Import from SillyTavern character card (Full 7D extraction)
+            mask.querySelector('#cw-ce-import-card')?.addEventListener('click', async (ev) => {
+                const btn = ev.currentTarget;
+                const origHtml = btn.innerHTML;
                 try {
-                    const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
-                        ? window.RBQ.api.getContext()
-                        : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在提取...';
                     
-                    const cid = ctx?.characterId;
-                    const cd = ctx?.characters?.[cid];
-                    if (!cd) return toastr.warning('未检测到当前角色卡', PLUGIN_NAME);
-                    draft.displayName = cd.name || draft.displayName;
-                    draft.avatarUrl = cd.avatar ? '/characters/' + cd.avatar : draft.avatarUrl;
-                    const nameEl = mask.querySelector('#cw-ce-name');
-                    if (nameEl && !nameEl.disabled) nameEl.value = draft.displayName;
-                    toastr.success('已导入「' + draft.displayName + '」', PLUGIN_NAME);
+                    if (typeof RBQ?.api?.importCharacterFromCurrentCard === 'function') {
+                        await RBQ.api.importCharacterFromCurrentCard();
+                        const ctx = window.RBQ?.api?.getContext?.() || window.SillyTavern?.getContext?.();
+                        const cid = ctx?.characterId;
+                        const cd = ctx?.characters?.[cid];
+                        const charName = cd?.name;
+                        if (charName) {
+                            const updated = getProfile(charName);
+                            if (updated) {
+                                draft.displayName = updated.displayName || charName;
+                                draft.baseTags = updated.baseTags || draft.baseTags;
+                                draft.currentOutfit = updated.currentOutfit || draft.currentOutfit;
+                                draft.currentOutfitId = updated.currentOutfitId || draft.currentOutfitId;
+                                draft.avatarUrl = updated.avatarUrl || draft.avatarUrl;
+                                draft.wardrobe = JSON.parse(JSON.stringify(updated.wardrobe || draft.wardrobe));
+                            }
+                        }
+                    } else {
+                        const ctx = window.RBQ?.api?.getContext?.() || window.SillyTavern?.getContext?.();
+                        const cid = ctx?.characterId;
+                        const cd = ctx?.characters?.[cid];
+                        if (!cd) return toastr.warning('未检测到当前角色卡', PLUGIN_NAME);
+                        draft.displayName = cd.name || draft.displayName;
+                        draft.avatarUrl = cd.avatar ? '/characters/' + cd.avatar : draft.avatarUrl;
+                        toastr.success('已导入「' + draft.displayName + '」基础信息', PLUGIN_NAME);
+                    }
                     render();
-                } catch (e) { toastr.error('导入失败: ' + e.message, PLUGIN_NAME); }
+                } catch (e) {
+                    toastr.error('导入失败: ' + e.message, PLUGIN_NAME);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
             });
 
             // Test solo portrait with Popup Gallery Modal & Avatar Sync

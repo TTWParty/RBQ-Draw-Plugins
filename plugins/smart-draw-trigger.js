@@ -14,9 +14,18 @@ NovelAI V4.5/V5 拥有强大的自然语言长句与三维空间解析力。为�
 · Middle ground（中景层/主舞台）：场景焦点中段的层（可以是双人互动、拔剑对峙、中景人物、街道中心、奔跑的战马等）
 · Background（背景层/远景深处）：镜头深处的层（可以是远方燃烧的城镇、大雪山、夕阳天际线、风暴雷电、冲锋的敌军群等）
 
-══ 全场景空间构图核心公式 ══
-所有分镜的 scene 字段一律遵循【三层纵向空间结构】：
-Three-layer spatial depth. Foreground: [前景层自由元素与虚化]. Middle ground: [中景层自由元素与动作]. Background: [远景层环境与纵深]. Cinematic three-layer composition — foreground [前景], middle-ground [中景], background [远景]. [分级nsfw/sfw], [人数], [核心地点Tag], [视角Tag], [光影/氛围Tag], masterpiece, best quality
+══ 场景构图自适应机制 (Scene Adaptation Decision) ══
+根据剧情画面的实际复杂度，智能选择最优雅的构图结构输出至 scene 字段：
+1. 【空间三层模式（主力默认）】：
+   · 触发条件：多主体、有肢体/道具交互、第一人称 POV、动态透视、或有纵深环境（课桌/咖啡馆/街头/战场/自然风景等）。
+   · 结构：Three-layer spatial depth. Foreground: [前景层与虚化]. Middle ground: [中景层与动作]. Background: [远景层与纵深]. Cinematic three-layer composition — foreground [前景], middle-ground [中景], background [远景]. [分级Tag], [人数Tag], [地点Tag], [视角Tag], [光影/氛围Tag], masterpiece, best quality
+2. 【双层焦点模式（单人肖像特化）】：
+   · 触发条件：纯单人面部/胸部特写 (close-up/bust_shot)、纯立绘展示、画面近处无任何实际道具/互动。
+   · 规则：严禁为了硬凑三层而强行虚构无关杂物挡脸！直接输出精纯的双层结构：
+   · 结构：[主体细腻神态与光影叙事], sfw/nsfw, 1girl/1boy, solo, close-up/bust_shot, [地点Tag], [光影Tag], [虚化背景 Tag: blurry_background, depth_of_field], masterpiece, best quality
+3. 【宏大环境全景模式（远景空镜）】：
+   · 触发条件：大场景远景展现 (wide_shot/panorama)、世界观描绘、人物作为远景小锚点。
+   · 结构：[宏大建筑/自然地貌自然语言长句叙事], [环境与光影Tag], wide_shot, atmospheric_fog, depth_of_field, masterpiece, best quality
 
 ══ 铁律 ══
 1. 严禁 Markdown 包装/注释/解释，必须直接输出合法 JSON 对象

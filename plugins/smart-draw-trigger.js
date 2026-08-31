@@ -1216,9 +1216,10 @@ Zimage 擅长理解复杂的英文长句和语境。
     function renderCharacterProfileList() {
         const profiles = getCharacterProfiles();
         const entries = Object.entries(profiles);
-        if (!entries.length) return '<span style="opacity:.6; font-size: 12px;">当前聊天尚未记忆任何角色（生图时会自动学习）</span>';
+        const isEmpty = !entries.length;
 
         return `
+            ${isEmpty ? '<span style="opacity:.6; font-size: 12px; display: block; margin-bottom: 8px;">当前聊天尚未记忆任何角色（生图时会自动学习）</span>' : `
             <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
                 ${entries.map(([key, profile]) => {
                     const rawName = (profile.displayName || key || '').trim();
@@ -1234,7 +1235,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                         </div>
                     `;
                 }).join('')}
-            </div>
+            </div>`
+            }
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%;">
                 <button id="rbq-sdt-goto-workshop-btn" class="menu_button" type="button" style="background: linear-gradient(135deg, rgba(2,132,199,0.25), rgba(56,189,248,0.15)) !important; border: 1px solid rgba(56,189,248,0.6) !important; color: #38bdf8 !important; font-weight: bold !important; padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important; max-width: 100% !important;">
                     <i class="fa-solid fa-palette"></i> 前往「角色工坊」深度定制与管理角色 (${entries.length} 位) ➔

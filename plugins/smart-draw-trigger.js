@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 25;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 26;
     const HYBRID_NL_SYSTEM_PROMPT = `你是专为 NovelAI V4.5/V5 多角色生图引擎打造的「全息空间混合分镜提示词引擎」。读剧情→拆分镜→输出合法 JSON。
 
 ══ 核心机制：Z轴立体空间坐标容器 (Three-layer spatial depth) ══
@@ -835,7 +835,8 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        v25_hybrid: { label: 'V25-全息自然语言混合版 (推荐/NAI V4.5/V5首选)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        v26_hybrid: { label: 'V26-全息空间自适应版 (推荐/NAI5首选)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        v25_hybrid: { label: 'V25-全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
         consistent: { label: 'V24-8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
         v24_3d: { label: 'V24-3D写实电影版', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
         v23: { label: 'V23-国籍面相版', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
@@ -846,7 +847,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v25_hybrid';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v26_hybrid';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
     const DEFAULT_JAILBREAK_PROMPT = [
@@ -1003,10 +1004,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
-            // If user is on default consistent preset or hasn't customized away, auto-upgrade prompt to latest V25 Hybrid
-            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
+            // Auto-upgrade prompt to latest V26 Hybrid
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
                 store.systemPrompt = HYBRID_NL_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'v25_hybrid';
+                store.systemPromptPreset = 'v26_hybrid';
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -1447,7 +1448,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -4535,7 +4536,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (['v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -6792,7 +6793,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="v25_hybrid">V25-全息空间混合版 (推荐/NAI5首选)</option><option value="consistent">V24-8.30全能规范版 (经典)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="v26_hybrid">V26-全息空间自适应版 (推荐/NAI5首选)</option><option value="v25_hybrid">V25-全息自然语言混合版 (历史)</option><option value="consistent">V24-8.30全能规范版 (经典)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.0';
+    const VERSION = '2.0.1';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -59,16 +59,23 @@
     // ══════════════════════════════════════════════════════════
     function getChatKey() {
         try {
-            const ctx = RBQ.api.getContext();
-            if (ctx?.chatId) return ctx.chatId;
-            if (typeof ctx?.getCurrentChatId === 'function') {
-                const id = ctx.getCurrentChatId();
-                if (id) return id;
+            if (typeof window.getCurrentChatId === 'function') {
+                const id = window.getCurrentChatId();
+                if (id) return String(id);
             }
-            if (ctx?.characterId) return 'char-' + ctx.characterId;
-            const el = document.querySelector('[chat_id]');
-            if (el) return el.getAttribute('chat_id');
-        } catch (e) { /* fallthrough */ }
+        } catch (_e) {}
+        try {
+            const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
+                ? window.RBQ.api.getContext()
+                : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
+            if (ctx?.chatId) return String(ctx.chatId);
+            if (ctx?.characterId !== undefined) return `char-${ctx.characterId}`;
+        } catch (_e) {}
+        try {
+            const chatEl = document.querySelector('#chat');
+            const chatFile = chatEl?.closest?.('[chat_id]')?.getAttribute('chat_id') || chatEl?.closest?.('[data-chat-file]')?.dataset?.chatFile;
+            if (chatFile) return String(chatFile);
+        } catch (_e) {}
         return '_global';
     }
 
@@ -88,7 +95,21 @@
     function getAllProfiles() {
         const sdt = getSdtStore();
         const ck = getChatKey();
-        return (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
+        const currentChatProfiles = (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
+        
+        // If current chat is empty, fallback to scanning other chat profiles
+        if (Object.keys(currentChatProfiles).length === 0 && sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
+            const fallback = {};
+            for (const chatDict of Object.values(sdt.characterProfiles)) {
+                if (chatDict && typeof chatDict === 'object') {
+                    for (const [k, v] of Object.entries(chatDict)) {
+                        if (v && typeof v === 'object' && !fallback[k]) fallback[k] = v;
+                    }
+                }
+            }
+            return fallback;
+        }
+        return currentChatProfiles;
     }
 
     function getProfile(name) {
@@ -117,9 +138,9 @@
         if (!profile) return '';
         if (outfitId && Array.isArray(profile.wardrobe)) {
             const item = profile.wardrobe.find(w => w.id === outfitId);
-            if (item) return item.outfit || '';
+            if (item) return item.outfit || item.tags || '';
         }
-        return profile.currentOutfit || (profile.wardrobe?.[0]?.outfit) || '';
+        return profile.currentOutfit || (profile.wardrobe?.[0]?.outfit) || (profile.wardrobe?.[0]?.tags) || '';
     }
 
     // ══════════════════════════════════════════════════════════
@@ -133,41 +154,147 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Worldbook Access (from SDT's lorebookStore)
+    //  Comprehensive Worldbook / Lorebook Retrieval
     // ══════════════════════════════════════════════════════════
     function getWorldbookEntries() {
         const entries = [];
+        const seenKeys = new Set();
+
+        function addEntry(e, sourceName = '世界书') {
+            if (!e) return;
+            if (e.enabled === false || e.disabled === true || e.disable === true) return;
+            const content = String(e.content || e.tags || '').trim();
+            if (!content || /^[-#\s\n\r*`_~]+$/.test(content)) return;
+
+            let comment = String(e.comment || e.title || '').trim();
+            const rawKeys = Array.isArray(e.key) ? e.key : (Array.isArray(e.keys) ? e.keys : (typeof e.key === 'string' ? e.key.split(',') : (typeof e.keys === 'string' ? e.keys.split(',') : [])));
+            const cleanKeys = rawKeys.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean);
+            if (!comment) comment = cleanKeys[0] || '未命名词条';
+
+            const dedupKey = `${sourceName}:::${comment}:::${content.slice(0, 50)}`;
+            if (seenKeys.has(dedupKey)) return;
+            seenKeys.add(dedupKey);
+
+            entries.push({
+                id: e.id || e.uid || uid('wb'),
+                comment,
+                content,
+                keys: cleanKeys,
+                source: sourceName,
+                category: classifyWorldbookEntry(comment, content, cleanKeys)
+            });
+        }
+
+        function processSource(src, fallbackName = '世界书') {
+            if (!src || src.enabled === false) return;
+            const name = String(src.name || fallbackName);
+
+            if (Array.isArray(src.entries)) {
+                src.entries.forEach(e => addEntry(e, name));
+                return;
+            } else if (src.entries && typeof src.entries === 'object') {
+                Object.values(src.entries).forEach(e => addEntry(e, name));
+                return;
+            }
+
+            if (src.rawJson && typeof src.rawJson === 'string') {
+                try {
+                    const parsed = JSON.parse(src.rawJson);
+                    if (Array.isArray(parsed.entries)) {
+                        parsed.entries.forEach(e => addEntry(e, name));
+                    } else if (parsed.entries && typeof parsed.entries === 'object') {
+                        Object.values(parsed.entries).forEach(e => addEntry(e, name));
+                    } else if (Array.isArray(parsed)) {
+                        parsed.forEach(e => addEntry(e, name));
+                    }
+                } catch (_e) {}
+                return;
+            }
+        }
+
+        // 1. Read from SDT lorebookSources / lorebookStore
         try {
             const sdt = getSdtStore();
-            const sources = sdt?.lorebookStore?.sources || sdt?.lorebookSources || [];
-            for (const src of sources) {
-                if (!src || src.enabled === false || !Array.isArray(src.entries)) continue;
-                for (const e of src.entries) {
-                    if (e.enabled === false) continue;
-                    const content = String(e.content || '').trim();
-                    if (!content) continue;
-                    entries.push({
-                        id: e.id || uid('wb'),
-                        comment: e.comment || e.keys?.[0] || '未命名词条',
-                        content,
-                        keys: e.keys || [],
-                        source: src.name || '世界书',
-                    });
-                }
+            const sources = sdt?.lorebookSources || sdt?.lorebookStore?.sources || [];
+            if (Array.isArray(sources)) {
+                sources.forEach(src => processSource(src));
             }
         } catch (e) {
-            console.warn('[CW] Error reading worldbooks:', e);
+            console.warn('[CW] Error reading SDT lorebookSources:', e);
         }
+
+        // 2. Read from SillyTavern native global world_info
+        try {
+            if (window.world_info_data && typeof window.world_info_data === 'object') {
+                Object.entries(window.world_info_data).forEach(([wbName, wbObj]) => {
+                    if (wbObj && typeof wbObj === 'object') processSource(wbObj, wbName);
+                });
+            }
+            if (window.world_info && typeof window.world_info === 'object') {
+                Object.entries(window.world_info).forEach(([wbName, wbObj]) => {
+                    if (wbObj && typeof wbObj === 'object') processSource(wbObj, wbName);
+                });
+            }
+        } catch (_e) {}
+
+        // 3. Read from SillyTavern Context & Character Books
+        try {
+            const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
+                ? window.RBQ.api.getContext()
+                : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
+            
+            if (ctx?.worldInfo && typeof ctx.worldInfo === 'object') {
+                Object.entries(ctx.worldInfo).forEach(([wbName, wbObj]) => processSource(wbObj, wbName));
+            }
+            if (ctx?.characterId != null && ctx?.characters?.[ctx.characterId]) {
+                const char = ctx.characters[ctx.characterId];
+                const cb = char.data?.character_book || char.character_book;
+                if (cb) processSource(cb, `${char.name} 专属设定`);
+            }
+        } catch (_e) {}
+
         return entries;
     }
 
+    function classifyWorldbookEntry(comment, content, keys = []) {
+        const allText = `${comment} ${keys.join(' ')} ${content.slice(0, 160)}`.toLowerCase();
+        
+        if (/体位|交合|性交|做爱|正常位|骑乘|后入|口交|深喉|乳交|自慰|跳蛋|高潮|绝顶|中出|精液|调教|绳缚|拘束|手铐|项圈|群交|3p|百合|拥抱|亲吻|接吻|依偎|牵手|耳语|互动/i.test(allText) ||
+            /\b(sex|missionary|cowgirl|doggystyle|fellatio|paizuri|oral|masturbation|cum|creampie|bondage|bdsm|hug|kiss|embrace|holding_hands|whisper|interaction)\b/i.test(allText)) {
+            return 'nsfw';
+        }
+        if (/服装|衣服|私服|日常服|常服|水手服|校服|西装|女仆|护士|兔女郎|泳装|泳衣|比基尼|死库水|内衣|睡衣|连衣裙|百褶裙|短裙|牛仔裤|丝袜|黑丝|白丝|过膝袜|高跟鞋|靴子|旗袍|和服|浴衣|镂空|透视装|全裸/i.test(allText) ||
+            /\b(dress|suit|skirt|uniform|shirt|hoodie|sweater|swimsuit|bikini|lingerie|underwear|pantyhose|socks|boots|shoes|coat|jacket|yukata|kimono|costume|clothes|outfit)\b/i.test(allText)) {
+            return 'outfit';
+        }
+        if (/场景|环境|室内|室外|户外|房间|卧室|客厅|教室|学校|厨房|浴室|温泉|咖啡厅|酒吧|酒店|走廊|街|街道|森林|海边|沙滩|海滩|公园|天台|屋顶|夜景|夕阳|星空|城市|废墟|城堡/i.test(allText) ||
+            /\b(indoors|outdoors|room|bedroom|living_room|classroom|kitchen|bathroom|cafe|street|forest|beach|sky|night|sunlight|sunset|city|park|ruins|stage|dungeon)\b/i.test(allText)) {
+            return 'scene';
+        }
+        if (/镜头|视角|机位|构图|特写|面部特写|半身|全身|俯视|仰视|侧面|背面|背影|第一人称|pov|景深|光影|光照|逆光|丁达尔|柔光|发光|氛围/i.test(allText) ||
+            /\b(close-up|portrait|bust_shot|upper_body|full_body|cowboy_shot|from_side|from_behind|from_above|from_below|pov|view|depth_of_field|cinematic_lighting|bokeh|lighting)\b/i.test(allText)) {
+            return 'camera';
+        }
+        if (/外貌|发型|发色|双马尾|单马尾|长发|短发|齐刘海|呆毛|瞳|眼睛|红瞳|蓝瞳|金瞳|绿瞳|面部|脸|表情|微笑|哭泣|脸红|胸|巨乳|贫乳|身材|体型|肤色|白皙|黑皮|泪痣|雀斑|淫纹|兽耳|猫耳|狐耳|兔耳|尾巴|翅膀|角|恶魔|天使|魅魔/i.test(allText) ||
+            /\b(hair|eyes|face|breasts|skin|ears|tail|horns|wings|blonde|black_hair|silver_hair|red_eyes|blue_eyes|mole|tattoo|petite|curvy|slender)\b/i.test(allText)) {
+            return 'appearance';
+        }
+        return 'pose';
+    }
+
     function extractVariants(content) {
-        const lines = String(content).split('\n').map(l => l.trim()).filter(Boolean);
+        if (!content) return [];
+        const normalized = String(content).replace(/[\ufeff\u200b\u200c\u200d]/g, '').trim();
+        const lines = normalized.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
         const variants = [];
+        const variantRegex = /^([A-Za-z0-9\u4e00-\u9fa5\s\-_·]+)[\:\：\-\—]\s*(.*)$/;
+
         for (const line of lines) {
             if (line.startsWith('//') || line.startsWith('#')) continue;
-            const m = line.match(/^([A-Za-z0-9\u4e00-\u9fa5\s\-_·]+)[:\uff1a\-\u2014]\s*(.{5,})$/);
-            if (m) variants.push({ label: m[1].trim(), tags: m[2].trim() });
+            const match = line.match(variantRegex);
+            if (match && match[2] && match[2].length > 4) {
+                variants.push({ label: match[1].trim(), tags: match[2].trim() });
+            }
         }
         if (variants.length === 0 && lines.length > 0) {
             variants.push({ label: '默认', tags: lines.join(', ') });
@@ -177,7 +304,6 @@
 
     // ══════════════════════════════════════════════════════════
     //  Workshop-Only Storage (composer state + presets)
-    //  角色数据不在这里 — 全部在 SDT
     // ══════════════════════════════════════════════════════════
     function getWs() {
         const s = RBQ.api.getSettings();
@@ -319,8 +445,7 @@
 
     // ══════════════════════════════════════════════════════════
     //  Prompt Composition
-    //  输出格式必须匹配 multi-char-composer 的 parseAndExtract():
-    //    Scene:tags; Char1:caption|centers:B3; Char1 UC:neg; Char2:caption|centers:D3; ...
+    //  严格匹配 multi-char-composer 的 parseAndExtract()
     // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
         const parts = [];
@@ -369,7 +494,7 @@
 .cw-cell{background:rgba(255,255,255,.03);border-radius:3px;border:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;position:relative;font-size:9.5px;color:rgba(255,255,255,.3);font-weight:bold}
 .cw-cell:hover{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.5);color:#38bdf8}
 .cw-cell.has{border-style:solid}
-.cw-pin{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:2}
+.cw-pin{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:2;cursor:pointer}
 .cw-slot{background:rgba(15,23,42,.55);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px;display:flex;flex-direction:column;gap:9px;transition:.2s}
 .cw-slot.on{border-color:#38bdf8;box-shadow:0 0 10px rgba(56,189,248,.15)}
 .cw-slot-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -398,7 +523,7 @@
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
 .cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px}
-.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:780px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9)}
+.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:820px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9)}
 .cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08)}
 .cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
 .cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3)}
@@ -408,48 +533,97 @@
     })();
 
     // ══════════════════════════════════════════════════════════
-    //  Simplified Worldbook Picker Modal
+    //  Interactive Worldbook Picker Modal
     // ══════════════════════════════════════════════════════════
-    function openWorldbookPicker(title, onSelect) {
+    const WB_CATEGORIES = [
+        { id: 'all', name: '全部', icon: 'fa-globe' },
+        { id: 'pose', name: '动作姿态', icon: 'fa-person-walking' },
+        { id: 'outfit', name: '服装穿搭', icon: 'fa-shirt' },
+        { id: 'scene', name: '场景环境', icon: 'fa-mountain-sun' },
+        { id: 'appearance', name: '外貌特征', icon: 'fa-dna' },
+        { id: 'nsfw', name: '体位/互动', icon: 'fa-heart-pulse' },
+        { id: 'camera', name: '镜头光影', icon: 'fa-camera' },
+    ];
+
+    function openWorldbookPicker(title, onSelect, initialCategory = 'all') {
         const allEntries = getWorldbookEntries();
+        let selectedCategory = initialCategory || 'all';
+        let selectedSource = 'all';
         let query = '';
+        
+        // Extract unique source names
+        const sourceNames = [...new Set(allEntries.map(e => e.source))];
+
         const mask = document.createElement('div');
         mask.className = 'cw-modal-mask';
 
         function render() {
             const filtered = allEntries.filter(e => {
+                const matchCat = selectedCategory === 'all' || e.category === selectedCategory;
+                const matchSrc = selectedSource === 'all' || e.source === selectedSource;
+                if (!matchCat || !matchSrc) return false;
                 if (!query) return true;
                 const q = query.toLowerCase();
                 return e.comment.toLowerCase().includes(q) || e.content.toLowerCase().includes(q) || e.keys.some(k => k.toLowerCase().includes(q));
             });
+
             mask.innerHTML = `
-                <div class="cw-modal" style="width:800px">
+                <div class="cw-modal" style="width:840px">
                     <div class="cw-modal-hd">
-                        <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-book-open"></i> ${esc(title)}</strong>
+                        <strong style="color:#38bdf8;font-size:14px;display:flex;align-items:center;gap:8px">
+                            <i class="fa-solid fa-book-open"></i> ${esc(title)}
+                            <span style="font-size:11.5px;color:rgba(255,255,255,0.6);font-weight:normal;">(${filtered.length} / ${allEntries.length} 词条)</span>
+                        </strong>
                         <button class="cw-btn sm" id="cw-wbp-x">✕</button>
                     </div>
-                    <div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.2)">
-                        <input id="cw-wbp-q" class="cw-in" type="text" placeholder="🔍 搜索词条名称、关键词或内容..." value="${esc(query)}" />
+
+                    <!-- Search Bar & Worldbook Selector -->
+                    <div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.25);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <input id="cw-wbp-q" class="cw-in" type="text" placeholder="🔍 搜索词条名称、关键词或 Tag 内容..." value="${esc(query)}" style="flex:1;min-width:180px;" />
+                        ${sourceNames.length > 1 ? `
+                            <select id="cw-wbp-src" class="cw-sel" style="width:160px;">
+                                <option value="all" ${selectedSource === 'all' ? 'selected' : ''}>🌐 全部世界书 (${allEntries.length})</option>
+                                ${sourceNames.map(sn => `<option value="${esc(sn)}" ${selectedSource === sn ? 'selected' : ''}>📖 ${esc(sn)}</option>`).join('')}
+                            </select>
+                        ` : ''}
                     </div>
-                    <div class="cw-modal-bd" style="max-height:55vh;gap:7px">
-                        ${filtered.length === 0 ? '<div style="text-align:center;padding:30px;opacity:.6">未找到匹配的世界书词条</div>' : filtered.map((e, i) => {
+
+                    <!-- Category Tabs -->
+                    <div class="cw-tabs" style="border-radius:0;border-left:none;border-right:none;border-top:none;padding:6px 16px;background:rgba(0,0,0,0.15);overflow-x:auto;">
+                        ${WB_CATEGORIES.map(c => `
+                            <button class="cw-tab cw-wbp-cat-btn ${selectedCategory === c.id ? 'on' : ''}" data-cat="${c.id}">
+                                <i class="fa-solid ${c.icon}"></i> ${c.name}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <!-- Results List -->
+                    <div class="cw-modal-bd" style="max-height:52vh;gap:8px">
+                        ${filtered.length === 0 ? `
+                            <div style="text-align:center;padding:40px 20px;opacity:.6">
+                                ${allEntries.length === 0 ? '⚠️ 当前尚未检测到已挂载的世界书。请在「智能生图触发器 (Smart Draw)」中导入世界书 JSON，或在酒馆中挂载世界书。' : '未找到匹配的世界书词条，请尝试调整搜索词或分类'}
+                            </div>
+                        ` : filtered.map((e, i) => {
                             const vars = extractVariants(e.content);
-                            return `<div class="cw-card" style="padding:8px 10px;gap:5px">
+                            return `<div class="cw-card" style="padding:9px 12px;gap:5px">
                                 <div class="cw-card-hd">
                                     <div style="display:flex;align-items:center;gap:6px">
+                                        <span class="cw-badge" style="background:rgba(56,189,248,0.15);color:#38bdf8;font-size:10px;">${esc(e.source)}</span>
                                         <strong style="font-size:12.5px;color:#f1f5f9">${esc(e.comment)}</strong>
-                                        <span style="font-size:10.5px;opacity:.5">(${esc(e.source)})</span>
+                                        ${e.keys.length ? `<span style="font-size:10.5px;color:rgba(255,255,255,0.45);">[${esc(e.keys.slice(0, 3).join(', '))}]</span>` : ''}
                                     </div>
-                                    <div style="display:flex;gap:5px">
+                                    <div style="display:flex;gap:5px;flex-wrap:wrap">
                                         ${vars.length > 1 ? vars.map((v, vi) => `<button class="cw-btn cy sm cw-wbp-var" data-ei="${i}" data-vi="${vi}">${esc(v.label)}</button>`).join('') : `<button class="cw-btn gn sm cw-wbp-pick" data-ei="${i}">填入</button>`}
                                     </div>
                                 </div>
-                                <div style="font-family:monospace;font-size:10.5px;color:rgba(255,255,255,.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.content.slice(0, 150))}</div>
+                                <div style="font-family:monospace;font-size:10.5px;color:rgba(255,255,255,.65);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.content.slice(0, 160))}</div>
                             </div>`;
                         }).join('')}
                     </div>
+
+                    <!-- Footer -->
                     <div class="cw-modal-ft">
-                        <span style="font-size:11px;opacity:.5">共 ${allEntries.length} 条词条</span>
+                        <span style="font-size:11px;opacity:.55">共载入 ${allEntries.length} 条世界书词库</span>
                         <button class="cw-btn" id="cw-wbp-close">关闭</button>
                     </div>
                 </div>`;
@@ -457,6 +631,15 @@
             mask.querySelector('#cw-wbp-x')?.addEventListener('click', () => mask.remove());
             mask.querySelector('#cw-wbp-close')?.addEventListener('click', () => mask.remove());
             mask.querySelector('#cw-wbp-q')?.addEventListener('input', ev => { query = ev.target.value.trim(); render(); });
+            mask.querySelector('#cw-wbp-src')?.addEventListener('change', ev => { selectedSource = ev.target.value; render(); });
+            
+            mask.querySelectorAll('.cw-wbp-cat-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selectedCategory = btn.dataset.cat;
+                    render();
+                });
+            });
+
             mask.querySelectorAll('.cw-wbp-pick').forEach(b => b.addEventListener('click', () => {
                 const e = filtered[+b.dataset.ei];
                 if (e) { onSelect(e.content.trim()); mask.remove(); }
@@ -511,7 +694,7 @@
                                 <div style="flex:1;display:flex;flex-direction:column;gap:5px">
                                     <div style="display:flex;gap:7px">
                                         <input id="cw-ce-name" class="cw-in" type="text" placeholder="角色姓名" value="${esc(draft.displayName)}" style="font-weight:bold;font-size:13px" ${isEdit ? 'disabled' : ''} />
-                                        <button class="cw-btn am sm" id="cw-ce-import-card" type="button"><i class="fa-solid fa-file-import"></i> 导入角色卡</button>
+                                        <button class="cw-btn am sm" id="cw-ce-import-card" type="button"><i class="fa-solid fa-file-import"></i> 导入当前角色卡</button>
                                     </div>
                                 </div>
                             </div>
@@ -521,7 +704,7 @@
                         <div class="cw-card">
                             <div class="cw-card-hd">
                                 <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-dna"></i> 固有外貌 (Base Tags)</span>
-                                <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选</button>
+                                <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选外貌</button>
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;background:rgba(0,0,0,.2);padding:6px;border-radius:5px">
                                 ${TRAITS.map(g => `<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap">
@@ -537,8 +720,8 @@
                             <div class="cw-card-hd">
                                 <span class="cw-card-tt" style="color:#ffb86c"><i class="fa-solid fa-shirt"></i> 衣柜 (${draft.wardrobe.length} 套)</span>
                                 <div style="display:flex;gap:5px">
-                                    <button class="cw-btn am sm" id="cw-ce-wb-outfit" type="button"><i class="fa-solid fa-book-open"></i> 从世界书导入</button>
-                                    <button class="cw-btn gn sm" id="cw-ce-add-w" type="button"><i class="fa-solid fa-plus"></i> 新增</button>
+                                    <button class="cw-btn am sm" id="cw-ce-wb-outfit" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选服装</button>
+                                    <button class="cw-btn gn sm" id="cw-ce-add-w" type="button"><i class="fa-solid fa-plus"></i> 新增服装</button>
                                 </div>
                             </div>
                             <div class="cw-tabs" style="overflow-x:auto">
@@ -547,13 +730,13 @@
                             <div style="display:flex;gap:7px;align-items:center">
                                 <input id="cw-ce-wname" class="cw-in" type="text" placeholder="服装名称" value="${esc(cw?.name || '')}" style="width:200px" />
                                 <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1">${OUTFIT_PRESETS.slice(0, 7).map(o => `<button class="cw-chip cw-outfit-chip" data-tag="${esc(o.t)}" type="button">${esc(o.n)}</button>`).join('')}</div>
-                                ${draft.wardrobe.length > 1 ? '<button class="cw-btn rd sm" id="cw-ce-del-w" type="button">✕</button>' : ''}
+                                ${draft.wardrobe.length > 1 ? '<button class="cw-btn rd sm" id="cw-ce-del-w" type="button">✕ 删除此套</button>' : ''}
                             </div>
-                            <textarea id="cw-ce-wtags" class="cw-ta" placeholder="sailor_suit, pleated_skirt, white_thighhighs">${esc(cw?.outfit || '')}</textarea>
+                            <textarea id="cw-ce-wtags" class="cw-ta" placeholder="sailor_suit, pleated_skirt, white_thighhighs">${esc(cw?.outfit || cw?.tags || '')}</textarea>
                         </div>
                     </div>
                     <div class="cw-modal-ft">
-                        <button class="cw-btn cy" id="cw-ce-test" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试立绘</button>
+                        <button class="cw-btn cy" id="cw-ce-test" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试单人立绘</button>
                         <div style="display:flex;gap:7px">
                             <button class="cw-btn" id="cw-ce-cancel">取消</button>
                             <button class="cw-btn pri" id="cw-ce-save">💾 保存到 SDT 角色记忆</button>
@@ -561,7 +744,6 @@
                     </div>
                 </div>`;
 
-            // Sync chip highlight states
             const syncChips = () => {
                 const base = (mask.querySelector('#cw-ce-base')?.value || '').toLowerCase();
                 mask.querySelectorAll('.cw-base-chip').forEach(b => {
@@ -583,7 +765,6 @@
 
             // Wardrobe tabs
             mask.querySelectorAll('.cw-w-tab').forEach(b => b.addEventListener('click', () => {
-                // Save current wardrobe item first
                 const wn = mask.querySelector('#cw-ce-wname');
                 const wt = mask.querySelector('#cw-ce-wtags');
                 if (draft.wardrobe[activeWIdx]) {
@@ -614,20 +795,23 @@
                 openWorldbookPicker('挑选外貌特征词条', tags => {
                     const el = mask.querySelector('#cw-ce-base');
                     if (el) { el.value = [el.value, tags].filter(Boolean).join(', '); draft.baseTags = el.value; syncChips(); }
-                });
+                }, 'appearance');
             });
             // Worldbook pick for outfit
             mask.querySelector('#cw-ce-wb-outfit')?.addEventListener('click', () => {
                 openWorldbookPicker('挑选服装词条', tags => {
                     const el = mask.querySelector('#cw-ce-wtags');
                     if (el && draft.wardrobe[activeWIdx]) { el.value = tags; draft.wardrobe[activeWIdx].outfit = tags; }
-                });
+                }, 'outfit');
             });
 
             // Import from SillyTavern character card
             mask.querySelector('#cw-ce-import-card')?.addEventListener('click', () => {
                 try {
-                    const ctx = RBQ.api.getContext();
+                    const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
+                        ? window.RBQ.api.getContext()
+                        : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
+                    
                     const cid = ctx?.characterId;
                     const cd = ctx?.characters?.[cid];
                     if (!cd) return toastr.warning('未检测到当前角色卡', PLUGIN_NAME);
@@ -642,7 +826,7 @@
 
             // Test solo portrait
             mask.querySelector('#cw-ce-test')?.addEventListener('click', async () => {
-                const outfit = draft.wardrobe[activeWIdx]?.outfit || '';
+                const outfit = draft.wardrobe[activeWIdx]?.outfit || draft.wardrobe[activeWIdx]?.tags || '';
                 const prompt = [draft.baseTags, outfit, 'solo, looking_at_viewer, upper_body, simple_background'].filter(Boolean).join(', ');
                 toastr.info('正在生成单人立绘测试...', PLUGIN_NAME);
                 try { await RBQ.api.generateImage(prompt, 'cw-test'); toastr.success('立绘已生成！', PLUGIN_NAME); }
@@ -651,7 +835,6 @@
 
             // Save — write directly to SDT profiles
             mask.querySelector('#cw-ce-save')?.addEventListener('click', () => {
-                // Capture latest wardrobe text inputs
                 const wn = mask.querySelector('#cw-ce-wname');
                 const wt = mask.querySelector('#cw-ce-wtags');
                 if (draft.wardrobe[activeWIdx]) {
@@ -662,13 +845,12 @@
                 const name = draft.displayName;
                 if (!name) return toastr.warning('请输入角色姓名', PLUGIN_NAME);
 
-                // If renaming (new name != old name), delete old
                 if (isEdit && editName !== name) deleteProfile(editName);
 
                 saveProfile(name, {
                     displayName: name,
                     baseTags: draft.baseTags,
-                    currentOutfit: draft.wardrobe[0]?.outfit || '',
+                    currentOutfit: draft.wardrobe[0]?.outfit || draft.wardrobe[0]?.tags || '',
                     avatarUrl: draft.avatarUrl,
                     wardrobe: draft.wardrobe,
                 });
@@ -697,11 +879,11 @@
                         <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色记忆 · 当前聊天 (${names.length} 位)</span>
                         <div style="font-size:11px;opacity:.6;margin-top:2px">直接管理智能生图已记忆的角色外貌与差分衣柜，修改即时生效。</div>
                     </div>
-                    <button class="cw-btn gn" id="cw-create-char"><i class="fa-solid fa-plus"></i> 手动新建</button>
+                    <button class="cw-btn gn" id="cw-create-char"><i class="fa-solid fa-plus"></i> 手动新建角色</button>
                 </div>
 
                 <div class="cw-chgrid" style="margin-top:6px">
-                    ${names.length === 0 ? '<div style="text-align:center;padding:35px;grid-column:1/-1;opacity:.6">当前聊天暂无角色记忆。在聊天中让 tagger 自动学习，或点击「手动新建」。</div>' : names.map(n => {
+                    ${names.length === 0 ? '<div style="text-align:center;padding:35px;grid-column:1/-1;opacity:.6">当前聊天暂无角色记忆。在聊天中让 tagger 自动学习，或点击「手动新建角色」。</div>' : names.map(n => {
                         const p = profiles[n];
                         const wCount = Array.isArray(p.wardrobe) ? p.wardrobe.length : 0;
                         return `<div class="cw-chcard">
@@ -755,7 +937,7 @@
                             const charsHere = slots.map((s, i) => ({ ...s, si: i })).filter(s => (s.center || 'C3').toUpperCase() === coord);
                             return `<div class="cw-cell ${charsHere.length ? 'has' : ''}" data-coord="${coord}">
                                 <span>${coord}</span>
-                                ${charsHere.map(s => `<div class="cw-pin" style="background:${COLORS[s.si % COLORS.length].hex}" title="Char ${s.si + 1}">${s.si + 1}</div>`).join('')}
+                                ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}" title="Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
                             </div>`;
                         }).join('')).join('')}
                     </div>
@@ -952,10 +1134,19 @@
         container.querySelectorAll('.cw-main-tab').forEach(b => b.addEventListener('click', () => refresh(b.dataset.tab)));
 
         // ── Composer Events ──
-        // 5x5 grid click
-        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', () => {
+        // 5x5 grid click (cell)
+        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', (e) => {
+            if (e.target.classList.contains('cw-pin')) return;
             const ai = comp.activeSlotIndex || 0;
             if (comp.slots[ai]) { comp.slots[ai].center = cell.dataset.coord; wsSave(); refresh('composer'); }
+        }));
+
+        // 5x5 pin click (switch to that slot)
+        container.querySelectorAll('.cw-pin').forEach(pin => pin.addEventListener('click', (e) => {
+            e.stopPropagation();
+            comp.activeSlotIndex = +pin.dataset.si;
+            wsSave();
+            refresh('composer');
         }));
 
         // Switch active slot
@@ -1018,12 +1209,12 @@
             const i = +b.dataset.idx;
             openWorldbookPicker('选择动作/姿态词条', tags => {
                 if (comp.slots[i]) { comp.slots[i].action = tags; wsSave(); refresh('composer'); }
-            });
+            }, 'pose');
         }));
 
         // Pick scene from worldbook
         container.querySelector('#cw-pick-scene-wb')?.addEventListener('click', () => {
-            openWorldbookPicker('选择场景环境词条', tags => { comp.scene = tags; wsSave(); refresh('composer'); });
+            openWorldbookPicker('选择场景环境词条', tags => { comp.scene = tags; wsSave(); refresh('composer'); }, 'scene');
         });
 
         // Copy prompt

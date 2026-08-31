@@ -59,8 +59,8 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集多角色空间舞台合成、7维全息外貌定制、多套衣柜管理、世界书搭积木点选与智能生图记忆双向联动于一体的专业级工作台。支持5x5空间站位网格、经典双人分镜模板库与NAI多角色一键合成。",
-    "version": "2.2.0",
+    "version": "2.2.5",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.2.0"
+    "main": "plugins/character-workshop.js?v=2.2.5"
   }
 ]

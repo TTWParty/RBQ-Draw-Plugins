@@ -8,7 +8,7 @@
  *  - 数据架构：直接双向读写 Smart Draw Trigger 角色记忆 (单真实源)
  *  - 空间舞台：5x5 网格定位、分镜模板与 NAI V4.5 多角色一键合成生图
  *
- *  @version 2.2.0
+ *  @version 2.2.5
  *  @author TTWP-09
  * ═════════════════════════════════════════════════════════════════════════
  */
@@ -22,7 +22,7 @@
     }
 
     const PLUGIN_NAME = '角色工坊 (Character Workshop)';
-    const VERSION = '2.2.0';
+    const VERSION = '2.2.5';
     const SDT_KEY = '_smartDrawTrigger';
     const WS_KEY = '_characterWorkshopState';
 
@@ -635,10 +635,10 @@
                             </div>
                             
                             <!-- 7 Dimensions List -->
-                            <div style="display:flex;flex-direction:column;gap:6px;max-height:190px;overflow-y:auto;background:rgba(0,0,0,.28);padding:8px 10px;border-radius:8px">
+                            <div style="display:flex;flex-direction:column;gap:7px;max-height:220px;overflow-y:auto;background:rgba(0,0,0,.28);padding:9px 12px;border-radius:8px">
                                 ${HOLOGRAPHIC_FORMULA_GROUPS.map(g => `
                                     <div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
-                                        <span style="font-size:11px;font-weight:bold;color:${g.color};min-width:180px;padding-top:2px">${esc(g.title)}:</span>
+                                        <span style="font-size:11px;font-weight:bold;color:${g.color};min-width:180px;flex-shrink:0;padding-top:2px">${esc(g.title)}:</span>
                                         <div style="display:flex;gap:4px;flex-wrap:wrap;flex:1">
                                             ${g.tags.map(t => `
                                                 <button class="cw-chip cw-base-chip" data-tag="${esc(t.tag)}" type="button">${esc(t.name)}</button>

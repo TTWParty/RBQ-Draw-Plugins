@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.3';
+    const VERSION = '2.0.4';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1102,7 +1102,7 @@
     // ══════════════════════════════════════════════════════════
     //  Main UI Assembly & Event Binding
     // ══════════════════════════════════════════════════════════
-    let activeTab = 'composer';
+    let activeTab = 'dossier';
 
     function renderMain(tab) {
         activeTab = tab || activeTab;
@@ -1114,14 +1114,14 @@
             <div class="cw-hdr">
                 <div class="cw-logo"><i class="fa-solid fa-palette"></i> 角色工坊 2.0</div>
                 <div class="cw-tabs">
-                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-puzzle-piece"></i> 分镜合成台</button>
-                    <button class="cw-tab cw-main-tab ${activeTab === 'dossier' ? 'on' : ''}" data-tab="dossier"><i class="fa-solid fa-users"></i> 角色档案 (${pCount})</button>
-                    <button class="cw-tab cw-main-tab ${activeTab === 'presets' ? 'on' : ''}" data-tab="presets"><i class="fa-solid fa-bookmark"></i> 预设库 (${presetCount})</button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'dossier' ? 'on' : ''}" data-tab="dossier"><i class="fa-solid fa-users"></i> 角色档案库 (${pCount})</button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-chess-board"></i> 多角色空间舞台</button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'presets' ? 'on' : ''}" data-tab="presets"><i class="fa-solid fa-bookmark"></i> 分镜模板与预设 (${presetCount})</button>
                 </div>
             </div>
             <div id="cw-tab-content" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
-                ${activeTab === 'composer' ? renderComposerTab() : ''}
                 ${activeTab === 'dossier' ? renderDossierTab() : ''}
+                ${activeTab === 'composer' ? renderComposerTab() : ''}
                 ${activeTab === 'presets' ? renderPresetsTab() : ''}
             </div>
         </div>`;

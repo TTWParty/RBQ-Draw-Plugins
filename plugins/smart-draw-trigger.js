@@ -1235,11 +1235,11 @@ Zimage 擅长理解复杂的英文长句和语境。
                     `;
                 }).join('')}
             </div>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <button id="rbq-sdt-goto-workshop-btn" class="menu_button" type="button" style="background: linear-gradient(135deg, rgba(2,132,199,0.25), rgba(56,189,248,0.15)) !important; border: 1px solid rgba(56,189,248,0.6) !important; color: #38bdf8 !important; font-weight: bold !important; padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%;">
+                <button id="rbq-sdt-goto-workshop-btn" class="menu_button" type="button" style="background: linear-gradient(135deg, rgba(2,132,199,0.25), rgba(56,189,248,0.15)) !important; border: 1px solid rgba(56,189,248,0.6) !important; color: #38bdf8 !important; font-weight: bold !important; padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important; max-width: 100% !important;">
                     <i class="fa-solid fa-palette"></i> 前往「角色工坊」深度定制与管理角色 (${entries.length} 位) ➔
                 </button>
-                <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button" style="padding: 4px 10px !important; font-size: 11px !important; color: rgba(255,130,130,0.85) !important;">清空当前记忆</button>
+                <button id="rbq-sdt-clear-char-profiles" class="menu_button" type="button" style="padding: 4px 10px !important; font-size: 11px !important; color: rgba(255,130,130,0.85) !important; white-space: nowrap !important; flex-shrink: 0 !important;">清空当前记忆</button>
             </div>
         `;
     }

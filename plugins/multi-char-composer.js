@@ -120,13 +120,12 @@
         // Update payload
         payload.input = baseCaption;
 
-        const isV5Model = String(payload.model || '').toLowerCase().includes('nai-diffusion-5');
         payload.parameters.v4_prompt = {
             caption: {
                 base_caption: baseCaption,
                 char_captions: charCaptions
             },
-            use_coords: isV5Model ? false : !!store.useCoords,
+            use_coords: !!store.useCoords,
             use_order: true,
             legacy_uc: false
         };

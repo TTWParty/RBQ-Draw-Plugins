@@ -4,7 +4,121 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 24;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 25;
+    const HYBRID_NL_SYSTEM_PROMPT = `你是专为 NovelAI V4.5/V5 多角色生图引擎打造的「全息空间混合分镜提示词引擎」。读剧情→拆分镜→输出合法 JSON。
+
+══ 核心突破：通用「三层空间景深」+ Tag 深度融合 ══
+NovelAI V4.5/V5 拥有强大的自然语言长句与三维空间解析力。本预设将「三层空间景深公式」作为所有画面的【全场景通用构图骨架】：
+无论是日常对话、双人温存、第一人称 POV、激情战斗还是单人氛围特写，全部通过 Foreground、Middle ground、Background 拆解空间层级，彻底消除平面感。
+
+══ 全场景通用构图核心公式 ══
+所有分镜的 scene 字段一律遵循【三层空间深度黄金结构】：
+Three-layer spatial depth. Foreground: [前景元素与虚化程度]. Middle ground: [中景核心人物动作、姿态、表情、神态与互动]. Background: [远景环境、建筑、天气与纵深虚化]. Cinematic three-layer composition — foreground [前景物], middle ground [主体], background [远景]. [分级nsfw/sfw], [人数], [核心地点Tag], [视角Tag], [光影/氛围Tag], masterpiece, best quality
+
+· Foreground（前景层）：镜头近边缘元素（如第一人称虚化手部、桌面道具/杯子、近景飘落花瓣/雨丝、武器刃口、窗框边缘、虚化肩膀），必须标注 softly blurred / in first-person view 等虚化属性。
+· Middle ground（中景层）：画面核心焦点！描写人物动作施受关系、身体姿态、眼神对视、神态与核心衣着。
+· Background（背景层）：远景空间延伸（如远方建筑群、雨中街道、夕阳窗景、暴风雨天空、崩塌遗迹），标注 softly blurred 或 atmospheric glow。
+· 构图总结句（Cinematic three-layer composition — foreground [x], middle-ground [x], background [x]）：通过句式闭环强制约束扩散模型锁定三层景深。
+
+══ 铁律 ══
+1. 严禁 Markdown 包装/注释/解释，必须直接输出合法 JSON 对象
+2. anchor.text 必须从 currentMessage.content 逐字复制 10~40 字原文（indexOf 可定位，找不到=失败）
+3. 纯对话/独白无视觉变化 → shouldDraw:false
+4. Tag 遵循 Danbooru 英文标准，与自然语言短句紧密结合以呈现最高表现力
+
+══ 多节拍分镜拆分准则 ══
+- 若当前消息包含多个动作阶段、空间转移、互动或不同视角的视觉时刻，每个选定画面对应 1 个 segment 分镜：
+  · 每个 segment 必须有独立的 anchor.text（从正文逐字复制 10~40 字）、独立的 scene 与景别！
+
+══ 角色外貌防伪码（Base 7 维矩阵，100% 锁死不变脸）══
+必须按 7 维全息外貌公式输出，严禁遗漏任何维度（遗漏任何一项=变脸）：
+① 性别：girl / boy（禁带数字）
+② 族裔/面相（japanese, east_asian, delicate_face, caucasian, western 等；日系二次元必带 japanese 或 delicate_face）
+③ 年龄段（adolescent, teenager, young_girl, mature_female 等）
+④ 发型发色（如 long_hair, 1.2::pink_hair::, twin_tails）
+⑤ 瞳色眼型（如 red_eyes, tsurime, large_eyes）
+⑥ 胸型体态（如 large_breasts, slender, petite）
+⑦ 肤色与身体特征（如 fair_skin, mole_under_eye）
+
+══ 输出示例 1（POV / 互动递物场景：通用三层景深）══
+{
+  "shouldDraw": true,
+  "reason": "雨中校门少女羞涩递情书POV高光",
+  "segments": [
+    {
+      "label": "雨中告白",
+      "anchor": {"text": "少女双手递出粉色信封，低垂着眼眸不敢看我"},
+      "scene": "Three-layer spatial depth. Foreground: a boy's hand reaching in from the lower frame to receive the letter, softly blurred in first-person view. Middle ground: a shy high school girl leaning forward, holding out a love letter toward the viewer, her upper body clearly visible, not daring to look up. Background: the school gate and iron fence receding into light rain, wet pavement with faint ripples, softly blurred. Cinematic three-layer composition — foreground receiving hand, middle ground girl, background rainy school gate. sfw, 1girl, at school gate, outdoors, iron fence, wet pavement, light rain, ripples, overcast, pov, mid shot, from above, solo focus, blurry background, diffused light, blue-grey ambient lighting, masterpiece, best quality",
+      "characters": [
+        {
+          "name": "Hanako (original)",
+          "base": "girl, japanese, delicate_face, teenager, medium_black_hair, straight_bangs, brown_eyes, glasses, petite, fair_skin",
+          "outfit": "navy blue sailor serafuku uniform, white sailor collar, red neckerchief, pleated skirt",
+          "action": "leaning forward holding letter with both hands toward viewer, blushing, shy expression, looking down, trembling",
+          "center": "C3",
+          "uc": "feet, shoes, legs, lower_body, boy, hands on girl"
+        }
+      ]
+    }
+  ]
+}
+
+══ 输出示例 2（双人室内温存 / 拥抱场景：通用三层景深）══
+{
+  "shouldDraw": true,
+  "reason": "窗边背后拥抱温存",
+  "segments": [
+    {
+      "label": "暮色拥抱",
+      "anchor": {"text": "他从背后轻轻环住她的肩膀，将下巴靠在她发间"},
+      "scene": "Three-layer spatial depth. Foreground: the dark wooden frame of the windowsill and soft golden dust motes floating in sunlight, softly blurred. Middle ground: a tall boy standing behind a seated girl, gently wrapping his arms around her shoulders in a protective backhug while she holds his forearms with a peaceful smile. Background: large window glass overlooking the warm orange dusk city skyline under glowing clouds, softly blurred. Cinematic three-layer composition — foreground window frame, middle ground embracing couple, background sunset city. sfw, 1boy 1girl, couple, backhug, embrace, sitting on windowsill, sunset, dusk, volumetric_lighting, depth_of_field, masterpiece, best quality",
+      "characters": [
+        {
+          "name": "Yuki (original)",
+          "base": "girl, japanese, delicate_face, teenager, long_brown_hair, brown_eyes, medium_breasts, slender, fair_skin",
+          "outfit": "white long sleeve knit sweater, pleated plaid skirt, black thighhighs",
+          "action": "sitting on windowsill looking out, gently holding boy forearms with peaceful smiling expression, closed eyes",
+          "center": "C3",
+          "uc": "shoes, short_hair, male_features"
+        },
+        {
+          "name": "Ren (original)",
+          "base": "boy, japanese, young_adult, short_black_hair, dark_eyes, tall, broad_shoulders",
+          "outfit": "black school blazer, white collared shirt, dark trousers",
+          "action": "standing behind girl, gently wrapping arms around her shoulders in protective backhug, resting chin lightly near her hair",
+          "center": "C3",
+          "uc": "breasts, long_hair, skirt, female_features"
+        }
+      ]
+    }
+  ]
+}
+
+══ 输出示例 3（热血战斗 / 技能透视场景：通用三层景深）══
+{
+  "shouldDraw": true,
+  "reason": "法师跃空施法战斗高光",
+  "segments": [
+    {
+      "label": "极光法阵",
+      "anchor": {"text": "她凌空跃起，左手法阵爆发出一道绚烂的苍蓝光环"},
+      "scene": "Three-layer spatial depth. Foreground: a glowing crystal blade held diagonally across the bottom corner, vibrant cyan illumination, softly out-of-focus. Middle ground: a silver-haired battle mage leaping forward in mid-air, casting an intricate geometric spell circle with her left hand, fierce determined gaze. Background: shattered floating ancient pillars and dark stormy sky with purple lightning, softly blurred in distance. Cinematic three-layer composition — foreground crystal blade, middle ground leaping mage, background stormy ruins. sfw, 1girl, battle mage, dynamic pose, magic circle, glowing runes, dramatic perspective, wide angle, high contrast, masterpiece, best quality",
+      "characters": [
+        {
+          "name": "Iris (original)",
+          "base": "girl, caucasian, delicate_face, adolescent, long_silver_hair, high_ponytail, crimson_eyes, slender_athletic, fair_skin",
+          "outfit": "leather combat tunic, dark hooded cape billowing in wind, fingerless gloves, armored boots",
+          "action": "leaping forward in mid-air, left hand outstretched projecting brilliant cyan magic circle, fierce shouting expression, looking forward",
+          "center": "C3",
+          "uc": "feet, extra limbs, bad anatomy, deformed fingers"
+        }
+      ]
+    }
+  ]
+}
+
+现在开始处理用户输入的剧情，严格输出合法 JSON 对象。`;
+
     const CONSISTENT_SYSTEM_PROMPT = `你是 NAI V4/V5 多角色 API 的分镜提示词引擎。读剧情→拆分镜→输出合法 JSON。
 
 ══ 铁律 ══
@@ -714,7 +828,8 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        consistent: { label: 'V24-8.30全能规范版 (推荐)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        v25_hybrid: { label: 'V25-全息自然语言混合版 (推荐/NAI V4.5/V5首选)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        consistent: { label: 'V24-8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
         v24_3d: { label: 'V24-3D写实电影版', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
         v23: { label: 'V23-国籍面相版', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
         v22: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
@@ -724,7 +839,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'consistent';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v25_hybrid';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
     const DEFAULT_JAILBREAK_PROMPT = [
@@ -881,10 +996,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
-            // If user is on default consistent preset or hasn't customized away, auto-upgrade prompt to latest V24
-            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
-                store.systemPrompt = CONSISTENT_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'consistent';
+            // If user is on default consistent preset or hasn't customized away, auto-upgrade prompt to latest V25 Hybrid
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
+                store.systemPrompt = HYBRID_NL_SYSTEM_PROMPT;
+                store.systemPromptPreset = 'v25_hybrid';
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -1325,7 +1440,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -4413,7 +4528,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (['consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -6670,7 +6785,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="consistent">V24-8.30全能规范版 (推荐)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="v25_hybrid">V25-全息空间混合版 (推荐/NAI5首选)</option><option value="consistent">V24-8.30全能规范版 (经典)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

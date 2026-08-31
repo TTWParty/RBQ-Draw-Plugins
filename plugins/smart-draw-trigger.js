@@ -3141,7 +3141,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         };
     }
 
-    function openLorebookSearchModal(initialSourceId = null, onSelectEntry = null) {
+    function openLorebookSearchModal(initialSourceId = null, onSelectEntry = null, initialMainCategory = 'all') {
         const existing = document.getElementById('rbq-sdt-lorebook-search-modal');
         if (existing) existing.remove();
 
@@ -3152,7 +3152,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         let selectedSourceId = initialSourceId || 'all';
-        let selectedMainCategory = 'all';
+        let selectedMainCategory = initialMainCategory || 'all';
         let selectedSubCategory = 'all';
         let selectedNativeTopic = 'all';
         let searchQuery = '';
@@ -7719,6 +7719,10 @@ SCHEMA:
         const finalPrompt = getFinalPrompt(seg);
 
         return RBQ.api.generateImage(finalPrompt, 'sdt-test', {}, onProgress);
+    };
+
+    RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
+        return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);
     };
 
     waitForPanel();

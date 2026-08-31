@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.1';
+    const VERSION = '2.0.2';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -546,6 +546,14 @@
     ];
 
     function openWorldbookPicker(title, onSelect, initialCategory = 'all') {
+        if (typeof RBQ?.api?.openLorebookSearchModal === 'function') {
+            RBQ.api.openLorebookSearchModal('all', (entry) => {
+                const content = typeof entry === 'string' ? entry : (entry?.content || entry?.tags || '');
+                if (content) onSelect(content.trim());
+            }, initialCategory);
+            return;
+        }
+
         const allEntries = getWorldbookEntries();
         let selectedCategory = initialCategory || 'all';
         let selectedSource = 'all';

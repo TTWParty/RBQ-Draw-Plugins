@@ -1,14 +1,15 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- *  RBQ - 角色工坊 (Character Workshop) v2.2.0
+ *  RBQ - 角色工坊 (Character Workshop) v2.3.0
  * ═════════════════════════════════════════════════════════════════════════
- *  - 核心外貌体系：7 维全息外貌公式 (族裔/年龄/发型发色/瞳色眼型/体态胸围/肤色标记/种族幻想)
- *  - 附加扩展词库：全量 Danbooru 表情、饰品、细节等作为附加项额外放置
+ *  - 7 维全息外貌公式 (族裔/年龄/发型发色/瞳色眼型/体态胸围/肤色标记/种族幻想)
+ *  - 附加扩展分类 (表情神态、头面饰品、鞋袜细节作为附加项)
+ *  - 5x5 空间舞台：交互式网格（点击图钉选人，点击格子移动）、快捷坐标点选、
+ *    精准多角色 NAI V4.5 提示词合成（智能全局人数、角色名与差分衣柜绑定）
  *  - 差分衣柜：多套服装管理与世界书点选联动
- *  - 数据架构：直接双向读写 Smart Draw Trigger 角色记忆 (单真实源)
- *  - 空间舞台：5x5 网格定位、分镜模板与 NAI V4.5 多角色一键合成生图
+ *  - 单一真实数据源：直接双向读写 Smart Draw Trigger 角色记忆
  *
- *  @version 2.2.5
+ *  @version 2.3.0
  *  @author TTWP-09
  * ═════════════════════════════════════════════════════════════════════════
  */
@@ -22,7 +23,7 @@
     }
 
     const PLUGIN_NAME = '角色工坊 (Character Workshop)';
-    const VERSION = '2.2.5';
+    const VERSION = '2.3.0';
     const SDT_KEY = '_smartDrawTrigger';
     const WS_KEY = '_characterWorkshopState';
 
@@ -54,11 +55,11 @@
 
     const COLORS = [
         { hex: '#38bdf8', bg: 'rgba(56,189,248,0.18)', bdr: 'rgba(56,189,248,0.6)' },
-        { hex: '#a78bfa', bg: 'rgba(167,139,250,0.18)', bdr: 'rgba(167,139,250,0.6)' },
+        { hex: '#f472b6', bg: 'rgba(244,114,182,0.18)', bdr: 'rgba(244,114,182,0.6)' },
         { hex: '#4ade80', bg: 'rgba(74,222,128,0.18)', bdr: 'rgba(74,222,128,0.6)' },
         { hex: '#fbbf24', bg: 'rgba(251,191,36,0.18)', bdr: 'rgba(251,191,36,0.6)' },
+        { hex: '#c084fc', bg: 'rgba(192,132,252,0.18)', bdr: 'rgba(192,132,252,0.6)' },
         { hex: '#fb7185', bg: 'rgba(251,113,133,0.18)', bdr: 'rgba(251,113,133,0.6)' },
-        { hex: '#34d399', bg: 'rgba(52,211,153,0.18)', bdr: 'rgba(52,211,153,0.6)' },
     ];
 
     // ── SDT Data Access Layer (Single Source of Truth) ──────
@@ -98,7 +99,6 @@
         const ck = getChatKey();
         const currentChatProfiles = (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
         
-        // If current chat is empty, fallback to scanning all chats
         if (Object.keys(currentChatProfiles).length === 0 && sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
             const fallback = {};
             for (const chatDict of Object.values(sdt.characterProfiles)) {
@@ -173,44 +173,43 @@
     // ── Built-in Composition Templates ───────────────────────
     const TEMPLATES = [
         {
-            name: '双人面对面互动',
-            desc: '两角色分别位于中左/中右，身体相对',
-            scene: 'indoors, cozy room, soft lighting',
-            camera: 'from_side, medium shot, eye level',
+            name: '双人面对面交流 (对视)',
+            desc: '双人近中景、左右对坐/站立、眼神交流',
+            scene: 'indoors, cozy room, warm_lighting, depth_of_field',
+            camera: 'from_side, medium_shot, eye_level',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'standing, facing right, looking at partner, gentle smile', uc: '', center: 'B3' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'standing, facing left, looking at partner, blush', uc: '', center: 'D3' }
+                { action: 'standing, facing_right, looking_at_partner, gentle_smile', center: 'B3', uc: '' },
+                { action: 'standing, facing_left, looking_at_partner, soft_smile, blush', center: 'D3', uc: 'penis, futanari' }
             ]
         },
         {
-            name: '背靠背战斗分镜',
+            name: '背靠背战术分镜',
             desc: '战术背靠背站姿，左右分立有张力',
-            scene: 'ruins, embers, dramatic lighting',
-            camera: 'dynamic angle, wide shot',
+            scene: 'ruins, night, embers, dramatic_lighting',
+            camera: 'dynamic_angle, cowboy_shot',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'fighting stance, back to back, looking at viewer, serious', uc: '', center: 'B3' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'holding weapon, back to back, looking away, focused', uc: '', center: 'D3' }
+                { action: 'fighting_stance, back_to_back, looking_at_viewer, serious', center: 'B3', uc: '' },
+                { action: 'holding_weapon, back_to_back, looking_away, focused', center: 'D3', uc: 'penis, futanari' }
             ]
         },
         {
             name: '主仆/高低位差分镜',
-            desc: '一人站立居高临下，一人跪坐/屈膝',
-            scene: 'throne room, luxurious, marble floor',
-            camera: 'from above, tilted angle',
+            desc: '一人站立居高临下，一人跪坐/屈膝仰望',
+            scene: 'throne_room, luxurious, marble_floor, chandelier',
+            camera: 'from_above, tilted_angle',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'standing, looking down, confident smile, hand on hip', uc: '', center: 'C2' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'kneeling, looking up, blush, submissive', uc: '', center: 'C4' }
+                { action: 'standing, looking_down, confident_smile, hand_on_hip', center: 'C2', uc: '' },
+                { action: 'kneeling, looking_up, blush, submissive', center: 'C4', uc: 'penis, futanari' }
             ]
         },
         {
-            name: '三人同行分镜',
-            desc: '三人成三角站位，中间为主视点',
-            scene: 'street, sunny day, depth of field',
-            camera: 'front view, medium full shot',
+            name: '街头并肩漫步 (牵手)',
+            desc: '室外街景、全身中景、并排前行',
+            scene: 'outdoors, street, sunny_day, natural_lighting, depth_of_field',
+            camera: 'front_view, full_body, wide_angle',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'walking forward, waving hand, cheerful', uc: '', center: 'A3' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'standing, center, looking at viewer, smile', uc: '', center: 'C3' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'walking, arms crossed, side glance, smirk', uc: '', center: 'E3' }
+                { action: 'walking, holding_hands, looking_at_partner, happy', center: 'B3', uc: '' },
+                { action: 'walking, holding_hands, looking_at_viewer, smiling, cute', center: 'D3', uc: 'penis, futanari' }
             ]
         }
     ];
@@ -220,7 +219,6 @@
     // ══════════════════════════════════════════════════════════
     const HOLOGRAPHIC_FORMULA_GROUPS = [
         {
-            dim: 1,
             title: '① 族裔面相与性别 (Ethnicity & Gender)',
             color: '#38bdf8',
             tags: [
@@ -237,7 +235,6 @@
             ]
         },
         {
-            dim: 2,
             title: '② 年龄阶段 (Age Stage)',
             color: '#fbbf24',
             tags: [
@@ -250,7 +247,6 @@
             ]
         },
         {
-            dim: 3,
             title: '③ 发型与发色 (Hair Style & Color)',
             color: '#f472b6',
             tags: [
@@ -272,7 +268,6 @@
             ]
         },
         {
-            dim: 4,
             title: '④ 瞳色与眼型 (Eyes & Pupil)',
             color: '#a855f7',
             tags: [
@@ -290,7 +285,6 @@
             ]
         },
         {
-            dim: 5,
             title: '⑤ 胸型体态与身材 (Body & Breasts)',
             color: '#4ade80',
             tags: [
@@ -307,7 +301,6 @@
             ]
         },
         {
-            dim: 6,
             title: '⑥ 肤色与专属标记 (Skin & Marks)',
             color: '#fb7185',
             tags: [
@@ -322,7 +315,6 @@
             ]
         },
         {
-            dim: 7,
             title: '⑦ 种族与幻想特征 (Race & Fantasy)',
             color: '#38bdf8',
             tags: [
@@ -340,7 +332,7 @@
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  附加扩展词库 (Additional Supplementary Categories)
+    //  附加扩展分类 (Additional Supplementary Categories)
     // ══════════════════════════════════════════════════════════
     const EXTRA_TRAIT_GROUPS = [
         {
@@ -431,29 +423,67 @@
         }
     }
 
-    // ── Prompt Composition ───────────────────────────────────
+    // ══════════════════════════════════════════════════════════
+    //  Prompt Composition (NAI V4.5 Multi-Char Accurate Format)
+    // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
         const parts = [];
         const slots = comp?.slots || [];
 
-        const scn = [comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).map(sanitizePromptSegment).join(', ');
-        if (scn) parts.push('Scene:' + scn);
+        let girlCount = 0;
+        let boyCount = 0;
 
+        const charParts = [];
         slots.forEach((slot, i) => {
             const n = i + 1;
             const profile = slot.charName ? getProfile(slot.charName) : null;
+            const rawName = profile?.displayName || slot.charName || '';
             const base = sanitizePromptSegment(profile?.baseTags || '');
             const outfit = sanitizePromptSegment(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
             const action = sanitizePromptSegment(slot.action || '');
-            const caption = [base, outfit, action].filter(Boolean).join(', ');
-            const center = (slot.center || (i === 0 ? 'B3' : 'D3')).toUpperCase();
 
-            if (caption) parts.push('Char' + n + ':' + caption + '|centers:' + center);
+            // Track gender
+            const combinedLower = (rawName + ' ' + base).toLowerCase();
+            if (combinedLower.includes('1boy') || combinedLower.includes('male') || combinedLower.includes('man')) {
+                boyCount++;
+            } else {
+                girlCount++;
+            }
+
+            // Prepend character name if not already in base
+            const namePrefix = (rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
+            const caption = [namePrefix, base, outfit, action].filter(Boolean).join(', ');
+            const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
+
+            if (caption) {
+                charParts.push('Char' + n + ':' + caption + '|centers:' + center);
+            }
             const uc = sanitizePromptSegment(slot.uc);
-            if (uc) parts.push('Char' + n + ' UC:' + uc);
+            if (uc) {
+                charParts.push('Char' + n + ' UC:' + uc);
+            }
         });
 
-        return parts.join('; ');
+        // Global Scene & Global Count Tag Injection
+        const userScene = sanitizePromptSegment([comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).join(', '));
+        const countTags = [];
+        const lowerScene = userScene.toLowerCase();
+        
+        // If scene doesn't already have count tags, synthesize them
+        if (!lowerScene.includes('girl') && !lowerScene.includes('boy') && !lowerScene.includes('solo') && !lowerScene.includes('multiple')) {
+            if (girlCount > 0 && boyCount === 0) {
+                countTags.push(girlCount === 1 ? '1girl' : `${girlCount}girls`);
+            } else if (boyCount > 0 && girlCount === 0) {
+                countTags.push(boyCount === 1 ? '1boy' : `${boyCount}boys`);
+            } else if (girlCount > 0 && boyCount > 0) {
+                countTags.push(`${girlCount}girl${girlCount > 1 ? 's' : ''}, ${boyCount}boy${boyCount > 1 ? 's' : ''}`);
+            }
+        }
+
+        const fullScene = [countTags.join(', '), userScene].filter(Boolean).join(', ');
+        if (fullScene) parts.push('Scene:' + fullScene);
+
+        return [...parts, ...charParts].join('; ');
     }
 
     // ── Image Viewer & Popup Modal ───────────────────────────
@@ -533,7 +563,8 @@
 .cw-cell{background:rgba(255,255,255,.03);border-radius:4px;border:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;position:relative;font-size:9.5px;color:rgba(255,255,255,.3);font-weight:bold}
 .cw-cell:hover{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.5);color:#38bdf8}
 .cw-cell.has{border-style:solid}
-.cw-pin{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.7);position:absolute;z-index:2;cursor:pointer}
+.cw-pin{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.7);position:absolute;z-index:2;cursor:pointer;transition:.15s}
+.cw-pin:hover{transform:scale(1.2)}
 .cw-slot{background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;transition:.2s}
 .cw-slot.on{border-color:#38bdf8;box-shadow:0 0 12px rgba(56,189,248,.18)}
 .cw-slot-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -542,7 +573,7 @@
 .cw-in,.cw-sel,.cw-ta{width:100%;box-sizing:border-box;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#fff;padding:6px 10px;font-size:12px;font-family:inherit;transition:.2s}
 .cw-in:focus,.cw-sel:focus,.cw-ta:focus{outline:none;border-color:#38bdf8;background:rgba(0,0,0,.6)}
 .cw-ta{min-height:48px;resize:vertical;font-family:monospace}
-.cw-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.2s;background:rgba(255,255,255,.08);color:#fff;white-space:nowrap;flex-shrink:0}
+.cw-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.2s;background:rgba(255,255,255,.08);color:#fff;white-space:nowrap !important;flex-shrink:0 !important}
 .cw-btn:hover{filter:brightness(1.2)}
 .cw-btn.pri{background:linear-gradient(135deg,#0284c7,#38bdf8);border-color:rgba(56,189,248,.5);box-shadow:0 2px 10px rgba(56,189,248,.3);color:#fff}
 .cw-btn.cy{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.4);color:#38bdf8}
@@ -558,7 +589,7 @@
 .cw-chcard:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.4);box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .cw-avatar{width:46px;height:46px;border-radius:8px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;flex-shrink:0}
 .cw-avatar img{width:100%;height:100%;object-fit:cover}
-.cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 7px;font-size:11px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap;user-select:none}
+.cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 8px;font-size:11px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.22)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
 .cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
@@ -938,7 +969,10 @@
             <!-- 5x5 Grid & Scene Settings -->
             <div class="cw-card">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 5x5 空间舞台定位 (点击网格摆放当前激活角色)</span>
+                    <div>
+                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 5x5 空间舞台 (点击图钉切换角色 · 点击空白格移动坐标)</span>
+                        <div style="font-size:11px;opacity:.65;margin-top:2px">当前正在控制: <strong style="color:${COLORS[ai % COLORS.length].hex}">Char ${ai + 1}: ${esc(slots[ai]?.charName || '未绑定')}</strong> (${coordLabel(slots[ai]?.center)})</div>
+                    </div>
                     <button class="cw-btn cy sm" id="cw-pick-scene-wb" type="button"><i class="fa-solid fa-mountain-sun"></i> 搜索世界书场景</button>
                 </div>
                 <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -949,31 +983,28 @@
                             const charsHere = slots.map((s, i) => ({ ...s, si: i })).filter(s => (s.center || 'C3').toUpperCase() === coord);
                             return `<div class="cw-cell ${charsHere.length ? 'has' : ''}" data-coord="${coord}">
                                 <span>${coord}</span>
-                                ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}" title="Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
+                                ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}; border: 2px solid ${ai === s.si ? '#fff' : 'rgba(0,0,0,0.5)'}; transform: ${ai === s.si ? 'scale(1.25)' : 'scale(1)'}" title="点击选中 Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
                             </div>`;
                         }).join('')).join('')}
                     </div>
 
                     <!-- Stage Controls & Scene Inputs -->
-                    <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:rgba(255,255,255,.75)">
-                        <div style="font-weight:700;color:#f8fafc;font-size:13.5px">
-                            当前激活控制: <span style="color:${COLORS[ai % COLORS.length].hex}">Char ${ai + 1} (${esc(slots[ai]?.charName || '未绑定')})</span>
-                            <small style="margin-left:6px;opacity:.7">[${coordLabel(slots[ai]?.center)}]</small>
-                        </div>
+                    <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:rgba(255,255,255,.75)">
                         <div style="display:flex;gap:6px;flex-wrap:wrap">
                             ${slots.map((s, i) => {
                                 const cl = COLORS[i % COLORS.length];
-                                return `<div class="cw-chip cw-switch-slot ${ai === i ? 'on' : ''}" data-idx="${i}" style="border-color:${ai === i ? cl.bdr : 'transparent'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')} (${s.center || 'C3'})</div>`;
+                                const isAct = ai === i;
+                                return `<div class="cw-chip cw-switch-slot ${isAct ? 'on' : ''}" data-idx="${i}" style="border-color:${isAct ? cl.bdr : 'transparent'}; background:${isAct ? cl.bg : 'rgba(255,255,255,0.04)'}; color:${isAct ? cl.hex : 'inherit'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')} (${s.center || 'C3'})</div>`;
                             }).join('')}
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
                             <div>
-                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:3px">场景环境 (Scene):</label>
-                                <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, modern room, soft sunlight..." value="${esc(comp.scene || '')}" />
+                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:3px">场景环境 (Scene Location):</label>
+                                <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, warm_lighting..." value="${esc(comp.scene || '')}" />
                             </div>
                             <div>
-                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:3px">视角光影 (Camera/Light):</label>
-                                <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field, volumetric lighting..." value="${esc(comp.camera || '')}" />
+                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:3px">视角与光影 (Camera & Lighting):</label>
+                                <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field, cinematic_lighting..." value="${esc(comp.camera || '')}" />
                             </div>
                         </div>
                     </div>
@@ -992,15 +1023,17 @@
                         const isActive = ai === i;
                         const prof = slot.charName ? profiles[slot.charName] : null;
                         const wardrobe = prof?.wardrobe || [];
+                        const curPos = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
+
                         return `<div class="cw-slot ${isActive ? 'on' : ''}" data-idx="${i}">
                             <div class="cw-slot-top">
                                 <div style="display:flex;align-items:center;gap:8px">
                                     <span class="cw-badge" style="background:${cl.bg};color:${cl.hex}">Char ${i + 1}</span>
-                                    <strong style="font-size:13px;color:#f8fafc">${esc(prof?.displayName || slot.charName || '未绑定')}</strong>
-                                    <span style="font-size:11px;opacity:.65">[位置: ${coordLabel(slot.center)}]</span>
+                                    <strong style="font-size:13px;color:#f8fafc">${esc(prof?.displayName || slot.charName || '未绑定角色')}</strong>
+                                    <span style="font-size:11px;opacity:.65">[当前位置: ${coordLabel(curPos)}]</span>
                                 </div>
                                 <div style="display:flex;gap:6px">
-                                    <button class="cw-btn cy sm cw-activate-slot" data-idx="${i}" type="button">🎯 选中</button>
+                                    <button class="cw-btn cy sm cw-activate-slot" data-idx="${i}" type="button">🎯 设为活动控制</button>
                                     ${slots.length > 1 ? `<button class="cw-btn rd sm cw-rm-slot" data-idx="${i}" type="button">✕ 移除</button>` : ''}
                                 </div>
                             </div>
@@ -1008,28 +1041,36 @@
                                 <div>
                                     <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">绑定角色档案:</label>
                                     <select class="cw-sel cw-slot-char" data-idx="${i}">
-                                        <option value="">👤 [未绑定]</option>
+                                        <option value="">👤 [自定义 / 未建档角色]</option>
                                         ${profileNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(profiles[n].displayName || n)}</option>`).join('')}
                                     </select>
                                 </div>
                                 <div>
-                                    <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">穿着服装:</label>
+                                    <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">服装套件 (Wardrobe):</label>
                                     <select class="cw-sel cw-slot-outfit" data-idx="${i}">
-                                        <option value="" ${!slot.outfitId && !slot.customOutfit ? 'selected' : ''}>👗 默认穿着</option>
+                                        <option value="" ${!slot.outfitId && !slot.customOutfit ? 'selected' : ''}>👗 默认服装</option>
                                         ${wardrobe.map(w => `<option value="${esc(w.id)}" ${slot.outfitId === w.id ? 'selected' : ''}>👗 ${esc(w.name)}</option>`).join('')}
-                                        <option value="__custom" ${slot.customOutfit ? 'selected' : ''}>✍️ 自定义服装</option>
+                                        <option value="__custom" ${slot.customOutfit ? 'selected' : ''}>✍️ 临时自定义服装</option>
                                     </select>
                                 </div>
                                 <div style="grid-column:1/-1">
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                                        <label style="font-size:11px;font-weight:bold;color:#cbd5e1">动作与神态 (Action):</label>
+                                        <label style="font-size:11px;font-weight:bold;color:#cbd5e1">当前动作/姿态 (Action):</label>
                                         <button class="cw-btn cy sm cw-pick-action-wb" data-idx="${i}" type="button"><i class="fa-solid fa-book-open"></i> 搜索世界书动作</button>
                                     </div>
-                                    <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="sitting, facing another, smiling, looking at partner..." value="${esc(slot.action || '')}" />
+                                    <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="sitting, facing_another, looking_at_partner, gentle_smile..." value="${esc(slot.action || '')}" />
                                 </div>
                                 <div style="grid-column:1/-1">
-                                    <label style="font-size:11px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC):</label>
-                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词 (如 penis, futanari...)" value="${esc(slot.uc || '')}" />
+                                    <label style="font-size:11px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC / 防穿模):</label>
+                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词 (如 penis, futanari, facing_viewer...)" value="${esc(slot.uc || '')}" />
+                                </div>
+                                <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px">
+                                    <span style="font-size:11px;font-weight:bold;color:#cbd5e1;white-space:nowrap">快捷站位:</span>
+                                    <div style="display:flex;gap:4px;flex-wrap:wrap">
+                                        ${['A3', 'B3', 'C3', 'D3', 'E3', 'C2', 'C4'].map(p => `
+                                            <button class="cw-chip cw-slot-quick-pos ${curPos === p ? 'on' : ''}" data-idx="${i}" data-pos="${p}" type="button">${p} (${COORD_LABELS[p] || p})</button>
+                                        `).join('')}
+                                    </div>
                                 </div>
                             </div>
                         </div>`;
@@ -1171,7 +1212,10 @@
             if (emptySlot) {
                 emptySlot.charName = charName;
             } else {
-                slots.push({ charName, outfitId: '', customOutfit: '', action: '', uc: '', center: 'C3' });
+                const usedCoords = new Set(slots.map(s => (s.center || '').toUpperCase()));
+                const candidateCoords = ['B3', 'D3', 'C3', 'A3', 'E3', 'B2', 'D2', 'C4'];
+                const nextCoord = candidateCoords.find(c => !usedCoords.has(c)) || 'C3';
+                slots.push({ charName, outfitId: '', customOutfit: '', action: '', uc: '', center: nextCoord });
             }
             wsSave();
             toastr.success(`已将「${charName}」放入空间舞台！`, PLUGIN_NAME);
@@ -1196,7 +1240,17 @@
             if (el) el.textContent = composeFinalPrompt(comp);
         };
 
-        // Grid Click
+        // Grid Click on Pins: Selects that character slot
+        container.querySelectorAll('#cw-stage .cw-pin').forEach(pin => {
+            pin.addEventListener('click', (ev) => {
+                ev.stopPropagation(); // prevent bubbling to cell
+                comp.activeSlotIndex = Number(pin.dataset.si);
+                wsSave();
+                refresh('composer');
+            });
+        });
+
+        // Grid Click on Cells: Moves active character to that cell
         container.querySelectorAll('#cw-stage .cw-cell').forEach(cell => {
             cell.addEventListener('click', () => {
                 const coord = cell.dataset.coord;
@@ -1209,7 +1263,7 @@
             });
         });
 
-        // Switch active slot
+        // Switch active slot via legend or card button
         container.querySelectorAll('.cw-switch-slot, .cw-activate-slot').forEach(b => {
             b.addEventListener('click', () => {
                 comp.activeSlotIndex = +b.dataset.idx;
@@ -1218,9 +1272,25 @@
             });
         });
 
+        // Quick position buttons on slot cards
+        container.querySelectorAll('.cw-slot-quick-pos').forEach(b => {
+            b.addEventListener('click', () => {
+                const idx = +b.dataset.idx;
+                const pos = b.dataset.pos;
+                if (comp.slots[idx]) {
+                    comp.slots[idx].center = pos;
+                    wsSave();
+                    refresh('composer');
+                }
+            });
+        });
+
         // Add Slot
         container.querySelector('#cw-add-slot')?.addEventListener('click', () => {
-            comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'C3' });
+            const usedCoords = new Set(comp.slots.map(s => (s.center || '').toUpperCase()));
+            const candidateCoords = ['B3', 'D3', 'C3', 'A3', 'E3', 'B2', 'D2', 'C4'];
+            const nextCoord = candidateCoords.find(c => !usedCoords.has(c)) || 'C3';
+            comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: nextCoord });
             comp.activeSlotIndex = comp.slots.length - 1;
             wsSave();
             refresh('composer');
@@ -1371,10 +1441,24 @@
             if (!tpl) return;
             comp.scene = tpl.scene || '';
             comp.camera = tpl.camera || '';
-            comp.slots = JSON.parse(JSON.stringify(tpl.slots || []));
+            
+            // Preserve existing chosen characters if slots exist
+            const newSlots = tpl.slots.map((ts, i) => {
+                const existingChar = comp.slots[i]?.charName || '';
+                const existingOutfit = comp.slots[i]?.outfitId || '';
+                return {
+                    charName: existingChar,
+                    outfitId: existingOutfit,
+                    customOutfit: '',
+                    action: ts.action || '',
+                    uc: ts.uc || '',
+                    center: ts.center || 'C3'
+                };
+            });
+            comp.slots = newSlots;
             comp.activeSlotIndex = 0;
             wsSave();
-            toastr.success(`已载入模板「${tpl.name}」到舞台`, PLUGIN_NAME);
+            toastr.success(`已载入分镜「${tpl.name}」到舞台（已保留当前角色绑定）`, PLUGIN_NAME);
             refresh('composer');
         }));
 
@@ -1419,6 +1503,6 @@
     }
 
     mount();
-    console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — 7D Formula Core');
+    console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — Multi-Char Stage Engine Complete');
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

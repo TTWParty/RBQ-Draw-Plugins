@@ -1,11 +1,14 @@
 /**
  * ═════════════════════════════════════════════════════════════════════════
- *  RBQ - 角色工坊 (Character Workshop) v2.1.0
+ *  RBQ - 角色工坊 (Character Workshop) v2.2.0
  * ═════════════════════════════════════════════════════════════════════════
- *  集多角色空间舞台合成、22维全量外貌定制、多套衣柜管理、
- *  世界书搭积木点选与智能生图记忆双向联动于一体的专业级工作台。
+ *  - 核心外貌体系：7 维全息外貌公式 (族裔/年龄/发型发色/瞳色眼型/体态胸围/肤色标记/种族幻想)
+ *  - 附加扩展词库：全量 Danbooru 表情、饰品、细节等作为附加项额外放置
+ *  - 差分衣柜：多套服装管理与世界书点选联动
+ *  - 数据架构：直接双向读写 Smart Draw Trigger 角色记忆 (单真实源)
+ *  - 空间舞台：5x5 网格定位、分镜模板与 NAI V4.5 多角色一键合成生图
  *
- *  @version 2.1.0
+ *  @version 2.2.0
  *  @author TTWP-09
  * ═════════════════════════════════════════════════════════════════════════
  */
@@ -19,7 +22,7 @@
     }
 
     const PLUGIN_NAME = '角色工坊 (Character Workshop)';
-    const VERSION = '2.1.0';
+    const VERSION = '2.2.0';
     const SDT_KEY = '_smartDrawTrigger';
     const WS_KEY = '_characterWorkshopState';
 
@@ -34,13 +37,13 @@
         return str.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^[,;\s]+|[,;\s]+$/g, '');
     }
 
-    // ── Grid & Position Constants ────────────────────────────
+    // ── Coordinate Mapping ───────────────────────────────────
     const COLS = ['A', 'B', 'C', 'D', 'E'];
     const ROWS = ['1', '2', '3', '4', '5'];
     const COORD_LABELS = {
-        A1: '左上远景', B1: '偏左远景', C1: '中央远景', D1: '偏右远景', E1: '右上远景',
+        A1: '左上远景', B1: '偏左远景', C1: '居中远景', D1: '偏右远景', E1: '右上远景',
         A2: '左上方',   B2: '左后方',   C2: '正后方',   D2: '右后方',   E2: '右上方',
-        A3: '极左侧',   B3: '左侧主角', C3: '正中央',   D3: '右侧主角', E3: '极右侧',
+        A3: '极左侧',   B3: '左侧主角', C3: '画面正中', D3: '右侧主角', E3: '极右侧',
         A4: '左下方',   B4: '左前方',   C4: '正前方',   D4: '右前方',   E4: '右下方',
         A5: '左下特写', B5: '偏左特写', C5: '中央特写', D5: '偏右特写', E5: '右下特写'
     };
@@ -212,339 +215,194 @@
         }
     ];
 
-    // ── 22-Category Full Danbooru Trait Presets ───────────────
-    const BASE_TRAIT_PRESETS = [
+    // ══════════════════════════════════════════════════════════
+    //  核心：7 维全息外貌公式 (7-Dimensional Appearance Formula)
+    // ══════════════════════════════════════════════════════════
+    const HOLOGRAPHIC_FORMULA_GROUPS = [
         {
-            group: '🌏 族裔与面相',
+            dim: 1,
+            title: '① 族裔面相与性别 (Ethnicity & Gender)',
+            color: '#38bdf8',
             tags: [
-                { name: '日系美少女', tag: 'japanese' },
-                { name: '东亚面孔', tag: 'east asian' },
-                { name: '中式美', tag: 'chinese' },
-                { name: '韩系美', tag: 'korean' },
-                { name: '欧美白人', tag: 'caucasian' },
-                { name: '精致小脸', tag: 'delicate face' },
-                { name: '柔和五官', tag: 'soft facial features' },
-                { name: '甜美萌脸', tag: 'cute face' },
-                { name: '傲娇猫眼/吊眼', tag: 'tsurime' },
-                { name: '无辜垂眼', tag: 'tareme' },
-                { name: '动漫大眼', tag: 'anime eyes' }
+                { name: '1girl (女性)', tag: '1girl' },
+                { name: '1boy (男性)', tag: '1boy' },
+                { name: '日系面相', tag: 'japanese, delicate_face' },
+                { name: '东亚面相', tag: 'east_asian, delicate_face' },
+                { name: '西方/欧式面相', tag: 'caucasian, western' },
+                { name: '中华风面相', tag: 'chinese' },
+                { name: '精致动漫脸', tag: 'delicate_face, anime_face' },
+                { name: '帅气中性脸', tag: 'androgynous, handsome_female' },
+                { name: '辣妹系 (Gyaru)', tag: 'gyaru' },
+                { name: '幼态萌脸 (Doll)', tag: 'doll_face, cute_face' }
             ]
         },
         {
-            group: '🌟 基础与体态',
+            dim: 2,
+            title: '② 年龄阶段 (Age Stage)',
+            color: '#fbbf24',
             tags: [
-                { name: '单人女性 (1girl)', tag: '1girl' },
-                { name: '单人男性 (1boy)', tag: '1boy' },
-                { name: '单人 (solo)', tag: 'solo' },
-                { name: '美少女', tag: 'bishoujo' },
-                { name: '萝莉 (loli)', tag: 'loli' },
-                { name: '少女 (young girl)', tag: 'young girl' },
-                { name: '御姐 (mature female)', tag: 'mature female' },
-                { name: '辣妹 (gyaru)', tag: 'gyaru' },
-                { name: '少妇/熟女 (milf)', tag: 'milf' },
-                { name: '正太 (shota)', tag: 'shota' },
-                { name: '美少年/帅哥 (ikemen)', tag: 'ikemen' }
+                { name: '青春少女 (14~18岁)', tag: 'adolescent, teenager, young_girl' },
+                { name: '成熟御姐 (20~30岁)', tag: 'mature_female, adult_female' },
+                { name: '娇小萝莉/少女', tag: 'petite, young_girl, loli' },
+                { name: '少妇/熟女 (Milf)', tag: 'milf, mature_female' },
+                { name: '青年男性 (Mature Male)', tag: 'mature_male' },
+                { name: '美少年/正太 (Bishounen)', tag: 'bishounen, pretty_boy' }
             ]
         },
         {
-            group: '💇 基础发色',
+            dim: 3,
+            title: '③ 发型与发色 (Hair Style & Color)',
+            color: '#f472b6',
             tags: [
-                { name: '银发', tag: 'silver hair' },
-                { name: '白发', tag: 'white hair' },
-                { name: '黑发', tag: 'black hair' },
-                { name: '金发', tag: 'blonde hair' },
-                { name: '棕发/褐发', tag: 'brown hair' },
-                { name: '粉发', tag: 'pink hair' },
-                { name: '蓝发', tag: 'blue hair' },
-                { name: '水蓝发', tag: 'aqua hair' },
-                { name: '紫发', tag: 'purple hair' },
-                { name: '红发', tag: 'red hair' },
-                { name: '绿发', tag: 'green hair' },
-                { name: '橙发', tag: 'orange hair' },
-                { name: '灰发', tag: 'grey hair' }
+                { name: '黑发 (Black)', tag: 'black_hair' },
+                { name: '银发/白发 (Silver/White)', tag: 'silver_hair, white_hair' },
+                { name: '金发 (Blonde)', tag: 'blonde_hair' },
+                { name: '粉发 (Pink)', tag: 'pink_hair' },
+                { name: '蓝发 (Blue)', tag: 'blue_hair' },
+                { name: '棕发/茶发 (Brown)', tag: 'brown_hair' },
+                { name: '双马尾 (Twin Tails)', tag: 'twin_tails' },
+                { name: '单马尾 (Ponytail)', tag: 'ponytail' },
+                { name: '黑长直/直发 (Straight)', tag: 'straight_hair, long_hair' },
+                { name: '及腰超长发 (Very Long)', tag: 'very_long_hair' },
+                { name: '波波头/短发 (Short Bob)', tag: 'short_hair, bob_cut' },
+                { name: '大波浪卷发 (Wavy)', tag: 'wavy_hair' },
+                { name: '齐刘海 (Blunt Bangs)', tag: 'blunt_bangs' },
+                { name: '麻花辫/编发 (Braids)', tag: 'braid' },
+                { name: '呆毛 (Ahoge)', tag: 'ahoge' }
             ]
         },
         {
-            group: '🎨 特殊发色',
+            dim: 4,
+            title: '④ 瞳色与眼型 (Eyes & Pupil)',
+            color: '#a855f7',
             tags: [
-                { name: '渐变发色', tag: 'gradient hair' },
-                { name: '双色发 (渐变/分层)', tag: 'two-tone hair' },
-                { name: '内层挑染发 (挂耳染)', tag: 'inner hair color' },
-                { name: '彩虹发色', tag: 'multicolored hair' },
-                { name: '挑染发丝', tag: 'streaked hair' },
-                { name: '发尾发光', tag: 'glowing hair' }
+                { name: '红瞳 (Red)', tag: 'red_eyes' },
+                { name: '蓝瞳 (Blue)', tag: 'blue_eyes' },
+                { name: '金瞳/琥珀瞳 (Amber)', tag: 'amber_eyes, golden_eyes' },
+                { name: '绿瞳/碧眼 (Green)', tag: 'green_eyes' },
+                { name: '紫瞳 (Purple)', tag: 'purple_eyes' },
+                { name: '黑瞳 (Black)', tag: 'black_eyes' },
+                { name: '异色瞳 (Heterochromia)', tag: 'heterochromia' },
+                { name: '垂眼/无辜眼 (Tareme)', tag: 'tareme' },
+                { name: '吊眼/高冷猫眼 (Tsurime)', tag: 'tsurime' },
+                { name: '爱心瞳 (Heart)', tag: 'heart-shaped_pupils' },
+                { name: '闪亮大眼', tag: 'sparkling_eyes, large_eyes' }
             ]
         },
         {
-            group: '✂️ 头发长度',
+            dim: 5,
+            title: '⑤ 胸型体态与身材 (Body & Breasts)',
+            color: '#4ade80',
             tags: [
-                { name: '超短发', tag: 'very short hair' },
-                { name: '短发', tag: 'short hair' },
-                { name: '齐肩中发', tag: 'medium hair' },
-                { name: '长发', tag: 'long hair' },
-                { name: '及腰超长发', tag: 'very long hair' },
-                { name: '拖地长发', tag: 'absurdly long hair' }
+                { name: '平胸/极贫 (Flat)', tag: 'flat_chest' },
+                { name: '小胸微乳 (Small)', tag: 'small_breasts' },
+                { name: '适中美乳 (Medium)', tag: 'medium_breasts' },
+                { name: '丰满巨乳 (Large)', tag: 'large_breasts' },
+                { name: '超大爆乳 (Huge)', tag: 'huge_breasts' },
+                { name: '纤细苗条 (Slender)', tag: 'slender' },
+                { name: '娇小体态 (Petite)', tag: 'petite' },
+                { name: '沙漏S曲线 (Curvy)', tag: 'curvy, hourglass_figure' },
+                { name: '肉感大腿 (Thick Thighs)', tag: 'thick_thighs' },
+                { name: '紧致马甲线 (Abs)', tag: 'toned, abs' }
             ]
         },
         {
-            group: '💇 经典发型',
+            dim: 6,
+            title: '⑥ 肤色与专属标记 (Skin & Marks)',
+            color: '#fb7185',
             tags: [
-                { name: '双马尾', tag: 'twintails' },
-                { name: '低双马尾', tag: 'low twintails' },
-                { name: '双马尾前搭', tag: 'twin tails over shoulders' },
-                { name: '单马尾', tag: 'ponytail' },
-                { name: '侧马尾', tag: 'side ponytail' },
-                { name: '高单马尾', tag: 'high ponytail' },
-                { name: '低单马尾', tag: 'low ponytail' },
-                { name: '黑长直/直发', tag: 'straight hair' },
-                { name: '姬发式/公主切', tag: 'hime cut' },
-                { name: '波波头/短鲍伯', tag: 'bob cut' },
-                { name: '狼尾头 (wolf cut)', tag: 'wolf cut' },
-                { name: '水母头发型', tag: 'jellyfish haircut' },
-                { name: '半扎发/公主头', tag: 'half updo' },
-                { name: '麻花辫', tag: 'braid' },
-                { name: '双麻花辫', tag: 'twin braids' },
-                { name: '单丸子头', tag: 'hair bun' },
-                { name: '双丸子头/包子头', tag: 'double bun' },
-                { name: '波浪大卷发', tag: 'wavy hair' },
-                { name: '钻头卷/螺旋卷', tag: 'drill hair' },
-                { name: '蓬松微乱发', tag: 'messy hair' }
+                { name: '白皙冷白皮 (Pale)', tag: 'pale_skin' },
+                { name: '自然透亮白 (Fair)', tag: 'fair_skin' },
+                { name: '小麦色/黑皮 (Tan/Dark)', tag: 'tan, dark_skin' },
+                { name: '眼下泪痣 (Mole Eye)', tag: 'mole_under_eye' },
+                { name: '唇角美人痣 (Mole Mouth)', tag: 'mole_near_mouth' },
+                { name: '胸口美人痣 (Mole Breast)', tag: 'mole_on_breast' },
+                { name: '可爱雀斑 (Freckles)', tag: 'freckles' },
+                { name: '淫纹/子宫印记', tag: 'stomach_tattoo, womb_tattoo' }
             ]
         },
         {
-            group: '✨ 头发细节/刘海',
+            dim: 7,
+            title: '⑦ 种族与幻想特征 (Race & Fantasy)',
+            color: '#38bdf8',
             tags: [
-                { name: '单呆毛 (ahoge)', tag: 'ahoge' },
-                { name: '双呆毛/天线', tag: 'antenna hair' },
-                { name: '齐刘海/平刘海', tag: 'blunt bangs' },
-                { name: '斜刘海/侧分刘海', tag: 'swept bangs' },
-                { name: '中分刘海', tag: 'parted bangs' },
-                { name: '遮眉碎发', tag: 'hair between eyes' },
-                { name: '单眼遮发', tag: 'hair over one eye' },
-                { name: '鬓角长发', tag: 'sidelocks' },
-                { name: '单侧撩发/露耳', tag: 'hair behind ear' },
-                { name: '露额头', tag: 'forehead' }
-            ]
-        },
-        {
-            group: '👁️ 瞳孔色彩',
-            tags: [
-                { name: '红瞳', tag: 'red eyes' },
-                { name: '蓝瞳', tag: 'blue eyes' },
-                { name: '水蓝瞳', tag: 'aqua eyes' },
-                { name: '金瞳/琥珀瞳', tag: 'golden eyes' },
-                { name: '黄瞳', tag: 'yellow eyes' },
-                { name: '绿瞳/碧眼', tag: 'green eyes' },
-                { name: '紫瞳', tag: 'purple eyes' },
-                { name: '粉瞳', tag: 'pink eyes' },
-                { name: '棕瞳/褐瞳', tag: 'brown eyes' },
-                { name: '黑瞳', tag: 'black eyes' },
-                { name: '银瞳/灰瞳', tag: 'silver eyes' }
-            ]
-        },
-        {
-            group: '✨ 特殊瞳孔与眼眸',
-            tags: [
-                { name: '异色瞳 (双色眼)', tag: 'heterochromia' },
-                { name: '心形瞳 (爱心眼)', tag: 'heart-shaped pupils' },
-                { name: '星形瞳 (星星眼)', tag: 'star-shaped pupils' },
-                { name: '竖瞳/猫瞳/蛇瞳', tag: 'slit pupils' },
-                { name: '十字瞳', tag: 'cross-shaped pupils' },
-                { name: '发光魔眼', tag: 'glowing eyes' },
-                { name: '空洞无光瞳/失神', tag: 'empty eyes' },
-                { name: '死鱼眼/鄙视无光', tag: 'jitome' },
-                { name: '同心圆瞳', tag: 'ringed eyes' }
-            ]
-        },
-        {
-            group: '👁️ 眼形与眼周特征',
-            tags: [
-                { name: '吊眼梢/猫眼 (tsurime)', tag: 'tsurime' },
-                { name: '下垂眼/无辜眼 (tareme)', tag: 'tareme' },
-                { name: '泪眼汪汪', tag: 'watery eyes' },
-                { name: '闪烁大眼', tag: 'sparkling eyes' },
-                { name: '泪痣 (眼下小痣)', tag: 'mole under eye' },
-                { name: '浓密长睫毛', tag: 'long eyelashes' },
-                { name: '眼影', tag: 'eyeshadow' },
-                { name: '微醺黑眼圈', tag: 'dark circles' },
-                { name: '眨眼 (单眼wink)', tag: 'one eye closed' },
-                { name: '半睁慵懒眼', tag: 'half-closed eyes' },
-                { name: '闭眼微笑', tag: 'closed eyes' }
-            ]
-        },
-        {
-            group: '😊 愉悦/自信表情',
-            tags: [
-                { name: '甜美微笑', tag: 'smile' },
-                { name: '开怀露齿笑', tag: 'grin' },
-                { name: '浅浅浅笑', tag: 'light smile' },
-                { name: '温柔微笑', tag: 'gentle smile' },
-                { name: '捂嘴轻笑', tag: 'covering mouth, smile' },
-                { name: '得意自信笑 (smug)', tag: 'smug' },
-                { name: '调皮wink', tag: 'wink' },
-                { name: '坏笑/邪魅笑', tag: 'evil smile' }
-            ]
-        },
-        {
-            group: '😳 害羞/傲娇表情',
-            tags: [
-                { name: '脸红 (blush)', tag: 'blush' },
-                { name: '大片腮红/通红', tag: 'heavy blush' },
-                { name: '害羞羞涩', tag: 'shy' },
-                { name: '尴尬羞赧', tag: 'embarrassed' },
-                { name: '傲娇神情', tag: 'tsundere' },
-                { name: '气鼓鼓/嘟嘴 (pout)', tag: 'pout' },
-                { name: '别过脸去/移开视线', tag: 'looking away, blush' }
-            ]
-        },
-        {
-            group: '😠 情绪/特殊表情',
-            tags: [
-                { name: '三无/无表情', tag: 'expressionless' },
-                { name: '微皱眉头', tag: 'frown' },
-                { name: '生气愤怒', tag: 'angry' },
-                { name: '不耐烦/嫌恶', tag: 'disdain' },
-                { name: '伤心哭泣', tag: 'crying' },
-                { name: '震惊呆住', tag: 'shocked' },
-                { name: '病娇狂气 (yandere)', tag: 'yandere' },
-                { name: '阿黑颜/高潮失神', tag: 'ahegao' }
-            ]
-        },
-        {
-            group: '👄 唇齿口部特征',
-            tags: [
-                { name: '小虎牙 (fang)', tag: 'fang' },
-                { name: '双虎牙', tag: 'double fangs' },
-                { name: '吐舌 (tongue out)', tag: 'tongue out' },
-                { name: '微张小嘴', tag: 'parted lips' },
-                { name: '嘟起嘴唇', tag: 'puckered lips' },
-                { name: '咬嘴唇', tag: 'biting lip' },
-                { name: '水润唇彩', tag: 'lip gloss' }
-            ]
-        },
-        {
-            group: '🐾 种族/兽耳与兽尾',
-            tags: [
-                { name: '猫耳', tag: 'cat ears' },
-                { name: '猫尾', tag: 'cat tail' },
-                { name: '狐狸耳', tag: 'fox ears' },
-                { name: '狐狸大尾巴', tag: 'fox tail' },
-                { name: '兔耳', tag: 'rabbit ears' },
-                { name: '犬耳/狗耳', tag: 'dog ears' },
-                { name: '狼耳', tag: 'wolf ears' },
-                { name: '狼尾', tag: 'wolf tail' },
-                { name: '精灵耳', tag: 'pointy ears' },
-                { name: '恶魔角', tag: 'demon horns' },
-                { name: '恶魔尾巴/心形尾', tag: 'demon tail' },
-                { name: '龙角', tag: 'dragon horns' },
-                { name: '龙尾', tag: 'dragon tail' }
-            ]
-        },
-        {
-            group: '🧝 幻想/神魔与异形',
-            tags: [
-                { name: '天使光环', tag: 'halo' },
-                { name: '天使羽翼', tag: 'angel wings' },
-                { name: '恶魔/蝙蝠翅膀', tag: 'bat wings' },
-                { name: '吸血鬼', tag: 'vampire' },
-                { name: '魅魔 (succubus)', tag: 'succubus' },
-                { name: '人鱼/鱼尾', tag: 'mermaid' },
-                { name: '半人马', tag: 'centaur' }
-            ]
-        },
-        {
-            group: '👙 身材体态与胸围',
-            tags: [
-                { name: '平胸/微乳', tag: 'flat chest' },
-                { name: '小胸/贫乳', tag: 'small breasts' },
-                { name: '适中胸围/美乳', tag: 'medium breasts' },
-                { name: '大胸/巨乳', tag: 'large breasts' },
-                { name: '超大胸/爆乳', tag: 'huge breasts' },
-                { name: '魔鬼巨乳', tag: 'gigantic breasts' },
-                { name: '纤细苗条身材', tag: 'slender' },
-                { name: '沙漏型身材', tag: 'hourglass figure' },
-                { name: '丰满微胖 (curvy)', tag: 'curvy, plump' },
-                { name: '肉感大腿 (thicc)', tag: 'thick thighs' },
-                { name: '纤细小蛮腰', tag: 'narrow waist' }
-            ]
-        },
-        {
-            group: '🌟 身体部位与迷人细节',
-            tags: [
-                { name: '绝对领域', tag: 'absolute territory' },
-                { name: '锁骨', tag: 'collarbone' },
-                { name: '肚脐', tag: 'navel' },
-                { name: '马甲线/腹肌', tag: 'toned belly, abs' },
-                { name: '丰满臀部', tag: 'plump buttocks' },
-                { name: '骆驼趾 (cameltoe)', tag: 'cameltoe' }
-            ]
-        },
-        {
-            group: '✨ 肤色与身体印记',
-            tags: [
-                { name: '白皙冷白皮', tag: 'pale skin' },
-                { name: '自然白皙肤色', tag: 'fair skin' },
-                { name: '小麦色/晒黑 (tan)', tag: 'tanned' },
-                { name: '深色/黑皮', tag: 'dark skin' },
-                { name: '淫纹/子宫印记', tag: 'stomach tattoo' },
-                { name: '身体纹身', tag: 'body tattoo' },
-                { name: '雀斑', tag: 'freckles' },
-                { name: '美人痣/嘴角痣', tag: 'mole under mouth' },
-                { name: '胸口痣', tag: 'mole on breast' }
-            ]
-        },
-        {
-            group: '🎀 头部与面部配饰',
-            tags: [
-                { name: '眼镜 (glasses)', tag: 'glasses' },
-                { name: '金丝半框眼镜', tag: 'semi-rimless glasses' },
-                { name: '墨镜/太阳镜', tag: 'sunglasses' },
-                { name: '发带/发箍', tag: 'headband' },
-                { name: '蝴蝶结发饰', tag: 'hair ribbon' },
-                { name: '发夹/发卡', tag: 'hairclip' },
-                { name: '发花/花朵发饰', tag: 'hair flower' },
-                { name: '耳环/耳坠', tag: 'earrings' },
-                { name: '项圈/Choker', tag: 'choker' },
-                { name: '项链', tag: 'necklace' }
-            ]
-        },
-        {
-            group: '👗 常见服装',
-            tags: [
-                { name: '水手服', tag: 'sailor suit, pleated skirt' },
-                { name: '西装校服/JK制服', tag: 'school uniform, blazer, necktie, pleated skirt' },
-                { name: '经典女仆装', tag: 'maid, maid headdress, apron, frills' },
-                { name: '白色连衣裙', tag: 'white dress, sundress' },
-                { name: '露肩毛衣', tag: 'off-shoulder sweater, bare shoulders' },
-                { name: '旗袍', tag: 'china dress, cheongsam, high slit' },
-                { name: '和服/浴衣', tag: 'yukata, kimono, obi' },
-                { name: '兔女郎装', tag: 'bunny suit, bunny ears, bow tie' },
-                { name: '修女服', tag: 'nun, habit, rosary' },
-                { name: '护士装', tag: 'nurse, nurse cap' },
-                { name: '性感比基尼', tag: 'bikini, micro bikini' },
-                { name: '蕾丝内衣', tag: 'lace lingerie, bra, panties, garter straps' },
-                { name: '死库水/连体泳衣', tag: 'school swimsuit' },
-                { name: '职场OL正装', tag: 'office lady, collared shirt, pencil skirt' },
-                { name: '全裸 (nude)', tag: 'nude, uncensored' }
-            ]
-        },
-        {
-            group: '🧦 鞋袜配饰',
-            tags: [
-                { name: '过膝袜 (thighhighs)', tag: 'thighhighs' },
-                { name: '白色过膝袜', tag: 'white thighhighs' },
-                { name: '黑色过膝袜', tag: 'black thighhighs' },
-                { name: '条纹过膝袜', tag: 'striped thighhighs' },
-                { name: '黑丝裤袜 (pantyhose)', tag: 'black pantyhose' },
-                { name: '渔网袜 (fishnets)', tag: 'fishnets' },
-                { name: '吊带袜 (garter belts)', tag: 'garter straps, thighhighs' },
-                { name: '泡泡袜/堆堆袜', tag: 'loose socks' },
-                { name: '高跟鞋 (high heels)', tag: 'high heels' },
-                { name: '玛丽珍鞋', tag: 'mary janes' },
-                { name: '长筒靴', tag: 'boots' },
-                { name: '光脚/赤足 (barefoot)', tag: 'barefoot' }
+                { name: '猫耳+猫尾 (Cat)', tag: 'cat_ears, cat_tail' },
+                { name: '狐狸耳+大尾巴 (Fox)', tag: 'fox_ears, fox_tail' },
+                { name: '兔耳+兔尾 (Rabbit)', tag: 'rabbit_ears, rabbit_tail' },
+                { name: '狼耳+狼尾 (Wolf)', tag: 'wolf_ears, wolf_tail' },
+                { name: '精灵尖耳 (Elven)', tag: 'pointy_ears' },
+                { name: '恶魔角+蝠翼 (Demon)', tag: 'demon_horns, demon_wings' },
+                { name: '天使光环+羽翼 (Angel)', tag: 'halo, angel_wings' },
+                { name: '魅魔特征 (Succubus)', tag: 'succubus, demon_tail' },
+                { name: '吸血鬼小虎牙 (Fangs)', tag: 'fangs, vampire' }
             ]
         }
+    ];
+
+    // ══════════════════════════════════════════════════════════
+    //  附加扩展词库 (Additional Supplementary Categories)
+    // ══════════════════════════════════════════════════════════
+    const EXTRA_TRAIT_GROUPS = [
+        {
+            group: '😊 表情与神态 (Expressions)',
+            tags: [
+                { name: '微笑 (Smile)', tag: 'smile' },
+                { name: '脸红害羞 (Blush)', tag: 'blush, shy' },
+                { name: '开怀大笑 (Grin)', tag: 'grin' },
+                { name: '傲娇/得意 (Smug)', tag: 'smug, tsundere' },
+                { name: '气鼓鼓嘟嘴 (Pout)', tag: 'pout' },
+                { name: '调皮眨眼 (Wink)', tag: 'wink' },
+                { name: '三无/无表情', tag: 'expressionless' },
+                { name: '阿黑颜/失神 (Ahegao)', tag: 'ahegao' },
+                { name: '病娇狂气 (Yandere)', tag: 'yandere, crazy_smile' },
+                { name: '眼含泪水 (Tears)', tag: 'tears, watery_eyes' },
+                { name: '吐舌 (Tongue Out)', tag: 'tongue_out' },
+                { name: '微张小嘴 (Parted Lips)', tag: 'parted_lips' }
+            ]
+        },
+        {
+            group: '🎀 头面部饰品与道具 (Accessories)',
+            tags: [
+                { name: '眼镜 (Glasses)', tag: 'glasses' },
+                { name: '金丝半框眼镜', tag: 'semi-rimless_glasses' },
+                { name: '发带/发箍 (Headband)', tag: 'headband' },
+                { name: '蝴蝶结发饰 (Ribbon)', tag: 'hair_ribbon' },
+                { name: '发夹 (Hairclip)', tag: 'hairclip' },
+                { name: '颈圈 (Choker)', tag: 'choker' },
+                { name: '耳环 (Earrings)', tag: 'earrings' },
+                { name: '项链 (Necklace)', tag: 'necklace' }
+            ]
+        },
+        {
+            group: '🧦 常见鞋袜与细节 (Socks & Shoes)',
+            tags: [
+                { name: '过膝袜 (Thighhighs)', tag: 'thighhighs' },
+                { name: '白色过膝袜 (White)', tag: 'white_thighhighs' },
+                { name: '黑丝连裤袜 (Pantyhose)', tag: 'black_pantyhose' },
+                { name: '渔网袜 (Fishnets)', tag: 'fishnets' },
+                { name: '吊带袜 (Garter Straps)', tag: 'garter_straps, thighhighs' },
+                { name: '高跟鞋 (High Heels)', tag: 'high_heels' },
+                { name: '光脚/赤足 (Barefoot)', tag: 'barefoot' },
+                { name: '绝对领域 (Zettai Ryouiki)', tag: 'absolute_territory' }
+            ]
+        }
+    ];
+
+    // ── Preset Outfits ───────────────────────────────────────
+    const OUTFIT_PRESETS = [
+        { name: '水手服 (JK)', tag: 'sailor_suit, pleated_skirt, white_shirt' },
+        { name: '西装校服', tag: 'school_uniform, blazer, necktie, pleated_skirt' },
+        { name: '经典女仆装', tag: 'maid, maid_headdress, apron, frills' },
+        { name: '白色连衣裙', tag: 'white_dress, sundress' },
+        { name: '露肩毛衣', tag: 'off-shoulder_sweater, bare_shoulders' },
+        { name: '旗袍', tag: 'china_dress, cheongsam, high_slit' },
+        { name: '和服/浴衣', tag: 'yukata, kimono, obi' },
+        { name: '兔女郎装', tag: 'bunny_suit, bunny_ears, bow_tie' },
+        { name: '修女服', tag: 'nun, habit, rosary' },
+        { name: '性感比基尼', tag: 'bikini, micro_bikini' },
+        { name: '蕾丝内衣', tag: 'lace_lingerie, bra, panties, garter_straps' },
+        { name: '死库水', tag: 'school_swimsuit' },
+        { name: '全裸 (Nude)', tag: 'nude, uncensored' }
     ];
 
     function toggleTag(currentText, newTag) {
@@ -702,21 +560,18 @@
 .cw-avatar img{width:100%;height:100%;object-fit:cover}
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 7px;font-size:11px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap;user-select:none}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
-.cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
+.cw-chip.on{background:rgba(56,189,248,.22)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
 .cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
 .cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:14px;width:860px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9);box-sizing:border-box}
 .cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08)}
 .cw-modal-bd{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box}
 .cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.35)}
 .cw-warn{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:9px 14px;font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:8px}
-.cw-cat-pill{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 9px;font-size:11px;color:rgba(255,255,255,.65);cursor:pointer;transition:.15s;white-space:nowrap}
-.cw-cat-pill:hover{background:rgba(255,255,255,.1);color:#fff}
-.cw-cat-pill.on{background:rgba(56,189,248,.2);border-color:rgba(56,189,248,.6);color:#38bdf8;font-weight:bold}
 `;
         document.head.appendChild(s);
     })();
 
-    // ── Character Editor Modal (Full 22-Group Builder) ────────
+    // ── Character Editor Modal (7-Dimensional Formula Core) ──
     function openCharacterEditor(editName, onSaved) {
         const isEdit = !!editName;
         const origProfile = isEdit ? getProfile(editName) : null;
@@ -733,13 +588,12 @@
         }
 
         let activeWIdx = 0;
-        let activeTraitGroupIdx = 0;
+        let showExtraTraits = false;
         const mask = document.createElement('div');
         mask.className = 'cw-modal-mask';
 
         function render() {
             const cw = draft.wardrobe[activeWIdx] || draft.wardrobe[0];
-            const currentTraitGroup = BASE_TRAIT_PRESETS[activeTraitGroupIdx] || BASE_TRAIT_PRESETS[0];
 
             mask.innerHTML = `
                 <div class="cw-modal" style="width:880px">
@@ -761,34 +615,57 @@
                                     </div>
                                     <div style="display:flex;gap:6px;align-items:center">
                                         <span style="font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap">头像 URL:</span>
-                                        <input id="cw-ce-avatar-url" class="cw-in" type="text" placeholder="https://... 或生成立绘后自动填入" value="${esc(draft.avatarUrl)}" style="font-size:11px;padding:3px 8px" />
+                                        <input id="cw-ce-avatar-url" class="cw-in" type="text" placeholder="https://... 或测试立绘后自动填入" value="${esc(draft.avatarUrl)}" style="font-size:11px;padding:3px 8px" />
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Base Tags + 22-Group Tag Builder -->
+                        <!-- 7-Dimensional Holographic Appearance Formula (Core) -->
                         <div class="cw-card">
                             <div class="cw-card-hd">
-                                <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-dna"></i> 固有外貌设定 (Base Tags)</span>
-                                <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 搜索世界书外貌</button>
+                                <div>
+                                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-dna"></i> 7 维全息外貌公式 (Base Tags)</span>
+                                    <div style="font-size:11px;opacity:.65;margin-top:2px">跨分镜永久锁定的固有外貌基底，点击 Tag 芯片快速增删：</div>
+                                </div>
+                                <div style="display:flex;gap:6px">
+                                    <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 搜索世界书外貌</button>
+                                    <button class="cw-btn sm" id="cw-toggle-extra-traits" type="button">${showExtraTraits ? '收起附加词库 ▴' : '更多表情/饰品/细节 ▾'}</button>
+                                </div>
                             </div>
                             
-                            <!-- Category Pills -->
-                            <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.06)">
-                                ${BASE_TRAIT_PRESETS.map((g, idx) => `
-                                    <button class="cw-cat-pill ${activeTraitGroupIdx === idx ? 'on' : ''}" data-gidx="${idx}" type="button">${esc(g.group)}</button>
+                            <!-- 7 Dimensions List -->
+                            <div style="display:flex;flex-direction:column;gap:6px;max-height:190px;overflow-y:auto;background:rgba(0,0,0,.28);padding:8px 10px;border-radius:8px">
+                                ${HOLOGRAPHIC_FORMULA_GROUPS.map(g => `
+                                    <div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+                                        <span style="font-size:11px;font-weight:bold;color:${g.color};min-width:180px;padding-top:2px">${esc(g.title)}:</span>
+                                        <div style="display:flex;gap:4px;flex-wrap:wrap;flex:1">
+                                            ${g.tags.map(t => `
+                                                <button class="cw-chip cw-base-chip" data-tag="${esc(t.tag)}" type="button">${esc(t.name)}</button>
+                                            `).join('')}
+                                        </div>
+                                    </div>
                                 `).join('')}
                             </div>
 
-                            <!-- Active Category Chips -->
-                            <div style="display:flex;gap:5px;flex-wrap:wrap;min-height:52px;max-height:100px;overflow-y:auto;background:rgba(0,0,0,.25);padding:8px;border-radius:6px">
-                                ${currentTraitGroup.tags.map(t => `
-                                    <button class="cw-chip cw-base-chip" data-tag="${esc(t.tag)}" type="button">${esc(t.name)}</button>
-                                `).join('')}
-                            </div>
+                            <!-- Additional Extra Categories (Expressions, Accessories, Details) -->
+                            ${showExtraTraits ? `
+                                <div style="display:flex;flex-direction:column;gap:6px;max-height:130px;overflow-y:auto;background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.2);padding:8px 10px;border-radius:8px">
+                                    <div style="font-size:11px;color:#38bdf8;font-weight:bold">附加扩展分类：</div>
+                                    ${EXTRA_TRAIT_GROUPS.map(g => `
+                                        <div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+                                            <span style="font-size:10.5px;font-weight:bold;color:#a78bfa;min-width:140px;padding-top:2px">${esc(g.group)}:</span>
+                                            <div style="display:flex;gap:4px;flex-wrap:wrap;flex:1">
+                                                ${g.tags.map(t => `
+                                                    <button class="cw-chip cw-base-chip" data-tag="${esc(t.tag)}" type="button">${esc(t.name)}</button>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
 
-                            <textarea id="cw-ce-base" class="cw-ta" placeholder="1girl, japanese, delicate face, silver hair, long twintails, green eyes, pale skin...">${esc(draft.baseTags)}</textarea>
+                            <textarea id="cw-ce-base" class="cw-ta" placeholder="1girl, japanese, delicate_face, silver_hair, straight_hair, red_eyes, large_breasts, pale_skin...">${esc(draft.baseTags)}</textarea>
                         </div>
 
                         <!-- Wardrobe -->
@@ -806,13 +683,13 @@
                             <div style="display:flex;gap:8px;align-items:center">
                                 <input id="cw-ce-wname" class="cw-in" type="text" placeholder="服装名称" value="${esc(cw?.name || '')}" style="width:180px;flex-shrink:0" />
                                 <div style="display:flex;gap:4px;flex-wrap:wrap;flex:1;overflow-x:auto">
-                                    ${BASE_TRAIT_PRESETS.find(g => g.group.includes('服装'))?.tags.slice(0, 8).map(o => `
+                                    ${OUTFIT_PRESETS.slice(0, 8).map(o => `
                                         <button class="cw-chip cw-outfit-chip" data-tag="${esc(o.tag)}" type="button">${esc(o.name)}</button>
-                                    `).join('') || ''}
+                                    `).join('')}
                                 </div>
                                 ${draft.wardrobe.length > 1 ? '<button class="cw-btn rd sm" id="cw-ce-del-w" type="button">✕ 删除此套</button>' : ''}
                             </div>
-                            <textarea id="cw-ce-wtags" class="cw-ta" placeholder="sailor suit, pleated skirt, white thighhighs...">${esc(cw?.outfit || cw?.tags || '')}</textarea>
+                            <textarea id="cw-ce-wtags" class="cw-ta" placeholder="sailor_suit, pleated_skirt, white_thighhighs...">${esc(cw?.outfit || cw?.tags || '')}</textarea>
                         </div>
                     </div>
                     <div class="cw-modal-ft">
@@ -844,12 +721,10 @@
             });
             mask.querySelector('#cw-ce-base')?.addEventListener('input', e => { draft.baseTags = e.target.value; syncChips(); });
 
-            // Category pill click
-            mask.querySelectorAll('.cw-cat-pill').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    activeTraitGroupIdx = Number(btn.dataset.gidx);
-                    render();
-                });
+            // Toggle extra traits section
+            mask.querySelector('#cw-toggle-extra-traits')?.addEventListener('click', () => {
+                showExtraTraits = !showExtraTraits;
+                render();
             });
 
             // Base trait chips
@@ -1227,7 +1102,7 @@
     }
 
     // ── Main Shell & Event Binding ───────────────────────────
-    let activeTab = 'dossier'; // Default to Dossier first for character management
+    let activeTab = 'dossier';
 
     function renderMain(tab = activeTab) {
         activeTab = tab;
@@ -1286,7 +1161,6 @@
                 if (!cd || !cd.name) return toastr.warning('未检测到当前角色卡', PLUGIN_NAME);
 
                 openCharacterEditor(null, () => refresh('dossier'));
-                // The editor modal itself has an import button, or we can trigger it directly
             } catch (e) { toastr.error('导入失败: ' + e.message, PLUGIN_NAME); }
         });
 
@@ -1545,6 +1419,6 @@
     }
 
     mount();
-    console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — SDT full integration');
+    console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — 7D Formula Core');
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

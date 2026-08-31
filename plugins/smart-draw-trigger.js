@@ -1238,6 +1238,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             </div>`
             }
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%;">
+                <button id="rbq-sdt-import-char-profile-btn" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.4) !important; color: #79e4ff !important; font-weight: bold !important; padding: 4px 12px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important;">
+                    <i class="fa-solid fa-file-import"></i> 从当前角色卡导入
+                </button>
                 <button id="rbq-sdt-goto-workshop-btn" class="menu_button" type="button" style="background: linear-gradient(135deg, rgba(2,132,199,0.25), rgba(56,189,248,0.15)) !important; border: 1px solid rgba(56,189,248,0.6) !important; color: #38bdf8 !important; font-weight: bold !important; padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important; max-width: 100% !important;">
                     <i class="fa-solid fa-palette"></i> 前往「角色工坊」深度定制与管理角色 (${entries.length} 位) ➔
                 </button>
@@ -1542,21 +1545,12 @@ Zimage 擅长理解复杂的英文长句和语境。
                 extractedBase = description.slice(0, 150);
             }
 
-            const addCharPanel = document.getElementById('rbq-sdt-add-char-panel');
-            const nameInput = document.getElementById('rbq-sdt-new-char-name');
-            const displayInput = document.getElementById('rbq-sdt-new-char-display');
-            const baseInput = document.getElementById('rbq-sdt-new-char-base');
-            const outfitInput = document.getElementById('rbq-sdt-new-char-outfit');
+            const cleanCharName = getCanonicalCharName(name) || name;
+            const avatarUrl = char.avatar ? `/characters/${char.avatar}` : null;
 
-            const cleanCharName = getCanonicalCharName(name);
-            if (addCharPanel) addCharPanel.style.display = 'flex';
-            if (nameInput) nameInput.value = cleanCharName;
-            if (displayInput) displayInput.value = cleanCharName;
-            if (baseInput) baseInput.value = extractedBase;
-            if (outfitInput) outfitInput.value = extractedOutfit;
-
-            addCharPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            toastr.success(`已从角色卡「${cleanCharName}」提取外貌设定，可在下方确认或修改后点击添加！`, PLUGIN_NAME);
+            updateCharacterProfile(cleanCharName, extractedBase, extractedOutfit, avatarUrl, true);
+            refreshCharacterProfileListUi();
+            toastr.success(`已成功从角色卡「${cleanCharName}」导入外貌与服装记忆！可在「角色工坊」中进一步细化或排布分镜。`, PLUGIN_NAME);
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 导入角色卡失败:`, err);
             toastr.error(`导入角色卡失败: ${err.message || String(err)}`, PLUGIN_NAME);
@@ -7063,18 +7057,33 @@ SCHEMA:
         };
         document.getElementById('rbq-sdt-scan').onclick = scanAllVisible;
 
-        // Character profile events
-        document.getElementById('rbq-sdt-clear-char-profiles')?.addEventListener('click', () => {
-            clearAllCharacterProfiles();
-            refreshCharacterProfileListUi();
-            toastr.success('所有角色外貌记忆已清空', PLUGIN_NAME);
-        });
-        document.getElementById('rbq-sdt-goto-workshop-btn')?.addEventListener('click', () => {
-            const tab = document.querySelector('[data-kite-tab="character-workshop"]');
-            if (tab) {
-                tab.click();
-            } else {
-                toastr.info('请在设置左侧菜单中切换至「角色工坊」', PLUGIN_NAME);
+        // Character profile toolbar events (delegated on document to survive dynamic innerHTML updates)
+        document.addEventListener('click', (e) => {
+            const importBtn = e.target.closest('#rbq-sdt-import-char-profile-btn');
+            if (importBtn) {
+                importCharacterFromCurrentCard();
+                return;
+            }
+
+            const gotoBtn = e.target.closest('#rbq-sdt-goto-workshop-btn');
+            if (gotoBtn) {
+                const tab = document.querySelector('[data-kite-tab="character-workshop"]');
+                if (tab) {
+                    tab.click();
+                } else {
+                    toastr.info('请在设置左侧菜单中切换至「角色工坊」', PLUGIN_NAME);
+                }
+                return;
+            }
+
+            const clearBtn = e.target.closest('#rbq-sdt-clear-char-profiles');
+            if (clearBtn) {
+                if (confirm('确定清空当前聊天的所有角色记忆吗？')) {
+                    clearAllCharacterProfiles();
+                    refreshCharacterProfileListUi();
+                    toastr.success('当前聊天的角色外貌记忆已清空', PLUGIN_NAME);
+                }
+                return;
             }
         });
     }

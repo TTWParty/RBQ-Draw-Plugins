@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.4';
+    const VERSION = '2.0.5';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -25,62 +25,59 @@
         return has ? list.filter(t => t.toLowerCase() !== lo).join(', ') : [...list, tag].join(', ');
     }
     function sanitizePromptSegment(s) {
-        return String(s || '').replace(/;/g, ',').trim();
+        if (!s) return '';
+        return s.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().replace(/^[,;\s]+|[,;\s]+$/g, '');
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Coordinate System & Slot Colors
+    //  Coordinate System (5x5 Stage Grid)
     // ══════════════════════════════════════════════════════════
-    const COLS = 'ABCDE'.split('');
-    const ROWS = '12345'.split('');
+    const COLS = ['A', 'B', 'C', 'D', 'E'];
+    const ROWS = ['1', '2', '3', '4', '5'];
     const COORD_LABELS = {
         A1: '左上远景', B1: '偏左远景', C1: '居中远景', D1: '偏右远景', E1: '右上远景',
-        A2: '左上中景', B2: '偏左中景', C2: '居中中景', D2: '偏右中景', E2: '右上中景',
-        A3: '左侧居中', B3: '偏左居中', C3: '画面正中', D3: '偏右居中', E3: '右侧居中',
-        A4: '左下近景', B4: '偏左近景', C4: '居中近景', D4: '偏右近景', E4: '右下近景',
-        A5: '左下特写', B5: '偏左特写', C5: '居中特写', D5: '偏右特写', E5: '右下特写',
+        A2: '左上方',   B2: '左后方',   C2: '正后方',   D2: '右后方',   E2: '右上方',
+        A3: '极左侧',   B3: '左侧主角', C3: '画面正中', D3: '右侧主角', E3: '极右侧',
+        A4: '左下方',   B4: '左前方',   C4: '正前方',   D4: '右前方',   E4: '右下方',
+        A5: '左下特写', B5: '偏左特写', C5: '中央特写', D5: '偏右特写', E5: '右下特写'
     };
     function coordLabel(c) {
-        const k = String(c || 'C3').toUpperCase().trim();
-        return COORD_LABELS[k] ? `${k} · ${COORD_LABELS[k]}` : k;
+        const u = (c || 'C3').toUpperCase();
+        return COORD_LABELS[u] ? `${u} (${COORD_LABELS[u]})` : u;
     }
+
     const COLORS = [
-        { hex: '#38bdf8', bg: 'rgba(56,189,248,0.18)', bdr: 'rgba(56,189,248,0.6)' },
-        { hex: '#f472b6', bg: 'rgba(244,114,182,0.18)', bdr: 'rgba(244,114,182,0.6)' },
-        { hex: '#4ade80', bg: 'rgba(74,222,128,0.18)', bdr: 'rgba(74,222,128,0.6)' },
-        { hex: '#fbbf24', bg: 'rgba(251,191,36,0.18)', bdr: 'rgba(251,191,36,0.6)' },
-        { hex: '#c084fc', bg: 'rgba(192,132,252,0.18)', bdr: 'rgba(192,132,252,0.6)' },
-        { hex: '#fb7185', bg: 'rgba(251,113,133,0.18)', bdr: 'rgba(251,113,133,0.6)' },
+        { hex: '#38bdf8', bg: 'rgba(56,189,248,.15)', bdr: 'rgba(56,189,248,.5)' },
+        { hex: '#f472b6', bg: 'rgba(244,114,182,.15)', bdr: 'rgba(244,114,182,.5)' },
+        { hex: '#4ade80', bg: 'rgba(74,222,128,.15)',  bdr: 'rgba(74,222,128,.5)' },
+        { hex: '#fbbf24', bg: 'rgba(251,191,36,.15)',  bdr: 'rgba(251,191,36,.5)' },
+        { hex: '#c084fc', bg: 'rgba(192,132,252,.15)', bdr: 'rgba(192,132,252,.5)' },
+        { hex: '#fb7185', bg: 'rgba(251,113,133,.15)', bdr: 'rgba(251,113,133,.5)' },
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  SDT Data Access Layer — Single Source of Truth
-    //  角色数据直接读写 _smartDrawTrigger.characterProfiles
+    //  Data Access Layer: Direct SDT characterProfiles Binding
     // ══════════════════════════════════════════════════════════
     function getChatKey() {
         try {
             if (typeof window.getCurrentChatId === 'function') {
                 const id = window.getCurrentChatId();
-                if (id) return String(id);
+                if (id) return id;
             }
-        } catch (_e) {}
+        } catch (_e) { /* ignore */ }
         try {
-            const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
-                ? window.RBQ.api.getContext()
-                : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
-            if (ctx?.chatId) return String(ctx.chatId);
-            if (ctx?.characterId !== undefined) return `char-${ctx.characterId}`;
-        } catch (_e) {}
-        try {
-            const chatEl = document.querySelector('#chat');
-            const chatFile = chatEl?.closest?.('[chat_id]')?.getAttribute('chat_id') || chatEl?.closest?.('[data-chat-file]')?.dataset?.chatFile;
-            if (chatFile) return String(chatFile);
-        } catch (_e) {}
-        return '_global';
+            const context = SillyTavern?.getContext?.();
+            if (context?.chatId) return context.chatId;
+            if (context?.characterId) return `char_${context.characterId}`;
+            if (context?.groupId) return `group_${context.groupId}`;
+        } catch (_e) { /* ignore */ }
+        return 'default';
     }
 
     function getSdtStore() {
-        return RBQ.api.getSettings()?.[SDT_KEY] || {};
+        const s = RBQ.api.getSettings();
+        if (!s[SDT_KEY]) s[SDT_KEY] = {};
+        return s[SDT_KEY];
     }
 
     function ensureProfileBucket() {
@@ -97,7 +94,6 @@
         const ck = getChatKey();
         const currentChatProfiles = (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
         
-        // If current chat is empty, fallback to scanning other chat profiles
         if (Object.keys(currentChatProfiles).length === 0 && sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
             const fallback = {};
             for (const chatDict of Object.values(sdt.characterProfiles)) {
@@ -137,338 +133,282 @@
         if (customOutfit) return customOutfit;
         if (!profile) return '';
         if (outfitId && Array.isArray(profile.wardrobe)) {
-            const item = profile.wardrobe.find(w => w.id === outfitId);
-            if (item) return item.outfit || item.tags || '';
+            const found = profile.wardrobe.find(w => w.id === outfitId);
+            if (found) return found.outfit || found.tags || '';
         }
-        return profile.currentOutfit || (profile.wardrobe?.[0]?.outfit) || (profile.wardrobe?.[0]?.tags) || '';
+        return profile.currentOutfit || (profile.wardrobe?.[0]?.outfit) || '';
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Multi-Char Composer Status Check
-    // ══════════════════════════════════════════════════════════
     function isMccEnabled() {
-        try {
-            const s = RBQ.api.getSettings();
-            return s?.[MCC_KEY]?.enabled === true;
-        } catch (e) { return false; }
+        const s = RBQ.api.getSettings();
+        return s[MCC_KEY]?.enabled !== false;
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Comprehensive Worldbook / Lorebook Retrieval
-    // ══════════════════════════════════════════════════════════
-    function getWorldbookEntries() {
-        const entries = [];
-        const seenKeys = new Set();
-
-        function addEntry(e, sourceName = '世界书') {
-            if (!e) return;
-            if (e.enabled === false || e.disabled === true || e.disable === true) return;
-            const content = String(e.content || e.tags || '').trim();
-            if (!content || /^[-#\s\n\r*`_~]+$/.test(content)) return;
-
-            let comment = String(e.comment || e.title || '').trim();
-            const rawKeys = Array.isArray(e.key) ? e.key : (Array.isArray(e.keys) ? e.keys : (typeof e.key === 'string' ? e.key.split(',') : (typeof e.keys === 'string' ? e.keys.split(',') : [])));
-            const cleanKeys = rawKeys.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean);
-            if (!comment) comment = cleanKeys[0] || '未命名词条';
-
-            const dedupKey = `${sourceName}:::${comment}:::${content.slice(0, 50)}`;
-            if (seenKeys.has(dedupKey)) return;
-            seenKeys.add(dedupKey);
-
-            entries.push({
-                id: e.id || e.uid || uid('wb'),
-                comment,
-                content,
-                keys: cleanKeys,
-                source: sourceName,
-                category: classifyWorldbookEntry(comment, content, cleanKeys)
-            });
-        }
-
-        function processSource(src, fallbackName = '世界书') {
-            if (!src || src.enabled === false) return;
-            const name = String(src.name || fallbackName);
-
-            if (Array.isArray(src.entries)) {
-                src.entries.forEach(e => addEntry(e, name));
-                return;
-            } else if (src.entries && typeof src.entries === 'object') {
-                Object.values(src.entries).forEach(e => addEntry(e, name));
-                return;
-            }
-
-            if (src.rawJson && typeof src.rawJson === 'string') {
-                try {
-                    const parsed = JSON.parse(src.rawJson);
-                    if (Array.isArray(parsed.entries)) {
-                        parsed.entries.forEach(e => addEntry(e, name));
-                    } else if (parsed.entries && typeof parsed.entries === 'object') {
-                        Object.values(parsed.entries).forEach(e => addEntry(e, name));
-                    } else if (Array.isArray(parsed)) {
-                        parsed.forEach(e => addEntry(e, name));
-                    }
-                } catch (_e) {}
-                return;
-            }
-        }
-
-        // 1. Read from SDT lorebookSources / lorebookStore
-        try {
-            const sdt = getSdtStore();
-            const sources = sdt?.lorebookSources || sdt?.lorebookStore?.sources || [];
-            if (Array.isArray(sources)) {
-                sources.forEach(src => processSource(src));
-            }
-        } catch (e) {
-            console.warn('[CW] Error reading SDT lorebookSources:', e);
-        }
-
-        // 2. Read from SillyTavern native global world_info
-        try {
-            if (window.world_info_data && typeof window.world_info_data === 'object') {
-                Object.entries(window.world_info_data).forEach(([wbName, wbObj]) => {
-                    if (wbObj && typeof wbObj === 'object') processSource(wbObj, wbName);
-                });
-            }
-            if (window.world_info && typeof window.world_info === 'object') {
-                Object.entries(window.world_info).forEach(([wbName, wbObj]) => {
-                    if (wbObj && typeof wbObj === 'object') processSource(wbObj, wbName);
-                });
-            }
-        } catch (_e) {}
-
-        // 3. Read from SillyTavern Context & Character Books
-        try {
-            const ctx = (window.RBQ && window.RBQ.api && typeof window.RBQ.api.getContext === 'function')
-                ? window.RBQ.api.getContext()
-                : (window.SillyTavern && typeof window.SillyTavern.getContext === 'function' ? window.SillyTavern.getContext() : null);
-            
-            if (ctx?.worldInfo && typeof ctx.worldInfo === 'object') {
-                Object.entries(ctx.worldInfo).forEach(([wbName, wbObj]) => processSource(wbObj, wbName));
-            }
-            if (ctx?.characterId != null && ctx?.characters?.[ctx.characterId]) {
-                const char = ctx.characters[ctx.characterId];
-                const cb = char.data?.character_book || char.character_book;
-                if (cb) processSource(cb, `${char.name} 专属设定`);
-            }
-        } catch (_e) {}
-
-        return entries;
-    }
-
-    function classifyWorldbookEntry(comment, content, keys = []) {
-        const allText = `${comment} ${keys.join(' ')} ${content.slice(0, 160)}`.toLowerCase();
-        
-        if (/体位|交合|性交|做爱|正常位|骑乘|后入|口交|深喉|乳交|自慰|跳蛋|高潮|绝顶|中出|精液|调教|绳缚|拘束|手铐|项圈|群交|3p|百合|拥抱|亲吻|接吻|依偎|牵手|耳语|互动/i.test(allText) ||
-            /\b(sex|missionary|cowgirl|doggystyle|fellatio|paizuri|oral|masturbation|cum|creampie|bondage|bdsm|hug|kiss|embrace|holding_hands|whisper|interaction)\b/i.test(allText)) {
-            return 'nsfw';
-        }
-        if (/服装|衣服|私服|日常服|常服|水手服|校服|西装|女仆|护士|兔女郎|泳装|泳衣|比基尼|死库水|内衣|睡衣|连衣裙|百褶裙|短裙|牛仔裤|丝袜|黑丝|白丝|过膝袜|高跟鞋|靴子|旗袍|和服|浴衣|镂空|透视装|全裸/i.test(allText) ||
-            /\b(dress|suit|skirt|uniform|shirt|hoodie|sweater|swimsuit|bikini|lingerie|underwear|pantyhose|socks|boots|shoes|coat|jacket|yukata|kimono|costume|clothes|outfit)\b/i.test(allText)) {
-            return 'outfit';
-        }
-        if (/场景|环境|室内|室外|户外|房间|卧室|客厅|教室|学校|厨房|浴室|温泉|咖啡厅|酒吧|酒店|走廊|街|街道|森林|海边|沙滩|海滩|公园|天台|屋顶|夜景|夕阳|星空|城市|废墟|城堡/i.test(allText) ||
-            /\b(indoors|outdoors|room|bedroom|living_room|classroom|kitchen|bathroom|cafe|street|forest|beach|sky|night|sunlight|sunset|city|park|ruins|stage|dungeon)\b/i.test(allText)) {
-            return 'scene';
-        }
-        if (/镜头|视角|机位|构图|特写|面部特写|半身|全身|俯视|仰视|侧面|背面|背影|第一人称|pov|景深|光影|光照|逆光|丁达尔|柔光|发光|氛围/i.test(allText) ||
-            /\b(close-up|portrait|bust_shot|upper_body|full_body|cowboy_shot|from_side|from_behind|from_above|from_below|pov|view|depth_of_field|cinematic_lighting|bokeh|lighting)\b/i.test(allText)) {
-            return 'camera';
-        }
-        if (/外貌|发型|发色|双马尾|单马尾|长发|短发|齐刘海|呆毛|瞳|眼睛|红瞳|蓝瞳|金瞳|绿瞳|面部|脸|表情|微笑|哭泣|脸红|胸|巨乳|贫乳|身材|体型|肤色|白皙|黑皮|泪痣|雀斑|淫纹|兽耳|猫耳|狐耳|兔耳|尾巴|翅膀|角|恶魔|天使|魅魔/i.test(allText) ||
-            /\b(hair|eyes|face|breasts|skin|ears|tail|horns|wings|blonde|black_hair|silver_hair|red_eyes|blue_eyes|mole|tattoo|petite|curvy|slender)\b/i.test(allText)) {
-            return 'appearance';
-        }
-        return 'pose';
-    }
-
-    function extractVariants(content) {
-        if (!content) return [];
-        const normalized = String(content).replace(/[\ufeff\u200b\u200c\u200d]/g, '').trim();
-        const lines = normalized.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-        const variants = [];
-        const variantRegex = /^([A-Za-z0-9\u4e00-\u9fa5\s\-_·]+)[\:\：\-\—]\s*(.*)$/;
-
-        for (const line of lines) {
-            if (line.startsWith('//') || line.startsWith('#')) continue;
-            const match = line.match(variantRegex);
-            if (match && match[2] && match[2].length > 4) {
-                variants.push({ label: match[1].trim(), tags: match[2].trim() });
-            }
-        }
-        if (variants.length === 0 && lines.length > 0) {
-            variants.push({ label: '默认', tags: lines.join(', ') });
-        }
-        return variants;
-    }
-
-    // ══════════════════════════════════════════════════════════
-    //  Workshop-Only Storage (composer state + presets)
+    //  Local Workspace State (Stage Presets & Active Composer)
     // ══════════════════════════════════════════════════════════
     function getWs() {
         const s = RBQ.api.getSettings();
-        if (!s[CW_KEY]) s[CW_KEY] = { version: VERSION, presets: [], activeComposer: null };
+        if (!s[CW_KEY]) s[CW_KEY] = {};
         const ws = s[CW_KEY];
         if (!Array.isArray(ws.presets)) ws.presets = [];
-        if (!ws.activeComposer) {
+        if (!ws.activeComposer || typeof ws.activeComposer !== 'object') {
             ws.activeComposer = {
-                scene: 'indoors, cozy room, warm_lighting, soft_light',
-                camera: 'from_side, three-quarter_view, depth_of_field',
-                atmosphere: '',
-                activeSlotIndex: 0,
+                scene: '', camera: '', atmosphere: '',
                 slots: [
-                    { charName: '', outfitId: '', customOutfit: '', action: 'sitting, facing_another, profile, looking_at_partner', center: 'B3', uc: '' },
-                    { charName: '', outfitId: '', customOutfit: '', action: 'sitting, facing_another, profile, looking_at_partner, blush', center: 'D3', uc: 'penis, futanari' },
+                    { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' },
+                    { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' }
                 ],
+                activeSlotIndex: 0
             };
         }
-        if (ws.activeComposer.activeSlotIndex == null) ws.activeComposer.activeSlotIndex = 0;
         return ws;
     }
     function wsSave() { RBQ.api.saveSettings(); }
 
     // ══════════════════════════════════════════════════════════
-    //  Built-in Composition Templates
+    //  Preset Compositions
     // ══════════════════════════════════════════════════════════
     const TEMPLATES = [
         {
-            name: '💑 面对面对视', desc: '侧面视角、对视眼神',
-            scene: 'indoors, cozy living room, warm_lighting, cinematic_lighting, depth_of_field',
-            camera: 'from_side, three-quarter_view, medium_shot', atmosphere: 'romantic atmosphere, soft_shadows',
+            name: '双人面对面互动',
+            desc: '两角色分别位于中左/中右，身体相对',
+            scene: 'indoors, cozy room, soft lighting',
+            camera: 'from_side, medium shot, eye level',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'sitting, facing_another, profile, looking_at_partner, gentle_smile', center: 'B3', uc: 'facing_viewer' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'sitting, facing_another, profile, eye_contact, soft_smile, blush', center: 'D3', uc: 'facing_viewer, penis, futanari' },
-            ],
+                { charName: '', outfitId: '', customOutfit: '', action: 'standing, facing right, looking at partner, gentle smile', uc: '', center: 'B3' },
+                { charName: '', outfitId: '', customOutfit: '', action: 'standing, facing left, looking at partner, blush', uc: '', center: 'D3' }
+            ]
         },
         {
-            name: '🫂 亲密拥抱', desc: '紧紧相拥、近景特写',
-            scene: 'bedroom, morning sunlight, window, soft_light, blurry_background',
-            camera: 'close-up, bust_shot, upper_body', atmosphere: 'intimate, sweet atmosphere, bokeh',
+            name: '背靠背战斗分镜',
+            desc: '战术背靠背站姿，左右分立有张力',
+            scene: 'ruins, embers, dramatic lighting',
+            camera: 'dynamic angle, wide shot',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'embracing, hugging, arms_around_waist, closed_eyes', center: 'C3', uc: 'feet, shoes, lower_body' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'embracing, head_on_chest, blushing, peaceful', center: 'C3', uc: 'feet, shoes, lower_body, penis, futanari' },
-            ],
+                { charName: '', outfitId: '', customOutfit: '', action: 'fighting stance, back to back, looking at viewer, serious', uc: '', center: 'B3' },
+                { charName: '', outfitId: '', customOutfit: '', action: 'holding weapon, back to back, looking away, focused', uc: '', center: 'D3' }
+            ]
         },
         {
-            name: '💥 壁咚对峙', desc: '单手压墙、俯视与仰视',
-            scene: 'hallway, wall, indoors, dramatic_lighting', camera: 'three-quarter_view, cowboy_shot', atmosphere: 'tension, dramatic',
+            name: '主仆/高低位差分镜',
+            desc: '一人站立居高临下，一人跪坐/屈膝',
+            scene: 'throne room, luxurious, marble floor',
+            camera: 'from above, tilted angle',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'standing, kabedon, hand_on_wall, leaning_forward, looking_down, smirking', center: 'B3', uc: 'facing_viewer' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'backed_against_wall, looking_up, wide_eyes, blush, nervous', center: 'C3', uc: 'facing_viewer, penis, futanari' },
-            ],
+                { charName: '', outfitId: '', customOutfit: '', action: 'standing, looking down, confident smile, hand on hip', uc: '', center: 'C2' },
+                { charName: '', outfitId: '', customOutfit: '', action: 'kneeling, looking up, blush, submissive', uc: '', center: 'C4' }
+            ]
         },
         {
-            name: '🤝 牵手漫步', desc: '室外并排牵手',
-            scene: 'outdoors, street, autumn, falling_leaves, sunny_day', camera: 'front_view, full_body, wide_angle', atmosphere: 'cheerful',
+            name: '三人同行分镜',
+            desc: '三人成三角站位，中间为主视点',
+            scene: 'street, sunny day, depth of field',
+            camera: 'front view, medium full shot',
             slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'walking, holding_hands, looking_at_partner, happy', center: 'B3', uc: '' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'walking, holding_hands, smiling, cute', center: 'D3', uc: 'penis, futanari' },
-            ],
-        },
-        {
-            name: '🤫 背后耳语', desc: '从身后环抱低语',
-            scene: 'dimly_lit_room, night, moonlit, rim_lighting', camera: 'bust_shot, from_side', atmosphere: 'mysterious, sensual',
-            slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'behind_another, hugging_from_behind, whispering_in_ear', center: 'B3', uc: 'feet, shoes' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'in_front, head_tilted, parted_lips, surprised, blush', center: 'C3', uc: 'feet, shoes, penis, futanari' },
-            ],
-        },
-        {
-            name: '☕ 咖啡厅对坐', desc: '隔桌对坐、午后阳光',
-            scene: 'cafe, table, coffee_cup, afternoon, window_light, depth_of_field', camera: 'eye_level, mid_shot', atmosphere: 'cozy',
-            slots: [
-                { charName: '', outfitId: '', customOutfit: '', action: 'sitting_at_table, holding_cup, looking_at_partner', center: 'B3', uc: 'feet, shoes' },
-                { charName: '', outfitId: '', customOutfit: '', action: 'sitting_at_table, chin_on_hand, smiling, eye_contact', center: 'D3', uc: 'feet, shoes' },
-            ],
-        },
+                { charName: '', outfitId: '', customOutfit: '', action: 'walking forward, waving hand, cheerful', uc: '', center: 'A3' },
+                { charName: '', outfitId: '', customOutfit: '', action: 'standing, center, looking at viewer, smile', uc: '', center: 'C3' },
+                { charName: '', outfitId: '', customOutfit: '', action: 'walking, arms crossed, side glance, smirk', uc: '', center: 'E3' }
+            ]
+        }
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  7-Dimensional Trait Chips (for baseTags editing)
+    //  7-Dimensional Holographic Appearance Formula
     // ══════════════════════════════════════════════════════════
     const TRAITS = [
-        { g: '性别族裔', c: '#38bdf8', t: [
-            { n: '1girl', t: '1girl' }, { n: '1boy', t: '1boy' },
-            { n: '日系', t: 'japanese, delicate_face' }, { n: '东亚', t: 'east_asian' },
-            { n: '西方', t: 'caucasian' }, { n: '中华', t: 'chinese' },
-            { n: '动漫风', t: 'anime_face' }, { n: 'Gyaru', t: 'gyaru' },
-        ] },
-        { g: '年龄', c: '#fbbf24', t: [
-            { n: '少女', t: 'adolescent, teenager' }, { n: '御姐', t: 'mature_female' },
-            { n: '萝莉', t: 'petite, young_girl' }, { n: '成年男', t: 'mature_male' },
-            { n: '正太', t: 'bishounen, pretty_boy' },
-        ] },
-        { g: '发型发色', c: '#f472b6', t: [
-            { n: '黑发', t: 'black_hair' }, { n: '银发', t: 'silver_hair' }, { n: '金发', t: 'blonde_hair' },
-            { n: '粉发', t: 'pink_hair' }, { n: '蓝发', t: 'blue_hair' }, { n: '红发', t: 'red_hair' },
-            { n: '棕发', t: 'brown_hair' }, { n: '双马尾', t: 'twin_tails' }, { n: '马尾', t: 'ponytail' },
-            { n: '长发', t: 'very_long_hair' }, { n: '短发', t: 'short_hair' },
-            { n: '波浪', t: 'wavy_hair' }, { n: '齐刘海', t: 'blunt_bangs' }, { n: '呆毛', t: 'ahoge' },
-        ] },
-        { g: '瞳色', c: '#a855f7', t: [
-            { n: '红瞳', t: 'red_eyes' }, { n: '蓝瞳', t: 'blue_eyes' }, { n: '金瞳', t: 'amber_eyes' },
-            { n: '绿瞳', t: 'green_eyes' }, { n: '紫瞳', t: 'purple_eyes' }, { n: '异色瞳', t: 'heterochromia' },
-            { n: '垂眼', t: 'tareme' }, { n: '吊眼', t: 'tsurime' },
-        ] },
-        { g: '身材', c: '#4ade80', t: [
-            { n: '纤细', t: 'slender' }, { n: '娇小', t: 'petite' }, { n: '丰满', t: 'curvy' },
-            { n: '高挑', t: 'tall, long_legs' }, { n: '平胸', t: 'flat_chest' },
-            { n: '小胸', t: 'small_breasts' }, { n: '中等', t: 'medium_breasts' },
-            { n: '巨乳', t: 'large_breasts' }, { n: '爆乳', t: 'huge_breasts' },
-            { n: '马甲线', t: 'toned, abs' }, { n: '肉腿', t: 'thick_thighs' },
-        ] },
-        { g: '肤色标记', c: '#fb7185', t: [
-            { n: '冷白', t: 'pale_skin' }, { n: '自然', t: 'fair_skin' }, { n: '小麦黑皮', t: 'tan, dark_skin' },
-            { n: '泪痣', t: 'mole_under_eye' }, { n: '雀斑', t: 'freckles' }, { n: '淫纹', t: 'womb_tattoo' },
-        ] },
-        { g: '种族幻想', c: '#67e8f9', t: [
-            { n: '猫耳尾', t: 'cat_ears, cat_tail' }, { n: '狐耳尾', t: 'fox_ears, fox_tail' },
-            { n: '兔耳', t: 'rabbit_ears' }, { n: '精灵耳', t: 'pointy_ears' },
-            { n: '恶魔', t: 'demon_horns, demon_wings' }, { n: '天使', t: 'halo, angel_wings' },
-            { n: '魅魔', t: 'succubus' }, { n: '虎牙', t: 'fangs' },
-        ] },
+        {
+            g: '性别族裔', c: '#38bdf8',
+            t: [
+                { n: '1girl', t: '1girl' }, { n: '1boy', t: '1boy' },
+                { n: '日系', t: 'japanese' }, { n: '东亚', t: 'east_asian' },
+                { n: '西方', t: 'caucasian' }, { n: '中华', t: 'chinese' },
+                { n: '动漫风', t: 'delicate_face' }, { n: 'Gyaru', t: 'gyaru' }
+            ]
+        },
+        {
+            g: '年龄', c: '#fbbf24',
+            t: [
+                { n: '少女', t: 'adolescent, young_girl' }, { n: '御姐', t: 'mature_female' },
+                { n: '萝莉', t: 'petite, loli' }, { n: '成年男', t: 'mature_male' },
+                { n: '正太', t: 'bishounen' }
+            ]
+        },
+        {
+            g: '发型发色', c: '#f472b6',
+            t: [
+                { n: '黑发', t: 'black_hair' }, { n: '银发', t: 'silver_hair' },
+                { n: '金发', t: 'blonde_hair' }, { n: '粉发', t: 'pink_hair' },
+                { n: '蓝发', t: 'blue_hair' }, { n: '红发', t: 'red_hair' },
+                { n: '棕发', t: 'brown_hair' }, { n: '双马尾', t: 'twin_tails' },
+                { n: '马尾', t: 'ponytail' }, { n: '长发', t: 'long_hair' },
+                { n: '短发', t: 'short_hair' }, { n: '波浪', t: 'wavy_hair' },
+                { n: '齐刘海', t: 'blunt_bangs' }, { n: '呆毛', t: 'ahoge' }
+            ]
+        },
+        {
+            g: '瞳色', c: '#a855f7',
+            t: [
+                { n: '红瞳', t: 'red_eyes' }, { n: '蓝瞳', t: 'blue_eyes' },
+                { n: '金瞳', t: 'golden_eyes' }, { n: '绿瞳', t: 'green_eyes' },
+                { n: '紫瞳', t: 'purple_eyes' }, { n: '异色瞳', t: 'heterochromia' },
+                { n: '垂眼', t: 'tareme' }, { n: '吊眼', t: 'tsurime' }
+            ]
+        },
+        {
+            g: '身材', c: '#4ade80',
+            t: [
+                { n: '纤细', t: 'slender' }, { n: '娇小', t: 'petite' },
+                { n: '丰满', t: 'curvy' }, { n: '高挑', t: 'tall' },
+                { n: '平胸', t: 'flat_chest' }, { n: '小胸', t: 'small_breasts' },
+                { n: '中等', t: 'medium_breasts' }, { n: '巨乳', t: 'large_breasts' },
+                { n: '爆乳', t: 'huge_breasts' }, { n: '马甲线', t: 'abs' },
+                { n: '肉腿', t: 'thick_thighs' }
+            ]
+        },
+        {
+            g: '肤色标记', c: '#fb7185',
+            t: [
+                { n: '冷白', t: 'pale_skin' }, { n: '自然', t: 'fair_skin' },
+                { n: '小麦黑皮', t: 'tan, dark_skin' }, { n: '泪痣', t: 'mole_under_eye' },
+                { n: '雀斑', t: 'freckles' }, { n: '淫纹', t: 'stomach_tattoo' }
+            ]
+        },
+        {
+            g: '种族幻想', c: '#38bdf8',
+            t: [
+                { n: '猫耳尾', t: 'cat_ears, cat_tail' }, { n: '狐耳尾', t: 'fox_ears, fox_tail' },
+                { n: '兔耳尾', t: 'rabbit_ears, rabbit_tail' }, { n: '精灵尖耳', t: 'pointy_ears' },
+                { n: '恶魔角翼', t: 'demon_horns, demon_wings' }, { n: '天使光环翼', t: 'halo, angel_wings' },
+                { n: '魅魔', t: 'succubus' }, { n: '虎牙', t: 'fangs' }
+            ]
+        }
     ];
 
     const OUTFIT_PRESETS = [
-        { n: '水手服', t: 'sailor_suit, pleated_skirt, sailor_collar' },
-        { n: '校服西装', t: 'school_uniform, blazer, pleated_skirt, necktie' },
-        { n: '女仆装', t: 'maid_outfit, frilled_apron, maid_headdress' },
-        { n: '兔女郎', t: 'bunny_suit, bunny_ears, fishnet_pantyhose' },
-        { n: '比基尼', t: 'bikini, side-tie_bikini_bottom' },
-        { n: '卫衣便服', t: 'hoodie, casual_clothes, denim_shorts' },
-        { n: '露肩毛衣', t: 'off-shoulder_sweater, bare_shoulders' },
-        { n: '旗袍', t: 'china_dress, cheongsam, high_slit' },
-        { n: '浴衣', t: 'yukata, kimono, obi' },
-        { n: '蕾丝内衣', t: 'lace_lingerie, see-through_bra, garter_straps' },
-        { n: '全裸', t: 'nude, uncensored' },
+        { n: '水手服', t: 'sailor_suit, pleated_skirt' },
+        { n: '校服西装', t: 'school_uniform, blazer, necktie' },
+        { n: '女仆装', t: 'maid, maid_headdress, apron' },
+        { n: '兔女郎', t: 'bunny_suit, bunny_ears' },
+        { n: '比基尼', t: 'bikini, micro_bikini' },
+        { n: '卫衣服', t: 'hoodie, casual' },
+        { n: '露肩毛衣', t: 'off-shoulder_sweater' },
+        { n: '旗袍', t: 'china_dress, high_slit' },
+        { n: '浴衣/和服', t: 'yukata, kimono' },
+        { n: '全裸', t: 'nude, uncensored' }
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  Prompt Composition
-    //  严格匹配 multi-char-composer 的 parseAndExtract()
+    //  Prompt Composition (NAI V4.5 Format)
     // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
         const parts = [];
         const slots = comp?.slots || [];
 
-        const scn = [comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).map(sanitizePromptSegment).join(', ');
-        if (scn) parts.push('Scene:' + scn);
+        let girlCount = 0;
+        let boyCount = 0;
 
+        const charParts = [];
         slots.forEach((slot, i) => {
             const n = i + 1;
             const profile = slot.charName ? getProfile(slot.charName) : null;
+            const rawName = profile?.displayName || slot.charName || '';
             const base = sanitizePromptSegment(profile?.baseTags || '');
             const outfit = sanitizePromptSegment(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
             const action = sanitizePromptSegment(slot.action || '');
-            const caption = [base, outfit, action].filter(Boolean).join(', ');
-            const center = (slot.center || (i === 0 ? 'B3' : 'D3')).toUpperCase();
 
-            if (caption) parts.push('Char' + n + ':' + caption + '|centers:' + center);
+            const combinedLower = (rawName + ' ' + base).toLowerCase();
+            if (combinedLower.includes('1boy') || combinedLower.includes('male') || combinedLower.includes('man')) {
+                boyCount++;
+            } else {
+                girlCount++;
+            }
+
+            const namePrefix = (rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
+            const caption = [namePrefix, base, outfit, action].filter(Boolean).join(', ');
+            const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
+
+            if (caption) charParts.push('Char' + n + ':' + caption + '|centers:' + center);
             const uc = sanitizePromptSegment(slot.uc);
-            if (uc) parts.push('Char' + n + ' UC:' + uc);
+            if (uc) charParts.push('Char' + n + ' UC:' + uc);
         });
 
-        return parts.join('; ');
+        const userScene = sanitizePromptSegment([comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).join(', '));
+        const countTags = [];
+        const lowerScene = userScene.toLowerCase();
+        
+        if (!lowerScene.includes('girl') && !lowerScene.includes('boy') && !lowerScene.includes('solo') && !lowerScene.includes('multiple')) {
+            if (girlCount > 0 && boyCount === 0) {
+                countTags.push(girlCount === 1 ? '1girl' : `${girlCount}girls`);
+            } else if (boyCount > 0 && girlCount === 0) {
+                countTags.push(boyCount === 1 ? '1boy' : `${boyCount}boys`);
+            } else if (girlCount > 0 && boyCount > 0) {
+                countTags.push(`${girlCount}girl${girlCount > 1 ? 's' : ''}, ${boyCount}boy${boyCount > 1 ? 's' : ''}`);
+            }
+        }
+
+        const fullScene = [countTags.join(', '), userScene].filter(Boolean).join(', ');
+        if (fullScene) parts.push('Scene:' + fullScene);
+
+        return [...parts, ...charParts].join('; ');
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  Image Viewer & Popup Modal
+    // ══════════════════════════════════════════════════════════
+    function showGeneratedImageModal(title, prompt, result, onSetAvatar = null) {
+        const url = result?.url || (typeof result === 'string' ? result : null);
+        if (!url) {
+            toastr.warning('生图未返回有效图片地址', PLUGIN_NAME);
+            return;
+        }
+
+        const existing = document.getElementById('cw-image-viewer-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'cw-image-viewer-modal';
+        modal.className = 'cw-modal-mask';
+        modal.style.zIndex = '100000050';
+        modal.innerHTML = `
+            <div class="cw-modal" style="width:680px;max-width:95vw">
+                <div class="cw-modal-hd">
+                    <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-image"></i> ${esc(title)}</strong>
+                    <button class="cw-btn sm" id="cw-img-close">✕</button>
+                </div>
+                <div class="cw-modal-bd" style="align-items:center;gap:12px">
+                    <div style="width:100%;max-height:60vh;min-height:240px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
+                        <img src="${esc(url)}" style="max-width:100%;max-height:60vh;object-fit:contain;display:block" alt="Generated Image" />
+                    </div>
+                    <div style="width:100%;background:rgba(0,0,0,0.35);padding:8px 12px;border-radius:6px;font-size:11px;color:rgba(255,255,255,0.7);max-height:80px;overflow-y:auto;word-break:break-all">
+                        <strong style="color:#38bdf8">提示词：</strong> ${esc(prompt)}
+                    </div>
+                </div>
+                <div class="cw-modal-ft" style="justify-content:flex-end;gap:8px">
+                    <a href="${esc(url)}" target="_blank" class="cw-btn sm cy" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> 查看原图</a>
+                    ${onSetAvatar ? `<button class="cw-btn sm gn" id="cw-img-set-avatar"><i class="fa-solid fa-user-check"></i> 设为角色头像</button>` : ''}
+                    <button class="cw-btn sm" id="cw-img-copy-prompt"><i class="fa-regular fa-copy"></i> 复制提示词</button>
+                    <button class="cw-btn sm pri" id="cw-img-ok">完成</button>
+                </div>
+            </div>
+        `;
+
+        modal.querySelector('#cw-img-close')?.addEventListener('click', () => modal.remove());
+        modal.querySelector('#cw-img-ok')?.addEventListener('click', () => modal.remove());
+        modal.querySelector('#cw-img-copy-prompt')?.addEventListener('click', () => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(prompt).then(() => toastr.success('已复制提示词', PLUGIN_NAME));
+            }
+        });
+        if (onSetAvatar) {
+            modal.querySelector('#cw-img-set-avatar')?.addEventListener('click', () => {
+                onSetAvatar(url);
+                toastr.success('已设置为角色头像！', PLUGIN_NAME);
+                modal.remove();
+            });
+        }
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -490,11 +430,12 @@
 .cw-card{background:rgba(30,41,59,.45);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:12px;backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:9px}
 .cw-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .cw-card-tt{font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:6px;color:#e2e8f0}
-.cw-grid5{width:250px;height:250px;background:rgba(15,23,42,.7);border:1.5px solid rgba(56,189,248,.35);border-radius:9px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:2px;padding:3px;position:relative;box-shadow:inset 0 0 18px rgba(0,0,0,.5)}
+.cw-grid5{width:250px;height:250px;background:rgba(15,23,42,.7);border:1.5px solid rgba(56,189,248,.35);border-radius:9px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:2px;padding:3px;position:relative;box-shadow:inset 0 0 18px rgba(0,0,0,.5);flex-shrink:0}
 .cw-cell{background:rgba(255,255,255,.03);border-radius:3px;border:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;position:relative;font-size:9.5px;color:rgba(255,255,255,.3);font-weight:bold}
 .cw-cell:hover{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.5);color:#38bdf8}
 .cw-cell.has{border-style:solid}
-.cw-pin{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:2;cursor:pointer}
+.cw-pin{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:2;cursor:pointer;transition:.15s}
+.cw-pin:hover{transform:scale(1.2)}
 .cw-slot{background:rgba(15,23,42,.55);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px;display:flex;flex-direction:column;gap:9px;transition:.2s}
 .cw-slot.on{border-color:#38bdf8;box-shadow:0 0 10px rgba(56,189,248,.15)}
 .cw-slot-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -503,9 +444,9 @@
 .cw-in,.cw-sel,.cw-ta{width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:5px;color:#fff;padding:5px 9px;font-size:12px;font-family:inherit;transition:.2s}
 .cw-in:focus,.cw-sel:focus,.cw-ta:focus{outline:none;border-color:#38bdf8;background:rgba(0,0,0,.5)}
 .cw-ta{min-height:44px;resize:vertical;font-family:monospace}
-.cw-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:5px 11px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.2s;background:rgba(255,255,255,.08);color:#fff}
+.cw-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:5px 11px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.2s;background:rgba(255,255,255,.08);color:#fff;white-space:nowrap !important;flex-shrink:0 !important}
 .cw-btn:hover{filter:brightness(1.2)}
-.cw-btn.pri{background:linear-gradient(135deg,#0284c7,#38bdf8);border-color:rgba(56,189,248,.5);box-shadow:0 2px 10px rgba(56,189,248,.3)}
+.cw-btn.pri{background:linear-gradient(135deg,#0284c7,#38bdf8);border-color:rgba(56,189,248,.5);box-shadow:0 2px 10px rgba(56,189,248,.3);color:#fff}
 .cw-btn.cy{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.4);color:#38bdf8}
 .cw-btn.pk{background:rgba(244,114,182,.15);border-color:rgba(244,114,182,.4);color:#f472b6}
 .cw-btn.gn{background:rgba(74,222,128,.15);border-color:rgba(74,222,128,.4);color:#4ade80}
@@ -519,13 +460,13 @@
 .cw-chcard:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.4);box-shadow:0 6px 18px rgba(0,0,0,.4)}
 .cw-avatar{width:42px;height:42px;border-radius:7px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;flex-shrink:0}
 .cw-avatar img{width:100%;height:100%;object-fit:cover}
-.cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s}
+.cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
-.cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px}
-.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:820px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9)}
+.cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:820px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9);box-sizing:border-box}
 .cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08)}
-.cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box}
 .cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3)}
 .cw-warn{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:8px 12px;font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:8px}
 `;
@@ -533,134 +474,17 @@
     })();
 
     // ══════════════════════════════════════════════════════════
-    //  Interactive Worldbook Picker Modal
+    //  Interactive Worldbook Picker Bridge
     // ══════════════════════════════════════════════════════════
-    const WB_CATEGORIES = [
-        { id: 'all', name: '全部', icon: 'fa-globe' },
-        { id: 'pose', name: '动作姿态', icon: 'fa-person-walking' },
-        { id: 'outfit', name: '服装穿搭', icon: 'fa-shirt' },
-        { id: 'scene', name: '场景环境', icon: 'fa-mountain-sun' },
-        { id: 'appearance', name: '外貌特征', icon: 'fa-dna' },
-        { id: 'nsfw', name: '体位/互动', icon: 'fa-heart-pulse' },
-        { id: 'camera', name: '镜头光影', icon: 'fa-camera' },
-    ];
-
     function openWorldbookPicker(title, onSelect, initialCategory = 'all') {
         if (typeof RBQ?.api?.openLorebookSearchModal === 'function') {
             RBQ.api.openLorebookSearchModal('all', (entry) => {
                 const content = typeof entry === 'string' ? entry : (entry?.content || entry?.tags || '');
                 if (content) onSelect(content.trim());
             }, initialCategory);
-            return;
+        } else {
+            toastr.warning('世界书搜索功能不可用，请确保智能生图触发器已启用', PLUGIN_NAME);
         }
-
-        const allEntries = getWorldbookEntries();
-        let selectedCategory = initialCategory || 'all';
-        let selectedSource = 'all';
-        let query = '';
-        
-        // Extract unique source names
-        const sourceNames = [...new Set(allEntries.map(e => e.source))];
-
-        const mask = document.createElement('div');
-        mask.className = 'cw-modal-mask';
-
-        function render() {
-            const filtered = allEntries.filter(e => {
-                const matchCat = selectedCategory === 'all' || e.category === selectedCategory;
-                const matchSrc = selectedSource === 'all' || e.source === selectedSource;
-                if (!matchCat || !matchSrc) return false;
-                if (!query) return true;
-                const q = query.toLowerCase();
-                return e.comment.toLowerCase().includes(q) || e.content.toLowerCase().includes(q) || e.keys.some(k => k.toLowerCase().includes(q));
-            });
-
-            mask.innerHTML = `
-                <div class="cw-modal" style="width:840px">
-                    <div class="cw-modal-hd">
-                        <strong style="color:#38bdf8;font-size:14px;display:flex;align-items:center;gap:8px">
-                            <i class="fa-solid fa-book-open"></i> ${esc(title)}
-                            <span style="font-size:11.5px;color:rgba(255,255,255,0.6);font-weight:normal;">(${filtered.length} / ${allEntries.length} 词条)</span>
-                        </strong>
-                        <button class="cw-btn sm" id="cw-wbp-x">✕</button>
-                    </div>
-
-                    <!-- Search Bar & Worldbook Selector -->
-                    <div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.25);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <input id="cw-wbp-q" class="cw-in" type="text" placeholder="🔍 搜索词条名称、关键词或 Tag 内容..." value="${esc(query)}" style="flex:1;min-width:180px;" />
-                        ${sourceNames.length > 1 ? `
-                            <select id="cw-wbp-src" class="cw-sel" style="width:160px;">
-                                <option value="all" ${selectedSource === 'all' ? 'selected' : ''}>🌐 全部世界书 (${allEntries.length})</option>
-                                ${sourceNames.map(sn => `<option value="${esc(sn)}" ${selectedSource === sn ? 'selected' : ''}>📖 ${esc(sn)}</option>`).join('')}
-                            </select>
-                        ` : ''}
-                    </div>
-
-                    <!-- Category Tabs -->
-                    <div class="cw-tabs" style="border-radius:0;border-left:none;border-right:none;border-top:none;padding:6px 16px;background:rgba(0,0,0,0.15);overflow-x:auto;">
-                        ${WB_CATEGORIES.map(c => `
-                            <button class="cw-tab cw-wbp-cat-btn ${selectedCategory === c.id ? 'on' : ''}" data-cat="${c.id}">
-                                <i class="fa-solid ${c.icon}"></i> ${c.name}
-                            </button>
-                        `).join('')}
-                    </div>
-
-                    <!-- Results List -->
-                    <div class="cw-modal-bd" style="max-height:52vh;gap:8px">
-                        ${filtered.length === 0 ? `
-                            <div style="text-align:center;padding:40px 20px;opacity:.6">
-                                ${allEntries.length === 0 ? '⚠️ 当前尚未检测到已挂载的世界书。请在「智能生图触发器 (Smart Draw)」中导入世界书 JSON，或在酒馆中挂载世界书。' : '未找到匹配的世界书词条，请尝试调整搜索词或分类'}
-                            </div>
-                        ` : filtered.map((e, i) => {
-                            const vars = extractVariants(e.content);
-                            return `<div class="cw-card" style="padding:9px 12px;gap:5px">
-                                <div class="cw-card-hd">
-                                    <div style="display:flex;align-items:center;gap:6px">
-                                        <span class="cw-badge" style="background:rgba(56,189,248,0.15);color:#38bdf8;font-size:10px;">${esc(e.source)}</span>
-                                        <strong style="font-size:12.5px;color:#f1f5f9">${esc(e.comment)}</strong>
-                                        ${e.keys.length ? `<span style="font-size:10.5px;color:rgba(255,255,255,0.45);">[${esc(e.keys.slice(0, 3).join(', '))}]</span>` : ''}
-                                    </div>
-                                    <div style="display:flex;gap:5px;flex-wrap:wrap">
-                                        ${vars.length > 1 ? vars.map((v, vi) => `<button class="cw-btn cy sm cw-wbp-var" data-ei="${i}" data-vi="${vi}">${esc(v.label)}</button>`).join('') : `<button class="cw-btn gn sm cw-wbp-pick" data-ei="${i}">填入</button>`}
-                                    </div>
-                                </div>
-                                <div style="font-family:monospace;font-size:10.5px;color:rgba(255,255,255,.65);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.content.slice(0, 160))}</div>
-                            </div>`;
-                        }).join('')}
-                    </div>
-
-                    <!-- Footer -->
-                    <div class="cw-modal-ft">
-                        <span style="font-size:11px;opacity:.55">共载入 ${allEntries.length} 条世界书词库</span>
-                        <button class="cw-btn" id="cw-wbp-close">关闭</button>
-                    </div>
-                </div>`;
-
-            mask.querySelector('#cw-wbp-x')?.addEventListener('click', () => mask.remove());
-            mask.querySelector('#cw-wbp-close')?.addEventListener('click', () => mask.remove());
-            mask.querySelector('#cw-wbp-q')?.addEventListener('input', ev => { query = ev.target.value.trim(); render(); });
-            mask.querySelector('#cw-wbp-src')?.addEventListener('change', ev => { selectedSource = ev.target.value; render(); });
-            
-            mask.querySelectorAll('.cw-wbp-cat-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    selectedCategory = btn.dataset.cat;
-                    render();
-                });
-            });
-
-            mask.querySelectorAll('.cw-wbp-pick').forEach(b => b.addEventListener('click', () => {
-                const e = filtered[+b.dataset.ei];
-                if (e) { onSelect(e.content.trim()); mask.remove(); }
-            }));
-            mask.querySelectorAll('.cw-wbp-var').forEach(b => b.addEventListener('click', () => {
-                const e = filtered[+b.dataset.ei];
-                const vars = extractVariants(e.content);
-                const v = vars[+b.dataset.vi];
-                if (v) { onSelect(v.tags); mask.remove(); }
-            }));
-        }
-        render();
-        document.body.appendChild(mask);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -675,11 +499,15 @@
             displayName: origProfile?.displayName || editName || '',
             baseTags: origProfile?.baseTags || '',
             currentOutfit: origProfile?.currentOutfit || '',
+            currentOutfitId: origProfile?.currentOutfitId || '',
             avatarUrl: origProfile?.avatarUrl || '',
             wardrobe: JSON.parse(JSON.stringify(origProfile?.wardrobe || [])),
         };
         if (draft.wardrobe.length === 0) {
             draft.wardrobe.push({ id: uid('w'), name: '默认服装', outfit: draft.currentOutfit || '', triggers: [], createdAt: Date.now() });
+        }
+        if (!draft.currentOutfitId) {
+            draft.currentOutfitId = draft.wardrobe[0]?.id || '';
         }
 
         let activeWIdx = 0;
@@ -688,8 +516,10 @@
 
         function render() {
             const cw = draft.wardrobe[activeWIdx] || draft.wardrobe[0];
+            const isCurrentlyWorn = (draft.currentOutfitId ? cw?.id === draft.currentOutfitId : (cw?.outfit && cw?.outfit === draft.currentOutfit));
+
             mask.innerHTML = `
-                <div class="cw-modal" style="width:800px">
+                <div class="cw-modal" style="width:820px">
                     <div class="cw-modal-hd">
                         <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-id-card"></i> ${isEdit ? '编辑角色 · ' + esc(draft.displayName) : '✨ 新建角色档案'}</strong>
                         <button class="cw-btn sm" id="cw-ce-x">✕</button>
@@ -698,11 +528,15 @@
                         <!-- Name & Avatar -->
                         <div class="cw-card" style="padding:9px 12px">
                             <div style="display:flex;gap:10px;align-items:center">
-                                <div class="cw-avatar" style="width:48px;height:48px">${draft.avatarUrl ? '<img src="' + esc(draft.avatarUrl) + '"/>' : '👤'}</div>
+                                <div class="cw-avatar" style="width:48px;height:48px" id="cw-ce-avatar-box">${draft.avatarUrl ? '<img src="' + esc(draft.avatarUrl) + '"/>' : '👤'}</div>
                                 <div style="flex:1;display:flex;flex-direction:column;gap:5px">
                                     <div style="display:flex;gap:7px">
                                         <input id="cw-ce-name" class="cw-in" type="text" placeholder="角色姓名" value="${esc(draft.displayName)}" style="font-weight:bold;font-size:13px" ${isEdit ? 'disabled' : ''} />
-                                        <button class="cw-btn am sm" id="cw-ce-import-card" type="button"><i class="fa-solid fa-file-import"></i> 导入当前角色卡</button>
+                                        <button class="cw-btn am sm" id="cw-ce-import-card" type="button"><i class="fa-solid fa-file-import"></i> 从当前角色卡导入</button>
+                                    </div>
+                                    <div style="display:flex;gap:6px;align-items:center">
+                                        <span style="font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap">头像 URL:</span>
+                                        <input id="cw-ce-avatar-url" class="cw-in" type="text" placeholder="https://... 或测试立绘后一键设为头像" value="${esc(draft.avatarUrl)}" style="font-size:11px;padding:3px 8px" />
                                     </div>
                                 </div>
                             </div>
@@ -711,12 +545,12 @@
                         <!-- Base Tags + 7D Chips -->
                         <div class="cw-card">
                             <div class="cw-card-hd">
-                                <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-dna"></i> 固有外貌 (Base Tags)</span>
+                                <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-dna"></i> 7 维全息外貌公式 (Base Tags)</span>
                                 <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选外貌</button>
                             </div>
-                            <div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;background:rgba(0,0,0,.2);padding:6px;border-radius:5px">
-                                ${TRAITS.map(g => `<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap">
-                                    <span style="font-size:10px;font-weight:bold;color:${g.c};min-width:60px;padding-top:2px">${esc(g.g)}:</span>
+                            <div style="display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto;background:rgba(0,0,0,.25);padding:8px 10px;border-radius:6px">
+                                ${TRAITS.map(g => `<div style="display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap">
+                                    <span style="font-size:10.5px;font-weight:bold;color:${g.c};min-width:68px;padding-top:2px;flex-shrink:0">${esc(g.g)}:</span>
                                     <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1">${g.t.map(t => `<button class="cw-chip cw-base-chip" data-tag="${esc(t.t)}" type="button">${esc(t.n)}</button>`).join('')}</div>
                                 </div>`).join('')}
                             </div>
@@ -726,25 +560,29 @@
                         <!-- Wardrobe -->
                         <div class="cw-card">
                             <div class="cw-card-hd">
-                                <span class="cw-card-tt" style="color:#ffb86c"><i class="fa-solid fa-shirt"></i> 衣柜 (${draft.wardrobe.length} 套)</span>
+                                <span class="cw-card-tt" style="color:#ffb86c"><i class="fa-solid fa-shirt"></i> 差分衣柜 (${draft.wardrobe.length} 套)</span>
                                 <div style="display:flex;gap:5px">
                                     <button class="cw-btn am sm" id="cw-ce-wb-outfit" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选服装</button>
                                     <button class="cw-btn gn sm" id="cw-ce-add-w" type="button"><i class="fa-solid fa-plus"></i> 新增服装</button>
                                 </div>
                             </div>
                             <div class="cw-tabs" style="overflow-x:auto">
-                                ${draft.wardrobe.map((w, i) => `<button class="cw-tab cw-w-tab ${activeWIdx === i ? 'on' : ''}" data-wi="${i}">👗 ${esc(w.name || '套件' + (i + 1))}</button>`).join('')}
+                                ${draft.wardrobe.map((w, i) => {
+                                    const isWorn = (draft.currentOutfitId ? w.id === draft.currentOutfitId : (w.outfit && w.outfit === draft.currentOutfit));
+                                    return `<button class="cw-tab cw-w-tab ${activeWIdx === i ? 'on' : ''}" data-wi="${i}">👗 ${esc(w.name || '套件' + (i + 1))} ${isWorn ? '<span style="color:#4ade80;font-size:10px;margin-left:2px">●穿</span>' : ''}</button>`;
+                                }).join('')}
                             </div>
-                            <div style="display:flex;gap:7px;align-items:center">
-                                <input id="cw-ce-wname" class="cw-in" type="text" placeholder="服装名称" value="${esc(cw?.name || '')}" style="width:200px" />
-                                <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1">${OUTFIT_PRESETS.slice(0, 7).map(o => `<button class="cw-chip cw-outfit-chip" data-tag="${esc(o.t)}" type="button">${esc(o.n)}</button>`).join('')}</div>
+                            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+                                <input id="cw-ce-wname" class="cw-in" type="text" placeholder="服装名称" value="${esc(cw?.name || '')}" style="width:160px;flex-shrink:0" />
+                                ${isCurrentlyWorn ? '<button class="cw-btn gn sm" type="button" disabled style="opacity:0.9"><i class="fa-solid fa-check"></i> ✨ 正在穿着</button>' : '<button class="cw-btn cy sm" id="cw-ce-set-active" type="button"><i class="fa-solid fa-shirt"></i> 设为当前穿着</button>'}
+                                <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1;overflow-x:auto">${OUTFIT_PRESETS.slice(0, 7).map(o => `<button class="cw-chip cw-outfit-chip" data-tag="${esc(o.t)}" type="button">${esc(o.n)}</button>`).join('')}</div>
                                 ${draft.wardrobe.length > 1 ? '<button class="cw-btn rd sm" id="cw-ce-del-w" type="button">✕ 删除此套</button>' : ''}
                             </div>
                             <textarea id="cw-ce-wtags" class="cw-ta" placeholder="sailor_suit, pleated_skirt, white_thighhighs">${esc(cw?.outfit || cw?.tags || '')}</textarea>
                         </div>
                     </div>
                     <div class="cw-modal-ft">
-                        <button class="cw-btn cy" id="cw-ce-test" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试单人立绘</button>
+                        <button class="cw-btn cy" id="cw-ce-test" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 🎨 测试单人立绘</button>
                         <div style="display:flex;gap:7px">
                             <button class="cw-btn" id="cw-ce-cancel">取消</button>
                             <button class="cw-btn pri" id="cw-ce-save">💾 保存到 SDT 角色记忆</button>
@@ -764,6 +602,11 @@
             mask.querySelector('#cw-ce-cancel')?.addEventListener('click', () => mask.remove());
 
             mask.querySelector('#cw-ce-name')?.addEventListener('input', e => { draft.displayName = e.target.value.trim(); });
+            mask.querySelector('#cw-ce-avatar-url')?.addEventListener('input', e => {
+                draft.avatarUrl = e.target.value.trim();
+                const ab = mask.querySelector('#cw-ce-avatar-box');
+                if (ab) ab.innerHTML = draft.avatarUrl ? `<img src="${esc(draft.avatarUrl)}"/>` : '👤';
+            });
             mask.querySelector('#cw-ce-base')?.addEventListener('input', e => { draft.baseTags = e.target.value; syncChips(); });
 
             mask.querySelectorAll('.cw-base-chip').forEach(b => b.addEventListener('click', () => {
@@ -792,6 +635,21 @@
             });
             mask.querySelector('#cw-ce-wname')?.addEventListener('input', e => { if (draft.wardrobe[activeWIdx]) draft.wardrobe[activeWIdx].name = e.target.value; });
             mask.querySelector('#cw-ce-wtags')?.addEventListener('input', e => { if (draft.wardrobe[activeWIdx]) draft.wardrobe[activeWIdx].outfit = e.target.value; });
+
+            // Set Active Outfit
+            mask.querySelector('#cw-ce-set-active')?.addEventListener('click', () => {
+                const wn = mask.querySelector('#cw-ce-wname');
+                const wt = mask.querySelector('#cw-ce-wtags');
+                if (draft.wardrobe[activeWIdx]) {
+                    if (wn) draft.wardrobe[activeWIdx].name = wn.value;
+                    if (wt) draft.wardrobe[activeWIdx].outfit = wt.value;
+                }
+                const curW = draft.wardrobe[activeWIdx];
+                draft.currentOutfitId = curW.id;
+                draft.currentOutfit = curW.outfit || curW.tags || '';
+                render();
+                toastr.success(`已将「${curW.name || '此套服装'}」设为当前穿着！`, PLUGIN_NAME);
+            });
 
             mask.querySelectorAll('.cw-outfit-chip').forEach(b => b.addEventListener('click', () => {
                 const el = mask.querySelector('#cw-ce-wtags');
@@ -832,13 +690,41 @@
                 } catch (e) { toastr.error('导入失败: ' + e.message, PLUGIN_NAME); }
             });
 
-            // Test solo portrait
-            mask.querySelector('#cw-ce-test')?.addEventListener('click', async () => {
+            // Test solo portrait with Popup Gallery Modal & Avatar Sync
+            mask.querySelector('#cw-ce-test')?.addEventListener('click', async (ev) => {
+                const btn = ev.currentTarget;
+                const origHtml = btn.innerHTML;
+                const name = draft.displayName || 'Character';
                 const outfit = draft.wardrobe[activeWIdx]?.outfit || draft.wardrobe[activeWIdx]?.tags || '';
-                const prompt = [draft.baseTags, outfit, 'solo, looking_at_viewer, upper_body, simple_background'].filter(Boolean).join(', ');
-                toastr.info('正在生成单人立绘测试...', PLUGIN_NAME);
-                try { await RBQ.api.generateImage(prompt, 'cw-test'); toastr.success('立绘已生成！', PLUGIN_NAME); }
-                catch (e) { toastr.error('生成失败: ' + (e.message || e), PLUGIN_NAME); }
+                const prompt = [draft.baseTags, outfit, 'solo, standing, looking at viewer, simple background, upper body'].filter(Boolean).join(', ');
+
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成立绘...';
+                toastr.info(`正在为「${name}」生成单人立绘测试...`, PLUGIN_NAME);
+
+                try {
+                    const result = await RBQ.api.generateImage(prompt, 'cw-test', {}, (progress) => {
+                        if (typeof progress === 'string') btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 10)}...`;
+                    });
+
+                    if (result && result.url) {
+                        showGeneratedImageModal(`单人立绘测试 · ${name}`, prompt, result, (newAvatarUrl) => {
+                            draft.avatarUrl = newAvatarUrl;
+                            const urlEl = mask.querySelector('#cw-ce-avatar-url');
+                            if (urlEl) urlEl.value = newAvatarUrl;
+                            const ab = mask.querySelector('#cw-ce-avatar-box');
+                            if (ab) ab.innerHTML = `<img src="${esc(newAvatarUrl)}"/>`;
+                        });
+                        toastr.success('立绘生成完毕！', PLUGIN_NAME);
+                    } else {
+                        throw new Error('生图未返回有效图片地址');
+                    }
+                } catch (e) {
+                    toastr.error('生成失败: ' + (e.message || e), PLUGIN_NAME);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
             });
 
             // Save — write directly to SDT profiles
@@ -855,10 +741,15 @@
 
                 if (isEdit && editName !== name) deleteProfile(editName);
 
+                const activeW = draft.wardrobe.find(w => w.id === draft.currentOutfitId) || draft.wardrobe[0];
+                draft.currentOutfit = activeW?.outfit || activeW?.tags || '';
+                draft.currentOutfitId = activeW?.id || '';
+
                 saveProfile(name, {
                     displayName: name,
                     baseTags: draft.baseTags,
-                    currentOutfit: draft.wardrobe[0]?.outfit || draft.wardrobe[0]?.tags || '',
+                    currentOutfit: draft.currentOutfit,
+                    currentOutfitId: draft.currentOutfitId,
                     avatarUrl: draft.avatarUrl,
                     wardrobe: draft.wardrobe,
                 });
@@ -874,7 +765,7 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Tab 1: 角色档案管理 — 直接展示 SDT profiles
+    //  Tab 1: 角色档案库 (Dossier)
     // ══════════════════════════════════════════════════════════
     function renderDossierTab() {
         const profiles = getAllProfiles();
@@ -883,30 +774,29 @@
         return `<div class="cw-body">
             <div class="cw-card">
                 <div class="cw-card-hd">
-                    <div>
-                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色记忆 · 当前聊天 (${names.length} 位)</span>
-                        <div style="font-size:11px;opacity:.6;margin-top:2px">直接管理智能生图已记忆的角色外貌与差分衣柜，修改即时生效。</div>
-                    </div>
-                    <button class="cw-btn gn" id="cw-create-char"><i class="fa-solid fa-plus"></i> 手动新建角色</button>
+                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色档案库 (${names.length} 位)</span>
+                    <button class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
                 </div>
-
-                <div class="cw-chgrid" style="margin-top:6px">
-                    ${names.length === 0 ? '<div style="text-align:center;padding:35px;grid-column:1/-1;opacity:.6">当前聊天暂无角色记忆。在聊天中让 tagger 自动学习，或点击「手动新建角色」。</div>' : names.map(n => {
+                <div class="cw-chgrid">
+                    ${names.length === 0 ? '<div style="text-align:center;padding:30px;grid-column:1/-1;opacity:.6">暂无已保存角色档案，点击右上角「新建角色档案」开始！</div>' : names.map(n => {
                         const p = profiles[n];
                         const wCount = Array.isArray(p.wardrobe) ? p.wardrobe.length : 0;
+                        const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
+                        const activeOutfitName = activeW?.name || '默认';
+
                         return `<div class="cw-chcard">
-                            <div style="display:flex;gap:9px;align-items:center">
+                            <div style="display:flex;gap:10px;align-items:flex-start">
                                 <div class="cw-avatar">${p.avatarUrl ? '<img src="' + esc(p.avatarUrl) + '"/>' : '👤'}</div>
                                 <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:2px">
                                     <span style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.displayName || n)}</span>
-                                    <span style="font-size:10.5px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.baseTags)}">${esc(p.baseTags || '未设置外貌')}</span>
-                                    <span style="font-size:10px;color:#ffb86c">👗 ${wCount} 套服装 · 穿着: ${esc((p.currentOutfit || '').slice(0, 30))}</span>
+                                    <span style="font-size:11px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.baseTags)}"><span style="color:#79e4ff">外貌:</span> ${esc(p.baseTags || '未设置')}</span>
+                                    <span style="font-size:10.5px;color:#ffb86c">👗 当前: <strong>${esc(activeOutfitName)}</strong> <span style="opacity:0.6">(${wCount}套)</span></span>
                                 </div>
                             </div>
-                            <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:3px">
-                                <button class="cw-btn cy sm cw-send-to-stage" data-name="${esc(n)}">+ 放入舞台</button>
-                                <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}">编辑</button>
-                                <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}">删除</button>
+                            <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">
+                                <button class="cw-btn cy sm cw-send-to-stage" data-name="${esc(n)}" title="将该角色放入空间舞台"><i class="fa-solid fa-chess-board"></i> 放入舞台</button>
+                                <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+                                <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}"><i class="fa-solid fa-trash"></i></button>
                             </div>
                         </div>`;
                     }).join('')}
@@ -916,7 +806,7 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Tab 2: 多角色分镜合成台
+    //  Tab 2: 多角色空间舞台 (Stage & Composer)
     // ══════════════════════════════════════════════════════════
     function renderComposerTab() {
         const ws = getWs();
@@ -929,13 +819,16 @@
         const mccOn = isMccEnabled();
 
         return `<div class="cw-body">
-            ${!mccOn ? '<div class="cw-warn">⚠️ 多角色合成插件 (Multi-Char Composer) 未启用！合成的提示词将无法被正确解析为 NAI V4 多角色格式。请在 RBQ 设置中启用它。</div>' : ''}
+            ${!mccOn ? '<div class="cw-warn"><i class="fa-solid fa-triangle-exclamation"></i> 提示：多角色合成插件 (Multi-Char) 未启用，生成的图片可能无法正确按空间位置分区。</div>' : ''}
 
-            <!-- Stage & Scene -->
+            <!-- 5x5 Grid & Scene Settings -->
             <div class="cw-card">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 5x5 空间舞台 (点击网格摆放当前角色)</span>
-                    <button class="cw-btn cy sm" id="cw-pick-scene-wb" type="button"><i class="fa-solid fa-mountain-sun"></i> 选世界书场景</button>
+                    <div>
+                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 5x5 空间舞台 (点击图钉切换角色 · 点击空白格移动坐标)</span>
+                        <div style="font-size:11px;opacity:.65;margin-top:2px">当前正在控制: <strong style="color:${COLORS[ai % COLORS.length].hex}">Char ${ai + 1}: ${esc(slots[ai]?.charName || '未绑定')}</strong> (${coordLabel(slots[ai]?.center)})</div>
+                    </div>
+                    <button class="cw-btn cy sm" id="cw-pick-scene-wb" type="button"><i class="fa-solid fa-mountain-sun"></i> 搜索世界书场景</button>
                 </div>
                 <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
                     <!-- 5x5 Grid -->
@@ -945,30 +838,27 @@
                             const charsHere = slots.map((s, i) => ({ ...s, si: i })).filter(s => (s.center || 'C3').toUpperCase() === coord);
                             return `<div class="cw-cell ${charsHere.length ? 'has' : ''}" data-coord="${coord}">
                                 <span>${coord}</span>
-                                ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}" title="Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
+                                ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}; border: 2px solid ${ai === s.si ? '#fff' : 'rgba(0,0,0,0.5)'}; transform: ${ai === s.si ? 'scale(1.25)' : 'scale(1)'}" title="点击选中 Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
                             </div>`;
                         }).join('')).join('')}
                     </div>
 
-                    <!-- Info & Scene Inputs -->
-                    <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:7px;font-size:12px;color:rgba(255,255,255,.7)">
-                        <div style="font-weight:700;color:#f8fafc;font-size:13px">
-                            当前活动: <span style="color:${COLORS[ai % COLORS.length].hex}">Char ${ai + 1} (${esc(slots[ai]?.charName || '未绑定')})</span>
-                            <small style="margin-left:5px;opacity:.7">[${coordLabel(slots[ai]?.center)}]</small>
-                        </div>
-                        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:2px">
+                    <!-- Stage Controls & Scene Inputs -->
+                    <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:7px;font-size:12px;color:rgba(255,255,255,.75)">
+                        <div style="display:flex;gap:5px;flex-wrap:wrap">
                             ${slots.map((s, i) => {
                                 const cl = COLORS[i % COLORS.length];
-                                return `<div class="cw-chip cw-switch-slot ${ai === i ? 'on' : ''}" data-idx="${i}" style="border-color:${ai === i ? cl.bdr : 'transparent'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')} (${s.center || 'C3'})</div>`;
+                                const isAct = ai === i;
+                                return `<div class="cw-chip cw-switch-slot ${isAct ? 'on' : ''}" data-idx="${i}" style="border-color:${isAct ? cl.bdr : 'transparent'}; background:${isAct ? cl.bg : 'rgba(255,255,255,0.04)'}; color:${isAct ? cl.hex : 'inherit'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')} (${s.center || 'C3'})</div>`;
                             }).join('')}
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:2px">
                             <div>
-                                <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">场景环境:</label>
-                                <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room..." value="${esc(comp.scene || '')}" />
+                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
+                                <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, soft lighting..." value="${esc(comp.scene || '')}" />
                             </div>
                             <div>
-                                <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">视角光影:</label>
+                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">视角与光影 (Camera):</label>
                                 <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field..." value="${esc(comp.camera || '')}" />
                             </div>
                         </div>
@@ -976,11 +866,11 @@
                 </div>
             </div>
 
-            <!-- Character Slots -->
+            <!-- Character Slots List -->
             <div class="cw-card">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#4ade80"><i class="fa-solid fa-users-viewfinder"></i> 角色槽位 (${slots.length})</span>
-                    <button class="cw-btn gn sm" id="cw-add-slot" type="button"><i class="fa-solid fa-user-plus"></i> 添加槽位</button>
+                    <span class="cw-card-tt" style="color:#4ade80"><i class="fa-solid fa-users-viewfinder"></i> 角色槽位编排 (${slots.length} 人)</span>
+                    <button class="cw-btn gn sm" id="cw-add-slot" type="button"><i class="fa-solid fa-user-plus"></i> 添加角色槽位</button>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:10px">
                     ${slots.map((slot, i) => {
@@ -988,44 +878,54 @@
                         const isActive = ai === i;
                         const prof = slot.charName ? profiles[slot.charName] : null;
                         const wardrobe = prof?.wardrobe || [];
+                        const curPos = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
+
                         return `<div class="cw-slot ${isActive ? 'on' : ''}" data-idx="${i}">
                             <div class="cw-slot-top">
                                 <div style="display:flex;align-items:center;gap:7px">
                                     <span class="cw-badge" style="background:${cl.bg};color:${cl.hex}">Char ${i + 1}</span>
-                                    <strong style="font-size:12.5px;color:#f8fafc">${esc(prof?.displayName || slot.charName || '未绑定')}</strong>
-                                    <span style="font-size:10.5px;opacity:.6">[${coordLabel(slot.center)}]</span>
+                                    <strong style="font-size:12.5px;color:#f8fafc">${esc(prof?.displayName || slot.charName || '未绑定角色')}</strong>
+                                    <span style="font-size:10.5px;opacity:.65">[位置: ${coordLabel(curPos)}]</span>
                                 </div>
                                 <div style="display:flex;gap:5px">
-                                    <button class="cw-btn cy sm cw-activate-slot" data-idx="${i}" type="button">🎯 选中</button>
-                                    ${slots.length > 1 ? `<button class="cw-btn rd sm cw-rm-slot" data-idx="${i}" type="button">✕</button>` : ''}
+                                    <button class="cw-btn cy sm cw-activate-slot" data-idx="${i}" type="button">🎯 设为控制</button>
+                                    ${slots.length > 1 ? `<button class="cw-btn rd sm cw-rm-slot" data-idx="${i}" type="button">✕ 移除</button>` : ''}
                                 </div>
                             </div>
                             <div class="cw-slot-grid">
                                 <div>
-                                    <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">绑定角色:</label>
+                                    <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">绑定角色档案:</label>
                                     <select class="cw-sel cw-slot-char" data-idx="${i}">
-                                        <option value="">👤 [未绑定]</option>
+                                        <option value="">👤 [自定义 / 未建档角色]</option>
                                         ${profileNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(profiles[n].displayName || n)}</option>`).join('')}
                                     </select>
                                 </div>
                                 <div>
-                                    <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">服装:</label>
+                                    <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">服装套件 (Wardrobe):</label>
                                     <select class="cw-sel cw-slot-outfit" data-idx="${i}">
-                                        <option value="" ${!slot.outfitId && !slot.customOutfit ? 'selected' : ''}>👗 当前穿着</option>
+                                        <option value="" ${!slot.outfitId && !slot.customOutfit ? 'selected' : ''}>👗 默认服装</option>
                                         ${wardrobe.map(w => `<option value="${esc(w.id)}" ${slot.outfitId === w.id ? 'selected' : ''}>👗 ${esc(w.name)}</option>`).join('')}
-                                        <option value="__custom" ${slot.customOutfit ? 'selected' : ''}>✍️ 自定义</option>
+                                        <option value="__custom" ${slot.customOutfit ? 'selected' : ''}>✍️ 自定义服装</option>
                                     </select>
                                 </div>
                                 <div style="grid-column:1/-1">
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                                        <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">动作姿态:</label>
+                                        <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">当前动作/姿态 (Action):</label>
                                         <button class="cw-btn cy sm cw-pick-action-wb" data-idx="${i}" type="button"><i class="fa-solid fa-book-open"></i> 选动作</button>
                                     </div>
                                     <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="sitting, facing_another, looking_at_partner..." value="${esc(slot.action || '')}" />
                                 </div>
                                 <div style="grid-column:1/-1">
                                     <label style="font-size:10.5px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC):</label>
-                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词，如 penis, futanari..." value="${esc(slot.uc || '')}" />
+                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词 (如 penis, futanari...)" value="${esc(slot.uc || '')}" />
+                                </div>
+                                <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px">
+                                    <span style="font-size:10.5px;font-weight:bold;color:#cbd5e1;white-space:nowrap">快捷站位:</span>
+                                    <div style="display:flex;gap:4px;flex-wrap:wrap">
+                                        ${['A3', 'B3', 'C3', 'D3', 'E3', 'C2', 'C4'].map(p => `
+                                            <button class="cw-chip cw-slot-quick-pos ${curPos === p ? 'on' : ''}" data-idx="${i}" data-pos="${p}" type="button">${p}</button>
+                                        `).join('')}
+                                    </div>
                                 </div>
                             </div>
                         </div>`;
@@ -1033,19 +933,19 @@
                 </div>
             </div>
 
-            <!-- Live Preview & Generate -->
+            <!-- Live Prompt Preview & Generate -->
             <div class="cw-preview">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-terminal"></i> 合成提示词预览</span>
+                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-terminal"></i> 多角色合成提示词实时预览 (NAI V4.5)</span>
                     <div style="display:flex;gap:5px">
-                        <button class="cw-btn sm" id="cw-copy-prompt"><i class="fa-regular fa-copy"></i> 复制</button>
-                        <button class="cw-btn am sm" id="cw-save-preset"><i class="fa-solid fa-floppy-disk"></i> 存为预设</button>
+                        <button class="cw-btn sm" id="cw-copy-prompt"><i class="fa-regular fa-copy"></i> 复制提示词</button>
+                        <button class="cw-btn am sm" id="cw-save-preset"><i class="fa-solid fa-floppy-disk"></i> 保存为预设</button>
                     </div>
                 </div>
                 <div class="cw-code" id="cw-prompt-preview">${esc(finalPrompt)}</div>
-                <div style="display:flex;justify-content:flex-end;margin-top:3px">
-                    <button class="cw-btn pri" id="cw-generate" style="padding:7px 22px;font-size:13px;font-weight:bold">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 合成并生图
+                <div style="display:flex;justify-content:flex-end;margin-top:4px">
+                    <button class="cw-btn pri" id="cw-generate" style="padding:7px 20px;font-size:13px;font-weight:bold">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即合成并生图
                     </button>
                 </div>
             </div>
@@ -1053,7 +953,7 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Tab 3: 组合预设库
+    //  Tab 3: 分镜模板与预设 (Presets)
     // ══════════════════════════════════════════════════════════
     function renderPresetsTab() {
         const ws = getWs();
@@ -1062,17 +962,17 @@
         return `<div class="cw-body">
             <div class="cw-card">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-sparkles"></i> 经典分镜模板 (一键载入舞台)</span>
+                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-sparkles"></i> 经典分镜模板库 (一键载入空间舞台)</span>
                 </div>
                 <div class="cw-chgrid">
-                    ${TEMPLATES.map((t, i) => `<div class="cw-chcard" style="border-color:rgba(56,189,248,.15)">
+                    ${TEMPLATES.map((t, i) => `<div class="cw-chcard" style="border-color:rgba(56,189,248,.2)">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start">
                             <strong style="font-size:12.5px;color:#38bdf8">${esc(t.name)}</strong>
-                            <span class="cw-badge" style="background:rgba(56,189,248,.15);color:#38bdf8">${t.slots.length}人</span>
+                            <span class="cw-badge" style="background:rgba(56,189,248,.15);color:#38bdf8">${t.slots.length} 人</span>
                         </div>
-                        <div style="font-size:11px;opacity:.65">${esc(t.desc)}</div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:3px">
-                            <button class="cw-btn gn sm cw-load-tpl" data-idx="${i}">载入舞台</button>
+                        <div style="font-size:11px;opacity:.7;line-height:1.4">${esc(t.desc)}</div>
+                        <div style="display:flex;justify-content:flex-end;margin-top:4px">
+                            <button class="cw-btn gn sm cw-load-tpl" data-idx="${i}"><i class="fa-solid fa-download"></i> 载入舞台</button>
                         </div>
                     </div>`).join('')}
                 </div>
@@ -1080,18 +980,18 @@
 
             <div class="cw-card">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#fbbf24"><i class="fa-solid fa-bookmark"></i> 我的预设 (${userPresets.length})</span>
+                    <span class="cw-card-tt" style="color:#fbbf24"><i class="fa-solid fa-bookmark"></i> 我的自定义预设 (${userPresets.length})</span>
                 </div>
                 <div class="cw-chgrid">
-                    ${userPresets.length === 0 ? '<div style="text-align:center;padding:25px;grid-column:1/-1;opacity:.6">暂无自定义预设</div>' : userPresets.map((p, i) => `<div class="cw-chcard">
+                    ${userPresets.length === 0 ? '<div style="text-align:center;padding:30px;grid-column:1/-1;opacity:.6">暂无自定义预设。在多角色舞台排布好后，点击「保存为预设」即可存入此处！</div>' : userPresets.map((p, i) => `<div class="cw-chcard">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start">
                             <strong style="font-size:12.5px;color:#f8fafc">${esc(p.name)}</strong>
-                            <span class="cw-badge" style="background:rgba(251,191,36,.15);color:#fbbf24">${p.slots?.length || 0}人</span>
+                            <span class="cw-badge" style="background:rgba(251,191,36,.15);color:#fbbf24">${p.slots?.length || 0} 人</span>
                         </div>
-                        <div style="font-size:10.5px;opacity:.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.scene || '')}</div>
-                        <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:3px">
-                            <button class="cw-btn gn sm cw-load-preset" data-idx="${i}">载入</button>
-                            <button class="cw-btn rd sm cw-del-preset" data-idx="${i}">删除</button>
+                        <div style="font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.scene || '无场景描述')}</div>
+                        <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">
+                            <button class="cw-btn gn sm cw-load-preset" data-idx="${i}"><i class="fa-solid fa-download"></i> 载入</button>
+                            <button class="cw-btn rd sm cw-del-preset" data-idx="${i}"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>`).join('')}
                 </div>
@@ -1100,7 +1000,7 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Main UI Assembly & Event Binding
+    //  Main Shell & Event Binding
     // ══════════════════════════════════════════════════════════
     let activeTab = 'dossier';
 
@@ -1135,14 +1035,7 @@
         container.querySelectorAll('.cw-main-tab').forEach(b => b.addEventListener('click', () => refresh(b.dataset.tab)));
 
         // ── Composer Events ──
-        // 5x5 grid click (cell)
-        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', (e) => {
-            if (e.target.classList.contains('cw-pin')) return;
-            const ai = comp.activeSlotIndex || 0;
-            if (comp.slots[ai]) { comp.slots[ai].center = cell.dataset.coord; wsSave(); refresh('composer'); }
-        }));
-
-        // 5x5 pin click (switch to that slot)
+        // 5x5 pin click (switch to that slot, stop propagation)
         container.querySelectorAll('.cw-pin').forEach(pin => pin.addEventListener('click', (e) => {
             e.stopPropagation();
             comp.activeSlotIndex = +pin.dataset.si;
@@ -1150,129 +1043,253 @@
             refresh('composer');
         }));
 
-        // Switch active slot
-        container.querySelectorAll('.cw-switch-slot, .cw-activate-slot').forEach(b => b.addEventListener('click', () => {
-            comp.activeSlotIndex = +b.dataset.idx; wsSave(); refresh('composer');
+        // 5x5 grid click (cell moves active slot)
+        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', () => {
+            const ai = comp.activeSlotIndex || 0;
+            if (comp.slots[ai]) { comp.slots[ai].center = cell.dataset.coord; wsSave(); refresh('composer'); }
         }));
 
-        // Scene & camera inputs
-        container.querySelector('#cw-scene')?.addEventListener('input', e => { comp.scene = e.target.value; wsSave(); updatePreview(container); });
-        container.querySelector('#cw-camera')?.addEventListener('input', e => { comp.camera = e.target.value; wsSave(); updatePreview(container); });
+        // Switch active slot
+        container.querySelectorAll('.cw-switch-slot, .cw-activate-slot').forEach(b => b.addEventListener('click', () => {
+            comp.activeSlotIndex = +b.dataset.idx;
+            wsSave();
+            refresh('composer');
+        }));
+
+        // Quick position buttons on slot cards
+        container.querySelectorAll('.cw-slot-quick-pos').forEach(b => b.addEventListener('click', () => {
+            const idx = +b.dataset.idx;
+            const pos = b.dataset.pos;
+            if (comp.slots[idx]) { comp.slots[idx].center = pos; wsSave(); refresh('composer'); }
+        }));
 
         // Add slot
         container.querySelector('#cw-add-slot')?.addEventListener('click', () => {
-            const n = comp.slots.length;
-            comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: 'standing, looking_at_viewer', center: n % 2 === 0 ? 'B3' : 'D3', uc: '' });
+            const usedCoords = new Set(comp.slots.map(s => (s.center || '').toUpperCase()));
+            const candidateCoords = ['B3', 'D3', 'C3', 'A3', 'E3', 'B2', 'D2', 'C4'];
+            const nextCoord = candidateCoords.find(c => !usedCoords.has(c)) || 'C3';
+            comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: nextCoord });
             comp.activeSlotIndex = comp.slots.length - 1;
-            wsSave(); refresh('composer');
+            wsSave();
+            refresh('composer');
         });
 
         // Remove slot
         container.querySelectorAll('.cw-rm-slot').forEach(b => b.addEventListener('click', () => {
-            const i = +b.dataset.idx;
-            if (comp.slots.length > 1) { comp.slots.splice(i, 1); comp.activeSlotIndex = Math.max(0, comp.activeSlotIndex - 1); wsSave(); refresh('composer'); }
+            const idx = +b.dataset.idx;
+            if (comp.slots.length > 1) {
+                comp.slots.splice(idx, 1);
+                comp.activeSlotIndex = Math.max(0, comp.activeSlotIndex - 1);
+                wsSave();
+                refresh('composer');
+            }
         }));
 
         // Slot char select
         container.querySelectorAll('.cw-slot-char').forEach(sel => sel.addEventListener('change', () => {
-            const i = +sel.dataset.idx;
-            if (comp.slots[i]) { comp.slots[i].charName = sel.value; comp.slots[i].outfitId = ''; comp.slots[i].customOutfit = ''; wsSave(); refresh('composer'); }
+            const idx = +sel.dataset.idx;
+            if (comp.slots[idx]) {
+                comp.slots[idx].charName = sel.value;
+                comp.slots[idx].outfitId = '';
+                wsSave();
+                refresh('composer');
+            }
         }));
 
         // Slot outfit select
         container.querySelectorAll('.cw-slot-outfit').forEach(sel => sel.addEventListener('change', () => {
-            const i = +sel.dataset.idx;
-            if (comp.slots[i]) {
-                if (sel.value === '__custom') { comp.slots[i].outfitId = ''; comp.slots[i].customOutfit = comp.slots[i].customOutfit || ''; }
-                else { comp.slots[i].outfitId = sel.value; comp.slots[i].customOutfit = ''; }
-                wsSave(); updatePreview(container);
+            const idx = +sel.dataset.idx;
+            if (comp.slots[idx]) {
+                if (sel.value === '__custom') {
+                    const custom = prompt('请输入该角色的自定义服装 Prompt:');
+                    comp.slots[idx].customOutfit = custom || '';
+                    comp.slots[idx].outfitId = '';
+                } else {
+                    comp.slots[idx].outfitId = sel.value;
+                    comp.slots[idx].customOutfit = '';
+                }
+                wsSave();
+                refresh('composer');
             }
         }));
 
-        // Slot action
-        container.querySelectorAll('.cw-slot-action').forEach(inp => inp.addEventListener('input', () => {
-            const i = +inp.dataset.idx; if (comp.slots[i]) { comp.slots[i].action = inp.value; wsSave(); updatePreview(container); }
+        // Slot action & UC inputs
+        const updatePromptPreview = () => {
+            const el = container.querySelector('#cw-prompt-preview');
+            if (el) el.textContent = composeFinalPrompt(comp);
+        };
+        container.querySelectorAll('.cw-slot-action').forEach(inEl => inEl.addEventListener('input', () => {
+            const idx = +inEl.dataset.idx;
+            if (comp.slots[idx]) { comp.slots[idx].action = inEl.value; wsSave(); updatePromptPreview(); }
+        }));
+        container.querySelectorAll('.cw-slot-uc').forEach(inEl => inEl.addEventListener('input', () => {
+            const idx = +inEl.dataset.idx;
+            if (comp.slots[idx]) { comp.slots[idx].uc = inEl.value; wsSave(); updatePromptPreview(); }
         }));
 
-        // Slot UC
-        container.querySelectorAll('.cw-slot-uc').forEach(inp => inp.addEventListener('input', () => {
-            const i = +inp.dataset.idx; if (comp.slots[i]) { comp.slots[i].uc = inp.value; wsSave(); updatePreview(container); }
-        }));
+        // Worldbook pickers in Composer
+        container.querySelector('#cw-pick-scene-wb')?.addEventListener('click', () => {
+            openWorldbookPicker('挑选场景词条', tags => {
+                const el = container.querySelector('#cw-scene');
+                if (el) {
+                    el.value = [el.value, tags].filter(Boolean).join(', ');
+                    comp.scene = el.value;
+                    wsSave();
+                    updatePromptPreview();
+                }
+            }, 'scene');
+        });
 
-        // Pick action from worldbook
         container.querySelectorAll('.cw-pick-action-wb').forEach(b => b.addEventListener('click', () => {
-            const i = +b.dataset.idx;
-            openWorldbookPicker('选择动作/姿态词条', tags => {
-                if (comp.slots[i]) { comp.slots[i].action = tags; wsSave(); refresh('composer'); }
+            const idx = +b.dataset.idx;
+            openWorldbookPicker('挑选动作/姿态词条', tags => {
+                const el = container.querySelector(`.cw-slot-action[data-idx="${idx}"]`);
+                if (el && comp.slots[idx]) {
+                    el.value = [el.value, tags].filter(Boolean).join(', ');
+                    comp.slots[idx].action = el.value;
+                    wsSave();
+                    updatePromptPreview();
+                }
             }, 'pose');
         }));
 
-        // Pick scene from worldbook
-        container.querySelector('#cw-pick-scene-wb')?.addEventListener('click', () => {
-            openWorldbookPicker('选择场景环境词条', tags => { comp.scene = tags; wsSave(); refresh('composer'); }, 'scene');
-        });
+        container.querySelector('#cw-scene')?.addEventListener('input', e => { comp.scene = e.target.value; wsSave(); updatePromptPreview(); });
+        container.querySelector('#cw-camera')?.addEventListener('input', e => { comp.camera = e.target.value; wsSave(); updatePromptPreview(); });
 
-        // Copy prompt
+        // Copy Prompt
         container.querySelector('#cw-copy-prompt')?.addEventListener('click', () => {
             const p = composeFinalPrompt(comp);
-            if (navigator.clipboard) { navigator.clipboard.writeText(p); toastr.success('已复制', PLUGIN_NAME); }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(p).then(() => toastr.success('已复制合成提示词', PLUGIN_NAME));
+            }
         });
 
         // Save preset
         container.querySelector('#cw-save-preset')?.addEventListener('click', () => {
-            const name = prompt('预设名称：', '分镜 - ' + new Date().toLocaleDateString());
+            const name = prompt('请输入该多角色分镜预设的名称：', '分镜预设 ' + new Date().toLocaleDateString());
             if (!name) return;
-            ws.presets.push({ id: uid('p'), name, scene: comp.scene, camera: comp.camera, atmosphere: comp.atmosphere, slots: JSON.parse(JSON.stringify(comp.slots)) });
-            wsSave(); toastr.success('预设「' + name + '」已保存', PLUGIN_NAME);
+            ws.presets.push({
+                id: uid('preset'),
+                name,
+                scene: comp.scene,
+                camera: comp.camera,
+                slots: JSON.parse(JSON.stringify(comp.slots))
+            });
+            wsSave();
+            toastr.success(`预设「${name}」已保存！`, PLUGIN_NAME);
         });
 
-        // Generate
-        container.querySelector('#cw-generate')?.addEventListener('click', async () => {
+        // One-Click Generate Image (With Progress & Popup Viewer!)
+        container.querySelector('#cw-generate')?.addEventListener('click', async (ev) => {
+            const btn = ev.currentTarget;
+            const origHtml = btn.innerHTML;
+            const p = composeFinalPrompt(comp);
+
             if (!isMccEnabled()) {
                 toastr.warning('多角色合成插件未启用，生成的图片可能无法正确分配角色位置', PLUGIN_NAME);
             }
-            const p = composeFinalPrompt(comp);
-            toastr.info('正在生成多角色画面...', PLUGIN_NAME);
-            try { await RBQ.api.generateImage(p, 'cw-ensemble'); toastr.success('多角色画面已生成！', PLUGIN_NAME); }
-            catch (e) { toastr.error('生图失败: ' + (e.message || e), PLUGIN_NAME); }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成多角色画作...';
+            toastr.info('🚀 正在调用 RBQ 生图引擎生成多角色画作...', PLUGIN_NAME);
+
+            try {
+                const result = await RBQ.api.generateImage(p, 'cw-ensemble', {}, (progress) => {
+                    if (typeof progress === 'string') btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 12)}...`;
+                });
+
+                if (result && result.url) {
+                    showGeneratedImageModal('多角色空间舞台合成画面', p, result);
+                    toastr.success('🎉 多角色画面生成完毕！', PLUGIN_NAME);
+                } else {
+                    throw new Error('生图未返回有效图片地址');
+                }
+            } catch (e) {
+                toastr.error('生图失败: ' + (e.message || e), PLUGIN_NAME);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
         });
 
         // ── Dossier Events ──
         container.querySelector('#cw-create-char')?.addEventListener('click', () => openCharacterEditor(null, () => refresh('dossier')));
 
-        container.querySelectorAll('.cw-edit-char').forEach(b => b.addEventListener('click', () => openCharacterEditor(b.dataset.name, () => refresh('dossier'))));
-
-        container.querySelectorAll('.cw-del-char').forEach(b => b.addEventListener('click', () => {
-            deleteProfile(b.dataset.name); toastr.info('已删除', PLUGIN_NAME); refresh('dossier');
+        container.querySelectorAll('.cw-send-to-stage').forEach(b => b.addEventListener('click', () => {
+            const charName = b.dataset.name;
+            const slots = comp.slots;
+            const emptySlot = slots.find(s => !s.charName);
+            if (emptySlot) {
+                emptySlot.charName = charName;
+            } else {
+                const usedCoords = new Set(slots.map(s => (s.center || '').toUpperCase()));
+                const candidateCoords = ['B3', 'D3', 'C3', 'A3', 'E3', 'B2', 'D2', 'C4'];
+                const nextCoord = candidateCoords.find(c => !usedCoords.has(c)) || 'C3';
+                slots.push({ charName, outfitId: '', customOutfit: '', action: '', uc: '', center: nextCoord });
+            }
+            wsSave();
+            toastr.success(`已将「${charName}」放入空间舞台！`, PLUGIN_NAME);
+            refresh('composer');
         }));
 
-        container.querySelectorAll('.cw-send-to-stage').forEach(b => b.addEventListener('click', () => {
-            const name = b.dataset.name;
-            const ai = comp.activeSlotIndex || 0;
-            if (comp.slots[ai]) { comp.slots[ai].charName = name; }
-            else { comp.slots.push({ charName: name, outfitId: '', customOutfit: '', action: '', center: 'C3', uc: '' }); }
-            wsSave(); toastr.success('「' + name + '」已放入舞台 Char ' + (ai + 1), PLUGIN_NAME); refresh('composer');
+        container.querySelectorAll('.cw-edit-char').forEach(b => b.addEventListener('click', () => {
+            openCharacterEditor(b.dataset.name, () => refresh('dossier'));
+        }));
+
+        container.querySelectorAll('.cw-del-char').forEach(b => b.addEventListener('click', () => {
+            if (confirm(`确定删除角色「${b.dataset.name}」的档案记忆吗？`)) {
+                deleteProfile(b.dataset.name);
+                toastr.info('已删除', PLUGIN_NAME);
+                refresh('dossier');
+            }
         }));
 
         // ── Presets Events ──
         container.querySelectorAll('.cw-load-tpl').forEach(b => b.addEventListener('click', () => {
-            const t = TEMPLATES[+b.dataset.idx];
-            if (t) { comp.scene = t.scene; comp.camera = t.camera; comp.atmosphere = t.atmosphere; comp.slots = JSON.parse(JSON.stringify(t.slots)); comp.activeSlotIndex = 0; wsSave(); toastr.success('已载入「' + t.name + '」', PLUGIN_NAME); refresh('composer'); }
+            const tpl = TEMPLATES[+b.dataset.idx];
+            if (!tpl) return;
+            comp.scene = tpl.scene || '';
+            comp.camera = tpl.camera || '';
+            const newSlots = tpl.slots.map((ts, i) => {
+                const existingChar = comp.slots[i]?.charName || '';
+                const existingOutfit = comp.slots[i]?.outfitId || '';
+                return {
+                    charName: existingChar,
+                    outfitId: existingOutfit,
+                    customOutfit: '',
+                    action: ts.action || '',
+                    uc: ts.uc || '',
+                    center: ts.center || 'C3'
+                };
+            });
+            comp.slots = newSlots;
+            comp.activeSlotIndex = 0;
+            wsSave();
+            toastr.success(`已载入分镜「${tpl.name}」到舞台（已保留绑定角色）`, PLUGIN_NAME);
+            refresh('composer');
         }));
 
         container.querySelectorAll('.cw-load-preset').forEach(b => b.addEventListener('click', () => {
             const p = ws.presets[+b.dataset.idx];
-            if (p) { comp.scene = p.scene || ''; comp.camera = p.camera || ''; comp.atmosphere = p.atmosphere || ''; comp.slots = JSON.parse(JSON.stringify(p.slots)); comp.activeSlotIndex = 0; wsSave(); toastr.success('已载入「' + p.name + '」', PLUGIN_NAME); refresh('composer'); }
+            if (!p) return;
+            comp.scene = p.scene || '';
+            comp.camera = p.camera || '';
+            comp.slots = JSON.parse(JSON.stringify(p.slots || []));
+            comp.activeSlotIndex = 0;
+            wsSave();
+            toastr.success(`已载入预设「${p.name}」到舞台`, PLUGIN_NAME);
+            refresh('composer');
         }));
 
         container.querySelectorAll('.cw-del-preset').forEach(b => b.addEventListener('click', () => {
-            ws.presets.splice(+b.dataset.idx, 1); wsSave(); toastr.info('已删除', PLUGIN_NAME); refresh('presets');
+            const idx = +b.dataset.idx;
+            if (confirm('确定删除该预设吗？')) {
+                ws.presets.splice(idx, 1);
+                wsSave();
+                toastr.info('已删除预设', PLUGIN_NAME);
+                refresh('presets');
+            }
         }));
-    }
-
-    function updatePreview(container) {
-        const el = container.querySelector('#cw-prompt-preview');
-        if (el) el.textContent = composeFinalPrompt(getWs().activeComposer);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -1291,6 +1308,6 @@
         });
     }
     mount();
-    console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — SDT direct data access');
+    console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — Complete Character & Stage Engine');
 
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

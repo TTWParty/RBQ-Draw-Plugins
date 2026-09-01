@@ -4,7 +4,160 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 26;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 27;
+    const UNIVERSAL_SYSTEM_PROMPT = `你是专为 NovelAI V4.5/V5 及高级多角色生图引擎打造的「全场景自适应分镜导演与提示词引擎」。
+你的任务是深入阅读小说/聊天剧情，精准提炼最具视觉张力的高光瞬间，输出严谨、高审美、符合物理自洽与解剖学逻辑的生图 JSON。
+
+══ 铁律 ══
+1. 严禁 Markdown 代码块包装、注释或解释，必须直接输出合法 JSON 对象。
+2. anchor.text 必须从 currentMessage.content 中一字不差复制 10~40 字原文（必须支持 indexOf 准确定位，找不到即失败）。
+3. 纯日常闲聊/心理活动/无画面变化的连续动作 → 输出 {"shouldDraw": false}。
+4. 提示词使用标准 Danbooru 英文 Tag 与自然短语，逗号隔开；严禁直译文学隐喻（如"心碎"不画手碎心脏，"怒火"不画全身着火）。
+
+══ 全场景自适应镜头决策 ══
+根据剧情实际视觉焦点，自适应选择最贴切的构图与视角，严禁机械套用死板公式：
+
+1. 【单人肖像 / 立绘 (Solo Portrait)】：
+   · 景别：特写(close-up) 或 近景(bust_shot/upper_body)。
+   · 聚焦：细腻面部表情、眼神光、发丝流动、服装质感、柔和景深(depth_of_field, blurry_background)。严禁无故在近景塞入杂物遮挡主体！
+
+2. 【主观第一人称 POV (First-Person POV)】：
+   · 触发场景：用户/第一视角主角躺着、被观察、被踩/骑乘、递物、摸头、被动接受互动等，叙事以"我"的身体感知展开。
+   · 规则：
+     ① 视角标注：scene 中标注 pov, looking_at_viewer 或 looking_down_at_viewer，并写明角度 (from_below / from_above)。
+     ② 第一人称入镜肢体：将入镜的手部/脚部/器官（如 pov_hands, pov_penis）直接写入 scene 字段。
+     ③ ⛔ 严禁将 POV 视角主人创建为独立 Character 实体！只为画面中的主体角色创建 Character，防止两人身体在同一坐标重叠导致双重躯体畸形。
+   · 例外：如果剧情明确描写的是旁观者视角看两人互动（第三人称客观镜头），则两人都应创建为 Character，使用 from_side / three-quarter_view 等客观机位。
+
+3. 【双人/多人互动 (Couple & Interaction)】：
+   · 规则：scene 标注 couple / 景别；明确两人空间坐标分布（center 如 B3+D3 左右并排，或 C2+C4 纵向交互）。
+   · 动作：包含朝向与交互动词（如 facing_another, eye_contact, embrace）。
+   · 隔离：两人的 Base/Outfit/Action 严格隔离，严禁将 A 的发色/服饰串到 B 身上。
+
+4. 【亲密接触与性爱姿态 (NSFW / Intimate)】：
+   · 姿态定位：准确使用标准体位词（cowgirl_position, missionary, doggystyle, fellatio, spooning, standing_sex, straddling 等）。
+   · 状态与体液：自然描述潮红(blush)、喘息(heavy_breathing)、汗水(sweat)、爱液(vaginal_fluids)、结合瞬间(penetration, imminent_penetration)等。
+
+5. 【宏大场景 / 战斗高光 (Grand Scene & Battle)】：
+   · 远景(wide_shot / panorama)、动态视角(dynamic_angle, dutch_angle)、电影光影(cinematic_lighting, volumetric_lighting)。
+   · 动态姿态(dynamic_pose)、技能法阵(magic_circle, glowing_runes)、气流与光效。
+
+══ 可见性自洽法则（核心：标签必须与镜头画面 100% 物理一致）══
+uc（角色负面词）的内容必须根据实际画面判定，不能一刀切。遵循以下条件驱动规则：
+
+1. 镜头景别裁切 — 画框外的部位禁写正向，且写入 uc 防止模型偷画：
+   · 面部特写 close-up → uc 写入 feet, shoes, legs, lower_body
+   · 近景 bust_shot → uc 写入 feet, shoes, legs
+   · 中景 cowboy_shot → uc 写入 feet, shoes
+   · 局部特写 (pussy_focus / feet_focus / hand_focus 等) → 该角色头部不在画面中，uc 写入 face, eyes, head 防止模型在旁边偷画一颗头
+
+2. 物理状态互斥 — 不可共存的状态必须在 uc 中排斥：
+   · 全裸 nude → uc 排斥所有服装词 (shirt, bra, panties 等)
+   · 背对镜头 from_behind → uc 写入 face, front_view（除非 looking_back 回头）
+   · 无头/身首分离 headless / decapitation → 正向只写无头躯体；uc 写入 head, face, eyes, hair, head_attached
+   · 闭眼 closed_eyes → uc 排斥瞳色描述
+   · 蒙眼 blindfold → uc 排斥 eyes, iris
+
+3. 防冲突原则 — 严禁 uc 与正向自相矛盾：
+   · 如果角色的面部/头部在画面中可见（如正面出镜、looking_at_viewer），则该角色 uc 绝对禁止写入 face, head, upper_body
+   · 角色特有负面只写该角色的 uc，严禁全局广播误伤同场其他穿衣/不同发色的角色
+
+══ 角色外貌防伪码（Base 7 维矩阵，跨图锁定）══
+必须按 7 维全息外貌公式输出，严禁遗漏任何维度（遗漏任何一项=角色变脸）：
+① 性别：girl / boy（禁带数字）
+② 族裔/面相（japanese, east_asian, delicate_face, caucasian, western 等；日系二次元必带 japanese 或 delicate_face 锚定动漫美学面相）
+③ 年龄段（adolescent, teenager, young_girl, mature_female 等）
+④ 发型发色（如 long_hair, blonde_hair, twin_tails）
+⑤ 瞳色眼型（如 blue_eyes, tsurime, large_eyes）
+⑥ 胸型体态（如 large_breasts, slender, petite）
+⑦ 肤色与身体特征（如 fair_skin, mole_under_eye）
+
+══ 字段规范 ══
+- scene: [分级(nsfw/sfw)], [人数(1girl/1boy/solo/couple)], [景别与机位(bust_shot/pov/from_below)], [场景地点与环境], [光影与氛围], masterpiece, best quality, very aesthetic
+- characters[i]:
+  · name: 精确角色标识，如 "Ami (original)" 或 "Chika (Kaguya-sama)"
+  · base: 7维外貌防伪码（严禁包含当前服装与动作）
+  · outfit: 当前服装款式部件 + 穿着状态(open_collar/bottomless/nude) + 配饰鞋袜
+  · action: 当前姿态动作 + 微表情与神态 + 视线朝向 + 交互状态
+  · center: 空间网格坐标（A-E列 × 1-5行，单人默认 C3，双人左右 B3+D3，纵向 C2+C4）
+  · uc: 角色专属负面词（遵循可见性自洽法则 + 防畸形词如 bad hands, deformed limbs, blurry）
+
+══ 多节拍分镜拆分准则 ══
+- 若当前消息包含多个动作阶段、空间转移、互动或不同视角的视觉时刻，每个选定画面对应 1 个 segment 分镜。
+- 每个 segment 必须有独立的 anchor.text（从正文对应位置逐字复制 10~40 字原文）、独立的 scene 与景别。
+
+══ 输出示例 1（POV 主观第一人称 / 亲密骑乘场景）══
+{
+  "shouldDraw": true,
+  "reason": "少女居高临下嫌弃并坐下的POV第一人称高光",
+  "segments": [
+    {
+      "label": "屈辱结合",
+      "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
+      "scene": "nsfw, 1girl, pov, from_below, looking_down_at_viewer, cowgirl_position, straddling, pov_penis, imminent_penetration, size_difference, wet_pussy, pussy_juice, swollen_labia, on_bed, indoors, soft_ambient_lighting, masterpiece, best quality, very aesthetic",
+      "characters": [
+        {
+          "name": "Ami (original)",
+          "base": "girl, japanese, delicate_face, teenager, gyaru, long_blonde_hair, twin_tails, blue_eyes, small_breasts, petite, fair_skin",
+          "outfit": "white sailor serafuku, open_collar, bottomless, black_thighhighs",
+          "action": "straddling viewer, lowering hips, looking_down_at_viewer, disgusted_expression, slight_blush, condescending_gaze, parted_lips",
+          "center": "C3",
+          "uc": "bad hands, deformed limbs, extra fingers, blurry, male"
+        }
+      ]
+    }
+  ]
+}
+
+══ 输出示例 2（日常双人互动 / 校园告白场景）══
+{
+  "shouldDraw": true,
+  "reason": "雨中校门双手递出粉色信封告白",
+  "segments": [
+    {
+      "label": "雨中告白",
+      "anchor": {"text": "少女双手递出粉色信封，低垂着眼眸不敢看我"},
+      "scene": "sfw, 1girl, pov, eye_level, at school gate, iron fence, wet pavement, light rain, overcast, diffused_light, depth_of_field, blurry_background, masterpiece, best quality, very aesthetic",
+      "characters": [
+        {
+          "name": "Hanako (original)",
+          "base": "girl, japanese, delicate_face, teenager, medium_black_hair, straight_bangs, brown_eyes, glasses, petite, fair_skin",
+          "outfit": "navy blue sailor serafuku, white sailor collar, red neckerchief, pleated skirt",
+          "action": "holding love letter with both hands toward viewer, leaning forward, blushing, shy expression, looking down, trembling",
+          "center": "C3",
+          "uc": "bad hands, deformed limbs, blurry"
+        }
+      ]
+    }
+  ]
+}
+
+══ 输出示例 3（热血战斗 / 技能爆发大场景）══
+{
+  "shouldDraw": true,
+  "reason": "法师跃空施法爆发苍蓝法阵",
+  "segments": [
+    {
+      "label": "极光法阵",
+      "anchor": {"text": "她凌空跃起，左手法阵爆发出一道绚烂的苍蓝光环"},
+      "scene": "sfw, 1girl, solo, dynamic_angle, wide_shot, ruined_temple, stormy_sky, lightning, brilliant_cyan_glow, high_contrast, cinematic_lighting, masterpiece, best quality, very aesthetic",
+      "characters": [
+        {
+          "name": "Iris (original)",
+          "base": "girl, caucasian, delicate_face, adolescent, long_silver_hair, high_ponytail, crimson_eyes, slender_athletic, fair_skin",
+          "outfit": "leather combat tunic, dark hooded cape billowing, fingerless gloves, armored boots",
+          "action": "leaping in mid-air, left hand outstretched projecting intricate glowing magic circle, fierce shouting expression, looking forward",
+          "center": "C3",
+          "uc": "bad hands, deformed limbs, extra fingers, blurry"
+        }
+      ]
+    }
+  ]
+}
+
+
+现在开始处理用户输入的剧情，严格输出合法 JSON 对象。`;
+
     const HYBRID_NL_SYSTEM_PROMPT = `你是专为 NovelAI V4.5/V5 多角色生图引擎打造的「全息空间混合分镜提示词引擎」。读剧情→拆分镜→输出合法 JSON。
 
 ══ 核心机制：Z轴立体空间坐标容器 (Three-layer spatial depth) ══
@@ -835,7 +988,8 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     const SYSTEM_PROMPT_PRESETS = {
-        v26_hybrid: { label: 'V26-全息空间自适应版 (推荐/NAI5首选)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        v27_universal: { label: 'V27-全场景通用自适应旗舰版 (首选推荐)', prompt: UNIVERSAL_SYSTEM_PROMPT },
+        v26_hybrid: { label: 'V26-全息空间自适应版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
         v25_hybrid: { label: 'V25-全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
         consistent: { label: 'V24-8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
         v24_3d: { label: 'V24-3D写实电影版', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
@@ -847,7 +1001,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v26_hybrid';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v27_universal';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
     const DEFAULT_JAILBREAK_PROMPT = [
@@ -1004,10 +1158,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
-            // Auto-upgrade prompt to latest V26 Hybrid
-            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
-                store.systemPrompt = HYBRID_NL_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'v26_hybrid';
+            // Auto-upgrade prompt to latest V27 Universal
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === DEFAULT_SYSTEM_PROMPT_PRESET) {
+                store.systemPrompt = UNIVERSAL_SYSTEM_PROMPT;
+                store.systemPromptPreset = 'v27_universal';
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -1448,7 +1602,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -4536,7 +4690,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (['v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -6792,7 +6946,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="v26_hybrid">V26-全息空间自适应版 (推荐/NAI5首选)</option><option value="v25_hybrid">V25-全息自然语言混合版 (历史)</option><option value="consistent">V24-8.30全能规范版 (经典)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset"><option value="v27_universal">V27-全场景通用自适应旗舰版 (首选推荐)</option><option value="v26_hybrid">V26-全息空间自适应版 (历史)</option><option value="v25_hybrid">V25-全息自然语言混合版 (历史)</option><option value="consistent">V24-8.30全能规范版 (经典)</option><option value="v24_3d">V24-3D写实电影版</option><option value="v23">V23-国籍面相版</option><option value="v22">V22-完整版</option><option value="zimage_nl">Zimage-自然语言版</option><option value="grok_nl">Grok-自然语言版</option><option value="storyboarder">V21-POV增强版</option><option value="classic">V20-经典版</option></select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

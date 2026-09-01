@@ -4,6 +4,8 @@
     const PLUGIN_NAME = 'Multi-Char Composer';
     const STORAGE_KEY = '_multiCharComposer';
 
+    const VERSION = '1.0.7';
+
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
         const s = RBQ.api.getSettings();
@@ -40,8 +42,8 @@
             .replace(/Character\s*(\d+)\s*UC:/gi, 'Char$1 UC:')
             .replace(/Scene\s*Composition:/gi, 'Scene:');
 
-        // Quick guard: must contain at least one Char with centers
-        if (!/Char\d+:/i.test(normalized) || !/\|centers:/i.test(normalized)) {
+        // Quick guard: must contain at least one Char
+        if (!/Char\d+:/i.test(normalized)) {
             return null;
         }
 
@@ -56,9 +58,9 @@
             return ''; // remove from remaining
         });
 
-        // 2. Extract "Char{N}:content|centers:XY;" segments
-        //    Pattern: Char1:content|centers:C3;  (terminated by semicolon)
-        remaining = remaining.replace(/Char(\d+):([^;]*\|centers:[A-Ea-e][1-5])\s*;?/gi, (match, idx, content) => {
+        // 2. Extract "Char{N}:content" segments (with optional |centers:XY)
+        //    Pattern: Char1:content|centers:C3; or Char1:content; (terminated by semicolon)
+        remaining = remaining.replace(/Char(\d+):([^;]+?(?:\|centers:[A-Ea-e][1-5])?)\s*;?/gi, (match, idx, content) => {
             let caption = content.trim();
             let coord = { x: 0.5, y: 0.5 };
 

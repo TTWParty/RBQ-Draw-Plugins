@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.9';
+    const VERSION = '2.0.10';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -346,8 +346,9 @@
             const namePrefix = (rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
             const caption = [namePrefix, base, outfit, action].filter(Boolean).join(', ');
             const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
+            const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + center) : '';
 
-            if (caption) charParts.push('Char' + n + ':' + caption + '|centers:' + center);
+            if (caption) charParts.push('Char' + n + ':' + caption + centersSuffix);
             const uc = sanitizePromptSegment(slot.uc);
             if (uc) charParts.push('Char' + n + ' UC:' + uc);
         });
@@ -1073,25 +1074,41 @@
         const comp = ws.activeComposer;
         const slots = comp.slots || [];
         const ai = Math.min(slots.length - 1, Math.max(0, comp.activeSlotIndex || 0));
-        const profiles = getAllProfiles();
-        const profileNames = Object.keys(profiles);
+
+        const chatProfiles = getCurrentChatProfiles();
+        const globalProfiles = getAllGlobalProfiles();
+        const chatNames = Object.keys(chatProfiles);
+        const globalOnlyNames = Object.keys(globalProfiles).filter(n => !chatProfiles[n]);
+
+        const useCoords = comp.useCoords === true;
         const finalPrompt = composeFinalPrompt(comp);
         const mccOn = isMccEnabled();
 
         return `<div class="cw-body">
             ${!mccOn ? '<div class="cw-warn"><i class="fa-solid fa-triangle-exclamation"></i> 提示：多角色合成插件 (Multi-Char) 未启用，生成的图片可能无法正确按空间位置分区。</div>' : ''}
 
-            <!-- 5x5 Grid & Scene Settings -->
+            <!-- Spatial Stage / Scene Settings -->
             <div class="cw-card">
-                <div class="cw-card-hd">
+                <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
                     <div>
-                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 5x5 空间舞台 (点击图钉切换角色 · 点击空白格移动坐标)</span>
-                        <div style="font-size:11px;opacity:.65;margin-top:2px">当前正在控制: <strong style="color:${COLORS[ai % COLORS.length].hex}">Char ${ai + 1}: ${esc(slots[ai]?.charName || '未绑定')}</strong> (${coordLabel(slots[ai]?.center)})</div>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                            <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 空间舞台布局</span>
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);user-select:none" title="关闭后由 AI 自主决定角色在画面中的构图站位，网格收起；开启后按 5×5 网格死板固定坐标">
+                                <input type="checkbox" id="cw-toggle-coords" ${useCoords ? 'checked' : ''} style="margin:0;cursor:pointer" />
+                                <span style="color:${useCoords ? '#38bdf8' : 'rgba(255,255,255,0.7)'};font-weight:${useCoords ? 'bold' : 'normal'}">
+                                    <i class="fa-solid fa-crosshairs"></i> 5×5 严格坐标定位
+                                </span>
+                            </label>
+                        </div>
+                        <div style="font-size:11px;opacity:.65;margin-top:3px">
+                            ${useCoords ? `当前状态: 🎯 严格坐标定位已开启 (控制 Char ${ai + 1}: ${esc(slots[ai]?.charName || '未绑定')} · ${coordLabel(slots[ai]?.center)})` : `当前状态: 🤖 由 AI 自行决定站位构图 (更自然自洽，网格已收起)`}
+                        </div>
                     </div>
                     <button class="cw-btn cy sm" id="cw-pick-scene-wb" type="button"><i class="fa-solid fa-mountain-sun"></i> 搜索世界书场景</button>
                 </div>
                 <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-                    <!-- 5x5 Grid -->
+                    ${useCoords ? `
+                    <!-- 5x5 Grid (仅在开启严格定位时展开) -->
                     <div class="cw-grid5" id="cw-stage">
                         ${ROWS.map(r => COLS.map(c => {
                             const coord = c + r;
@@ -1101,7 +1118,7 @@
                                 ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}; border: 2px solid ${ai === s.si ? '#fff' : 'rgba(0,0,0,0.5)'}; transform: ${ai === s.si ? 'scale(1.25)' : 'scale(1)'}" title="点击选中 Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
                             </div>`;
                         }).join('')).join('')}
-                    </div>
+                    </div>` : ''}
 
                     <!-- Stage Controls & Scene Inputs -->
                     <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:7px;font-size:12px;color:rgba(255,255,255,.75)">
@@ -1109,7 +1126,8 @@
                             ${slots.map((s, i) => {
                                 const cl = COLORS[i % COLORS.length];
                                 const isAct = ai === i;
-                                return `<div class="cw-chip cw-switch-slot ${isAct ? 'on' : ''}" data-idx="${i}" style="border-color:${isAct ? cl.bdr : 'transparent'}; background:${isAct ? cl.bg : 'rgba(255,255,255,0.04)'}; color:${isAct ? cl.hex : 'inherit'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')} (${s.center || 'C3'})</div>`;
+                                const posTag = useCoords ? ` (${s.center || 'C3'})` : '';
+                                return `<div class="cw-chip cw-switch-slot ${isAct ? 'on' : ''}" data-idx="${i}" style="border-color:${isAct ? cl.bdr : 'transparent'}; background:${isAct ? cl.bg : 'rgba(255,255,255,0.04)'}; color:${isAct ? cl.hex : 'inherit'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')}${posTag}</div>`;
                             }).join('')}
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:2px">
@@ -1136,7 +1154,7 @@
                     ${slots.map((slot, i) => {
                         const cl = COLORS[i % COLORS.length];
                         const isActive = ai === i;
-                        const prof = slot.charName ? profiles[slot.charName] : null;
+                        const prof = slot.charName ? (getProfile(slot.charName) || globalProfiles[slot.charName]) : null;
                         const wardrobe = prof?.wardrobe || [];
                         const curPos = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
 
@@ -1145,7 +1163,7 @@
                                 <div style="display:flex;align-items:center;gap:7px">
                                     <span class="cw-badge" style="background:${cl.bg};color:${cl.hex}">Char ${i + 1}</span>
                                     <strong style="font-size:12.5px;color:#f8fafc">${esc(prof?.displayName || slot.charName || '未绑定角色')}</strong>
-                                    <span style="font-size:10.5px;opacity:.65">[位置: ${coordLabel(curPos)}]</span>
+                                    <span style="font-size:10.5px;opacity:.65">${useCoords ? `[位置: ${coordLabel(curPos)}]` : '[站位: 由 AI 决定]'}</span>
                                 </div>
                                 <div style="display:flex;gap:5px">
                                     <button class="cw-btn cy sm cw-activate-slot" data-idx="${i}" type="button">🎯 设为控制</button>
@@ -1157,7 +1175,16 @@
                                     <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">绑定角色档案:</label>
                                     <select class="cw-sel cw-slot-char" data-idx="${i}">
                                         <option value="">👤 [自定义 / 未建档角色]</option>
-                                        ${profileNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(profiles[n].displayName || n)}</option>`).join('')}
+                                        ${chatNames.length > 0 ? `
+                                            <optgroup label="💬 当前会话角色 (${chatNames.length} 位)">
+                                                ${chatNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(chatProfiles[n]?.displayName || n)}</option>`).join('')}
+                                            </optgroup>
+                                        ` : ''}
+                                        ${globalOnlyNames.length > 0 ? `
+                                            <optgroup label="🌐 全局历史档案 (${globalOnlyNames.length} 位)">
+                                                ${globalOnlyNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(globalProfiles[n]?.displayName || n)}</option>`).join('')}
+                                            </optgroup>
+                                        ` : ''}
                                     </select>
                                 </div>
                                 <div>
@@ -1179,6 +1206,7 @@
                                     <label style="font-size:10.5px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC):</label>
                                     <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词 (如 penis, futanari...)" value="${esc(slot.uc || '')}" />
                                 </div>
+                                ${useCoords ? `
                                 <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px">
                                     <span style="font-size:10.5px;font-weight:bold;color:#cbd5e1;white-space:nowrap">快捷站位:</span>
                                     <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -1186,7 +1214,7 @@
                                             <button class="cw-chip cw-slot-quick-pos ${curPos === p ? 'on' : ''}" data-idx="${i}" data-pos="${p}" type="button">${p}</button>
                                         `).join('')}
                                     </div>
-                                </div>
+                                </div>` : ''}
                             </div>
                         </div>`;
                     }).join('')}
@@ -1295,6 +1323,16 @@
         container.querySelectorAll('.cw-main-tab').forEach(b => b.addEventListener('click', () => refresh(b.dataset.tab)));
 
         // ── Composer Events ──
+        container.querySelector('#cw-toggle-coords')?.addEventListener('change', (e) => {
+            comp.useCoords = !!e.target.checked;
+            const s = RBQ.api.getSettings();
+            if (!s[MCC_KEY]) s[MCC_KEY] = {};
+            s[MCC_KEY].useCoords = comp.useCoords;
+            wsSave();
+            toastr.info(comp.useCoords ? '5×5 严格坐标定位已开启，网格已展开' : '严格坐标定位已关闭，角色站位将由 AI 自主决定', PLUGIN_NAME);
+            refresh('composer');
+        });
+
         // 5x5 pin click (switch to that slot, stop propagation)
         container.querySelectorAll('.cw-pin').forEach(pin => pin.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1444,6 +1482,11 @@
             const btn = ev.currentTarget;
             const origHtml = btn.innerHTML;
             const p = composeFinalPrompt(comp);
+
+            const s = RBQ.api.getSettings();
+            if (!s[MCC_KEY]) s[MCC_KEY] = {};
+            s[MCC_KEY].useCoords = comp.useCoords === true;
+            RBQ.api.saveSettings();
 
             if (!isMccEnabled()) {
                 toastr.warning('多角色合成插件未启用，生成的图片可能无法正确分配角色位置', PLUGIN_NAME);

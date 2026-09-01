@@ -533,11 +533,11 @@
                         <button class="cw-btn sm" id="cw-gal-close">✕</button>
                     </div>
                     ${tabsHtml}
-                    <div class="cw-modal-bd" style="align-items:center;gap:10px">
-                        <div style="width:100%;max-height:55vh;min-height:220px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
-                            <img src="${esc(currentItem.url)}" style="max-width:100%;max-height:55vh;object-fit:contain;display:block" alt="Test Result" />
+                    <div class="cw-modal-bd" style="align-items:center;gap:8px">
+                        <div style="width:100%;flex:1 1 auto;max-height:48vh;min-height:140px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
+                            <img src="${esc(currentItem.url)}" style="max-width:100%;max-height:46vh;width:auto;height:auto;object-fit:contain;display:block" alt="Test Result" />
                         </div>
-                        <div style="width:100%;background:rgba(0,0,0,0.35);padding:8px 12px;border-radius:6px;font-size:11px;color:rgba(255,255,255,0.7);max-height:75px;overflow-y:auto;word-break:break-all">
+                        <div style="width:100%;background:rgba(0,0,0,0.35);padding:6px 10px;border-radius:6px;font-size:11px;color:rgba(255,255,255,0.7);max-height:65px;overflow-y:auto;word-break:break-all;line-height:1.35">
                             <strong style="color:#38bdf8">【${esc(currentItem.title)}】测试提示词：</strong> ${esc(currentItem.prompt)}
                         </div>
                     </div>
@@ -596,15 +596,15 @@
                     <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-image"></i> ${esc(title)}</strong>
                     <button class="cw-btn sm" id="cw-img-close">✕</button>
                 </div>
-                <div class="cw-modal-bd" style="align-items:center;gap:12px">
-                    <div style="width:100%;max-height:60vh;min-height:240px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
-                        <img src="${esc(url)}" style="max-width:100%;max-height:60vh;object-fit:contain;display:block" alt="Generated Image" />
+                <div class="cw-modal-bd" style="align-items:center;gap:8px">
+                    <div style="width:100%;flex:1 1 auto;max-height:50vh;min-height:140px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
+                        <img src="${esc(url)}" style="max-width:100%;max-height:48vh;width:auto;height:auto;object-fit:contain;display:block" alt="Generated Image" />
                     </div>
-                    <div style="width:100%;background:rgba(0,0,0,0.35);padding:8px 12px;border-radius:6px;font-size:11px;color:rgba(255,255,255,0.7);max-height:80px;overflow-y:auto;word-break:break-all">
+                    <div style="width:100%;background:rgba(0,0,0,0.35);padding:6px 10px;border-radius:6px;font-size:11px;color:rgba(255,255,255,0.7);max-height:65px;overflow-y:auto;word-break:break-all;line-height:1.35">
                         <strong style="color:#38bdf8">提示词：</strong> ${esc(prompt)}
                     </div>
                 </div>
-                <div class="cw-modal-ft" style="justify-content:flex-end;gap:8px">
+                <div class="cw-modal-ft" style="justify-content:flex-end;gap:6px;flex-wrap:wrap">
                     <a href="${esc(url)}" target="_blank" class="cw-btn sm cy" style="text-decoration:none"><i class="fa-solid fa-arrow-up-right-from-square"></i> 查看原图</a>
                     <button class="cw-btn sm" id="cw-img-copy-prompt"><i class="fa-regular fa-copy"></i> 复制提示词</button>
                     <button class="cw-btn sm pri" id="cw-img-ok">完成</button>
@@ -675,12 +675,20 @@
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
-.cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
-.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:820px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9);box-sizing:border-box}
-.cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08)}
-.cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box}
-.cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3)}
+.cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:16px;box-sizing:border-box;-webkit-overflow-scrolling:touch}
+.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9);box-sizing:border-box;margin:auto;position:relative;flex-shrink:0}
+.cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08);flex-shrink:0}
+.cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;min-height:0}
+.cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3);flex-shrink:0;flex-wrap:wrap;gap:8px}
 .cw-warn{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:8px 12px;font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:8px}
+
+@media (max-width: 768px) {
+  .cw-modal-mask{padding:8px}
+  .cw-modal{width:100%!important;max-width:100%!important;max-height:calc(100vh - 16px)!important;max-height:calc(100dvh - 16px)!important;margin:auto 0}
+  .cw-modal-hd{padding:9px 12px}
+  .cw-modal-bd{padding:10px 12px;gap:10px}
+  .cw-modal-ft{padding:8px 12px;gap:6px}
+}
 `;
         document.head.appendChild(s);
     })();

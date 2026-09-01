@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.7';
+    const VERSION = '2.0.9';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -58,20 +58,30 @@
     // ══════════════════════════════════════════════════════════
     //  Data Access Layer: Direct SDT characterProfiles Binding
     // ══════════════════════════════════════════════════════════
+    let dossierScope = 'chat'; // 'chat' (仅当前会话) | 'all' (全部历史档案)
+
     function getChatKey() {
+        // 1. 优先尝试 ST 全局 getCurrentChatId()
         try {
             if (typeof window.getCurrentChatId === 'function') {
                 const id = window.getCurrentChatId();
-                if (id) return id;
+                if (id) return String(id);
             }
-        } catch (_e) { /* ignore */ }
+        } catch (_e) { /* noop */ }
+        // 2. 尝试 SillyTavern context (与 smart-draw-trigger 格式完全一致)
         try {
-            const context = SillyTavern?.getContext?.();
-            if (context?.chatId) return context.chatId;
-            if (context?.characterId) return `char_${context.characterId}`;
-            if (context?.groupId) return `group_${context.groupId}`;
-        } catch (_e) { /* ignore */ }
-        return 'default';
+            const ctx = window.SillyTavern?.getContext?.();
+            if (ctx?.chatId) return String(ctx.chatId);
+            if (ctx?.characterId !== undefined) return `char-${ctx.characterId}`;
+            if (ctx?.groupId !== undefined) return `group-${ctx.groupId}`;
+        } catch (_e) { /* noop */ }
+        // 3. 回退：从聊天元数据元素中读取
+        try {
+            const chatEl = document.querySelector('#chat');
+            const chatFile = chatEl?.closest?.('[chat_id]')?.getAttribute('chat_id') || chatEl?.closest?.('[data-chat-file]')?.dataset?.chatFile;
+            if (chatFile) return String(chatFile);
+        } catch (_e) { /* noop */ }
+        return '_global';
     }
 
     function getSdtStore() {
@@ -89,13 +99,16 @@
         return s[SDT_KEY].characterProfiles[ck];
     }
 
-    function getAllProfiles() {
+    function getCurrentChatProfiles() {
         const sdt = getSdtStore();
         const ck = getChatKey();
-        const currentChatProfiles = (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
-        
-        if (Object.keys(currentChatProfiles).length === 0 && sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
-            const fallback = {};
+        return (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
+    }
+
+    function getAllGlobalProfiles() {
+        const sdt = getSdtStore();
+        const fallback = {};
+        if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
             for (const chatDict of Object.values(sdt.characterProfiles)) {
                 if (chatDict && typeof chatDict === 'object') {
                     for (const [k, v] of Object.entries(chatDict)) {
@@ -103,9 +116,15 @@
                     }
                 }
             }
-            return fallback;
         }
-        return currentChatProfiles;
+        return fallback;
+    }
+
+    function getAllProfiles() {
+        if (dossierScope === 'all') {
+            return getAllGlobalProfiles();
+        }
+        return getCurrentChatProfiles();
     }
 
     function getProfile(name) {
@@ -382,7 +401,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-test-mode-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.zIndex = '100000060';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:100000060 !important;background:rgba(0,0,0,.85) !important;backdrop-filter:blur(8px) !important;display:flex !important;align-items:center !important;justify-content:center !important;padding:16px !important;box-sizing:border-box !important;';
         modal.innerHTML = `
             <div class="cw-modal" style="width:480px;max-width:95vw">
                 <div class="cw-modal-hd">
@@ -512,7 +531,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.zIndex = '100000070';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:100000070 !important;background:rgba(0,0,0,.85) !important;backdrop-filter:blur(8px) !important;display:flex !important;align-items:center !important;justify-content:center !important;padding:16px !important;box-sizing:border-box !important;';
 
         function renderGallery() {
             const currentItem = results[activeIndex] || results[0];
@@ -589,7 +608,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.zIndex = '100000070';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:100000070 !important;background:rgba(0,0,0,.85) !important;backdrop-filter:blur(8px) !important;display:flex !important;align-items:center !important;justify-content:center !important;padding:16px !important;box-sizing:border-box !important;';
         modal.innerHTML = `
             <div class="cw-modal" style="width:680px;max-width:95vw">
                 <div class="cw-modal-hd">
@@ -993,17 +1012,32 @@
     //  Tab 1: 角色档案库 (Dossier)
     // ══════════════════════════════════════════════════════════
     function renderDossierTab() {
+        const chatProfiles = getCurrentChatProfiles();
+        const globalProfiles = getAllGlobalProfiles();
+        const chatCount = Object.keys(chatProfiles).length;
+        const allCount = Object.keys(globalProfiles).length;
+
         const profiles = getAllProfiles();
         const names = Object.keys(profiles);
 
         return `<div class="cw-body">
             <div class="cw-card">
-                <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色档案库 (${names.length} 位)</span>
+                <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色档案库 (${names.length} 位)</span>
+                        <div style="display:inline-flex;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:2px;gap:2px">
+                            <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'chat' ? 'cy' : ''}" data-scope="chat" style="padding:2px 8px;font-size:11px"><i class="fa-solid fa-comments"></i> 当前会话 (${chatCount})</button>
+                            <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'all' ? 'cy' : ''}" data-scope="all" style="padding:2px 8px;font-size:11px"><i class="fa-solid fa-globe"></i> 全局历史 (${allCount})</button>
+                        </div>
+                    </div>
                     <button class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
                 </div>
                 <div class="cw-chgrid">
-                    ${names.length === 0 ? '<div style="text-align:center;padding:30px;grid-column:1/-1;opacity:.6">暂无已保存角色档案，点击右上角「新建角色档案」开始！</div>' : names.map(n => {
+                    ${names.length === 0 ? `
+                        <div style="text-align:center;padding:36px 20px;grid-column:1/-1;opacity:.7;display:flex;flex-direction:column;align-items:center;gap:10px">
+                            <div><i class="fa-solid fa-user-slash" style="font-size:28px;opacity:0.4"></i></div>
+                            <div>${dossierScope === 'chat' ? `当前会话暂无角色档案记忆。${allCount > 0 ? `全局历史库中有 ${allCount} 位角色，点击上方「全局历史」可直接查看与选用！` : ''}` : '暂无任何角色档案，点击右上角「新建角色档案」开始！'}</div>
+                        </div>` : names.map(n => {
                         const p = profiles[n];
                         const wCount = Array.isArray(p.wardrobe) ? p.wardrobe.length : 0;
                         const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
@@ -1439,20 +1473,36 @@
         });
 
         // ── Dossier Events ──
+        container.querySelectorAll('.cw-scope-btn').forEach(b => b.addEventListener('click', () => {
+            const scope = b.dataset.scope;
+            if (scope && (scope === 'chat' || scope === 'all')) {
+                dossierScope = scope;
+                refresh('dossier');
+            }
+        }));
+
         container.querySelector('#cw-create-char')?.addEventListener('click', () => openCharacterEditor(null, () => refresh('dossier')));
 
         container.querySelectorAll('.cw-test-dossier-char').forEach(b => b.addEventListener('click', (ev) => {
-            const btn = ev.currentTarget;
-            const charName = b.dataset.name;
-            const p = profiles[charName];
-            if (!p) return;
-            const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
-            const outfit = activeW?.outfit || activeW?.tags || p.currentOutfit || '';
-            openPortraitTestModal(p.displayName || charName, p.baseTags, outfit, (newAvatarUrl) => {
-                p.avatarUrl = newAvatarUrl;
-                saveProfile(charName, p);
-                refresh('dossier');
-            }, btn);
+            try {
+                const btn = ev.currentTarget;
+                const charName = b.dataset.name;
+                const p = getProfile(charName) || getAllProfiles()[charName];
+                if (!p) {
+                    toastr.warning(`未找到角色「${charName}」的档案数据`, PLUGIN_NAME);
+                    return;
+                }
+                const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
+                const outfit = activeW?.outfit || activeW?.tags || p.currentOutfit || '';
+                openPortraitTestModal(p.displayName || charName, p.baseTags, outfit, (newAvatarUrl) => {
+                    p.avatarUrl = newAvatarUrl;
+                    saveProfile(charName, p);
+                    refresh('dossier');
+                }, btn);
+            } catch (err) {
+                console.error('[CW] 测试按钮点击出错:', err);
+                toastr.error('启动测试失败: ' + (err.message || err), PLUGIN_NAME);
+            }
         }));
 
         container.querySelectorAll('.cw-send-to-stage').forEach(b => b.addEventListener('click', () => {
@@ -1539,12 +1589,57 @@
         if (!RBQ.ui || typeof RBQ.ui.addSettingPanel !== 'function') {
             return console.warn('[CW] RBQ.ui.addSettingPanel not available');
         }
+
+        let refreshMain = null;
+
         RBQ.ui.addSettingPanel('character-workshop', '<i class="fa-solid fa-palette"></i><span>角色工坊</span>', () => {
             const w = document.createElement('div');
+            w.id = 'cw-root-container';
             w.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden';
-            const refresh = (tab) => { w.innerHTML = renderMain(tab); bindEvents(w, refresh); };
+            const refresh = (tab) => {
+                w.innerHTML = renderMain(tab);
+                bindEvents(w, refresh);
+            };
+            refreshMain = refresh;
             refresh(activeTab);
+
+            // 监听面板可见性：每次进入面板时自动根据当前最新会话刷新角色列表
+            if (typeof IntersectionObserver !== 'undefined') {
+                let isFirst = true;
+                const observer = new IntersectionObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.isIntersecting) {
+                            if (!isFirst) {
+                                refresh(activeTab);
+                            }
+                            isFirst = false;
+                        }
+                    }
+                }, { threshold: 0.05 });
+                observer.observe(w);
+            }
+
             return w;
+        });
+
+        // 监听进入角色工坊的各种入口
+        const triggerRefresh = () => {
+            if (typeof refreshMain === 'function') {
+                setTimeout(() => refreshMain(activeTab), 30);
+            }
+        };
+
+        document.addEventListener('click', (e) => {
+            const t = e.target;
+            if (t && t.closest && t.closest('[data-kite-tab="character-workshop"], #rbq-sdt-goto-workshop-btn')) {
+                triggerRefresh();
+            }
+        });
+
+        document.addEventListener('rbq-tab-switched', (e) => {
+            if (e.detail?.tab === 'character-workshop') {
+                triggerRefresh();
+            }
         });
     }
     mount();

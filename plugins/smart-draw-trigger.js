@@ -6143,16 +6143,75 @@ SCHEMA:
             body: JSON.stringify(reqBodyObj),
         });
 
-        if (!response.ok && response.status === 400 && reqBodyObj.response_format) {
-            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
-            const retryBody = { ...reqBodyObj };
-            delete retryBody.response_format;
-            response = await smartFetch(url, {
-                ...fetchOptions,
-                body: JSON.stringify(retryBody),
-            });
+        if (!response.ok && response.status === 400) {
+            let retryNeeded = false;
+            let retryBody = { ...reqBodyObj };
+
+            // 1. Check if HTTP 400 is caused by Gemini 3.6+ forbidding trailing assistant/model role turn
+            const lastMsg = retryBody.messages && retryBody.messages[retryBody.messages.length - 1];
+            if (lastMsg && (lastMsg.role === 'assistant' || lastMsg.role === 'model')) {
+                console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400 且末尾为 assistant 消息（疑似 Gemini 3.6+ 预填充验证失败），正在自动转为 User 末尾追加并重试...`);
+                const msgs = [...retryBody.messages];
+                const popped = msgs.pop();
+                const lastUser = msgs.slice().reverse().find(m => m.role === 'user');
+                if (lastUser) {
+                    lastUser.content += `\n\n[输出引导]\n${popped.content}`;
+                } else {
+                    msgs.push({ role: 'system', content: popped.content });
+                }
+                retryBody.messages = msgs;
+                retryNeeded = true;
+            }
+
+            // 2. Check if response_format should be stripped
+            if (!retryNeeded && retryBody.response_format) {
+                console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
+                delete retryBody.response_format;
+                retryNeeded = true;
+            }
+
+            if (retryNeeded) {
+                response = await smartFetch(url, {
+                    ...fetchOptions,
+                    body: JSON.stringify(retryBody),
+                });
+                // If it still failed and has response_format, also strip response_format
+                if (!response.ok && response.status === 400 && retryBody.response_format) {
+                    const secondRetryBody = { ...retryBody };
+                    delete secondRetryBody.response_format;
+                    response = await smartFetch(url, {
+                        ...fetchOptions,
+                        body: JSON.stringify(secondRetryBody),
+                    });
+                }
+            }
         }
         return response;
+    }
+
+    function applyPostProcessPrompt(messages, store, modelName = '') {
+        if (!store.postProcessEnabled || !store.postProcessPrompt) return;
+        const isGemini = String(modelName || store.openaiModel || store.openaiModelCustom || '').toLowerCase().includes('gemini');
+        let role = store.postProcessRole || 'assistant';
+
+        // Gemini 3.6+ explicitly forbids ending payload with assistant/model role turn (HTTP 400)
+        if (isGemini && role === 'assistant') {
+            console.warn(`[${PLUGIN_NAME}] 检测到 Gemini 模型，且开启了 Assistant 尾部预填充。为避免 Gemini 3.6+ HTTP 400 (model role turn validation)，自动转换为 User 末尾追加模式。`);
+            role = 'user_append';
+        }
+
+        if (role === 'user_append') {
+            const lastUser = messages.slice().reverse().find(m => m.role === 'user');
+            if (lastUser) {
+                lastUser.content += `\n\n[输出引导]\n${store.postProcessPrompt}`;
+            } else {
+                messages.push({ role: 'system', content: store.postProcessPrompt });
+            }
+        } else if (role === 'system') {
+            messages.push({ role: 'system', content: store.postProcessPrompt });
+        } else {
+            messages.push({ role: 'assistant', content: store.postProcessPrompt });
+        }
     }
 
     async function callOpenAiCompatible(messageId, trigger, { signal } = {}) {
@@ -6177,12 +6236,7 @@ SCHEMA:
 
         messages.push({ role: 'user', content: JSON.stringify(payload, null, 2) });
 
-        if (store.postProcessEnabled && store.postProcessPrompt) {
-            messages.push({
-                role: store.postProcessRole === 'system' ? 'system' : 'assistant',
-                content: store.postProcessPrompt
-            });
-        }
+        applyPostProcessPrompt(messages, store, modelName);
 
         const response = await callApiWithJsonFallback(url, {
             method: 'POST',
@@ -7298,7 +7352,7 @@ SCHEMA:
                 <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词 <button id="rbq-sdt-reset-jailbreak" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-gemini-jailbreak-prompt" placeholder="在此输入用于绕过系统审核的破限词... \n如需构造伪造对话记录 (Few-shot)，可使用 <|system|>, <|user|>, <|assistant|> 作为分隔符。"></textarea></label>
                 <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-post-process-role-field" class="st-scene-trigger-field" style="display:none;"><span>引导身份 (Role)</span><select id="rbq-sdt-post-process-role"><option value="assistant">Assistant</option><option value="system">System</option></select></label>
+                <label id="rbq-sdt-post-process-role-field" class="st-scene-trigger-field" style="display:none;" title="选择引导身份。注意：Gemini 3.6+ 已禁止以 Assistant/Model 角色结尾（会报 HTTP 400 错误），若使用 Gemini 模型建议选择 User 末尾追加或 System。"><span>引导身份 (Role)</span><select id="rbq-sdt-post-process-role"><option value="assistant">Assistant (模型预填充 - ⚠️Gemini 3.6+不支持)</option><option value="user_append">User 末尾追加 (推荐 Gemini / 防400)</option><option value="system">System (系统指令)</option></select></label>
                 <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>尾部引导内容 <button id="rbq-sdt-reset-post-process" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-post-process-prompt" placeholder="思考完成\n</think>\n我将按照要求输出..."></textarea></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
@@ -7943,9 +7997,8 @@ SCHEMA:
 
             messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
 
-            if (store.postProcessEnabled && store.postProcessPrompt) {
-                messages.push({ role: store.postProcessRole === 'system' ? 'system' : 'assistant', content: store.postProcessPrompt });
-            }
+            const modelNameForPp = (store.openaiModelCustom || '').trim() || store.openaiModel;
+            applyPostProcessPrompt(messages, store, modelNameForPp);
 
             // Call tagger via the correct provider (OpenAI or Custom HTTP)
             let json;
@@ -8103,9 +8156,8 @@ SCHEMA:
 
         messages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
 
-        if (store.postProcessEnabled && store.postProcessPrompt) {
-            messages.push({ role: store.postProcessRole === 'system' ? 'system' : 'assistant', content: store.postProcessPrompt });
-        }
+        const modelNameForPp = (store.openaiModelCustom || '').trim() || store.openaiModel;
+        applyPostProcessPrompt(messages, store, modelNameForPp);
 
         let json;
         if (store.provider === 'custom') {

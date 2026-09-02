@@ -160,8 +160,20 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
 
 - 配角统一定名：faceless male / faceless female。
 
+══ 标签权重与括号等效 (Tag Weights) ══
+- 数字权重：n::tag:: 或 n::tag1, tag2::（n>1.0 增强，n<1.0 削弱，n<0 反向排斥）：
+  · 核心同人名：2::Name (Series)::
+  · 发色与核心着装：1.2::发色::
+  · 核心动作与交互关键动词：1.2~1.4::动作::
+  · 弱化次要/远景/氛围光：0.6::mountain::, 0.6::diffused light::
+  · 程度控制（幅度/大小）：0.4::pregnant::（早期）、0.5::spread legs::（微张）
+- 括号等效（每层 ×/÷1.05）：{tag}=1.05、{{tag}}=1.1；[tag]=0.95、[[tag]]=0.90。权重只套标签，自然语言靠措辞精确表达。
+- 介质与间接呈现：物品入镜用 photo (object), girl in photo；物品不入镜直接呈现界面元素 text, chat log, livestream（显示器不在画面，UC 加 monitor）。
+- 合理例外兼容：破损致赤脚（✓torn pantyhose, barefoot）；半脱残留（✓partially undressed, 具体服装）；面具遮挡眼睛可见（✓masquerade mask, [color] eyes）。
+
 ══ 字段格式 ══
 - scene: 分层空间结构与环境总览字符串
+- negative: 全场通用负面排除词（Scene UC，包含分级底线词如 nude, completely nude 等，与角色私属 UC 隔离）
 - characters[i]:
   · name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
   · base: 7维外貌防伪特征（纯净无服装动作）
@@ -181,6 +193,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
       "label": "细雨递信",
       "anchor": {"text": "她小心翼翼地递过那封带着粉色爱心封口的信件，微红着脸不敢抬头看我"},
       "scene": "Scene: SFW, love confession, {{1girl}}, 1boy, face-to-face. Foreground: a boy's hand reaching in from the lower frame to receive the letter, softly blurred in first-person view. Middle ground: a petite girl with glasses leaning forward, holding out a love letter toward the viewer, her upper body clearly visible, not daring to look up. Character occupying around 65% of the image height. Background: the school gate and iron fence receding into light rain, wet pavement with faint ripples, softly blurred. Foreground receiving hand, Middle ground girl, Background rainy school gate. pov, cowboy shot, from above, solo focus, front three-quarter view, high-angle, 0.6::diffused light, blue-grey ambient light::, shade;",
+      "negative": "nude, completely nude, nipples, pussy, penis, topless, bottomless, camera",
       "characters": [
         {
           "name": "Mira (original)",
@@ -212,6 +225,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
       "label": "午后夏风",
       "anchor": {"text": "阳台晾晒着洗好的白色礼服，落地门内她坐在地板上倚着沙发吃蜜瓜冰棒"},
       "scene": "Scene: SFW, {1girl}, solo. Foreground: a balcony laundry pole stretching across the frame, an unworn white halter dress hanging from a black hanger on the left, unworn blue-and-white striped panties clipped to a hanger at the upper right, a pair of unworn light blue platform sandals on the balcony floor, an air conditioner outdoor unit at lower left, a potted plant at lower right. Middle ground: seen through the open sliding glass door, a long blonde-haired girl sitting on the wooden floor and leaning back against a blue sofa, eating a green melon popsicle, fully visible from head to toe, no cropping. Character occupying around 25% of the image height. Background: the living room interior stretching deeper — a standing electric fan, a kitchen counter with cabinets — and the cityscape under a blue sky with clouds visible through the far window. Foreground laundry, Middle ground girl, Background living room and cityscape. from outside, through doorway, full body, scenery, deep focus, afternoon, warm light, sunlight, natural shadows;",
+      "negative": "nude, completely nude, nipples, pussy, penis, topless, bottomless",
       "characters": [
         {
           "name": "Cartethyia (Wuthering Waves)",
@@ -235,6 +249,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
       "label": "屈辱结合",
       "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
       "scene": "Scene: NSFW, {1girl}, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia, vaginal fluids smearing close to camera. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Character occupying around 75% of the image height. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow;",
+      "negative": "censored, mosaic",
       "characters": [
         {
           "name": "Ami (original)",

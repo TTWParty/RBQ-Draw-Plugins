@@ -89,11 +89,23 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
   · bird's-eye view (顶视，俯瞰全局与监视感)
   · worm's-eye view (虫视，极低仰视，渲染危险与威胁)
 
-══ 角色外貌特征（Base）══
-characters[i].base 输出纯净角色外貌，严禁包含临时服装与动作：
-- 基本固有特征：发长/发色/瞳色/胸部大小（如 long hair, 1.2::brown hair::, brown eyes, flat chest）
-- 可选固有特征：发型细节/瞳型/年龄感/体型/肤色/种族特征/专属配饰（如 low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, fair skin, black round-frame glasses, yellow star hairpin）
-- 防幻觉铁律：不确定同人提示词是否真实存在→绝不编造，用确定的基础标签＋自然语言覆盖差异特征＋UC排斥原特征。
+══ 角色外貌 7 维防伪矩阵与记忆锚点 (Base) ══
+characters[i].base 是角色外貌的底层唯一身份标识，专用于「角色外貌跨图记忆缓存（Character Memory）」，严禁写入临时着装与动作：
+- 7 维全息矩阵公式：
+  ① 性别：girl / boy（禁带数字，防人数干扰）
+  ② 面相/族裔：japanese, delicate_face（日系二次元必带，锁定动漫秀气五官，防止欧美化漂移）/ caucasian / western 等
+  ③ 年龄段：adolescent, teenager, young_girl, mature_female 等
+  ④ 发型发色：如 long hair, 1.2::black hair::, straight bangs, twintails
+  ⑤ 瞳色眼型：如 blue eyes, tsurime, large eyes
+  ⑥ 胸型体态：如 large breasts, slender, petite, tall
+  ⑦ 肤色与永久特征：如 fair skin, mole under eye, freckles, vampire, fangs
+- 记忆分级与建立标准（对齐世界书 L0 规范）：
+  · 同人角色：基本 4 项（发长/发色/瞳色/胸型）+ ≥2 项可选特征（OOC 时追加与原设差异项并在 UC 排斥原设特征）
+  · 原创角色：基本 4 项 + ≥6 项可选特征 + ≥1 项专属配饰（发饰/眼镜/首饰等，防止千人一面脸谱化）
+  · 次要配角：统一简写为 faceless male / faceless female
+- L1 近期锚点持久性规则：
+  · 生理反应与持久痕迹（汗水 sweat、红晕 blush、喘息 heavy breathing、战损、体液残留 cumdrip）「只增不减、不自动复原」；
+  · 同一场景连续动作中必须递进保持或渐进累积，消退必须渐进，只有在剧情明确触发沐浴/擦干/换衣/休息/第二天等重置条件时才清零！
 
 ══ 服装签名法则 (Outfit Signature) ══
 characters[i].outfit 遵循四要素签名法：
@@ -106,10 +118,30 @@ characters[i].outfit 遵循四要素签名法：
 ══ 肢体动作碎化与权重 (Action Deconstruction) ══
 characters[i].action 必须将全身姿势、手部与神态细化拆解：
 - 核心体位：standing / sitting / kneeling / lying / straddling
-- 左右手独立：每只手动作分别写清（哪个部位/持有什么/放在哪），严禁一只手覆盖另一只（如 1.3::right hand holding sword, sword on shoulder::, left hand resting on hip）
+- 左右手独立：每只手动作分别写清（哪个部位/持有什么/放在哪），严禁一只手覆盖另一只（如 1.3::right hand holding sword, sword on shoulder::, left hand resting on hip）；手被遮挡或在画框外时不编造。
 - 动作权重：核心动作与交互关键动词使用 1.2~1.4::动作:: 加权
 - 互动源目标标注：单方发起 source#action / 承受方 target#action / 双方同做 mutual#action
 - 复合微表情：视线(默认looking at viewer无需填写，其他必须标注如looking down, looking to the side) + 嘴型(parted lips, open mouth) + 情绪与生理反应(blush, tears, sweat)
+- 复杂动态补足：标签碎片拼不出的微妙动态与力学过程（如衣物甩动、对抗拉扯），用自然语言短句紧跟关联标签描述（如 the hem of her skirt flaring with the motion）。
+
+══ 景别与动作/表情配重联动链 ══
+景别决定细节配重，距离越近表情越丰富，距离越远环境越完整：
+- 特写 (close-up)：表情·微细节拉满，场景极简（景深虚化/纯色背景）；
+- 近景 (bust shot/upper body)：表情 + 半身动作手势兼顾，弱化背景；
+- 中景 (cowboy shot/mid shot)：日常推进最常用，动作与表情适中，人物高度占比 50%~75%；
+- 全景 (full body)：全身造型与动作体位为主，表情压缩为 1~2 核心词，必须带环境定位；
+- 远景 (wide shot)：环境细节拉满，人物从简仅留外貌特征/服装色块/体态，表情省略。
+
+══ 多角色 5×5 坐标调度与防裁切 (Center Grid) ══
+characters[i].center 负责在画面中给角色精准定位，实现受控布局与视觉秩序：
+- 网格体系：A-E 横轴、1-5 纵轴（A1 左上，E5 右下，C3 中心）。
+- 边缘裁切预警：A2、C5、E1 等边缘坐标会导致主体显示不全或严重裁切，仅适合局部出框人物或次要客体；主要角色必须稳在中央区（B-D × 2-4）。
+- 经典站位推荐：
+  · 单人构图：默认 C3（正中），特写/近景按视线偏向可用 C2 或 C3
+  · 双人并排平视：B3 + D3（左右对视/并排）
+  · 双人纵深对话/互动：B2 + C4 或 C2 + C4（前深后浅，形成视觉主次）
+  · 三人构图：A3 + C3 + E3（三人并排）或 B4 + C2 + D4（三角站位）
+  · 复杂群像/多客体共用/仅局部出镜：使用 auto 自动交由扩散模型排布
 
 ══ 可见性规则与 UC 隔离判定表 ══
 成因与排斥规则（每图必查，画框外不可见元素必须从正向移除并写入该角色的 uc）：
@@ -132,7 +164,7 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
 - scene: 分层空间结构与环境总览字符串
 - characters[i]:
   · name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
-  · base: 外貌防伪特征（纯净无服装动作）
+  · base: 7维外貌防伪特征（纯净无服装动作）
   · outfit: 签名服装部件与穿着状态
   · action: 碎化肢体动作 + 动作权重 + 微表情
   · center: 5×5 坐标网格（A-E × 1-5，单人默认 C3，双人并排 B3+D3，纵深 C2+C4，群像 auto）
@@ -152,7 +184,7 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
       "characters": [
         {
           "name": "Mira (original)",
-          "base": "girl, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, white skin, black round-frame glasses, yellow star hairpin",
+          "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, white skin, black round-frame glasses, yellow star hairpin",
           "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, buttons, wet clothes, white knee socks",
           "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent plastic umbrella, umbrella over shoulder::, 1.4::right hand, arm extended, source#giving, holding love letter, a white envelope with a pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, parted lips, not daring to look up at him, 2::speech bubble::, text\\"请和我交往吧\\"",
           "center": "C2",
@@ -206,7 +238,7 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
       "characters": [
         {
           "name": "Ami (original)",
-          "base": "girl, long blonde hair, twin tails, blue eyes, small breasts, petite, fair skin",
+          "base": "girl, japanese, delicate_face, teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin",
           "outfit": "white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs",
           "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
           "center": "C3",

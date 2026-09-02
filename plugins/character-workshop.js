@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.10';
+    const VERSION = '2.0.11';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -21,12 +21,29 @@
         if (!current) return tag;
         const list = current.split(',').map(s => s.trim()).filter(Boolean);
         const lo = tag.toLowerCase();
-        const has = list.some(t => t.toLowerCase() === lo);
+        const has = list.some(t => t.toLowerCase() !== lo);
         return has ? list.filter(t => t.toLowerCase() !== lo).join(', ') : [...list, tag].join(', ');
     }
     function sanitizePromptSegment(s) {
         if (!s) return '';
         return s.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().replace(/^[,;\s]+|[,;\s]+$/g, '');
+    }
+    function cleanLorebookTags(rawText) {
+        if (!rawText) return '';
+        let s = String(rawText).trim();
+        // 1. 剥离行首注释标题，例如 "- 自慰:", "【公主抱】:", "## 动作", "1. "
+        s = s.replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '');
+        // 2. 将斜杠同义词转为逗号
+        s = s.replace(/\s*\/\s*/g, ', ');
+        // 3. 去掉带有中文的括号说明
+        s = s.replace(/[（\(][^\)）]*[\u4e00-\u9fa5][^\)）]*[）\)]/g, '');
+        // 4. 彻底剔除中文字符
+        s = s.replace(/[\u4e00-\u9fa5]/g, '');
+        // 5. 规范标点符号
+        s = s.replace(/[-_]{2,}/g, '_');
+        s = s.replace(/[,;，；\s]+,/g, ', ');
+        s = s.replace(/^[,\s;]+|[,\s;]+$/g, '');
+        return s.trim();
     }
 
     // ══════════════════════════════════════════════════════════
@@ -353,7 +370,7 @@
             if (uc) charParts.push('Char' + n + ' UC:' + uc);
         });
 
-        const userScene = sanitizePromptSegment([comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).join(', '));
+        const userScene = sanitizePromptSegment([comp?.interaction, comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).join(', '));
         const countTags = [];
         const lowerScene = userScene.toLowerCase();
         
@@ -716,11 +733,18 @@
     // ══════════════════════════════════════════════════════════
     //  Interactive Worldbook Picker Bridge
     // ══════════════════════════════════════════════════════════
-    function openWorldbookPicker(title, onSelect, initialCategory = 'all') {
+    function openWorldbookPicker(title, onSelect, initialCategory = 'all', autoClean = true) {
         if (typeof RBQ?.api?.openLorebookSearchModal === 'function') {
             RBQ.api.openLorebookSearchModal('all', (entry) => {
-                const content = typeof entry === 'string' ? entry : (entry?.content || entry?.tags || '');
-                if (content) onSelect(content.trim());
+                let rawText = typeof entry === 'string' ? entry : (entry?.content || entry?.tags || '');
+                if (!rawText) return;
+                const finalTags = autoClean ? cleanLorebookTags(rawText) : rawText.trim();
+                if (finalTags) {
+                    onSelect(finalTags, entry);
+                } else {
+                    const fallback = rawText.replace(/[\u4e00-\u9fa5]/g, '').trim();
+                    if (fallback) onSelect(fallback, entry);
+                }
             }, initialCategory);
         } else {
             toastr.warning('世界书搜索功能不可用，请确保智能生图触发器已启用', PLUGIN_NAME);
@@ -1130,6 +1154,20 @@
                                 return `<div class="cw-chip cw-switch-slot ${isAct ? 'on' : ''}" data-idx="${i}" style="border-color:${isAct ? cl.bdr : 'transparent'}; background:${isAct ? cl.bg : 'rgba(255,255,255,0.04)'}; color:${isAct ? cl.hex : 'inherit'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')}${posTag}</div>`;
                             }).join('')}
                         </div>
+                        <div style="margin-top:4px;background:rgba(255,121,198,0.06);border:1px solid rgba(255,121,198,0.25);border-radius:8px;padding:7px 10px">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;flex-wrap:wrap;gap:4px">
+                                <label style="font-size:11px;font-weight:bold;color:#ff79c6;display:flex;align-items:center;gap:5px">
+                                    <i class="fa-solid fa-people-arrows"></i> 多人协同动作 / 互动体位 (Interaction):
+                                </label>
+                                <button class="cw-btn sm" id="cw-pick-interaction-wb" type="button" style="background:rgba(255,121,198,0.2);border:1px solid rgba(255,121,198,0.45);color:#ff79c6;font-size:11px;padding:2px 8px;font-weight:bold">
+                                    <i class="fa-solid fa-heart-pulse"></i> 👥 选多人动作/体位
+                                </button>
+                            </div>
+                            <input id="cw-interaction" class="cw-in" type="text" placeholder="如: princess_carry, hug_from_behind, kissing, missionary, cowgirl_position..." value="${esc(comp.interaction || '')}" style="font-size:11.5px;color:#ffb8ec" />
+                            <div style="font-size:10px;opacity:.7;margin-top:2px;color:#cbd5e1">
+                                💡 该动作将作为双人/多人全局大骨架注入 Scene，确保两人肢体紧密交缠互动，防止底模画成分离怪胎。
+                            </div>
+                        </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:2px">
                             <div>
                                 <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
@@ -1197,10 +1235,10 @@
                                 </div>
                                 <div style="grid-column:1/-1">
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                                        <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">当前动作/姿态 (Action):</label>
-                                        <button class="cw-btn cy sm cw-pick-action-wb" data-idx="${i}" type="button"><i class="fa-solid fa-book-open"></i> 选动作</button>
+                                        <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">该角色独有姿势/表情 (Action):</label>
+                                        <button class="cw-btn cy sm cw-pick-action-wb" data-idx="${i}" type="button"><i class="fa-solid fa-person-walking"></i> 选单人动作</button>
                                     </div>
-                                    <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="sitting, facing_another, looking_at_partner..." value="${esc(slot.action || '')}" />
+                                    <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="如: sitting, looking down, blushing, hands on hips..." value="${esc(slot.action || '')}" />
                                 </div>
                                 <div style="grid-column:1/-1">
                                     <label style="font-size:10.5px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC):</label>
@@ -1426,31 +1464,47 @@
         }));
 
         // Worldbook pickers in Composer
+        container.querySelector('#cw-pick-interaction-wb')?.addEventListener('click', () => {
+            openWorldbookPicker('挑选双人/多人互动与体位词条', (tags, entry) => {
+                const el = container.querySelector('#cw-interaction');
+                if (el) {
+                    el.value = [el.value, tags].filter(Boolean).join(', ');
+                    comp.interaction = el.value;
+                    wsSave();
+                    updatePromptPreview();
+                    toastr.success(`已载入多人动作「${entry?.comment || '体位'}」到全场构图`, PLUGIN_NAME);
+                }
+            }, 'nsfw', true);
+        });
+
         container.querySelector('#cw-pick-scene-wb')?.addEventListener('click', () => {
-            openWorldbookPicker('挑选场景词条', tags => {
+            openWorldbookPicker('挑选场景词条', (tags, entry) => {
                 const el = container.querySelector('#cw-scene');
                 if (el) {
                     el.value = [el.value, tags].filter(Boolean).join(', ');
                     comp.scene = el.value;
                     wsSave();
                     updatePromptPreview();
+                    toastr.success(`已载入场景「${entry?.comment || '环境'}」`, PLUGIN_NAME);
                 }
-            }, 'scene');
+            }, 'scene', true);
         });
 
         container.querySelectorAll('.cw-pick-action-wb').forEach(b => b.addEventListener('click', () => {
             const idx = +b.dataset.idx;
-            openWorldbookPicker('挑选动作/姿态词条', tags => {
+            openWorldbookPicker('挑选单人动作/姿态词条', (tags, entry) => {
                 const el = container.querySelector(`.cw-slot-action[data-idx="${idx}"]`);
                 if (el && comp.slots[idx]) {
                     el.value = [el.value, tags].filter(Boolean).join(', ');
                     comp.slots[idx].action = el.value;
                     wsSave();
                     updatePromptPreview();
+                    toastr.success(`已为 Char ${idx + 1} 添加单人姿势「${entry?.comment || '动作'}」`, PLUGIN_NAME);
                 }
-            }, 'pose');
+            }, 'pose', true);
         }));
 
+        container.querySelector('#cw-interaction')?.addEventListener('input', e => { comp.interaction = e.target.value; wsSave(); updatePromptPreview(); });
         container.querySelector('#cw-scene')?.addEventListener('input', e => { comp.scene = e.target.value; wsSave(); updatePromptPreview(); });
         container.querySelector('#cw-camera')?.addEventListener('input', e => { comp.camera = e.target.value; wsSave(); updatePromptPreview(); });
 
@@ -1469,6 +1523,7 @@
             ws.presets.push({
                 id: uid('preset'),
                 name,
+                interaction: comp.interaction || '',
                 scene: comp.scene,
                 camera: comp.camera,
                 slots: JSON.parse(JSON.stringify(comp.slots))
@@ -1581,6 +1636,7 @@
         container.querySelectorAll('.cw-load-tpl').forEach(b => b.addEventListener('click', () => {
             const tpl = TEMPLATES[+b.dataset.idx];
             if (!tpl) return;
+            comp.interaction = tpl.interaction || '';
             comp.scene = tpl.scene || '';
             comp.camera = tpl.camera || '';
             const newSlots = tpl.slots.map((ts, i) => {
@@ -1605,6 +1661,7 @@
         container.querySelectorAll('.cw-load-preset').forEach(b => b.addEventListener('click', () => {
             const p = ws.presets[+b.dataset.idx];
             if (!p) return;
+            comp.interaction = p.interaction || '';
             comp.scene = p.scene || '';
             comp.camera = p.camera || '';
             comp.slots = JSON.parse(JSON.stringify(p.slots || []));

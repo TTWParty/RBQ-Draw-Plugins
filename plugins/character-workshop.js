@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.14';
+    const VERSION = '2.1.0';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -195,9 +195,14 @@
                     { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' },
                     { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' }
                 ],
-                activeSlotIndex: 0
+                activeSlotIndex: 0,
+                selectedWbActions: [],
+                customActionInput: ''
             };
         }
+        if (!Array.isArray(ws.activeComposer.slots)) ws.activeComposer.slots = [];
+        if (!Array.isArray(ws.activeComposer.selectedWbActions)) ws.activeComposer.selectedWbActions = [];
+        if (typeof ws.activeComposer.customActionInput !== 'string') ws.activeComposer.customActionInput = '';
         return ws;
     }
     function wsSave() { RBQ.api.saveSettings(); }
@@ -335,59 +340,146 @@
     ];
 
     // ══════════════════════════════════════════════════════════
-    //  Prompt Composition (NAI V4.5 Format)
+    //  Prompt Composition & Multi-Engine Template Adaptation
     // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
-        const parts = [];
         const slots = comp?.slots || [];
+        const wbActions = Array.isArray(comp?.selectedWbActions) ? comp.selectedWbActions : [];
+
+        // Partition WB actions by classification
+        const interactionList = [];
+        const soloActionList = [];
+        const sceneList = [];
+
+        wbActions.forEach(act => {
+            const clean = sanitizePromptSegment(act.tags || '');
+            if (!clean) return;
+            if (act.type === 'interaction') {
+                interactionList.push(clean);
+            } else if (act.type === 'scene') {
+                sceneList.push(clean);
+            } else {
+                soloActionList.push(clean);
+            }
+        });
+
+        if (comp?.interaction) interactionList.push(sanitizePromptSegment(comp.interaction));
+        if (comp?.customActionInput) soloActionList.push(sanitizePromptSegment(comp.customActionInput));
+        if (comp?.scene) sceneList.push(sanitizePromptSegment(comp.scene));
+        if (comp?.camera) sceneList.push(sanitizePromptSegment(comp.camera));
+        if (comp?.atmosphere) sceneList.push(sanitizePromptSegment(comp.atmosphere));
+
+        const totalInteractions = interactionList.filter(Boolean).join(', ');
+        const totalSoloActions = soloActionList.filter(Boolean).join(', ');
+        const totalScene = sceneList.filter(Boolean).join(', ');
+
+        // Active slots that have characters assigned
+        const activeSlots = slots.filter(s => s && (s.charName || s.customOutfit || s.action));
+        const effectiveSlots = activeSlots.length > 0 ? activeSlots : slots.slice(0, 1);
+        const isSolo = effectiveSlots.length <= 1;
 
         let girlCount = 0;
         let boyCount = 0;
 
-        const charParts = [];
-        slots.forEach((slot, i) => {
+        const charDetails = effectiveSlots.map((slot, i) => {
             const n = i + 1;
             const profile = slot.charName ? getProfile(slot.charName) : null;
             const rawName = profile?.displayName || slot.charName || '';
             const base = sanitizePromptSegment(profile?.baseTags || '');
             const outfit = sanitizePromptSegment(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
-            const action = sanitizePromptSegment(slot.action || '');
+            const slotAction = sanitizePromptSegment(slot.action || '');
 
             const combinedLower = (rawName + ' ' + base).toLowerCase();
-            if (combinedLower.includes('1boy') || combinedLower.includes('male') || combinedLower.includes('man')) {
+            if (combinedLower.match(/\b(1boy|male|man)\b/)) {
                 boyCount++;
             } else {
                 girlCount++;
             }
 
             const namePrefix = (rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
-            const caption = [namePrefix, base, outfit, action].filter(Boolean).join(', ');
             const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
             const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + center) : '';
 
-            if (caption) charParts.push('Char' + n + ':' + caption + centersSuffix);
-            const uc = sanitizePromptSegment(slot.uc);
-            if (uc) charParts.push('Char' + n + ' UC:' + uc);
+            return {
+                n,
+                rawName,
+                namePrefix,
+                base,
+                outfit,
+                slotAction,
+                center,
+                centersSuffix,
+                uc: sanitizePromptSegment(slot.uc)
+            };
         });
 
-        const userScene = sanitizePromptSegment([comp?.interaction, comp?.scene, comp?.camera, comp?.atmosphere].filter(Boolean).join(', '));
-        const countTags = [];
-        const lowerScene = userScene.toLowerCase();
-        
-        if (!lowerScene.includes('girl') && !lowerScene.includes('boy') && !lowerScene.includes('solo') && !lowerScene.includes('multiple')) {
-            if (girlCount > 0 && boyCount === 0) {
-                countTags.push(girlCount === 1 ? '1girl' : `${girlCount}girls`);
-            } else if (boyCount > 0 && girlCount === 0) {
-                countTags.push(boyCount === 1 ? '1boy' : `${boyCount}boys`);
-            } else if (girlCount > 0 && boyCount > 0) {
-                countTags.push(`${girlCount}girl${girlCount > 1 ? 's' : ''}, ${boyCount}boy${boyCount > 1 ? 's' : ''}`);
+        const s = typeof RBQ?.api?.getSettings === 'function' ? RBQ.api.getSettings() : {};
+        const isNai = s.currentMode === 'nai';
+
+        // ── CASE 1: SOLO MODE ──
+        if (isSolo) {
+            const char = charDetails[0] || { n: 1, namePrefix: '', base: '', outfit: '', slotAction: '', centersSuffix: '', uc: '' };
+            const genderSolo = boyCount > 0 ? '1boy, solo' : '1girl, solo';
+
+            let allActions = [totalSoloActions, totalInteractions, char.slotAction].filter(Boolean).join(', ');
+            let outfit = char.outfit;
+            let base = char.base;
+
+            // Conflict resolution: if action specifies sitting/lying/kneeling/crawling, remove conflicting standing
+            if (allActions.match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back)\b/i)) {
+                outfit = outfit.replace(/\bstanding\b,?\s*/gi, '').trim();
+                base = base.replace(/\bstanding\b,?\s*/gi, '').trim();
             }
+
+            if (isNai && comp?.useCoords === true) {
+                const scenePart = [genderSolo, allActions, totalScene].filter(Boolean).join(', ');
+                const charPart = [char.namePrefix, base, outfit].filter(Boolean).join(', ');
+                const res = [`Scene: ${scenePart}`, `Char1: ${charPart}${char.centersSuffix}`];
+                if (char.uc) res.push(`Char1 UC: ${char.uc}`);
+                return res.join('; ');
+            }
+
+            // Universal clean solo prompt
+            return [genderSolo, char.namePrefix, base, outfit, allActions, totalScene].filter(Boolean).join(', ');
         }
 
-        const fullScene = [countTags.join(', '), userScene].filter(Boolean).join(', ');
-        if (fullScene) parts.push('Scene:' + fullScene);
+        // ── CASE 2: DUO / MULTI-CHARACTER MODE ──
+        let countTag = '2girls';
+        if (girlCount > 0 && boyCount === 0) {
+            countTag = girlCount === 1 ? '1girl' : `${girlCount}girls`;
+        } else if (boyCount > 0 && girlCount === 0) {
+            countTag = boyCount === 1 ? '1boy' : `${boyCount}boys`;
+        } else if (girlCount > 0 && boyCount > 0) {
+            countTag = `${girlCount}girl${girlCount > 1 ? 's' : ''}, ${boyCount}boy${boyCount > 1 ? 's' : ''}`;
+        }
 
-        return [...parts, ...charParts].join('; ');
+        if (isNai) {
+            // NovelAI V4 Multi-Char Structured Syntax
+            const scenePart = [countTag, totalInteractions, totalScene].filter(Boolean).join(', ');
+            const parts = [`Scene: ${scenePart}`];
+
+            charDetails.forEach((char, i) => {
+                const soloAct = i === 0 ? [totalSoloActions, char.slotAction].filter(Boolean).join(', ') : char.slotAction;
+                const charContent = [char.namePrefix, char.base, char.outfit, soloAct].filter(Boolean).join(', ');
+                parts.push(`Char${char.n}: ${charContent}${char.centersSuffix}`);
+                if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
+            });
+
+            return parts.join('; ');
+        } else {
+            // ComfyUI / WebUI / General SDXL Flat Syntax
+            const charSummaries = charDetails.map(char => {
+                return [char.namePrefix, char.base, char.outfit, char.slotAction].filter(Boolean).join(', ');
+            });
+
+            return [
+                countTag,
+                totalInteractions,
+                ...charSummaries,
+                totalSoloActions,
+                totalScene
+            ].filter(Boolean).join(', ');
+        }
     }
 
     // ══════════════════════════════════════════════════════════
@@ -747,6 +839,21 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 .cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;min-height:0}
 .cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3);flex-shrink:0;flex-wrap:wrap;gap:8px}
 .cw-warn{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:8px 12px;font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:8px}
+.cw-wb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);font-size:11.5px;color:#f8fafc;box-sizing:border-box;transition:.15s}
+.cw-wb-chip.interaction{background:rgba(244,114,182,.12);border-color:rgba(244,114,182,.45)}
+.cw-wb-chip.scene{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.45)}
+.cw-wb-chip.action{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.45)}
+.cw-wb-badge{font-size:10px;font-weight:bold;padding:1px 5px;border-radius:4px;user-select:none}
+.cw-wb-badge.interaction{background:rgba(244,114,182,.25);color:#f472b6}
+.cw-wb-badge.scene{background:rgba(251,191,36,.25);color:#fbbf24}
+.cw-wb-badge.action{background:rgba(56,189,248,.25);color:#38bdf8}
+.cw-wb-tags{font-size:11px;opacity:.7;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
+.cw-wb-toggle-type{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:4px;color:#cbd5e1;cursor:pointer;font-size:11px;padding:1px 5px}
+.cw-wb-del{background:transparent;border:none;color:#f87171;cursor:pointer;font-size:12px;padding:0 3px}
+.cw-wb-del:hover{color:#ef4444}
+.cw-actor-card{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:.15s;user-select:none}
+.cw-actor-card:hover{background:rgba(255,255,255,.08);border-color:rgba(56,189,248,.35)}
+.cw-actor-card.on{background:rgba(56,189,248,.14);border-color:rgba(56,189,248,.6);box-shadow:0 0 10px rgba(56,189,248,.2)}
 
 @media (max-width: 768px) {
   .cw-wrap{min-height:0;flex:1}
@@ -1123,7 +1230,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                             </div>
                             <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px;flex-wrap:wrap">
                                 <button class="cw-btn sm cw-test-dossier-char" data-name="${esc(n)}" title="测试该角色立绘"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试</button>
-                                <button class="cw-btn cy sm cw-send-to-stage" data-name="${esc(n)}" title="将该角色放入空间舞台"><i class="fa-solid fa-chess-board"></i> 放入舞台</button>
+                                <button class="cw-btn cy sm cw-go-action" data-name="${esc(n)}" title="为该角色搭配世界书动作生图"><i class="fa-solid fa-person-running"></i> 配动作生图</button>
                                 <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
                                 <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}"><i class="fa-solid fa-trash"></i></button>
                             </div>
@@ -1135,13 +1242,15 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Tab 2: 多角色空间舞台 (Stage & Composer)
+    //  Tab 2: 动作工坊 · 角色 × 世界书动作智能适配
     // ══════════════════════════════════════════════════════════
     function renderComposerTab() {
         const ws = getWs();
         const comp = ws.activeComposer;
         const slots = comp.slots || [];
-        const ai = Math.min(slots.length - 1, Math.max(0, comp.activeSlotIndex || 0));
+        if (slots.length === 0) {
+            slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' });
+        }
 
         const chatProfiles = getCurrentChatProfiles();
         const globalProfiles = getAllGlobalProfiles();
@@ -1150,113 +1259,60 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
         const useCoords = comp.useCoords === true;
         const finalPrompt = composeFinalPrompt(comp);
-        const mccOn = isMccEnabled();
+
+        const wbActions = Array.isArray(comp.selectedWbActions) ? comp.selectedWbActions : [];
+        const isSolo = slots.length <= 1;
+        const s = typeof RBQ?.api?.getSettings === 'function' ? RBQ.api.getSettings() : {};
+        const isNai = s.currentMode === 'nai';
 
         return `<div class="cw-body">
-            ${!mccOn ? '<div class="cw-warn"><i class="fa-solid fa-triangle-exclamation"></i> 提示：多角色合成插件 (Multi-Char) 未启用，生成的图片可能无法正确按空间位置分区。</div>' : ''}
-
-            <!-- Spatial Stage / Scene Settings -->
+            <!-- 1. 参演角色选定区 -->
             <div class="cw-card">
                 <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
-                    <div>
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                            <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-chess-board"></i> 空间舞台布局</span>
-                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);user-select:none" title="关闭后由 AI 自主决定角色在画面中的构图站位，网格收起；开启后按 5×5 网格死板固定坐标">
-                                <input type="checkbox" id="cw-toggle-coords" ${useCoords ? 'checked' : ''} style="margin:0;cursor:pointer" />
-                                <span style="color:${useCoords ? '#38bdf8' : 'rgba(255,255,255,0.7)'};font-weight:${useCoords ? 'bold' : 'normal'}">
-                                    <i class="fa-solid fa-crosshairs"></i> 5×5 严格坐标定位
-                                </span>
-                            </label>
-                        </div>
-                        <div style="font-size:11px;opacity:.65;margin-top:3px">
-                            ${useCoords ? `当前状态: 🎯 严格坐标定位已开启 (控制 Char ${ai + 1}: ${esc(slots[ai]?.charName || '未绑定')} · ${coordLabel(slots[ai]?.center)})` : `当前状态: 🤖 由 AI 自行决定站位构图 (更自然自洽，网格已收起)`}
-                        </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> ① 挑选参演角色 (${slots.length} 人槽位)</span>
+                        <span class="cw-badge" style="background:${isSolo ? 'rgba(56,189,248,0.2)' : 'rgba(244,114,182,0.2)'};color:${isSolo ? '#38bdf8' : '#f472b6'}">
+                            ${isSolo ? '💃 单人动作演练模式' : '👥 双人同框互动模式'}
+                        </span>
                     </div>
-                    <button class="cw-btn cy sm" id="cw-pick-scene-wb" type="button"><i class="fa-solid fa-mountain-sun"></i> 搜索世界书场景</button>
-                </div>
-                <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-                    ${useCoords ? `
-                    <!-- 5x5 Grid (仅在开启严格定位时展开) -->
-                    <div class="cw-grid5" id="cw-stage">
-                        ${ROWS.map(r => COLS.map(c => {
-                            const coord = c + r;
-                            const charsHere = slots.map((s, i) => ({ ...s, si: i })).filter(s => (s.center || 'C3').toUpperCase() === coord);
-                            return `<div class="cw-cell ${charsHere.length ? 'has' : ''}" data-coord="${coord}">
-                                <span>${coord}</span>
-                                ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}; border: 2px solid ${ai === s.si ? '#fff' : 'rgba(0,0,0,0.5)'}; transform: ${ai === s.si ? 'scale(1.25)' : 'scale(1)'}" title="点击选中 Char ${s.si + 1}: ${esc(s.charName || '未绑定')} (${coord})">${s.si + 1}</div>`).join('')}
-                            </div>`;
-                        }).join('')).join('')}
-                    </div>` : ''}
-
-                    <!-- Stage Controls & Scene Inputs -->
-                    <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:7px;font-size:12px;color:rgba(255,255,255,.75)">
-                        <div style="display:flex;gap:5px;flex-wrap:wrap">
-                            ${slots.map((s, i) => {
-                                const cl = COLORS[i % COLORS.length];
-                                const isAct = ai === i;
-                                const posTag = useCoords ? ` (${s.center || 'C3'})` : '';
-                                return `<div class="cw-chip cw-switch-slot ${isAct ? 'on' : ''}" data-idx="${i}" style="border-color:${isAct ? cl.bdr : 'transparent'}; background:${isAct ? cl.bg : 'rgba(255,255,255,0.04)'}; color:${isAct ? cl.hex : 'inherit'}">● Char ${i + 1}: ${esc(s.charName || '未绑定')}${posTag}</div>`;
-                            }).join('')}
-                        </div>
-                        <div style="margin-top:4px;background:rgba(255,121,198,0.06);border:1px solid rgba(255,121,198,0.25);border-radius:8px;padding:7px 10px">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;flex-wrap:wrap;gap:4px">
-                                <label style="font-size:11px;font-weight:bold;color:#ff79c6;display:flex;align-items:center;gap:5px">
-                                    <i class="fa-solid fa-people-arrows"></i> 多人协同动作 / 互动体位 (Interaction):
-                                </label>
-                                <button class="cw-btn sm" id="cw-pick-interaction-wb" type="button" style="background:rgba(255,121,198,0.2);border:1px solid rgba(255,121,198,0.45);color:#ff79c6;font-size:11px;padding:2px 8px;font-weight:bold">
-                                    <i class="fa-solid fa-heart-pulse"></i> 👥 选多人动作/体位
-                                </button>
-                            </div>
-                            <input id="cw-interaction" class="cw-in" type="text" placeholder="如: princess_carry, hug_from_behind, kissing, missionary, cowgirl_position..." value="${esc(comp.interaction || '')}" style="font-size:11.5px;color:#ffb8ec" />
-                            <div style="font-size:10px;opacity:.7;margin-top:2px;color:#cbd5e1">
-                                💡 该动作将作为双人/多人全局大骨架注入 Scene，确保两人肢体紧密交缠互动，防止底模画成分离怪胎。
-                            </div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:2px">
-                            <div>
-                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
-                                <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, soft lighting..." value="${esc(comp.scene || '')}" />
-                            </div>
-                            <div>
-                                <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">视角与光影 (Camera):</label>
-                                <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field..." value="${esc(comp.camera || '')}" />
-                            </div>
-                        </div>
+                    <div style="display:flex;gap:6px">
+                        ${slots.length === 1 ? `<button class="cw-btn pk sm" id="cw-add-duo-slot" type="button"><i class="fa-solid fa-user-plus"></i> ＋ 添加双人同框角色</button>` : ''}
+                        ${slots.length > 1 ? `<button class="cw-btn cy sm" id="cw-swap-slots" type="button" title="互换主角与配角先后顺序"><i class="fa-solid fa-arrow-right-arrow-left"></i> 互换主次</button>` : ''}
+                        ${slots.length > 1 ? `<button class="cw-btn rd sm" id="cw-reset-to-solo" type="button"><i class="fa-solid fa-user-minus"></i> 切回单人模式</button>` : ''}
                     </div>
                 </div>
-            </div>
 
-            <!-- Character Slots List -->
-            <div class="cw-card">
-                <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#4ade80"><i class="fa-solid fa-users-viewfinder"></i> 角色槽位编排 (${slots.length} 人)</span>
-                    <button class="cw-btn gn sm" id="cw-add-slot" type="button"><i class="fa-solid fa-user-plus"></i> 添加角色槽位</button>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:10px">
+                <!-- 角色卡片列表 (Slots) -->
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">
                     ${slots.map((slot, i) => {
                         const cl = COLORS[i % COLORS.length];
-                        const isActive = ai === i;
                         const prof = slot.charName ? (getProfile(slot.charName) || globalProfiles[slot.charName]) : null;
                         const wardrobe = prof?.wardrobe || [];
-                        const curPos = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
+                        const activeW = wardrobe.find(w => w.id === slot.outfitId) || wardrobe[0];
 
-                        return `<div class="cw-slot ${isActive ? 'on' : ''}" data-idx="${i}">
+                        return `<div class="cw-slot" style="border-color:${cl.bdr};background:rgba(15,23,42,.6);position:relative">
                             <div class="cw-slot-top">
-                                <div style="display:flex;align-items:center;gap:7px">
-                                    <span class="cw-badge" style="background:${cl.bg};color:${cl.hex}">Char ${i + 1}</span>
-                                    <strong style="font-size:12.5px;color:#f8fafc">${esc(prof?.displayName || slot.charName || '未绑定角色')}</strong>
-                                    <span style="font-size:10.5px;opacity:.65">${useCoords ? `[位置: ${coordLabel(curPos)}]` : '[站位: 由 AI 决定]'}</span>
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <div class="cw-avatar" style="width:34px;height:34px;font-size:16px">
+                                        ${prof?.avatarUrl ? `<img src="${esc(prof.avatarUrl)}" />` : '👤'}
+                                    </div>
+                                    <div>
+                                        <div style="display:flex;align-items:center;gap:6px">
+                                            <span class="cw-badge" style="background:${cl.bg};color:${cl.hex}">Char ${i + 1}</span>
+                                            <strong style="font-size:13px;color:#f8fafc">${esc(prof?.displayName || slot.charName || (i === 0 ? '主角 (未绑定)' : '配角 (未绑定)'))}</strong>
+                                        </div>
+                                        <div style="font-size:10.5px;color:rgba(255,255,255,.55);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                                            ${esc(prof?.baseTags || '暂无固有特征')}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div style="display:flex;gap:5px">
-                                    <button class="cw-btn cy sm cw-activate-slot" data-idx="${i}" type="button">🎯 设为控制</button>
-                                    ${slots.length > 1 ? `<button class="cw-btn rd sm cw-rm-slot" data-idx="${i}" type="button">✕ 移除</button>` : ''}
-                                </div>
+                                ${slots.length > 1 ? `<button class="cw-btn rd sm cw-rm-slot" data-idx="${i}" type="button" title="移除此槽位">✕</button>` : ''}
                             </div>
-                            <div class="cw-slot-grid">
+                            <div class="cw-slot-grid" style="margin-top:4px">
                                 <div>
                                     <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">绑定角色档案:</label>
                                     <select class="cw-sel cw-slot-char" data-idx="${i}">
-                                        <option value="">👤 [自定义 / 未建档角色]</option>
+                                        <option value="">👤 [点击选择角色...]</option>
                                         ${chatNames.length > 0 ? `
                                             <optgroup label="💬 当前会话角色 (${chatNames.length} 位)">
                                                 ${chatNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(chatProfiles[n]?.displayName || n)}</option>`).join('')}
@@ -1272,50 +1328,133 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                                 <div>
                                     <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">服装套件 (Wardrobe):</label>
                                     <select class="cw-sel cw-slot-outfit" data-idx="${i}">
-                                        <option value="" ${!slot.outfitId && !slot.customOutfit ? 'selected' : ''}>👗 默认服装</option>
+                                        <option value="" ${!slot.outfitId && !slot.customOutfit ? 'selected' : ''}>👗 默认服装 (${esc(activeW?.name || '默认')})</option>
                                         ${wardrobe.map(w => `<option value="${esc(w.id)}" ${slot.outfitId === w.id ? 'selected' : ''}>👗 ${esc(w.name)}</option>`).join('')}
                                         <option value="__custom" ${slot.customOutfit ? 'selected' : ''}>✍️ 自定义服装</option>
                                     </select>
                                 </div>
-                                <div style="grid-column:1/-1">
-                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                                        <label style="font-size:10.5px;font-weight:bold;color:#cbd5e1">该角色独有姿势/表情 (Action):</label>
-                                        <button class="cw-btn cy sm cw-pick-action-wb" data-idx="${i}" type="button"><i class="fa-solid fa-person-walking"></i> 选单人动作</button>
-                                    </div>
-                                    <input class="cw-in cw-slot-action" data-idx="${i}" type="text" placeholder="如: sitting, looking down, blushing, hands on hips..." value="${esc(slot.action || '')}" />
-                                </div>
-                                <div style="grid-column:1/-1">
-                                    <label style="font-size:10.5px;font-weight:bold;color:#f87171;margin-bottom:2px;display:block">角色独立负面词 (Char UC):</label>
-                                    <input class="cw-in cw-slot-uc" data-idx="${i}" type="text" placeholder="可选：针对该角色的独立负面词 (如 penis, futanari...)" value="${esc(slot.uc || '')}" />
-                                </div>
-                                ${useCoords ? `
-                                <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:2px">
-                                    <span style="font-size:10.5px;font-weight:bold;color:#cbd5e1;white-space:nowrap">快捷站位:</span>
-                                    <div style="display:flex;gap:4px;flex-wrap:wrap">
-                                        ${['A3', 'B3', 'C3', 'D3', 'E3', 'C2', 'C4'].map(p => `
-                                            <button class="cw-chip cw-slot-quick-pos ${curPos === p ? 'on' : ''}" data-idx="${i}" data-pos="${p}" type="button">${p}</button>
-                                        `).join('')}
-                                    </div>
-                                </div>` : ''}
                             </div>
                         </div>`;
                     }).join('')}
                 </div>
             </div>
 
-            <!-- Live Prompt Preview & Generate -->
+            <!-- 2. 世界书动作与姿态点选区 -->
+            <div class="cw-card">
+                <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span class="cw-card-tt" style="color:#f472b6"><i class="fa-solid fa-book-bookmark"></i> ② 动作与姿态 (直通世界书)</span>
+                        <span style="font-size:11px;opacity:0.65">已选 ${wbActions.length} 个动作词条</span>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <button class="cw-btn cy sm" id="cw-pick-action-wb" type="button" style="padding:4px 12px;font-size:12px;font-weight:bold">
+                            <i class="fa-solid fa-book-open"></i> 📖 从世界书挑选动作词条
+                        </button>
+                        <button class="cw-btn sm" id="cw-pick-scene-wb" type="button">
+                            <i class="fa-solid fa-mountain-sun"></i> 挑选场景/环境
+                        </button>
+                        ${wbActions.length > 0 ? `<button class="cw-btn rd sm" id="cw-clear-wb-actions" type="button"><i class="fa-solid fa-trash-can"></i> 清空</button>` : ''}
+                    </div>
+                </div>
+
+                <!-- 选入词条多态胶囊容器 -->
+                <div style="min-height:52px;background:rgba(0,0,0,.25);border:1px dashed rgba(255,255,255,.14);border-radius:8px;padding:8px 10px;display:flex;flex-wrap:wrap;gap:7px;align-items:center">
+                    ${wbActions.length === 0 ? `
+                        <div style="font-size:11.5px;color:rgba(255,255,255,0.45);display:flex;align-items:center;gap:6px">
+                            <i class="fa-solid fa-arrow-pointer"></i> 点击上方「从世界书挑选动作词条」，选入世界书中的姿态、表情、体位或互动。条目将自动与角色外貌和服装智能熔合！
+                        </div>
+                    ` : wbActions.map((act, idx) => `
+                        <div class="cw-wb-chip ${esc(act.type || 'action')}" data-id="${esc(act.id)}">
+                            <span class="cw-wb-badge ${esc(act.type || 'action')}">
+                                ${act.type === 'interaction' ? '👥 互动' : (act.type === 'scene' ? '🏞️ 场景' : '💃 动作')}
+                            </span>
+                            <strong>${esc(act.name)}</strong>
+                            <span class="cw-wb-tags" title="${esc(act.tags)}">${esc(act.tags)}</span>
+                            <button type="button" class="cw-wb-toggle-type" data-idx="${idx}" title="切换分类: 💃单人动作 ⇄ 👥双人互动 ⇄ 🏞️场景环境">⇄</button>
+                            <button type="button" class="cw-wb-del" data-idx="${idx}" title="移除">✕</button>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- 动作临时补充文本框 -->
+                <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px">
+                    <label style="font-size:11px;color:rgba(255,255,255,.65);display:flex;align-items:center;gap:5px">
+                        <i class="fa-solid fa-pen"></i> 临时动作/细节补充 (可选):
+                    </label>
+                    <input id="cw-custom-action-tags" class="cw-in" type="text" placeholder="如有额外的临时英文 Tags (如: looking_at_viewer, blushing, wet_clothes...) 可直接在此补充..." value="${esc(comp.customActionInput || '')}" style="font-size:11.5px" />
+                </div>
+            </div>
+
+            <!-- 3. 高级选项：场景、镜头与 5x5 坐标定位 (默认折叠) -->
+            <details class="cw-card" ${useCoords ? 'open' : ''} style="padding:10px 12px;cursor:pointer">
+                <summary style="font-size:12px;font-weight:bold;color:rgba(255,255,255,0.75);display:flex;align-items:center;justify-content:space-between;user-select:none">
+                    <span style="display:flex;align-items:center;gap:8px">
+                        <i class="fa-solid fa-sliders" style="color:#fbbf24"></i> ③ 高级选项：场景、镜头与 5×5 坐标定位微调
+                    </span>
+                    <span style="font-size:11px;opacity:0.6">${useCoords ? '🎯 5×5 坐标定位已展开' : '🤖 坐标网格已折叠 (AI 自主构图)'} ▾</span>
+                </summary>
+                
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;cursor:default">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                        <div>
+                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
+                            <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, soft lighting..." value="${esc(comp.scene || '')}" />
+                        </div>
+                        <div>
+                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">视角与光影 (Camera):</label>
+                            <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field..." value="${esc(comp.camera || '')}" />
+                        </div>
+                    </div>
+
+                    <!-- 5x5 Grid Switch -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:8px">
+                        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12)">
+                            <input type="checkbox" id="cw-toggle-coords" ${useCoords ? 'checked' : ''} style="margin:0;cursor:pointer" />
+                            <span style="color:${useCoords ? '#38bdf8' : 'rgba(255,255,255,0.7)'};font-weight:${useCoords ? 'bold' : 'normal'}">
+                                <i class="fa-solid fa-crosshairs"></i> 开启 5×5 严格网格坐标定位
+                            </span>
+                        </label>
+                        <span style="font-size:11px;opacity:0.6">适合 NovelAI V4 双人固定站位。关闭时由 AI 自行决定自然站位</span>
+                    </div>
+
+                    ${useCoords ? `
+                    <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-top:6px">
+                        <div class="cw-grid5" id="cw-stage">
+                            ${ROWS.map(r => COLS.map(c => {
+                                const coord = c + r;
+                                const charsHere = slots.map((s, i) => ({ ...s, si: i })).filter(s => (s.center || (s.si === 0 ? 'B3' : 'D3')).toUpperCase() === coord);
+                                return `<div class="cw-cell ${charsHere.length ? 'has' : ''}" data-coord="${coord}">
+                                    <span>${coord}</span>
+                                    ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}; border: 2px solid ${ai === s.si ? '#fff' : 'rgba(0,0,0,0.5)'}; transform: ${ai === s.si ? 'scale(1.25)' : 'scale(1)'}" title="Char ${s.si + 1}">${s.si + 1}</div>`).join('')}
+                                </div>`;
+                            }).join('')).join('')}
+                        </div>
+                        <div style="flex:1;min-width:200px;font-size:11.5px;color:rgba(255,255,255,0.7);display:flex;flex-direction:column;gap:6px">
+                            <div>点击网格单元格即可修改所选角色的站位坐标 (当前控制 Char ${(comp.activeSlotIndex || 0) + 1})。</div>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap">
+                                ${slots.map((s, i) => `<button class="cw-btn sm cw-switch-slot ${(comp.activeSlotIndex || 0) === i ? 'cy' : ''}" data-idx="${i}" type="button">控制 Char ${i + 1} (${s.center || (i === 0 ? 'B3' : 'D3')})</button>`).join('')}
+                            </div>
+                        </div>
+                    </div>` : ''}
+                </div>
+            </details>
+
+            <!-- 4. 智能适配实时预览与演练生图 -->
             <div class="cw-preview">
                 <div class="cw-card-hd">
-                    <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-terminal"></i> 多角色合成提示词实时预览 (NAI V4.5)</span>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span class="cw-card-tt" style="color:#4ade80"><i class="fa-solid fa-wand-magic-sparkles"></i> 智能适配提示词实时预览</span>
+                        <span style="font-size:10.5px;opacity:0.65">${isNai ? 'NovelAI V4 多角色模板' : '通用模型融合模板'}</span>
+                    </div>
                     <div style="display:flex;gap:5px">
-                        <button class="cw-btn sm" id="cw-copy-prompt"><i class="fa-regular fa-copy"></i> 复制提示词</button>
-                        <button class="cw-btn am sm" id="cw-save-preset"><i class="fa-solid fa-floppy-disk"></i> 保存为预设</button>
+                        <button class="cw-btn sm" id="cw-copy-prompt" type="button"><i class="fa-regular fa-copy"></i> 复制提示词</button>
+                        <button class="cw-btn am sm" id="cw-save-preset" type="button"><i class="fa-solid fa-floppy-disk"></i> 保存为预设</button>
                     </div>
                 </div>
                 <div class="cw-code" id="cw-prompt-preview">${esc(finalPrompt)}</div>
                 <div style="display:flex;justify-content:flex-end;margin-top:4px">
-                    <button class="cw-btn pri" id="cw-generate" style="padding:7px 20px;font-size:13px;font-weight:bold">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即合成并生图
+                    <button class="cw-btn pri" id="cw-generate" type="button" style="padding:8px 24px;font-size:13.5px;font-weight:bold">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即演练生图
                     </button>
                 </div>
             </div>
@@ -1372,6 +1511,32 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
     // ══════════════════════════════════════════════════════════
     //  Main Shell & Event Binding
     // ══════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════
+    //  Worldbook Classification Classifier Bridge
+    // ══════════════════════════════════════════════════════════
+    function classifyWorldbookItem(entry, tags) {
+        let actType = 'action';
+        const mainId = entry?.classification?.mainId;
+        if (mainId === 'interaction' || mainId === 'nsfw') {
+            actType = 'interaction';
+        } else if (mainId === 'scene') {
+            actType = 'scene';
+        } else {
+            const title = (entry?.comment || entry?.name || entry?.key || '').toLowerCase();
+            const tagStr = String(tags || '').toLowerCase();
+            const combined = title + ' ' + tagStr;
+            if (combined.match(/(hug|kiss|carrying|princess_carry|holding_hands|hand_holding|back-to-back|sex|penetration|kabedon|lap_pillow|双人|互动|接吻|拥抱|牵手|公主抱|壁咚|膝枕|体位|群交|并肩)/i)) {
+                actType = 'interaction';
+            } else if (combined.match(/(indoors|outdoors|scenery|room|street|beach|forest|sky|ruins|bed|night|sunset|classroom|场景|室内|室外|环境|背景|教室|海滩|街道|星空|卧室)/i)) {
+                actType = 'scene';
+            }
+        }
+        return actType;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  Main Shell & Event Binding
+    // ══════════════════════════════════════════════════════════
     let activeTab = 'dossier';
 
     function renderMain(tab) {
@@ -1385,7 +1550,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 <div class="cw-logo"><i class="fa-solid fa-palette"></i> 角色工坊 2.0</div>
                 <div class="cw-tabs">
                     <button class="cw-tab cw-main-tab ${activeTab === 'dossier' ? 'on' : ''}" data-tab="dossier"><i class="fa-solid fa-users"></i> 角色档案库 (${pCount})</button>
-                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-chess-board"></i> 多角色空间舞台</button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-person-running"></i> 动作工坊 · 角色×世界书适配</button>
                     <button class="cw-tab cw-main-tab ${activeTab === 'presets' ? 'on' : ''}" data-tab="presets"><i class="fa-solid fa-bookmark"></i> 分镜模板与预设 (${presetCount})</button>
                 </div>
             </div>
@@ -1404,62 +1569,47 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         // Tab navigation
         container.querySelectorAll('.cw-main-tab').forEach(b => b.addEventListener('click', () => refresh(b.dataset.tab)));
 
-        // ── Composer Events ──
-        container.querySelector('#cw-toggle-coords')?.addEventListener('change', (e) => {
-            comp.useCoords = !!e.target.checked;
-            const s = RBQ.api.getSettings();
-            if (!s[MCC_KEY]) s[MCC_KEY] = {};
-            s[MCC_KEY].useCoords = comp.useCoords;
-            wsSave();
-            toastr.info(comp.useCoords ? '5×5 严格坐标定位已开启，网格已展开' : '严格坐标定位已关闭，角色站位将由 AI 自主决定', PLUGIN_NAME);
-            refresh('composer');
+        // ── Action Studio / Composer Events ──
+        const updatePromptPreview = () => {
+            const el = container.querySelector('#cw-prompt-preview');
+            if (el) el.textContent = composeFinalPrompt(comp);
+        };
+
+        // Add duo slot
+        container.querySelector('#cw-add-duo-slot')?.addEventListener('click', () => {
+            if (comp.slots.length < 2) {
+                comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' });
+                wsSave();
+                refresh('composer');
+                toastr.success('已开启双人同框互动槽位！请为 Char 2 选定角色', PLUGIN_NAME);
+            }
         });
 
-        // 5x5 pin click (switch to that slot, stop propagation)
-        container.querySelectorAll('.cw-pin').forEach(pin => pin.addEventListener('click', (e) => {
-            e.stopPropagation();
-            comp.activeSlotIndex = +pin.dataset.si;
-            wsSave();
-            refresh('composer');
-        }));
-
-        // 5x5 grid click (cell moves active slot)
-        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', () => {
-            const ai = comp.activeSlotIndex || 0;
-            if (comp.slots[ai]) { comp.slots[ai].center = cell.dataset.coord; wsSave(); refresh('composer'); }
-        }));
-
-        // Switch active slot
-        container.querySelectorAll('.cw-switch-slot, .cw-activate-slot').forEach(b => b.addEventListener('click', () => {
-            comp.activeSlotIndex = +b.dataset.idx;
-            wsSave();
-            refresh('composer');
-        }));
-
-        // Quick position buttons on slot cards
-        container.querySelectorAll('.cw-slot-quick-pos').forEach(b => b.addEventListener('click', () => {
-            const idx = +b.dataset.idx;
-            const pos = b.dataset.pos;
-            if (comp.slots[idx]) { comp.slots[idx].center = pos; wsSave(); refresh('composer'); }
-        }));
-
-        // Add slot
-        container.querySelector('#cw-add-slot')?.addEventListener('click', () => {
-            const usedCoords = new Set(comp.slots.map(s => (s.center || '').toUpperCase()));
-            const candidateCoords = ['B3', 'D3', 'C3', 'A3', 'E3', 'B2', 'D2', 'C4'];
-            const nextCoord = candidateCoords.find(c => !usedCoords.has(c)) || 'C3';
-            comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: nextCoord });
-            comp.activeSlotIndex = comp.slots.length - 1;
-            wsSave();
-            refresh('composer');
+        // Swap slot 1 & slot 2
+        container.querySelector('#cw-swap-slots')?.addEventListener('click', () => {
+            if (comp.slots.length >= 2) {
+                const temp = comp.slots[0];
+                comp.slots[0] = comp.slots[1];
+                comp.slots[1] = temp;
+                wsSave();
+                refresh('composer');
+                toastr.info('已互换主角与配角位置！', PLUGIN_NAME);
+            }
         });
 
-        // Remove slot
+        // Reset to solo
+        container.querySelector('#cw-reset-to-solo')?.addEventListener('click', () => {
+            comp.slots = comp.slots.slice(0, 1);
+            wsSave();
+            refresh('composer');
+            toastr.info('已切换回单人演练模式', PLUGIN_NAME);
+        });
+
+        // Remove single slot
         container.querySelectorAll('.cw-rm-slot').forEach(b => b.addEventListener('click', () => {
             const idx = +b.dataset.idx;
             if (comp.slots.length > 1) {
                 comp.slots.splice(idx, 1);
-                comp.activeSlotIndex = Math.max(0, comp.activeSlotIndex - 1);
                 wsSave();
                 refresh('composer');
             }
@@ -1493,66 +1643,113 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             }
         }));
 
-        // Slot action & UC inputs
-        const updatePromptPreview = () => {
-            const el = container.querySelector('#cw-prompt-preview');
-            if (el) el.textContent = composeFinalPrompt(comp);
-        };
-        container.querySelectorAll('.cw-slot-action').forEach(inEl => inEl.addEventListener('input', () => {
-            const idx = +inEl.dataset.idx;
-            if (comp.slots[idx]) { comp.slots[idx].action = inEl.value; wsSave(); updatePromptPreview(); }
-        }));
-        container.querySelectorAll('.cw-slot-uc').forEach(inEl => inEl.addEventListener('input', () => {
-            const idx = +inEl.dataset.idx;
-            if (comp.slots[idx]) { comp.slots[idx].uc = inEl.value; wsSave(); updatePromptPreview(); }
-        }));
+        // Pick Worldbook Action
+        container.querySelector('#cw-pick-action-wb')?.addEventListener('click', () => {
+            openWorldbookPicker('从世界书挑选动作/姿态/互动词条', (tags, entry) => {
+                const entryName = (entry?.comment || entry?.name || entry?.key || '世界书动作').replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '').trim();
+                const actType = classifyWorldbookItem(entry, tags);
 
-        // Worldbook pickers in Composer
-        container.querySelector('#cw-pick-interaction-wb')?.addEventListener('click', () => {
-            openWorldbookPicker('挑选双人/多人互动与体位词条', (tags, entry) => {
-                const el = container.querySelector('#cw-interaction');
-                if (el) {
-                    el.value = [el.value, tags].filter(Boolean).join(', ');
-                    comp.interaction = el.value;
-                    wsSave();
-                    updatePromptPreview();
-                    toastr.success(`已载入多人动作「${entry?.comment || '体位'}」到全场构图`, PLUGIN_NAME);
-                }
-            }, 'nsfw', true);
+                if (!Array.isArray(comp.selectedWbActions)) comp.selectedWbActions = [];
+                comp.selectedWbActions.push({
+                    id: uid('act'),
+                    name: entryName,
+                    tags: tags,
+                    type: actType
+                });
+                wsSave();
+                refresh('composer');
+                toastr.success(`已添加世界书动作条目「${entryName}」(${actType === 'interaction' ? '双人互动' : (actType === 'scene' ? '场景' : '单人动作')})`, PLUGIN_NAME);
+            }, 'pose', true);
         });
 
+        // Pick Worldbook Scene
         container.querySelector('#cw-pick-scene-wb')?.addEventListener('click', () => {
-            openWorldbookPicker('挑选场景词条', (tags, entry) => {
-                const el = container.querySelector('#cw-scene');
-                if (el) {
-                    el.value = [el.value, tags].filter(Boolean).join(', ');
-                    comp.scene = el.value;
-                    wsSave();
-                    updatePromptPreview();
-                    toastr.success(`已载入场景「${entry?.comment || '环境'}」`, PLUGIN_NAME);
-                }
+            openWorldbookPicker('挑选场景/环境词条', (tags, entry) => {
+                const entryName = (entry?.comment || entry?.name || entry?.key || '世界书场景').replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '').trim();
+                if (!Array.isArray(comp.selectedWbActions)) comp.selectedWbActions = [];
+                comp.selectedWbActions.push({
+                    id: uid('act'),
+                    name: entryName,
+                    tags: tags,
+                    type: 'scene'
+                });
+                wsSave();
+                refresh('composer');
+                toastr.success(`已载入场景环境「${entryName}」`, PLUGIN_NAME);
             }, 'scene', true);
         });
 
-        container.querySelectorAll('.cw-pick-action-wb').forEach(b => b.addEventListener('click', () => {
+        // Clear all WB actions
+        container.querySelector('#cw-clear-wb-actions')?.addEventListener('click', () => {
+            comp.selectedWbActions = [];
+            wsSave();
+            refresh('composer');
+            toastr.info('已清空动作词条', PLUGIN_NAME);
+        });
+
+        // Toggle WB action type (action <-> interaction <-> scene)
+        container.querySelectorAll('.cw-wb-toggle-type').forEach(b => b.addEventListener('click', () => {
             const idx = +b.dataset.idx;
-            openWorldbookPicker('挑选单人动作/姿态词条', (tags, entry) => {
-                const el = container.querySelector(`.cw-slot-action[data-idx="${idx}"]`);
-                if (el && comp.slots[idx]) {
-                    el.value = [el.value, tags].filter(Boolean).join(', ');
-                    comp.slots[idx].action = el.value;
-                    wsSave();
-                    updatePromptPreview();
-                    toastr.success(`已为 Char ${idx + 1} 添加单人姿势「${entry?.comment || '动作'}」`, PLUGIN_NAME);
-                }
-            }, 'pose', true);
+            if (Array.isArray(comp.selectedWbActions) && comp.selectedWbActions[idx]) {
+                const cur = comp.selectedWbActions[idx].type || 'action';
+                const next = cur === 'action' ? 'interaction' : (cur === 'interaction' ? 'scene' : 'action');
+                comp.selectedWbActions[idx].type = next;
+                wsSave();
+                refresh('composer');
+                toastr.info(`已将分类切换为: ${next === 'interaction' ? '👥 双人互动' : (next === 'scene' ? '🏞️ 场景' : '💃 单人动作')}`, PLUGIN_NAME);
+            }
         }));
 
-        container.querySelector('#cw-interaction')?.addEventListener('input', e => { comp.interaction = e.target.value; wsSave(); updatePromptPreview(); });
+        // Delete single WB action chip
+        container.querySelectorAll('.cw-wb-del').forEach(b => b.addEventListener('click', () => {
+            const idx = +b.dataset.idx;
+            if (Array.isArray(comp.selectedWbActions)) {
+                comp.selectedWbActions.splice(idx, 1);
+                wsSave();
+                refresh('composer');
+            }
+        }));
+
+        // Custom action text input
+        container.querySelector('#cw-custom-action-tags')?.addEventListener('input', e => {
+            comp.customActionInput = e.target.value;
+            wsSave();
+            updatePromptPreview();
+        });
+
+        // Scene & Camera inputs
         container.querySelector('#cw-scene')?.addEventListener('input', e => { comp.scene = e.target.value; wsSave(); updatePromptPreview(); });
         container.querySelector('#cw-camera')?.addEventListener('input', e => { comp.camera = e.target.value; wsSave(); updatePromptPreview(); });
 
-        // Copy Prompt
+        // 5x5 Coords toggle
+        container.querySelector('#cw-toggle-coords')?.addEventListener('change', (e) => {
+            comp.useCoords = !!e.target.checked;
+            const s = RBQ.api.getSettings();
+            if (!s[MCC_KEY]) s[MCC_KEY] = {};
+            s[MCC_KEY].useCoords = comp.useCoords;
+            wsSave();
+            refresh('composer');
+            toastr.info(comp.useCoords ? '5×5 严格坐标定位已开启' : '严格坐标定位已关闭，角色站位将由 AI 自主决定', PLUGIN_NAME);
+        });
+
+        // 5x5 pin & cell clicks
+        container.querySelectorAll('.cw-pin').forEach(pin => pin.addEventListener('click', (e) => {
+            e.stopPropagation();
+            comp.activeSlotIndex = +pin.dataset.si;
+            wsSave();
+            refresh('composer');
+        }));
+        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', () => {
+            const ai = comp.activeSlotIndex || 0;
+            if (comp.slots[ai]) { comp.slots[ai].center = cell.dataset.coord; wsSave(); refresh('composer'); }
+        }));
+        container.querySelectorAll('.cw-switch-slot').forEach(b => b.addEventListener('click', () => {
+            comp.activeSlotIndex = +b.dataset.idx;
+            wsSave();
+            refresh('composer');
+        }));
+
+        // Copy prompt
         container.querySelector('#cw-copy-prompt')?.addEventListener('click', () => {
             const p = composeFinalPrompt(comp);
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1562,21 +1759,21 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
         // Save preset
         container.querySelector('#cw-save-preset')?.addEventListener('click', () => {
-            const name = prompt('请输入该多角色分镜预设的名称：', '分镜预设 ' + new Date().toLocaleDateString());
+            const name = prompt('请输入该动作分镜预设的名称：', '动作预设 ' + new Date().toLocaleDateString());
             if (!name) return;
             ws.presets.push({
                 id: uid('preset'),
                 name,
-                interaction: comp.interaction || '',
-                scene: comp.scene,
-                camera: comp.camera,
-                slots: JSON.parse(JSON.stringify(comp.slots))
+                scene: comp.scene || '',
+                camera: comp.camera || '',
+                selectedWbActions: JSON.parse(JSON.stringify(comp.selectedWbActions || [])),
+                slots: JSON.parse(JSON.stringify(comp.slots || []))
             });
             wsSave();
-            toastr.success(`预设「${name}」已保存！`, PLUGIN_NAME);
+            toastr.success(`预设「${name}」已保存！可在「分镜模板与预设」中随时载入`, PLUGIN_NAME);
         });
 
-        // One-Click Generate Image (With Progress & Popup Viewer!)
+        // One-Click Generate Image
         container.querySelector('#cw-generate')?.addEventListener('click', async (ev) => {
             const btn = ev.currentTarget;
             const origHtml = btn.innerHTML;
@@ -1587,22 +1784,18 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             s[MCC_KEY].useCoords = comp.useCoords === true;
             RBQ.api.saveSettings();
 
-            if (!isMccEnabled()) {
-                toastr.warning('多角色合成插件未启用，生成的图片可能无法正确分配角色位置', PLUGIN_NAME);
-            }
-
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成多角色画作...';
-            toastr.info('🚀 正在调用 RBQ 生图引擎生成多角色画作...', PLUGIN_NAME);
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成画作...';
+            toastr.info('🚀 正在调用 RBQ 生图引擎演练生成...', PLUGIN_NAME);
 
             try {
-                const result = await RBQ.api.generateImage(p, 'cw-ensemble', {}, (progress) => {
+                const result = await RBQ.api.generateImage(p, 'cw-action-test', {}, (progress) => {
                     if (typeof progress === 'string') btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 12)}...`;
                 });
 
                 if (result && result.url) {
-                    showGeneratedImageModal('多角色空间舞台合成画面', p, result);
-                    toastr.success('🎉 多角色画面生成完毕！', PLUGIN_NAME);
+                    showGeneratedImageModal('动作工坊 · 角色演练画面', p, result);
+                    toastr.success('🎉 画面演练完成！', PLUGIN_NAME);
                 } else {
                     throw new Error('生图未返回有效图片地址');
                 }
@@ -1613,6 +1806,20 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 btn.innerHTML = origHtml;
             }
         });
+
+        // Jump from Dossier to Action Studio
+        container.querySelectorAll('.cw-go-action').forEach(b => b.addEventListener('click', () => {
+            const charName = b.dataset.name;
+            if (comp.slots.length === 0) {
+                comp.slots.push({ charName, outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' });
+            } else {
+                comp.slots[0].charName = charName;
+                comp.slots[0].outfitId = '';
+            }
+            wsSave();
+            toastr.info(`已将「${charName}」设为主演角色并进入动作工坊`, PLUGIN_NAME);
+            refresh('composer');
+        }));
 
         // ── Dossier Events ──
         container.querySelectorAll('.cw-scope-btn').forEach(b => b.addEventListener('click', () => {
@@ -1709,9 +1916,10 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             comp.scene = p.scene || '';
             comp.camera = p.camera || '';
             comp.slots = JSON.parse(JSON.stringify(p.slots || []));
+            comp.selectedWbActions = JSON.parse(JSON.stringify(p.selectedWbActions || []));
             comp.activeSlotIndex = 0;
             wsSave();
-            toastr.success(`已载入预设「${p.name}」到舞台`, PLUGIN_NAME);
+            toastr.success(`已载入预设「${p.name}」到工坊`, PLUGIN_NAME);
             refresh('composer');
         }));
 

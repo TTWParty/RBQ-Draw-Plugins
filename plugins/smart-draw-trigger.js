@@ -3868,7 +3868,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 { id: 'hair', name: '发型发色', keywords: ['发型', '发色', '双马尾', '单马尾', '短发', '长发', '马尾', '刘海', '编发', '呆毛', '渐变发', '发饰', '发'] },
                 { id: 'eyes', name: '眼部瞳色', keywords: ['眼', '瞳', '瞳色', '异色瞳', '眼睛', '红瞳', '蓝瞳', '金瞳', '绿瞳', '爱心眼', '魔眼', '眼罩', '猫眼'] },
                 { id: 'face', name: '面部表情', keywords: ['表情', '脸部', '脸红', '微笑', '哭泣', '生气', '张嘴', '吐舌', '害羞', '傲娇', '嘟嘴', '头部动作', '胃痛', '滴口水', '鄙视'] },
-                { id: 'race', name: '种族特征', keywords: ['种族', '特征', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '角', '恶魔角', '光环', '天使', '魅魔', '机娘', '人外', '福瑞', '龙娘', '龙族', '扶她', '精灵', '恶魔/吸血鬼', '吸血鬼', '恶魔', '美人鱼', '美人鱼杂项', '兽人'] },
+                { id: 'race', name: '种族特征', keywords: ['种族', '特征', '兽耳', '猫耳', '狐耳', '兔耳', '狗耳', '狼耳', '精灵耳', '尾巴', '猫尾', '狐尾', '翅膀', '羽翼', '头角', '恶魔角', '龙角', '光环', '天使', '魅魔', '机娘', '人外', '福瑞', '龙娘', '龙族', '扶她', '精灵', '恶魔/吸血鬼', '吸血鬼', '恶魔', '美人鱼', '美人鱼杂项', '兽人'] },
                 { id: 'body', name: '身材体型', keywords: ['身材', '体型', '胸部', '乳房', '巨乳', '贫乳', '爆乳', '微乳', '大乳头', '陷没乳头', '腹肌', '肉感', '大腿', '长腿', '身高', '肤色', '黑皮', '白皙', '肌肉', '美腿', '锁骨', '私处', '私处特征', '臀部', '伪娘', '男娘', '人妖', '年龄触发', '流浪汉', '熟女体形', '腋下', '背部', '胃凸', '雌臭组件', '孕期'] },
                 { id: 'transformation', name: '人物转化/异化', keywords: ['人物转化', '转化', '石像', '石化', '水晶异变', '丧尸化', '变异', '拟兽', '机甲化', '机娘化', '龙人化', '隐身人', '透明躯体', '灵体', '物化', '异化', '魔物化', '微细节'] }
             ]
@@ -3892,7 +3892,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             subcategories: [
                 { id: 'camera_angle', name: '镜头视角', keywords: ['视角', '机位', '构图', '特写', '面部特写', '半身', '全身', '俯视', '仰视', 'POV', '第一人称', '侧面', '背影', '荷兰角', '鱼眼', '广角', '对焦', '速查表-镜子', '速查表-窗户', '速查表-门缝偷窥', '速查表-车后视镜', '速查表-猫眼', '速查表-前置自拍', '速查表-自拍', '速查表-望远镜', '速查表-透视眼镜', '检查', '测量', '口腔检查'] },
                 { id: 'lighting', name: '光影氛围', keywords: ['光影', '光照', '逆光', '丁达尔', '体积光', '发光', '荧光', '霓虹', '暗色调', '明亮', '柔光', '电影感', '镜头光晕', '氛围', '滤镜', '速查表-水中倒影', '动态效果', '暗示性'] },
-                { id: 'style', name: '艺术画风', keywords: ['画风', '风格', '复古', '90年代', '厚涂', '水彩', '像素', '线稿', '黑白', '赛璐珞', '油画', '插画', '速查表', '速查表-透明底', '速查表-立绘', '速查表-照片', '速查表-直播', '速查表-杂志', '速查表-封面', '速查表-电视', '速查表-录像', '速查表-明信片', '速查表-AV', '文字渲染', '设定', '照片'] }
+                { id: 'style', name: '艺术画风', keywords: ['画风', '艺术风格', '90年代画风', '复古画风', '厚涂', '水彩', '像素', '像素风', '线稿', '黑白线稿', '赛璐珞', '油画', '插画', '绘柄', '立绘风格', '速查表-透明底', '速查表-立绘', '速查表-照片', '速查表-直播', '速查表-杂志', '速查表-封面', '速查表-电视', '速查表-录像', '速查表-明信片', '速查表-AV', '文字渲染'] }
             ]
         }
     };
@@ -3974,7 +3974,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
                     for (const kw of sub.keywords) {
                         const kwL = kw.toLowerCase();
-                        if (actionSubTopic.includes(kwL) || kwL.includes(actionSubTopic)) {
+                        if (kwL.length <= 1 && actionSubTopic !== kwL) continue; // 单字严禁任意子串匹配
+                        if (actionSubTopic.includes(kwL) || (kwL.length > 2 && kwL.includes(actionSubTopic))) {
                             score += 350;
                             break;
                         }
@@ -3989,7 +3990,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
                     for (const kw of sub.keywords) {
                         const kwL = kw.toLowerCase();
-                        if (titleLower === kwL || titleLower.startsWith(kwL) || titleLower.includes(kwL)) {
+                        if (kwL.length <= 1 && titleLower !== kwL) continue; // 单字严禁任意子串匹配
+                        if (titleLower === kwL || titleLower.startsWith(kwL) || (kwL.length > 2 && titleLower.includes(kwL))) {
                             score += 220;
                             break;
                         }
@@ -3999,6 +4001,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 // 核心法则 3：全文/注释关键词命中 (+60 / +50 分)
                 for (const kw of sub.keywords) {
                     const kwL = kw.toLowerCase();
+                    if (kwL.length <= 1) continue;
                     if (commentLower.includes(kwL)) {
                         score += 60;
                     }
@@ -4040,9 +4043,40 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
                 }
 
-                // ④ 若词条为界面/截图/速查表（如 聊天记录、速查表、界面UI）：优先【镜头光影/风格】，惩罚【双人互动】与【单人姿态】
+                // ④ 服装穿搭强力防污染保护规则：
+                // 若词条主体明确为服装（日常服、制服、私服、泳装、睡衣、内衣、便服、常服、短裙、大衣等）：
+                // 严厉惩罚【镜头光影】(-1000分) 与【双人互动】(-800分)，强力优先【服装穿搭】(+600分)！
+                // （只要不属于强 NSFW 或激烈战斗动作），彻底杜绝把“日常服-嘻哈风格”、“日常服-90年代英伦”误判为镜头画风！
+                const isExplicitOutfit = (
+                    commentLower.match(/^(\*|#|\s)*(日常服|日常服装|便服|私服|常服|服装|服装穿搭|制服|校服|水手服|泳装|泳衣|比基尼|内衣|睡衣|旗袍|女仆装|礼服|西装|冬装|童装|大衣|短裙|连衣裙)/i) ||
+                    commentLower.startsWith('日常服') ||
+                    commentLower.startsWith('服装') ||
+                    commentLower.startsWith('制服') ||
+                    commentLower.startsWith('私服') ||
+                    commentLower.startsWith('便服') ||
+                    commentLower.startsWith('常服') ||
+                    commentLower.startsWith('泳装') ||
+                    commentLower.startsWith('内衣') ||
+                    commentLower.startsWith('睡衣') ||
+                    ['日常服', '服装', '制服', '私服', '常服', '泳装', '内衣', '睡衣'].includes(nativeTopic)
+                );
+                if (isExplicitOutfit && !isNSFW && !isCombatOrAction) {
+                    if (mainGroup.id === 'outfit') {
+                        score += 600;
+                    } else if (mainGroup.id === 'camera') {
+                        score -= 1000;
+                    } else if (mainGroup.id === 'interaction') {
+                        score -= 800;
+                    } else if (mainGroup.id === 'pose') {
+                        score -= 400;
+                    } else if (mainGroup.id === 'appearance') {
+                        score -= 400;
+                    }
+                }
+
+                // ⑤ 若词条为界面/截图/速查表（如 聊天记录、速查表、界面UI）：优先【镜头光影/风格】，惩罚【双人互动】与【单人姿态】
                 const isUIOrScreenshot = (
-                    commentLower.startsWith('速查表') ||
+                    commentLower.match(/^速查表-(透明底|立绘|照片|直播|杂志|封面|电视|录像|明信片|av|截图|界面|ui)/i) ||
                     commentLower.includes('聊天记录') ||
                     commentLower.includes('截图') ||
                     commentLower.includes('界面') ||

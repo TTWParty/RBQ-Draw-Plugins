@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.8';
+    const VERSION = '2.2.9';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -2205,11 +2205,15 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                                 <input id="cw-camera" class="cw-in" type="text" placeholder="from_above, close-up, depth_of_field..." value="${esc(comp.camera || '')}" />
                                 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
                                     ${[
+                                        { label: '立绘', tag: 'standing, full body' },
+                                        { label: '肖像', tag: 'portrait' },
+                                        { label: '特写', tag: 'close-up' },
+                                        { label: '面部特写', tag: 'face focus, close-up' },
+                                        { label: '半身', tag: 'upper body' },
+                                        { label: '七分身', tag: 'cowboy shot' },
+                                        { label: '全身', tag: 'full body' },
                                         { label: '俯视', tag: 'from above' },
                                         { label: '仰视', tag: 'from below' },
-                                        { label: '特写', tag: 'close-up' },
-                                        { label: '半身', tag: 'upper body' },
-                                        { label: '全身', tag: 'full body' },
                                         { label: '看镜头', tag: 'looking at viewer' },
                                         { label: '男主视角', tag: 'male pov' },
                                         { label: '侧面', tag: 'from side' },
@@ -2217,7 +2221,9 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                                         { label: '景深', tag: 'depth of field' },
                                         { label: '电影光', tag: 'cinematic lighting' }
                                     ].map(item => {
-                                        const isOn = (comp.camera || '').toLowerCase().includes(item.tag.toLowerCase());
+                                        const incoming = item.tag.split(/[,，;；]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+                                        const curTags = (comp.camera || '').toLowerCase().split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+                                        const isOn = incoming.length > 0 && incoming.every(it => curTags.includes(it));
                                         return `<button class="cw-chip ${isOn ? 'on' : ''} cw-quick-camera" data-tag="${item.tag}" type="button">${item.label}</button>`;
                                     }).join('')}
                                 </div>
@@ -2650,12 +2656,19 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
         function toggleFieldTag(inputEl, fieldKey, tag) {
             let tags = (comp[fieldKey] || '').split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
-            const lower = tag.toLowerCase();
-            const idx = tags.findIndex(t => t.toLowerCase() === lower);
-            if (idx >= 0) {
-                tags.splice(idx, 1);
+            const incoming = tag.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+            const allPresent = incoming.length > 0 && incoming.every(inTag => tags.some(t => t.toLowerCase() === inTag.toLowerCase()));
+
+            if (allPresent) {
+                // 全部已存在 -> 取消勾选，移除这批标签
+                tags = tags.filter(t => !incoming.some(inTag => inTag.toLowerCase() === t.toLowerCase()));
             } else {
-                tags.push(tag);
+                // 尚未全部存在 -> 补充添加未存在的标签
+                for (const inTag of incoming) {
+                    if (!tags.some(t => t.toLowerCase() === inTag.toLowerCase())) {
+                        tags.push(inTag);
+                    }
+                }
             }
             comp[fieldKey] = tags.join(', ');
             if (inputEl) inputEl.value = comp[fieldKey];

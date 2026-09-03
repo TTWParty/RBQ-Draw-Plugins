@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.1.0';
+    const VERSION = '2.1.1';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -350,16 +350,23 @@
         const interactionList = [];
         const soloActionList = [];
         const sceneList = [];
+        const tplChar1Actions = [];
+        const tplChar2Actions = [];
 
         wbActions.forEach(act => {
-            const clean = sanitizePromptSegment(act.tags || '');
-            if (!clean) return;
-            if (act.type === 'interaction') {
-                interactionList.push(clean);
+            if (act.type === 'template') {
+                if (act.scene) interactionList.push(sanitizePromptSegment(act.scene));
+                if (act.char1Action) tplChar1Actions.push(sanitizePromptSegment(act.char1Action));
+                if (act.char2Action) tplChar2Actions.push(sanitizePromptSegment(act.char2Action));
+            } else if (act.type === 'interaction') {
+                const clean = sanitizePromptSegment(act.tags || '');
+                if (clean) interactionList.push(clean);
             } else if (act.type === 'scene') {
-                sceneList.push(clean);
+                const clean = sanitizePromptSegment(act.tags || '');
+                if (clean) sceneList.push(clean);
             } else {
-                soloActionList.push(clean);
+                const clean = sanitizePromptSegment(act.tags || '');
+                if (clean) soloActionList.push(clean);
             }
         });
 
@@ -372,6 +379,8 @@
         const totalInteractions = interactionList.filter(Boolean).join(', ');
         const totalSoloActions = soloActionList.filter(Boolean).join(', ');
         const totalScene = sceneList.filter(Boolean).join(', ');
+        const extraChar1Tpl = tplChar1Actions.filter(Boolean).join(', ');
+        const extraChar2Tpl = tplChar2Actions.filter(Boolean).join(', ');
 
         // Active slots that have characters assigned
         const activeSlots = slots.filter(s => s && (s.charName || s.customOutfit || s.action));
@@ -400,6 +409,19 @@
             const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
             const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + center) : '';
 
+            // Tpl action assigned to this slot with placeholder interpolation
+            let tplActionForSlot = (i === 0 ? extraChar1Tpl : (i === 1 ? extraChar2Tpl : ''));
+            if (tplActionForSlot) {
+                tplActionForSlot = tplActionForSlot
+                    .replace(/\{\{\s*char(1)?\s*\}\}/gi, rawName ? `${rawName}, ${base}` : base)
+                    .replace(/\[\s*char(1)?\s*\]/gi, rawName ? `${rawName}, ${base}` : base)
+                    .replace(/\{\{\s*user\s*\}\}/gi, rawName ? `${rawName}, ${base}` : base)
+                    .replace(/\{\{\s*char2\s*\}\}/gi, rawName ? `${rawName}, ${base}` : base)
+                    .replace(/\[\s*char2\s*\]/gi, rawName ? `${rawName}, ${base}` : base)
+                    .replace(/\{\{\s*outfit\s*\}\}/gi, outfit)
+                    .replace(/\[\s*outfit\s*\]/gi, outfit);
+            }
+
             return {
                 n,
                 rawName,
@@ -407,6 +429,7 @@
                 base,
                 outfit,
                 slotAction,
+                tplActionForSlot,
                 center,
                 centersSuffix,
                 uc: sanitizePromptSegment(slot.uc)
@@ -418,10 +441,10 @@
 
         // ── CASE 1: SOLO MODE ──
         if (isSolo) {
-            const char = charDetails[0] || { n: 1, namePrefix: '', base: '', outfit: '', slotAction: '', centersSuffix: '', uc: '' };
+            const char = charDetails[0] || { n: 1, namePrefix: '', base: '', outfit: '', slotAction: '', tplActionForSlot: '', centersSuffix: '', uc: '' };
             const genderSolo = boyCount > 0 ? '1boy, solo' : '1girl, solo';
 
-            let allActions = [totalSoloActions, totalInteractions, char.slotAction].filter(Boolean).join(', ');
+            let allActions = [char.tplActionForSlot, totalSoloActions, totalInteractions, char.slotAction].filter(Boolean).join(', ');
             let outfit = char.outfit;
             let base = char.base;
 
@@ -459,8 +482,8 @@
             const parts = [`Scene: ${scenePart}`];
 
             charDetails.forEach((char, i) => {
-                const soloAct = i === 0 ? [totalSoloActions, char.slotAction].filter(Boolean).join(', ') : char.slotAction;
-                const charContent = [char.namePrefix, char.base, char.outfit, soloAct].filter(Boolean).join(', ');
+                const slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
+                const charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
                 parts.push(`Char${char.n}: ${charContent}${char.centersSuffix}`);
                 if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
             });
@@ -468,8 +491,9 @@
             return parts.join('; ');
         } else {
             // ComfyUI / WebUI / General SDXL Flat Syntax
-            const charSummaries = charDetails.map(char => {
-                return [char.namePrefix, char.base, char.outfit, char.slotAction].filter(Boolean).join(', ');
+            const charSummaries = charDetails.map((char, i) => {
+                const slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
+                return [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
             });
 
             return [
@@ -843,10 +867,12 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 .cw-wb-chip.interaction{background:rgba(244,114,182,.12);border-color:rgba(244,114,182,.45)}
 .cw-wb-chip.scene{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.45)}
 .cw-wb-chip.action{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.45)}
+.cw-wb-chip.template{background:rgba(168,85,247,.15);border-color:rgba(168,85,247,.55)}
 .cw-wb-badge{font-size:10px;font-weight:bold;padding:1px 5px;border-radius:4px;user-select:none}
 .cw-wb-badge.interaction{background:rgba(244,114,182,.25);color:#f472b6}
 .cw-wb-badge.scene{background:rgba(251,191,36,.25);color:#fbbf24}
 .cw-wb-badge.action{background:rgba(56,189,248,.25);color:#38bdf8}
+.cw-wb-badge.template{background:rgba(168,85,247,.3);color:#c084fc}
 .cw-wb-tags{font-size:11px;opacity:.7;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
 .cw-wb-toggle-type{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:4px;color:#cbd5e1;cursor:pointer;font-size:11px;padding:1px 5px}
 .cw-wb-del{background:transparent;border:none;color:#f87171;cursor:pointer;font-size:12px;padding:0 3px}
@@ -1242,7 +1268,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Tab 2: 动作工坊 · 角色 × 世界书动作智能适配
+    //  Tab 2: 动作工坊 · 动作分镜 × 角色智能适配
     // ══════════════════════════════════════════════════════════
     function renderComposerTab() {
         const ws = getWs();
@@ -1251,6 +1277,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         if (slots.length === 0) {
             slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' });
         }
+        const ai = Math.min(slots.length - 1, Math.max(0, comp.activeSlotIndex || 0));
 
         const chatProfiles = getCurrentChatProfiles();
         const globalProfiles = getAllGlobalProfiles();
@@ -1266,13 +1293,59 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         const isNai = s.currentMode === 'nai';
 
         return `<div class="cw-body">
-            <!-- 1. 参演角色选定区 -->
+            <!-- 1. 挑选动作与分镜 (直通世界书) — 动作驱动优先！ -->
+            <div class="cw-card">
+                <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span class="cw-card-tt" style="color:#f472b6"><i class="fa-solid fa-book-bookmark"></i> ① 挑选动作与分镜 (直通世界书)</span>
+                        <span style="font-size:11px;opacity:0.65">已选 ${wbActions.length} 项</span>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <button class="cw-btn cy sm" id="cw-pick-action-wb" type="button" style="padding:4px 12px;font-size:12px;font-weight:bold">
+                            <i class="fa-solid fa-book-open"></i> 📖 从世界书挑选动作/分镜模板
+                        </button>
+                        <button class="cw-btn sm" id="cw-pick-scene-wb" type="button">
+                            <i class="fa-solid fa-mountain-sun"></i> 挑选场景/环境
+                        </button>
+                        ${wbActions.length > 0 ? `<button class="cw-btn rd sm" id="cw-clear-wb-actions" type="button"><i class="fa-solid fa-trash-can"></i> 清空</button>` : ''}
+                    </div>
+                </div>
+
+                <!-- 选入词条多态胶囊容器 -->
+                <div style="min-height:50px;background:rgba(0,0,0,.25);border:1px dashed rgba(255,255,255,.14);border-radius:8px;padding:8px 10px;display:flex;flex-wrap:wrap;gap:7px;align-items:center">
+                    ${wbActions.length === 0 ? `
+                        <div style="font-size:11.5px;color:rgba(255,255,255,0.45);display:flex;align-items:center;gap:6px">
+                            <i class="fa-solid fa-arrow-pointer"></i> 点击上方「从世界书挑选动作/分镜模板」，选入动作、表情、体位或完整多角色分镜模板！系统将自动拆解分工并适配角色。
+                        </div>
+                    ` : wbActions.map((act, idx) => `
+                        <div class="cw-wb-chip ${esc(act.type || 'action')}" data-id="${esc(act.id)}">
+                            <span class="cw-wb-badge ${esc(act.type || 'action')}">
+                                ${act.type === 'template' ? '📜 模板' : (act.type === 'interaction' ? '👥 互动' : (act.type === 'scene' ? '🏞️ 场景' : '💃 动作'))}
+                            </span>
+                            <strong>${esc(act.name)}</strong>
+                            <span class="cw-wb-tags" title="${esc(act.tags)}">${esc(act.tags)}</span>
+                            <button type="button" class="cw-wb-toggle-type" data-idx="${idx}" title="切换分类: 💃单人动作 ⇄ 👥双人互动 ⇄ 🏞️场景 ⇄ 📜模板">⇄</button>
+                            <button type="button" class="cw-wb-del" data-idx="${idx}" title="移除">✕</button>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- 动作临时细节补充 -->
+                <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px">
+                    <label style="font-size:11px;color:rgba(255,255,255,.65);display:flex;align-items:center;gap:5px">
+                        <i class="fa-solid fa-pen"></i> 临时动作/细节补充 (可选):
+                    </label>
+                    <input id="cw-custom-action-tags" class="cw-in" type="text" placeholder="如有额外的临时英文 Tags (如: looking_at_viewer, blushing, wet_clothes...) 可直接在此补充..." value="${esc(comp.customActionInput || '')}" style="font-size:11.5px" />
+                </div>
+            </div>
+
+            <!-- 2. 安排参演角色与穿搭 -->
             <div class="cw-card">
                 <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> ① 挑选参演角色 (${slots.length} 人槽位)</span>
+                        <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> ② 安排参演角色 (${slots.length} 人槽位)</span>
                         <span class="cw-badge" style="background:${isSolo ? 'rgba(56,189,248,0.2)' : 'rgba(244,114,182,0.2)'};color:${isSolo ? '#38bdf8' : '#f472b6'}">
-                            ${isSolo ? '💃 单人动作演练模式' : '👥 双人同框互动模式'}
+                            ${isSolo ? '💃 单人演练模式' : '👥 双人同框互动模式'}
                         </span>
                     </div>
                     <div style="display:flex;gap:6px">
@@ -1339,86 +1412,27 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 </div>
             </div>
 
-            <!-- 2. 世界书动作与姿态点选区 -->
+            <!-- 3. 空间布局与场景设定 (网格按复选框直接展开/折叠) -->
             <div class="cw-card">
                 <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
-                    <div style="display:flex;align-items:center;gap:8px">
-                        <span class="cw-card-tt" style="color:#f472b6"><i class="fa-solid fa-book-bookmark"></i> ② 动作与姿态 (直通世界书)</span>
-                        <span style="font-size:11px;opacity:0.65">已选 ${wbActions.length} 个动作词条</span>
-                    </div>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap">
-                        <button class="cw-btn cy sm" id="cw-pick-action-wb" type="button" style="padding:4px 12px;font-size:12px;font-weight:bold">
-                            <i class="fa-solid fa-book-open"></i> 📖 从世界书挑选动作词条
-                        </button>
-                        <button class="cw-btn sm" id="cw-pick-scene-wb" type="button">
-                            <i class="fa-solid fa-mountain-sun"></i> 挑选场景/环境
-                        </button>
-                        ${wbActions.length > 0 ? `<button class="cw-btn rd sm" id="cw-clear-wb-actions" type="button"><i class="fa-solid fa-trash-can"></i> 清空</button>` : ''}
-                    </div>
-                </div>
-
-                <!-- 选入词条多态胶囊容器 -->
-                <div style="min-height:52px;background:rgba(0,0,0,.25);border:1px dashed rgba(255,255,255,.14);border-radius:8px;padding:8px 10px;display:flex;flex-wrap:wrap;gap:7px;align-items:center">
-                    ${wbActions.length === 0 ? `
-                        <div style="font-size:11.5px;color:rgba(255,255,255,0.45);display:flex;align-items:center;gap:6px">
-                            <i class="fa-solid fa-arrow-pointer"></i> 点击上方「从世界书挑选动作词条」，选入世界书中的姿态、表情、体位或互动。条目将自动与角色外貌和服装智能熔合！
-                        </div>
-                    ` : wbActions.map((act, idx) => `
-                        <div class="cw-wb-chip ${esc(act.type || 'action')}" data-id="${esc(act.id)}">
-                            <span class="cw-wb-badge ${esc(act.type || 'action')}">
-                                ${act.type === 'interaction' ? '👥 互动' : (act.type === 'scene' ? '🏞️ 场景' : '💃 动作')}
-                            </span>
-                            <strong>${esc(act.name)}</strong>
-                            <span class="cw-wb-tags" title="${esc(act.tags)}">${esc(act.tags)}</span>
-                            <button type="button" class="cw-wb-toggle-type" data-idx="${idx}" title="切换分类: 💃单人动作 ⇄ 👥双人互动 ⇄ 🏞️场景环境">⇄</button>
-                            <button type="button" class="cw-wb-del" data-idx="${idx}" title="移除">✕</button>
-                        </div>
-                    `).join('')}
-                </div>
-
-                <!-- 动作临时补充文本框 -->
-                <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px">
-                    <label style="font-size:11px;color:rgba(255,255,255,.65);display:flex;align-items:center;gap:5px">
-                        <i class="fa-solid fa-pen"></i> 临时动作/细节补充 (可选):
-                    </label>
-                    <input id="cw-custom-action-tags" class="cw-in" type="text" placeholder="如有额外的临时英文 Tags (如: looking_at_viewer, blushing, wet_clothes...) 可直接在此补充..." value="${esc(comp.customActionInput || '')}" style="font-size:11.5px" />
-                </div>
-            </div>
-
-            <!-- 3. 高级选项：场景、镜头与 5x5 坐标定位 (默认折叠) -->
-            <details class="cw-card" ${useCoords ? 'open' : ''} style="padding:10px 12px;cursor:pointer">
-                <summary style="font-size:12px;font-weight:bold;color:rgba(255,255,255,0.75);display:flex;align-items:center;justify-content:space-between;user-select:none">
-                    <span style="display:flex;align-items:center;gap:8px">
-                        <i class="fa-solid fa-sliders" style="color:#fbbf24"></i> ③ 高级选项：场景、镜头与 5×5 坐标定位微调
-                    </span>
-                    <span style="font-size:11px;opacity:0.6">${useCoords ? '🎯 5×5 坐标定位已展开' : '🤖 坐标网格已折叠 (AI 自主构图)'} ▾</span>
-                </summary>
-                
-                <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;cursor:default">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                        <div>
-                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
-                            <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, soft lighting..." value="${esc(comp.scene || '')}" />
-                        </div>
-                        <div>
-                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">视角与光影 (Camera):</label>
-                            <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field..." value="${esc(comp.camera || '')}" />
-                        </div>
-                    </div>
-
-                    <!-- 5x5 Grid Switch -->
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);flex-wrap:wrap;gap:8px">
-                        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12)">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <span class="cw-card-tt" style="color:#fbbf24"><i class="fa-solid fa-chess-board"></i> ③ 空间布局与场景设定</span>
+                        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);user-select:none" title="关闭后由 AI 自主决定角色构图站位，网格收起；开启后按 5×5 网格固定坐标">
                             <input type="checkbox" id="cw-toggle-coords" ${useCoords ? 'checked' : ''} style="margin:0;cursor:pointer" />
                             <span style="color:${useCoords ? '#38bdf8' : 'rgba(255,255,255,0.7)'};font-weight:${useCoords ? 'bold' : 'normal'}">
-                                <i class="fa-solid fa-crosshairs"></i> 开启 5×5 严格网格坐标定位
+                                <i class="fa-solid fa-crosshairs"></i> 5×5 严格坐标定位
                             </span>
                         </label>
-                        <span style="font-size:11px;opacity:0.6">适合 NovelAI V4 双人固定站位。关闭时由 AI 自行决定自然站位</span>
                     </div>
+                    <div style="font-size:11px;opacity:.65">
+                        ${useCoords ? `当前状态: 🎯 严格坐标定位已开启 (网格已展开)` : `当前状态: 🤖 由 AI 自行决定自然构图 (网格已折叠收起)`}
+                    </div>
+                </div>
 
+                <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
                     ${useCoords ? `
-                    <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-top:6px">
+                    <!-- 5x5 Grid (勾选展开，关闭折叠) -->
+                    <div style="display:flex;flex-direction:column;gap:6px">
                         <div class="cw-grid5" id="cw-stage">
                             ${ROWS.map(r => COLS.map(c => {
                                 const coord = c + r;
@@ -1429,17 +1443,26 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                                 </div>`;
                             }).join('')).join('')}
                         </div>
-                        <div style="flex:1;min-width:200px;font-size:11.5px;color:rgba(255,255,255,0.7);display:flex;flex-direction:column;gap:6px">
-                            <div>点击网格单元格即可修改所选角色的站位坐标 (当前控制 Char ${(comp.activeSlotIndex || 0) + 1})。</div>
-                            <div style="display:flex;gap:4px;flex-wrap:wrap">
-                                ${slots.map((s, i) => `<button class="cw-btn sm cw-switch-slot ${(comp.activeSlotIndex || 0) === i ? 'cy' : ''}" data-idx="${i}" type="button">控制 Char ${i + 1} (${s.center || (i === 0 ? 'B3' : 'D3')})</button>`).join('')}
-                            </div>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap">
+                            ${slots.map((s, i) => `<button class="cw-btn sm cw-switch-slot ${(comp.activeSlotIndex || 0) === i ? 'cy' : ''}" data-idx="${i}" type="button">控制 Char ${i + 1} (${s.center || (i === 0 ? 'B3' : 'D3')})</button>`).join('')}
                         </div>
                     </div>` : ''}
-                </div>
-            </details>
 
-            <!-- 4. 智能适配实时预览与演练生图 -->
+                    <!-- 场景与镜头输入 -->
+                    <div style="flex:1;min-width:240px;display:grid;grid-template-columns:1fr 1fr;gap:7px">
+                        <div>
+                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
+                            <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, soft lighting..." value="${esc(comp.scene || '')}" />
+                        </div>
+                        <div>
+                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">视角与光影 (Camera):</label>
+                            <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field..." value="${esc(comp.camera || '')}" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 智能适配提示词实时预览与演练出图 -->
             <div class="cw-preview">
                 <div class="cw-card-hd">
                     <div style="display:flex;align-items:center;gap:8px">
@@ -1512,8 +1535,59 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
     //  Main Shell & Event Binding
     // ══════════════════════════════════════════════════════════
     // ══════════════════════════════════════════════════════════
-    //  Worldbook Classification Classifier Bridge
+    //  Worldbook Template & Classification Bridge
     // ══════════════════════════════════════════════════════════
+    function parseWorldbookTemplate(rawContent, entryName) {
+        if (!rawContent) return null;
+        let s = String(rawContent).trim();
+
+        // Detect structured segments: Char1: / Char2: / Scene:
+        const hasChar1 = /\bchar\s*1\s*[:：]/i.test(s);
+        const hasChar2 = /\bchar\s*2\s*[:：]/i.test(s);
+        const hasScene = /\bscene\s*[:：]/i.test(s);
+
+        if (!hasChar1 && !hasChar2 && !hasScene) {
+            return null;
+        }
+
+        // Clean out outer comment brackets or titles if present
+        s = s.replace(/^[#\*\s]*[【\[][^】\]]+[】\]][:：]?\s*/gm, '');
+
+        let scenePart = '';
+        let char1Part = '';
+        let char2Part = '';
+
+        // Flatten newlines into semicolons
+        const flat = s.replace(/\r?\n/g, '; ');
+
+        // Scene match
+        const sMatch = flat.match(/\bscene\s*[:：]\s*([^;]+(?:;(?!\s*(?:char\d|scene)\s*[:：])[^;]+)*)/i);
+        if (sMatch) scenePart = cleanLorebookTags(sMatch[1]);
+
+        // Char 1 match
+        const c1Match = flat.match(/\bchar\s*1\s*[:：]\s*([^;]+(?:;(?!\s*(?:char\d|scene)\s*[:：])[^;]+)*)/i);
+        if (c1Match) char1Part = cleanLorebookTags(c1Match[1]);
+
+        // Char 2 match
+        const c2Match = flat.match(/\bchar\s*2\s*[:：]\s*([^;]+(?:;(?!\s*(?:char\d|scene)\s*[:：])[^;]+)*)/i);
+        if (c2Match) char2Part = cleanLorebookTags(c2Match[1]);
+
+        const previewParts = [];
+        if (scenePart) previewParts.push(`Scene: ${scenePart}`);
+        if (char1Part) previewParts.push(`Char1: ${char1Part}`);
+        if (char2Part) previewParts.push(`Char2: ${char2Part}`);
+
+        return {
+            isTemplate: true,
+            type: 'template',
+            name: entryName || '世界书分镜模板',
+            scene: scenePart,
+            char1Action: char1Part,
+            char2Action: char2Part,
+            tags: previewParts.join(' | ') || s
+        };
+    }
+
     function classifyWorldbookItem(entry, tags) {
         let actType = 'action';
         const mainId = entry?.classification?.mainId;
@@ -1550,7 +1624,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 <div class="cw-logo"><i class="fa-solid fa-palette"></i> 角色工坊 2.0</div>
                 <div class="cw-tabs">
                     <button class="cw-tab cw-main-tab ${activeTab === 'dossier' ? 'on' : ''}" data-tab="dossier"><i class="fa-solid fa-users"></i> 角色档案库 (${pCount})</button>
-                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-person-running"></i> 动作工坊 · 角色×世界书适配</button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-person-running"></i> 动作工坊 · 动作分镜×角色适配</button>
                     <button class="cw-tab cw-main-tab ${activeTab === 'presets' ? 'on' : ''}" data-tab="presets"><i class="fa-solid fa-bookmark"></i> 分镜模板与预设 (${presetCount})</button>
                 </div>
             </div>
@@ -1643,13 +1717,42 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             }
         }));
 
-        // Pick Worldbook Action
+        // Pick Worldbook Action or Structured Template
         container.querySelector('#cw-pick-action-wb')?.addEventListener('click', () => {
-            openWorldbookPicker('从世界书挑选动作/姿态/互动词条', (tags, entry) => {
-                const entryName = (entry?.comment || entry?.name || entry?.key || '世界书动作').replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '').trim();
-                const actType = classifyWorldbookItem(entry, tags);
+            openWorldbookPicker('从世界书挑选动作/分镜模板', (tags, entry) => {
+                const rawContent = typeof entry === 'string' ? entry : (entry?.content || entry?.tags || tags);
+                const entryName = (entry?.comment || entry?.name || entry?.key || '世界书条目').replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '').trim();
 
                 if (!Array.isArray(comp.selectedWbActions)) comp.selectedWbActions = [];
+
+                // 1. Check if it's a structured template (Scene: or Char1:/Char2:)
+                const tpl = parseWorldbookTemplate(rawContent, entryName);
+                if (tpl && tpl.isTemplate) {
+                    comp.selectedWbActions.push({
+                        id: uid('act'),
+                        name: entryName,
+                        tags: tpl.tags,
+                        type: 'template',
+                        scene: tpl.scene,
+                        char1Action: tpl.char1Action,
+                        char2Action: tpl.char2Action
+                    });
+
+                    // Auto-add slot 2 if template has Char2 action and we are currently in solo mode!
+                    if (tpl.char2Action && comp.slots.length < 2) {
+                        comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' });
+                        toastr.success(`已载入双人分镜模板「${entryName}」，已自动为你开启双人同框槽位！`, PLUGIN_NAME);
+                    } else {
+                        toastr.success(`已载入分镜模板「${entryName}」！`, PLUGIN_NAME);
+                    }
+
+                    wsSave();
+                    refresh('composer');
+                    return;
+                }
+
+                // 2. Otherwise classify normally
+                const actType = classifyWorldbookItem(entry, tags);
                 comp.selectedWbActions.push({
                     id: uid('act'),
                     name: entryName,
@@ -1658,8 +1761,8 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 });
                 wsSave();
                 refresh('composer');
-                toastr.success(`已添加世界书动作条目「${entryName}」(${actType === 'interaction' ? '双人互动' : (actType === 'scene' ? '场景' : '单人动作')})`, PLUGIN_NAME);
-            }, 'pose', true);
+                toastr.success(`已添加动作条目「${entryName}」(${actType === 'interaction' ? '双人互动' : (actType === 'scene' ? '场景' : '单人动作')})`, PLUGIN_NAME);
+            }, 'all', false);
         });
 
         // Pick Worldbook Scene
@@ -1687,16 +1790,17 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             toastr.info('已清空动作词条', PLUGIN_NAME);
         });
 
-        // Toggle WB action type (action <-> interaction <-> scene)
+        // Toggle WB action type (template <-> action <-> interaction <-> scene)
         container.querySelectorAll('.cw-wb-toggle-type').forEach(b => b.addEventListener('click', () => {
             const idx = +b.dataset.idx;
             if (Array.isArray(comp.selectedWbActions) && comp.selectedWbActions[idx]) {
                 const cur = comp.selectedWbActions[idx].type || 'action';
-                const next = cur === 'action' ? 'interaction' : (cur === 'interaction' ? 'scene' : 'action');
+                const next = cur === 'template' ? 'action' : (cur === 'action' ? 'interaction' : (cur === 'interaction' ? 'scene' : 'template'));
                 comp.selectedWbActions[idx].type = next;
                 wsSave();
                 refresh('composer');
-                toastr.info(`已将分类切换为: ${next === 'interaction' ? '👥 双人互动' : (next === 'scene' ? '🏞️ 场景' : '💃 单人动作')}`, PLUGIN_NAME);
+                const label = next === 'template' ? '📜 分镜模板' : (next === 'interaction' ? '👥 双人互动' : (next === 'scene' ? '🏞️ 场景' : '💃 单人动作'));
+                toastr.info(`已将分类切换为: ${label}`, PLUGIN_NAME);
             }
         }));
 

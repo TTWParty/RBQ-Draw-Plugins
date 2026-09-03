@@ -3759,7 +3759,7 @@ Zimage 擅长理解复杂的英文长句和语境。
     const SDT_LOREBOOK_TAXONOMY = {
         nsfw: {
             id: 'nsfw',
-            name: '互动体位',
+            name: '成人体位 (NSFW)',
             icon: 'fa-solid fa-heart-pulse',
             color: '#ff79c6',
             subcategories: [
@@ -3840,7 +3840,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         },
         pose: {
             id: 'pose',
-            name: '日常姿态',
+            name: '单人姿态/动作',
             icon: 'fa-solid fa-person-walking',
             color: '#a3ffa3',
             subcategories: [
@@ -3851,7 +3851,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         },
         interaction: {
             id: 'interaction',
-            name: '双人互动',
+            name: '双人互动 (健全)',
             icon: 'fa-solid fa-people-arrows',
             color: '#79e4ff',
             subcategories: [
@@ -4037,6 +4037,22 @@ Zimage 擅长理解复杂的英文长句和语境。
                         score -= 500;
                     } else if (mainGroup.id === 'scene') {
                         score += 150;
+                    }
+                }
+
+                // ④ 若词条为界面/截图/速查表（如 聊天记录、速查表、界面UI）：优先【镜头光影/风格】，惩罚【双人互动】与【单人姿态】
+                const isUIOrScreenshot = (
+                    commentLower.startsWith('速查表') ||
+                    commentLower.includes('聊天记录') ||
+                    commentLower.includes('截图') ||
+                    commentLower.includes('界面') ||
+                    body.match(/\b(chat\s*log|user\s*interface|fake\s*screenshot|status\s*screen|hud|menu)\b/i)
+                );
+                if (isUIOrScreenshot) {
+                    if (mainGroup.id === 'interaction' || mainGroup.id === 'pose') {
+                        score -= 600;
+                    } else if (mainGroup.id === 'camera') {
+                        score += 300;
                     }
                 }
 

@@ -9,7 +9,7 @@
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { enabled: true, useCoords: false };
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { enabled: false, useCoords: false };
         if (s[STORAGE_KEY].useCoords === undefined) s[STORAGE_KEY].useCoords = false;
         return s[STORAGE_KEY];
     }
@@ -92,6 +92,8 @@
     // ── Payload Hook ─────────────────────────────────────────
     RBQ.on('buildNaiV4Payload', (payload) => {
         const store = getStore();
+        if (!store.enabled) return payload;
+
         const rawPrompt = payload.input || '';
         const parsed = parseAndExtract(rawPrompt);
         if (!parsed) return payload;

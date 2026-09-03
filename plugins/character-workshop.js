@@ -2822,7 +2822,6 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
             const s = RBQ.api.getSettings();
             if (!s[MCC_KEY]) s[MCC_KEY] = {};
-            s[MCC_KEY].enabled = true;
             s[MCC_KEY].useCoords = comp.useCoords === true;
             RBQ.api.saveSettings();
 
@@ -3061,97 +3060,6 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             }
         });
     }
-
-    // ══════════════════════════════════════════════════════════
-    //  NAI V4 Multi-Char Direct Payload Interceptor (Safety Net)
-    //  确保无论外部多角色插件是否开启，只要 Prompt 含有 Char1/Char2 结构，
-    //  就绝对保证转换为 NovelAI V4 原生 char_captions 多角色通道！
-    // ══════════════════════════════════════════════════════════
-    RBQ.on('buildNaiV4Payload', (payload) => {
-        // 若已经被其他插件 (如 multi-char-composer) 处理过，跳过
-        if (payload?.parameters?.v4_prompt?.caption?.char_captions?.length > 0) return payload;
-
-        const rawPrompt = payload?.input || '';
-        if (!/Char\d+:/i.test(rawPrompt)) return payload;
-
-        let normalized = rawPrompt
-            .replace(/Character\s*(\d+)\s*Prompt:/gi, 'Char$1:')
-            .replace(/Character\s*(\d+)\s*UC:/gi, 'Char$1 UC:')
-            .replace(/Scene\s*Composition:/gi, 'Scene:');
-
-        const chars = {};
-        const charUCs = {};
-
-        normalized = normalized.replace(/Char(\d+)\s+UC\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
-            charUCs[idx] = content.trim();
-            return '';
-        });
-
-        normalized = normalized.replace(/Char(\d+)\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
-            let caption = content.trim();
-            let coord = { x: 0.5, y: 0.5 };
-            let hasCoord = false;
-
-            const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5])\s*$/i);
-            if (centersMatch) {
-                const s = centersMatch[1].toUpperCase();
-                const COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
-                const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
-                coord = { x: COL_MAP[s[0]] || 0.5, y: ROW_MAP[s[1]] || 0.5 };
-                caption = caption.slice(0, centersMatch.index).trim();
-                hasCoord = true;
-            }
-
-            chars[idx] = { caption, centers: [coord], hasCoord };
-            return '';
-        });
-
-        const charIndices = Object.keys(chars).sort((a, b) => Number(a) - Number(b));
-        if (charIndices.length === 0) return payload;
-
-        let remaining = normalized
-            .replace(/Scene:/gi, '')
-            .replace(/image###/g, '').replace(/###/g, '')
-            .replace(/[;,]\s*[;,]/g, ',')
-            .replace(/^[;,\s]+|[;,\s]+$/g, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-
-        const hasCoords = charIndices.some(idx => chars[idx].hasCoord);
-
-        const charCaptions = charIndices.map(idx => ({
-            char_caption: chars[idx].caption,
-            centers: chars[idx].centers
-        }));
-
-        const negCharCaptions = charIndices.map(idx => ({
-            char_caption: charUCs[idx] || '',
-            centers: chars[idx].centers
-        }));
-
-        const baseCaption = remaining;
-        const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
-            || payload.parameters?.negative_prompt
-            || '';
-
-        payload.input = baseCaption;
-        if (!payload.parameters) payload.parameters = {};
-        payload.parameters.v4_prompt = {
-            caption: { base_caption: baseCaption, char_captions: charCaptions },
-            use_coords: !!hasCoords,
-            use_order: true,
-            legacy_uc: false
-        };
-        payload.parameters.v4_negative_prompt = {
-            caption: { base_caption: existingNegBase, char_captions: negCharCaptions },
-            use_coords: false,
-            use_order: false,
-            legacy_uc: false
-        };
-
-        console.info('[' + PLUGIN_NAME + '] NAI V4 多角色通道直通成功: ' + charIndices.length + ' 个角色已映射');
-        return payload;
-    });
 
     mount();
     console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — Complete Character & Stage Engine');

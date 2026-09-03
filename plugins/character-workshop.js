@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.1.2';
+    const VERSION = '2.2.1';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -152,18 +152,22 @@
         } catch (_e) {
             return {};
         }
-        const entries = parsed.entries || [];
+        const rawEntries = parsed?.entries;
+        const entries = Array.isArray(rawEntries)
+            ? rawEntries
+            : (rawEntries && typeof rawEntries === 'object' ? Object.values(rawEntries) : []);
         const profiles = {};
 
         for (const e of entries) {
-            let rawName = String(e.comment || '').trim();
+            if (!e || typeof e !== 'object') continue;
+            let rawName = String(e.comment || e.displayName || e.name || '').trim();
             if (!rawName) continue;
             rawName = rawName.replace(/^[\*#\s]+/, '');
             rawName = rawName.replace(/^[【\[（\(][^】\]）\)]+[】\]）\)]\s*/, '');
             rawName = rawName.replace(/[-_—－\s]*(new|常规|新版|横图|竖图|自用|测试)$/i, '');
             if (!rawName) continue;
 
-            const content = String(e.content || '').trim();
+            const content = String(e.content || e.tags || '').trim();
             if (!content) continue;
 
             const keys = Array.isArray(e.key) ? e.key : (typeof e.key === 'string' ? e.key.split(',') : []);
@@ -226,16 +230,21 @@
     }
 
     function getMountedDoujinProfiles() {
-        const src = getMountedLorebookSource();
-        if (!src) return {};
-        if (_cachedDoujinProfiles && _cachedDoujinSourceId === src.id && _cachedDoujinProfiles.__mtime === (src.updatedAt || src.name)) {
-            return _cachedDoujinProfiles;
+        try {
+            const src = getMountedLorebookSource();
+            if (!src) return {};
+            if (_cachedDoujinProfiles && _cachedDoujinSourceId === src.id && _cachedDoujinProfiles.__mtime === (src.updatedAt || src.name)) {
+                return _cachedDoujinProfiles;
+            }
+            const profiles = extractDoujinProfilesFromLorebook(src);
+            profiles.__mtime = src.updatedAt || src.name;
+            _cachedDoujinProfiles = profiles;
+            _cachedDoujinSourceId = src.id;
+            return profiles;
+        } catch (e) {
+            console.warn('[CW] getMountedDoujinProfiles error:', e);
+            return {};
         }
-        const profiles = extractDoujinProfilesFromLorebook(src);
-        profiles.__mtime = src.updatedAt || src.name;
-        _cachedDoujinProfiles = profiles;
-        _cachedDoujinSourceId = src.id;
-        return profiles;
     }
 
     function getAllProfiles() {
@@ -1572,6 +1581,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                             <div>${dossierScope === 'lorebook' ? '尚未检测到任何已导入的世界书同人库。请先在「智能触发」中导入同人库文件，或点击右上角「挂载/导入同人库」！' : (dossierScope === 'chat' ? `当前会话暂无角色档案记忆。${allCount > 0 ? `全局历史库中有 ${allCount} 位角色，点击上方「全局历史」可直接查看与选用！` : ''}` : '暂无任何角色档案，点击右上角「新建角色档案」开始！')}</div>
                         </div>` : names.map(n => {
                         const p = profiles[n];
+                        if (!p || typeof p !== 'object') return '';
                         const isFromLorebook = (p.source === 'lorebook' || dossierScope === 'lorebook');
                         const wCount = Array.isArray(p.wardrobe) ? p.wardrobe.length : 0;
                         const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
@@ -2465,11 +2475,20 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             w.id = 'cw-root-container';
             w.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden';
             const refresh = (tab) => {
-                w.innerHTML = renderMain(tab);
-                bindEvents(w, refresh);
+                try {
+                    w.innerHTML = renderMain(tab);
+                    bindEvents(w, refresh);
+                } catch (e) {
+                    console.error('[CW] refresh error:', e);
+                    w.innerHTML = `<div style="padding:20px;color:#ef4444">角色工坊渲染异常: ${e?.message || e}</div>`;
+                }
             };
             refreshMain = refresh;
-            refresh(activeTab);
+            try {
+                refresh(activeTab);
+            } catch (e) {
+                console.error('[CW] initial render error:', e);
+            }
 
             // 监听面板可见性：每次进入面板时自动根据当前最新会话刷新角色列表
             if (typeof IntersectionObserver !== 'undefined') {

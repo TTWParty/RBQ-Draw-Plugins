@@ -35,9 +35,9 @@
     "id": "rbq-multi-char",
     "name": "NAI 多角色模式 (Multi-Char)",
     "description": "适配多种多角色文生图格式。支持 Char1:|centers:C3 和 Character 1 Prompt:|centers:C3 两种格式，自动映射到 NAI V4.5 原生多角色 API。",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "author": "TTWP-09",
-    "main": "plugins/multi-char-composer.js?v=1.0.7"
+    "main": "plugins/multi-char-composer.js?v=1.0.8"
   },
   {
     "id": "rbq-custom-floating-icon",
@@ -59,8 +59,8 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集角色7维外貌档案、差分衣柜、世界书动作智能适配与多角色同框演练于一体的智能工作台。直通世界书词条智能分类、单双人自适应模板合成与一键头像立绘演练。",
-    "version": "2.2.10",
+    "version": "2.2.11",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.2.10"
+    "main": "plugins/character-workshop.js?v=2.2.11"
   }
 ]

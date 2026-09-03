@@ -4,12 +4,12 @@
     const PLUGIN_NAME = 'Multi-Char Composer';
     const STORAGE_KEY = '_multiCharComposer';
 
-    const VERSION = '1.0.7';
+    const VERSION = '1.0.8';
 
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { enabled: false, useCoords: false };
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { enabled: true, useCoords: false };
         if (s[STORAGE_KEY].useCoords === undefined) s[STORAGE_KEY].useCoords = false;
         return s[STORAGE_KEY];
     }
@@ -52,25 +52,27 @@
         const charUCs = {};
 
         // 1. Extract "Char{N} UC:...;" segments first (before Char{N}: to avoid partial match)
-        //    Pattern: Char1 UC:content;  (terminated by semicolon)
-        remaining = remaining.replace(/Char(\d+)\s+UC:([^;]*);?/gi, (match, idx, content) => {
+        //    Pattern: Char1 UC:content; (terminated by semicolon or end of string)
+        remaining = remaining.replace(/Char(\d+)\s+UC\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
             charUCs[idx] = content.trim();
             return ''; // remove from remaining
         });
 
         // 2. Extract "Char{N}:content" segments (with optional |centers:XY)
-        //    Pattern: Char1:content|centers:C3; or Char1:content; (terminated by semicolon)
-        remaining = remaining.replace(/Char(\d+):([^;]+?(?:\|centers:[A-Ea-e][1-5])?)\s*;?/gi, (match, idx, content) => {
+        //    Pattern: Char1:content|centers:C3; or Char1:content; (terminated by semicolon or end of string)
+        remaining = remaining.replace(/Char(\d+)\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
             let caption = content.trim();
             let coord = { x: 0.5, y: 0.5 };
+            let hasCoord = false;
 
             const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5])\s*$/i);
             if (centersMatch) {
                 coord = parseCoord(centersMatch[1]);
                 caption = caption.slice(0, centersMatch.index).trim();
+                hasCoord = true;
             }
 
-            chars[idx] = { caption: caption, centers: [coord] };
+            chars[idx] = { caption: caption, centers: [coord], hasCoord };
             return ''; // remove from remaining
         });
 
@@ -90,13 +92,13 @@
     // ── Payload Hook ─────────────────────────────────────────
     RBQ.on('buildNaiV4Payload', (payload) => {
         const store = getStore();
-        if (!store.enabled) return payload;
-
         const rawPrompt = payload.input || '';
         const parsed = parseAndExtract(rawPrompt);
         if (!parsed) return payload;
 
         const { remaining, chars, charUCs, charIndices } = parsed;
+        const hasExplicitCoords = charIndices.some(idx => chars[idx].hasCoord);
+        const useCoords = hasExplicitCoords || !!store.useCoords;
 
         // Build v4_prompt char_captions
         const charCaptions = charIndices.map(idx => ({
@@ -127,7 +129,7 @@
                 base_caption: baseCaption,
                 char_captions: charCaptions
             },
-            use_coords: !!store.useCoords,
+            use_coords: !!useCoords,
             use_order: true,
             legacy_uc: false
         };

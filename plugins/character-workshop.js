@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.10';
+    const VERSION = '2.2.11';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -758,6 +758,42 @@
     }
 
     // ══════════════════════════════════════════════════════════
+    //  Intelligent Action-Camera Conflict Pruning
+    //  面部特写/半身/大腿以上构图时，自动清洗动作中与构图相矛盾的姿态词与视角词，
+    //  防止 AI 被动作里残留的 full body / legs focus / standing 等强行拉远画面
+    // ══════════════════════════════════════════════════════════
+    function pruneConflictingActionTags(actionText, cameraText) {
+        if (!actionText || !cameraText) return actionText;
+        const camLower = cameraText.toLowerCase();
+
+        const isCloseUp = /\b(close-up|close_up|face.?focus|headshot|portrait)\b/i.test(camLower);
+        const isUpperBody = isCloseUp || /\b(upper.?body)\b/i.test(camLower);
+        const isCowboy = isUpperBody || /\b(cowboy.?shot)\b/i.test(camLower);
+
+        if (!isCowboy) return actionText;
+
+        // 不同构图级别的冲突词库 (从宽到窄)
+        // cowboy shot (大腿以上)：剔除全身相关
+        const CONFLICT_COWBOY = /\b(full.?body|legs.?focus|legs_focus|feet.?focus|feet_focus)\b/i;
+        // upper body (半身)：在 cowboy 基础上再剔除 cowboy shot 自身
+        const CONFLICT_UPPER = /\b(full.?body|legs.?focus|legs_focus|feet.?focus|feet_focus|cowboy.?shot)\b/i;
+        // close-up / face focus (面部特写)：激进清洗，剔除一切暗示全身/下半身/姿态的构图词
+        const CONFLICT_CLOSEUP = /\b(full.?body|upper.?body|cowboy.?shot|legs.?focus|legs_focus|feet.?focus|feet_focus|standing|walking|running|jumping|kicking|back.?view|ass.?view|from.?behind|from.?below)\b/i;
+
+        const tags = actionText.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+        const result = [];
+
+        for (const tag of tags) {
+            if (isCloseUp && CONFLICT_CLOSEUP.test(tag)) continue;
+            if (isUpperBody && !isCloseUp && CONFLICT_UPPER.test(tag)) continue;
+            if (isCowboy && !isUpperBody && CONFLICT_COWBOY.test(tag)) continue;
+            result.push(tag);
+        }
+
+        return result.join(', ');
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  Prompt Composition & Multi-Engine Template Adaptation
     // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
@@ -918,6 +954,12 @@
                 .replace(/^[,;\s]+|[,;\s]+$/g, '')
                 .trim();
 
+            // 构图冲突清洗：清除动作中与用户选择的机位相矛盾的构图/姿态词
+            // 例如用户选了 face focus + close-up，动作里的 full body / legs focus / standing 等必须被剔除
+            if (cameraTags) {
+                allActions = pruneConflictingActionTags(allActions, cameraTags);
+            }
+
             // 动作与服装姿态冲突清洗：如坐姿/跪姿/卧姿自动清理服装和外貌里的 standing
             if (allActions.match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
                 outfit = outfit.replace(/\bstanding\b,?\s*/gi, '').trim();
@@ -965,41 +1007,30 @@
             }
         });
 
-        // 仅在用户显式勾选 5x5 坐标时，输出坐标分片语法
-        if (comp?.useCoords === true) {
-            const scenePart = [countTag, cameraTags, totalInteractions, totalScene].filter(Boolean).join(', ');
-            const parts = [`Scene: ${scenePart}`];
-
-            charDetails.forEach(char => {
-                let slotActions = [char.tplActionForSlot, char.slotAction].filter(Boolean).join(', ');
-                const charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
-                if (charContent) {
-                    parts.push(`Char${char.n}: ${charContent}${char.centersSuffix}`);
-                    if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
-                }
-            });
-
-            return parts.join('; ');
-        }
-
-        // 默认模式（自然连贯流：完美对应世界书测试生图，NovelAI / SDXL 原生表现最优）
-        const charContents = charDetails.map((char, i) => {
-            let slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
-            return [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
-        }).filter(Boolean);
-
         // 彻底杜绝 "2girls, 1girl" 或 "1girl, 1boy, 1girl" 的重叠矛盾：
-        // 如果 totalInteractions 开头自带人数词，将其清洗规范化由 countTag 统一置顶统御
         let cleanInteractions = totalInteractions
             .replace(/^(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys|1girl|1boy)\s*,?\s*/gi, '')
             .trim();
-        const sceneLead = [countTag, cameraTags, cleanInteractions].filter(Boolean).join(', ');
+        if (cameraTags) {
+            cleanInteractions = pruneConflictingActionTags(cleanInteractions, cameraTags);
+        }
 
-        return [
-            sceneLead,
-            totalScene,
-            ...charContents
-        ].filter(Boolean).join(', ');
+        // 多角色标准分片结构：Scene: ...; Char1: ...; Char2: ...
+        // 当开启 5x5 严格坐标时附带 |centers:XY；关闭时由 AI 自主决定站位 (NovelAI V4 原生 Order-based 多角色模式)
+        const scenePart = [countTag, cameraTags, cleanInteractions, totalScene].filter(Boolean).join(', ');
+        const parts = [`Scene: ${scenePart}`];
+
+        charDetails.forEach(char => {
+            let slotActions = [char.tplActionForSlot, char.slotAction].filter(Boolean).join(', ');
+            const charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+            if (charContent) {
+                const centerSuffix = (comp?.useCoords === true) ? char.centersSuffix : '';
+                parts.push(`Char${char.n}: ${charContent}${centerSuffix}`);
+                if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
+            }
+        });
+
+        return parts.join('; ');
     }
 
     // ══════════════════════════════════════════════════════════
@@ -2791,6 +2822,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
             const s = RBQ.api.getSettings();
             if (!s[MCC_KEY]) s[MCC_KEY] = {};
+            s[MCC_KEY].enabled = true;
             s[MCC_KEY].useCoords = comp.useCoords === true;
             RBQ.api.saveSettings();
 
@@ -3029,6 +3061,98 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             }
         });
     }
+
+    // ══════════════════════════════════════════════════════════
+    //  NAI V4 Multi-Char Direct Payload Interceptor (Safety Net)
+    //  确保无论外部多角色插件是否开启，只要 Prompt 含有 Char1/Char2 结构，
+    //  就绝对保证转换为 NovelAI V4 原生 char_captions 多角色通道！
+    // ══════════════════════════════════════════════════════════
+    RBQ.on('buildNaiV4Payload', (payload) => {
+        // 若已经被其他插件 (如 multi-char-composer) 处理过，跳过
+        if (payload?.parameters?.v4_prompt?.caption?.char_captions?.length > 0) return payload;
+
+        const rawPrompt = payload?.input || '';
+        if (!/Char\d+:/i.test(rawPrompt)) return payload;
+
+        let normalized = rawPrompt
+            .replace(/Character\s*(\d+)\s*Prompt:/gi, 'Char$1:')
+            .replace(/Character\s*(\d+)\s*UC:/gi, 'Char$1 UC:')
+            .replace(/Scene\s*Composition:/gi, 'Scene:');
+
+        const chars = {};
+        const charUCs = {};
+
+        normalized = normalized.replace(/Char(\d+)\s+UC\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
+            charUCs[idx] = content.trim();
+            return '';
+        });
+
+        normalized = normalized.replace(/Char(\d+)\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
+            let caption = content.trim();
+            let coord = { x: 0.5, y: 0.5 };
+            let hasCoord = false;
+
+            const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5])\s*$/i);
+            if (centersMatch) {
+                const s = centersMatch[1].toUpperCase();
+                const COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
+                const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
+                coord = { x: COL_MAP[s[0]] || 0.5, y: ROW_MAP[s[1]] || 0.5 };
+                caption = caption.slice(0, centersMatch.index).trim();
+                hasCoord = true;
+            }
+
+            chars[idx] = { caption, centers: [coord], hasCoord };
+            return '';
+        });
+
+        const charIndices = Object.keys(chars).sort((a, b) => Number(a) - Number(b));
+        if (charIndices.length === 0) return payload;
+
+        let remaining = normalized
+            .replace(/Scene:/gi, '')
+            .replace(/image###/g, '').replace(/###/g, '')
+            .replace(/[;,]\s*[;,]/g, ',')
+            .replace(/^[;,\s]+|[;,\s]+$/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+        const hasCoords = charIndices.some(idx => chars[idx].hasCoord);
+
+        const charCaptions = charIndices.map(idx => ({
+            char_caption: chars[idx].caption,
+            centers: chars[idx].centers
+        }));
+
+        const negCharCaptions = charIndices.map(idx => ({
+            char_caption: charUCs[idx] || '',
+            centers: chars[idx].centers
+        }));
+
+        const baseCaption = remaining;
+        const existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
+            || payload.parameters?.negative_prompt
+            || '';
+
+        payload.input = baseCaption;
+        if (!payload.parameters) payload.parameters = {};
+        payload.parameters.v4_prompt = {
+            caption: { base_caption: baseCaption, char_captions: charCaptions },
+            use_coords: !!hasCoords,
+            use_order: true,
+            legacy_uc: false
+        };
+        payload.parameters.v4_negative_prompt = {
+            caption: { base_caption: existingNegBase, char_captions: negCharCaptions },
+            use_coords: false,
+            use_order: false,
+            legacy_uc: false
+        };
+
+        console.info('[' + PLUGIN_NAME + '] NAI V4 多角色通道直通成功: ' + charIndices.length + ' 个角色已映射');
+        return payload;
+    });
+
     mount();
     console.info('[' + PLUGIN_NAME + '] v' + VERSION + ' loaded — Complete Character & Stage Engine');
 

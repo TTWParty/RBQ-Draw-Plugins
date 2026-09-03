@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.4';
+    const VERSION = '2.2.5';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -32,7 +32,8 @@
         if (!rawText) return '';
         let s = String(rawText).trim();
         // 1. 剥离行首注释标题，例如 "- 自慰:", "【公主抱】:", "## 动作", "1. ", "- 动作 (哺乳):"
-        s = s.replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '');
+        // 注意：严防误伤 3.0:: 等 NAI 权重语法，且标题内绝不能包含逗号
+        s = s.replace(/^[#\-\*\s]*[^,\n:：]{1,40}(?<!:):(?!:)\s*/gm, '');
         // 2. 剥离中段常见的中文标签头 (如 核心特征:, 服饰- 上身服饰:, 身份:, 拓展资料区- 道具/武器:)
         s = s.replace(/(身份|核心特征|固有特征|外貌特征|服饰|上身服饰|下身服饰|拓展资料区|道具|武器|特征|外貌|体态|服装|饰品|装备|常服|战斗服|泳装|睡衣|私服|校服|正装)[-_—－\s]*(上身|下身|头部|面部|手部|足部|道具|武器|服饰)?[:：]\s*/g, ', ');
         // 3. 将斜杠同义词转为逗号
@@ -51,7 +52,7 @@
         // 8. 规范标点符号
         s = s.replace(/[-_]{2,}/g, '_');
         s = s.replace(/[,;，；\s]+,/g, ', ');
-        s = s.replace(/^[,\s;]+|[,\s;]+$/g, '');
+        s = s.replace(/^[#\-\*\s,;]+|[,\s;]+$/g, '');
         return s.trim();
     }
 
@@ -759,10 +760,24 @@
         const extraChar1Tpl = tplChar1Actions.filter(Boolean).join(', ');
         const extraChar2Tpl = tplChar2Actions.filter(Boolean).join(', ');
 
-        // Active slots that have characters assigned
-        const activeSlots = slots.filter(s => s && (s.charName || s.customOutfit || s.action));
-        const effectiveSlots = activeSlots.length > 0 ? activeSlots : slots.slice(0, 1);
-        const isSolo = effectiveSlots.length <= 1;
+        // 关键判断：是否属于双人/多角色语境
+        // 只要满足以下任一条件，就属于双人/多角色交互：
+        // 1. 槽位数为 2 人或以上；
+        // 2. 模板中含有 Char2 动作；
+        // 3. 选入了双人互动/体位条目 (interactionList)；
+        // 4. 动作或模板自带 1girl, 1boy / 2girls / 2boys / 双人交互关键词。
+        const hasDuoContext = slots.length > 1 || !!extraChar2Tpl || interactionList.length > 0 || /\b(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys)\b/i.test(totalInteractions + ' ' + totalSoloActions);
+
+        // 有效参演槽位：在双人语境下，即使配角未绑定专属档案，也代表模板/动作中的配角（如男主/背后控制者），绝不能过滤掉！
+        let effectiveSlots;
+        if (hasDuoContext) {
+            effectiveSlots = slots.length > 1 ? slots : [...slots, { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' }];
+        } else {
+            const activeSlots = slots.filter(s => s && (s.charName || s.customOutfit || s.action));
+            effectiveSlots = activeSlots.length > 0 ? activeSlots : slots.slice(0, 1);
+        }
+
+        const isSolo = effectiveSlots.length <= 1 && !hasDuoContext;
 
         let girlCount = 0;
         let boyCount = 0;
@@ -772,15 +787,8 @@
             const profile = slot.charName ? getProfile(slot.charName) : null;
             const rawName = profile?.displayName || slot.charName || '';
             const base = cleanLorebookTags(profile?.baseTags || '');
-            const outfit = cleanLorebookTags(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
+            let outfit = cleanLorebookTags(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
             const slotAction = cleanLorebookTags(slot.action || '');
-
-            const combinedLower = (rawName + ' ' + base).toLowerCase();
-            if (combinedLower.match(/\b(1boy|male|man)\b/)) {
-                boyCount++;
-            } else {
-                girlCount++;
-            }
 
             // 若名字含有中文字符，严禁作为 Danbooru 提示词标签注入！
             const isChineseName = /[\u4e00-\u9fa5]/.test(rawName);
@@ -788,7 +796,7 @@
             const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
             const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + center) : '';
 
-            // Tpl action assigned to this slot with placeholder interpolation
+            // 模板动作分配给此槽位
             let tplActionForSlot = (i === 0 ? extraChar1Tpl : (i === 1 ? extraChar2Tpl : ''));
             if (tplActionForSlot) {
                 tplActionForSlot = tplActionForSlot
@@ -799,6 +807,19 @@
                     .replace(/\[\s*char2\s*\]/gi, rawName ? `${rawName}, ${base}` : base)
                     .replace(/\{\{\s*outfit\s*\}\}/gi, outfit)
                     .replace(/\[\s*outfit\s*\]/gi, outfit);
+            }
+
+            // 智能避冲：如果模板自带服装（如 uniform, dress），且用户当前使用的是默认初始服装，避免内衣与制服产生严重冲突
+            if (tplActionForSlot && (!slot.outfitId || slot.outfitId === 'w_default') && /\b(uniform|school_uniform|dress|suit|costume|bikini|pajamas|kimono|maid)\b/i.test(tplActionForSlot)) {
+                outfit = '';
+            }
+
+            // 性别检测 (结合名字、特征、服装与模板动作)
+            const combinedLower = (rawName + ' ' + base + ' ' + outfit + ' ' + tplActionForSlot + ' ' + slotAction).toLowerCase();
+            if (combinedLower.match(/\b(1boy|huge male|faceless male|male|man|guy|boy)\b/)) {
+                boyCount++;
+            } else {
+                girlCount++;
             }
 
             return {
@@ -816,14 +837,11 @@
         });
 
         // 空状态保护：当用户既没有选动作、也没有指定任何角色时，展示友好提示，绝不凭空捏造 Prompt
-        const hasAnyChar = charDetails.some(c => c.rawName || c.base || c.outfit || c.slotAction);
+        const hasAnyChar = charDetails.some(c => c.rawName || c.base || c.outfit || c.slotAction || c.tplActionForSlot);
         const hasAnyAction = wbActions.length > 0 || !!comp?.customActionInput;
         if (!hasAnyChar && !hasAnyAction) {
             return '// 💡 动作工坊就绪：请在上方挑选世界书动作/分镜模板，并安排参演角色档案...';
         }
-
-        const s = typeof RBQ?.api?.getSettings === 'function' ? RBQ.api.getSettings() : {};
-        const isNai = s.currentMode === 'nai';
 
         // ── CASE 1: SOLO MODE ──
         if (isSolo) {
@@ -857,7 +875,7 @@
                 base = base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
             }
 
-            if (isNai && comp?.useCoords === true) {
+            if (comp?.useCoords === true) {
                 const scenePart = [genderSolo, allActions, totalScene].filter(Boolean).join(', ');
                 const charPart = [char.namePrefix, base, outfit].filter(Boolean).join(', ');
                 const res = [`Scene: ${scenePart}`, `Char1: ${charPart}${char.centersSuffix}`];
@@ -879,54 +897,50 @@
             countTag = `${girlCount}girl${girlCount > 1 ? 's' : ''}, ${boyCount}boy${boyCount > 1 ? 's' : ''}`;
         }
 
-        if (isNai) {
-            // NovelAI V4 Multi-Char Structured Syntax
+        // 姿态冲突自动清洗
+        const allInteractionText = totalInteractions + ' ' + totalSoloActions;
+        charDetails.forEach(char => {
+            if ((char.tplActionForSlot + ' ' + allInteractionText).match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
+                char.outfit = char.outfit.replace(/\bstanding\b,?\s*/gi, '').trim();
+                char.base = char.base.replace(/\bstanding\b,?\s*/gi, '').trim();
+            }
+            if ((char.tplActionForSlot + ' ' + allInteractionText).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
+                char.outfit = char.outfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+                char.base = char.base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+            }
+        });
+
+        // 仅在用户显式勾选 5x5 坐标时，输出坐标分片语法
+        if (comp?.useCoords === true) {
             const scenePart = [countTag, totalInteractions, totalScene].filter(Boolean).join(', ');
             const parts = [`Scene: ${scenePart}`];
 
-            charDetails.forEach((char, i) => {
-                let slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
-                let cOutfit = char.outfit;
-                let cBase = char.base;
-                if ((slotActions + ' ' + totalInteractions).match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
-                    cOutfit = cOutfit.replace(/\bstanding\b,?\s*/gi, '').trim();
-                    cBase = cBase.replace(/\bstanding\b,?\s*/gi, '').trim();
+            charDetails.forEach(char => {
+                let slotActions = [char.tplActionForSlot, char.slotAction].filter(Boolean).join(', ');
+                const charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+                if (charContent) {
+                    parts.push(`Char${char.n}: ${charContent}${char.centersSuffix}`);
+                    if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
                 }
-                if ((slotActions + ' ' + totalInteractions).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
-                    cOutfit = cOutfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
-                    cBase = cBase.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
-                }
-                const charContent = [char.namePrefix, cBase, cOutfit, slotActions].filter(Boolean).join(', ');
-                parts.push(`Char${char.n}: ${charContent}${char.centersSuffix}`);
-                if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
             });
 
             return parts.join('; ');
-        } else {
-            // ComfyUI / WebUI / General SDXL Flat Syntax
-            const charSummaries = charDetails.map((char, i) => {
-                let slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
-                let cOutfit = char.outfit;
-                let cBase = char.base;
-                if ((slotActions + ' ' + totalInteractions).match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
-                    cOutfit = cOutfit.replace(/\bstanding\b,?\s*/gi, '').trim();
-                    cBase = cBase.replace(/\bstanding\b,?\s*/gi, '').trim();
-                }
-                if ((slotActions + ' ' + totalInteractions).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
-                    cOutfit = cOutfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
-                    cBase = cBase.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
-                }
-                return [char.namePrefix, cBase, cOutfit, slotActions].filter(Boolean).join(', ');
-            });
-
-            return [
-                countTag,
-                totalInteractions,
-                ...charSummaries,
-                totalSoloActions,
-                totalScene
-            ].filter(Boolean).join(', ');
         }
+
+        // 默认模式（自然连贯流：完美对应世界书测试生图，NovelAI / SDXL 原生表现最优）
+        const charContents = charDetails.map((char, i) => {
+            let slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
+            return [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+        }).filter(Boolean);
+
+        const hasCountInInteraction = new RegExp(`\\b(${countTag.replace(/,\s*/g, '|')})\\b`, 'i').test(totalInteractions);
+        const sceneLead = hasCountInInteraction ? totalInteractions : [countTag, totalInteractions].filter(Boolean).join(', ');
+
+        return [
+            sceneLead,
+            totalScene,
+            ...charContents
+        ].filter(Boolean).join(', ');
     }
 
     // ══════════════════════════════════════════════════════════
@@ -2229,12 +2243,19 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         let char1Part = '';
         let char2Part = '';
 
-        // Flatten newlines into semicolons
+        // Flatten newlines into semicolons for inline matching
         const flat = s.replace(/\r?\n/g, '; ');
 
-        // Scene match
+        // Scene match: explicit Scene: or implicit content before first Char1/Char2
         const sMatch = flat.match(/\bscene\s*[:：]\s*([^;]+(?:;(?!\s*(?:char\d|scene)\s*[:：])[^;]+)*)/i);
-        if (sMatch) scenePart = cleanLorebookTags(sMatch[1]);
+        if (sMatch) {
+            scenePart = cleanLorebookTags(sMatch[1]);
+        } else {
+            const firstCharIdx = s.search(/\bchar\s*[12]\s*[:：]/i);
+            if (firstCharIdx > 0) {
+                scenePart = cleanLorebookTags(s.slice(0, firstCharIdx));
+            }
+        }
 
         // Char 1 match
         const c1Match = flat.match(/\bchar\s*1\s*[:：]\s*([^;]+(?:;(?!\s*(?:char\d|scene)\s*[:：])[^;]+)*)/i);

@@ -4108,6 +4108,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         const getAllEntries = () => {
             const list = [];
             for (const src of sources) {
+                // 如果是查看“全部”，且该世界书在智能触发中被用户禁用了 (src.enabled === false)，彻底排除！
+                if (selectedSourceId === 'all' && src.enabled === false) continue;
                 if (selectedSourceId !== 'all' && src.id !== selectedSourceId) continue;
                 try {
                     const parsed = parseLorebookRawJson(src.rawJson, src.name);
@@ -4176,9 +4178,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div style="padding: 10px 18px !important; display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-wrap: wrap !important; align-items: center !important;">
                     <input id="rbq-sdt-lb-search-input" type="text" placeholder="🔍 输入关键词实时搜索 (如: 另类日常, 兽奸, 猥亵, 拘束, 紧身裙, 拳击, 跳蛋, 视角, vibrator)..." style="flex: 1 !important; min-width: 200px !important; height: 34px !important; margin: 0 !important; font-size: 13px !important; padding: 0 12px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #fff !important;">
                     
-                    <select id="rbq-sdt-lb-search-source" style="height: 34px !important; margin: 0 !important; font-size: 12px !important; max-width: 200px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #79e4ff !important;">
-                        <option value="all">🌐 全部世界书 (${sources.reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
-                        ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>📖 ${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
+                    <select id="rbq-sdt-lb-search-source" style="height: 34px !important; margin: 0 !important; font-size: 12px !important; max-width: 220px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 8px !important; color: #79e4ff !important;">
+                        <option value="all">🌐 全部启用世界书 (${sources.filter(s => s.enabled !== false).reduce((a, b) => a + (b.entryCount || 0), 0)}条)</option>
+                        ${sources.map(s => `<option value="${s.id}" ${selectedSourceId === s.id ? 'selected' : ''}>${s.enabled === false ? '⛔ [已禁用] ' : '📖 '}${escapeHtml(s.name)} (${s.entryCount || 0}条)</option>`).join('')}
                     </select>
                 </div>
 
@@ -8641,6 +8643,14 @@ SCHEMA:
 
     RBQ.api.importCharacterFromCurrentCard = () => {
         return importCharacterFromCurrentCard();
+    };
+
+    RBQ.api.getLorebookSources = () => {
+        return ensureLorebookStore();
+    };
+
+    RBQ.api.parseLorebookRawJson = (raw, name) => {
+        return parseLorebookRawJson(raw, name);
     };
 
     waitForPanel();

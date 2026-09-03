@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.1';
+    const VERSION = '2.2.2';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1369,33 +1369,31 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         const selectedNames = new Set();
 
         const mask = document.createElement('div');
-        mask.className = 'cw-mask';
+        mask.className = 'cw-modal-mask';
         mask.id = 'cw-mount-lorebook-modal';
+        mask.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483550 !important;background:rgba(10,15,29,.92) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+
+        const closeModal = () => {
+            mask.remove();
+            if (!document.querySelector('.cw-modal-mask')) {
+                document.body.classList.remove('cw-submodal-open');
+            }
+        };
 
         const renderModal = () => {
             const currentSrc = sources.find(s => s.id === selectedSourceId) || sources[0];
             const profilesDict = extractDoujinProfilesFromLorebook(currentSrc);
             const allNames = Object.keys(profilesDict);
-            
-            const filteredNames = allNames.filter(n => {
-                if (!searchQuery) return true;
-                const p = profilesDict[n];
-                const q = searchQuery.toLowerCase();
-                return n.toLowerCase().includes(q) || 
-                       (p.displayName && p.displayName.toLowerCase().includes(q)) || 
-                       (p.baseTags && p.baseTags.toLowerCase().includes(q)) ||
-                       (p.keys && p.keys.some(k => k.toLowerCase().includes(q)));
-            });
 
             const isCurrentlyMounted = (ws.mountedLorebookId === currentSrc.id);
 
             mask.innerHTML = `
-                <div class="cw-modal" style="width:780px;max-width:95vw;height:84vh;display:flex;flex-direction:column">
+                <div class="cw-modal" style="width:780px;max-width:95vw;height:84vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
                     <div class="cw-modal-hd">
                         <strong style="color:#c084fc;font-size:14px;display:flex;align-items:center;gap:7px">
                             <i class="fa-solid fa-book-bookmark"></i> 挂载/导入世界书同人库到角色档案库
                         </strong>
-                        <button class="cw-btn sm" id="cw-ml-x">✕</button>
+                        <button class="cw-btn sm" id="cw-ml-x" type="button">✕</button>
                     </div>
 
                     <div style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.2);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -1415,44 +1413,17 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     <!-- Search & Selection controls -->
                     <div style="padding:8px 14px;display:flex;gap:8px;align-items:center;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.15)">
                         <input id="cw-ml-search" class="cw-in" type="text" placeholder="🔍 搜索同人角色姓名、外貌特征或触发词 (共 ${allNames.length} 位角色)..." value="${esc(searchQuery)}" style="flex:1" />
-                        <button class="cw-btn sm" id="cw-ml-sel-all" type="button">全选当前 (${filteredNames.length})</button>
+                        <button class="cw-btn sm" id="cw-ml-sel-all" type="button">全选当前</button>
                         <button class="cw-btn sm" id="cw-ml-sel-none" type="button">取消全选</button>
                     </div>
 
                     <!-- Character List -->
-                    <div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px" id="cw-ml-list">
-                        ${filteredNames.length === 0 ? `
-                            <div style="text-align:center;padding:40px;color:rgba(255,255,255,0.5)">
-                                <div><i class="fa-solid fa-filter" style="font-size:24px;opacity:0.4;margin-bottom:8px"></i></div>
-                                <div>未在该世界书中找到匹配的角色条目</div>
-                            </div>
-                        ` : filteredNames.map(n => {
-                            const p = profilesDict[n];
-                            const isChecked = selectedNames.has(n);
-                            return `
-                                <div style="display:flex;gap:10px;align-items:center;background:rgba(255,255,255,0.03);border:1px solid ${isChecked ? 'rgba(192,132,252,0.6)' : 'rgba(255,255,255,0.07)'};border-radius:8px;padding:8px 12px;transition:0.15s">
-                                    <input type="checkbox" class="cw-ml-chk" data-name="${esc(n)}" ${isChecked ? 'checked' : ''} style="transform:scale(1.1);cursor:pointer" />
-                                    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:2px">
-                                        <div style="display:flex;align-items:center;gap:6px">
-                                            <strong style="color:#f8fafc;font-size:13px">${esc(p.displayName || n)}</strong>
-                                            ${p.keys?.length > 0 ? `<span style="font-size:10.5px;color:rgba(255,255,255,0.45)">[${esc(p.keys.slice(0, 3).join(', '))}]</span>` : ''}
-                                        </div>
-                                        <div style="font-size:11px;color:rgba(255,255,255,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(p.baseTags)}">
-                                            <span style="color:#79e4ff">外貌Tags:</span> ${esc(p.baseTags || '无')}
-                                        </div>
-                                    </div>
-                                    <button class="cw-btn xs cw-ml-import-single" data-name="${esc(n)}" type="button" style="background:rgba(56,189,248,0.15);border:1px solid rgba(56,189,248,0.3);color:#38bdf8">
-                                        <i class="fa-solid fa-file-import"></i> 导入常驻档案
-                                    </button>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
+                    <div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px" id="cw-ml-list"></div>
 
                     <!-- Footer with Batch Import -->
                     <div class="cw-modal-ft" style="justify-content:space-between">
-                        <span style="font-size:11px;color:rgba(255,255,255,0.6)">
-                            已选: <strong style="color:#c084fc">${selectedNames.size}</strong> / ${filteredNames.length} 位角色
+                        <span style="font-size:11px;color:rgba(255,255,255,0.6)" id="cw-ml-count-text">
+                            已选: <strong style="color:#c084fc">${selectedNames.size}</strong> / ${allNames.length} 位角色
                         </span>
                         <div style="display:flex;gap:8px">
                             <button class="cw-btn" id="cw-ml-close" type="button">关闭</button>
@@ -1464,8 +1435,95 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 </div>
             `;
 
-            mask.querySelector('#cw-ml-x')?.addEventListener('click', () => mask.remove());
-            mask.querySelector('#cw-ml-close')?.addEventListener('click', () => mask.remove());
+            const bindListEvents = () => {
+                mask.querySelectorAll('.cw-ml-chk').forEach(chk => {
+                    chk.addEventListener('change', (e) => {
+                        const name = e.target.dataset.name;
+                        if (e.target.checked) selectedNames.add(name);
+                        else selectedNames.delete(name);
+                        updateFooterCounts();
+                    });
+                });
+
+                mask.querySelectorAll('.cw-ml-import-single').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const name = btn.dataset.name;
+                        const p = profilesDict[name];
+                        if (!p) return;
+                        saveProfile(name, p);
+                        toastr.success(`已将「${name}」导入为常驻角色档案！`, PLUGIN_NAME);
+                        if (onMountedOrImported) onMountedOrImported();
+                    });
+                });
+            };
+
+            const updateFooterCounts = (filteredTotal = null) => {
+                const countText = mask.querySelector('#cw-ml-count-text');
+                const total = (filteredTotal != null) ? filteredTotal : allNames.length;
+                if (countText) {
+                    countText.innerHTML = `已选: <strong style="color:#c084fc">${selectedNames.size}</strong> / ${total} 位角色`;
+                }
+                const btn = mask.querySelector('#cw-ml-import-batch');
+                if (btn) {
+                    btn.disabled = (selectedNames.size === 0);
+                    btn.style.opacity = (selectedNames.size === 0) ? '0.5' : '1';
+                    btn.innerHTML = `<i class="fa-solid fa-bolt"></i> 批量导入所选到角色档案库 (${selectedNames.size} 位)`;
+                }
+            };
+
+            const updateList = () => {
+                const filteredNames = allNames.filter(n => {
+                    if (!searchQuery) return true;
+                    const p = profilesDict[n];
+                    const q = searchQuery.toLowerCase();
+                    return n.toLowerCase().includes(q) || 
+                           (p.displayName && p.displayName.toLowerCase().includes(q)) || 
+                           (p.baseTags && p.baseTags.toLowerCase().includes(q)) ||
+                           (p.keys && p.keys.some(k => k.toLowerCase().includes(q)));
+                });
+
+                const listEl = mask.querySelector('#cw-ml-list');
+                if (listEl) {
+                    listEl.innerHTML = filteredNames.length === 0 ? `
+                        <div style="text-align:center;padding:40px;color:rgba(255,255,255,0.5)">
+                            <div><i class="fa-solid fa-filter" style="font-size:24px;opacity:0.4;margin-bottom:8px"></i></div>
+                            <div>未在该世界书中找到匹配的角色条目</div>
+                        </div>
+                    ` : filteredNames.map(n => {
+                        const p = profilesDict[n];
+                        const isChecked = selectedNames.has(n);
+                        return `
+                            <div style="display:flex;gap:10px;align-items:center;background:rgba(255,255,255,0.03);border:1px solid ${isChecked ? 'rgba(192,132,252,0.6)' : 'rgba(255,255,255,0.07)'};border-radius:8px;padding:8px 12px;transition:0.15s">
+                                <input type="checkbox" class="cw-ml-chk" data-name="${esc(n)}" ${isChecked ? 'checked' : ''} style="transform:scale(1.1);cursor:pointer" />
+                                <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:2px">
+                                    <div style="display:flex;align-items:center;gap:6px">
+                                        <strong style="color:#f8fafc;font-size:13px">${esc(p.displayName || n)}</strong>
+                                        ${p.keys?.length > 0 ? `<span style="font-size:10.5px;color:rgba(255,255,255,0.45)">[${esc(p.keys.slice(0, 3).join(', '))}]</span>` : ''}
+                                    </div>
+                                    <div style="font-size:11px;color:rgba(255,255,255,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(p.baseTags)}">
+                                        <span style="color:#79e4ff">外貌Tags:</span> ${esc(p.baseTags || '无')}
+                                    </div>
+                                </div>
+                                <button type="button" class="cw-btn xs cw-ml-import-single" data-name="${esc(n)}" style="background:rgba(56,189,248,0.15);border:1px solid rgba(56,189,248,0.3);color:#38bdf8">
+                                    <i class="fa-solid fa-file-import"></i> 导入常驻档案
+                                </button>
+                            </div>
+                        `;
+                    }).join('');
+
+                    bindListEvents();
+                }
+
+                updateFooterCounts(filteredNames.length);
+
+                mask.querySelector('#cw-ml-sel-all')?.addEventListener('click', () => {
+                    filteredNames.forEach(n => selectedNames.add(n));
+                    updateList();
+                });
+            };
+
+            mask.querySelector('#cw-ml-x')?.addEventListener('click', closeModal);
+            mask.querySelector('#cw-ml-close')?.addEventListener('click', closeModal);
 
             mask.querySelector('#cw-ml-source-sel')?.addEventListener('change', (e) => {
                 selectedSourceId = e.target.value;
@@ -1484,42 +1542,12 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
             mask.querySelector('#cw-ml-search')?.addEventListener('input', (e) => {
                 searchQuery = e.target.value;
-                renderModal();
-            });
-
-            mask.querySelector('#cw-ml-sel-all')?.addEventListener('click', () => {
-                filteredNames.forEach(n => selectedNames.add(n));
-                renderModal();
+                updateList();
             });
 
             mask.querySelector('#cw-ml-sel-none')?.addEventListener('click', () => {
                 selectedNames.clear();
-                renderModal();
-            });
-
-            mask.querySelectorAll('.cw-ml-chk').forEach(chk => {
-                chk.addEventListener('change', (e) => {
-                    const name = e.target.dataset.name;
-                    if (e.target.checked) selectedNames.add(name);
-                    else selectedNames.delete(name);
-                    const btn = mask.querySelector('#cw-ml-import-batch');
-                    if (btn) {
-                        btn.disabled = (selectedNames.size === 0);
-                        btn.style.opacity = (selectedNames.size === 0) ? '0.5' : '1';
-                        btn.innerHTML = `<i class="fa-solid fa-bolt"></i> 批量导入所选到角色档案库 (${selectedNames.size} 位)`;
-                    }
-                });
-            });
-
-            mask.querySelectorAll('.cw-ml-import-single').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const name = btn.dataset.name;
-                    const p = profilesDict[name];
-                    if (!p) return;
-                    saveProfile(name, p);
-                    toastr.success(`已将「${name}」导入为常驻角色档案！`, PLUGIN_NAME);
-                    if (onMountedOrImported) onMountedOrImported();
-                });
+                updateList();
             });
 
             mask.querySelector('#cw-ml-import-batch')?.addEventListener('click', () => {
@@ -1534,9 +1562,15 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 }
                 toastr.success(`成功导入 ${count} 位角色到角色档案库！`, PLUGIN_NAME);
                 if (onMountedOrImported) onMountedOrImported();
-                mask.remove();
+                closeModal();
             });
+
+            updateList();
         };
+
+        mask.addEventListener('click', (e) => {
+            if (e.target === mask) closeModal();
+        });
 
         renderModal();
         document.body.appendChild(mask);
@@ -1570,8 +1604,8 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                         </div>
                     </div>
                     <div style="display:flex;gap:6px;align-items:center">
-                        <button class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
-                        <button class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
+                        <button type="button" class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
+                        <button type="button" class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
                     </div>
                 </div>
                 <div class="cw-chgrid">

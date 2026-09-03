@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.13';
+    const VERSION = '2.0.14';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -414,9 +414,17 @@
     function registerSubmodal(modal) {
         if (!modal) return;
         document.body.classList.add('cw-submodal-open');
+        if (modal.id === 'cw-image-viewer-modal') {
+            document.body.classList.add('cw-viewer-open');
+        }
         const checkClose = () => {
             if (!modal.isConnected) {
-                document.body.classList.remove('cw-submodal-open');
+                if (modal.id === 'cw-image-viewer-modal') {
+                    document.body.classList.remove('cw-viewer-open');
+                }
+                if (!document.querySelector('.cw-modal-mask')) {
+                    document.body.classList.remove('cw-submodal-open');
+                }
             } else {
                 requestAnimationFrame(checkClose);
             }
@@ -432,7 +440,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-test-mode-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.94) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483620 !important;background:rgba(10,15,29,.94) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
         modal.innerHTML = `
             <div class="cw-modal" style="width:480px;max-width:95vw">
                 <div class="cw-modal-hd">
@@ -563,7 +571,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:100000070 !important;background:rgba(0,0,0,.85) !important;backdrop-filter:blur(8px) !important;display:flex !important;align-items:flex-start !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.95) !important;backdrop-filter:blur(12px) !important;-webkit-backdrop-filter:blur(12px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
 
         function renderGallery() {
             const currentItem = results[activeIndex] || results[0];
@@ -641,7 +649,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:100000070 !important;background:rgba(0,0,0,.85) !important;backdrop-filter:blur(8px) !important;display:flex !important;align-items:flex-start !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.95) !important;backdrop-filter:blur(12px) !important;-webkit-backdrop-filter:blur(12px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
         modal.innerHTML = `
             <div class="cw-modal" style="width:680px;max-width:95vw">
                 <div class="cw-modal-hd">
@@ -728,7 +736,12 @@
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
-.cw-modal-mask{position:fixed;inset:0;z-index:2147483647!important;background:rgba(10,15,29,.92)!important;backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch}
+.cw-modal-mask{position:fixed;inset:0;z-index:2147483500!important;background:rgba(10,15,29,.92)!important;backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch}
+#cw-image-viewer-modal{z-index:2147483647!important}
+#cw-test-mode-modal{z-index:2147483620!important}
+#cw-character-editor-modal{z-index:2147483550!important}
+body.cw-viewer-open #cw-character-editor-modal,
+body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!important;pointer-events:none!important;transition:opacity .2s ease,filter .2s ease}
 .cw-modal{background:#0f172a!important;border:1px solid rgba(56,189,248,.35)!important;border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.95)!important;box-sizing:border-box;margin:auto!important;position:relative;flex-shrink:0}
 .cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08);flex-shrink:0}
 .cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;min-height:0}
@@ -804,7 +817,9 @@
 
         let activeWIdx = 0;
         const mask = document.createElement('div');
+        mask.id = 'cw-character-editor-modal';
         mask.className = 'cw-modal-mask';
+        mask.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483550 !important;background:rgba(10,15,29,.92) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
 
         function render() {
             const cw = draft.wardrobe[activeWIdx] || draft.wardrobe[0];

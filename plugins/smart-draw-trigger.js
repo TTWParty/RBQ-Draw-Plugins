@@ -3931,45 +3931,113 @@ Zimage 擅长理解复杂的英文长句和语境。
         const body = String(content || '').trim();
         const keyList = Array.isArray(keys) ? keys.map(k => String(k).trim()).filter(Boolean) : [];
 
+        // 1. 拆解复合标题：提取身份主体 (nativeTopic) 与 具体行为动作 (actionSubTopic)
+        // 例如 "*巫女-性爱" -> nativeTopic: "巫女", actionSubTopic: "性爱"
+        const cleanComment = c.replace(/^[\*#\s]+/, '').replace(/[-_—－\s]*(new|常规|新版|横图|竖图|自用|测试)$/i, '');
+        const commentParts = cleanComment.split(/[-_—－\:\：\/]/).map(p => p.trim()).filter(Boolean);
         const nativeTopic = extractNativeTopic(comment);
+        const actionSubTopic = commentParts.length >= 2 ? commentParts.slice(1).join(' ').toLowerCase() : '';
         const titleLower = nativeTopic.toLowerCase();
         const commentLower = c.toLowerCase();
+        const allKeysText = keyList.join(' ').toLowerCase();
+
+        // 2. 全局高危特征嗅探：动作/体位/性爱 vs 战斗动作 vs 场景
+        const isNSFW = (
+            commentLower.match(/(性爱|体位|口交|深喉|自慰|手交|乳交|足交|腿交|后入|骑乘|女上位|正常位|传教士|强奸|轮奸|群交|多p|迷奸|猥亵|触手|兽奸|兽交|拘束|捆绑|调教|母狗|肉便器|奴隶|孕肚|怀孕|产卵|颜射|中出|精液|失神|潮吹|阿黑颜|偷窥|露出|壁尻|光荣洞|败北|截肢|人棍|变身|洗脑|催眠|做爱|插|穴|小穴|阴茎|肉棒)/i) ||
+            allKeysText.match(/(性爱|体位|口交|自慰|手交|乳交|足交|后入|骑乘|女上位|正常位|强奸|轮奸|群交|多p|迷奸|猥亵|触手|兽奸|兽交|调教|孕肚|怀孕|颜射|中出|精液|潮吹|偷窥|露出|败北)/i) ||
+            body.match(/\b(sex|vaginal|anal|penetration|fellatio|deepthroat|cunnilingus|handjob|paizuri|footjob|oral|masturbation|fingering|orgasm|squirt|impregnation|pregnant|lactation|ahegao|facial|creampie|bukkake|cum|dildo|vibrator|tentacles|tentacle_sex|bestiality|gangbang|group_sex|threesome|double_penetration|bondage|ropes|shibari|humiliation|submissive|spanking|voyeurism|exhibitionism|doggystyle|missionary|cowgirl_position|straddle|straddling|sitting\s*on\s*lap|sex\s*from\s*behind|front-to-back)\b/i)
+        );
+
+        const isCombatOrAction = (
+            commentLower.match(/(战斗|打斗|拔刀|持枪|射击|施法|魔法|飞踢|拳击|跑步|跳跃|冲刺|翻滚|土下座|单手插腰|回眸|招手|比心|踢击|踢脚|踢)/i) ||
+            allKeysText.match(/(战斗|拔刀|持枪|施法|飞踢|拳击|跑步|跳跃|冲刺|踢击)/i) ||
+            body.match(/\b(fighting_stance|kicking|jumping|running|sprinting|sword|slashing|aiming|holding_weapon|dynamic_angle)\b/i)
+        );
+
+        const isScene = (
+            commentLower.match(/(场景|环境|背景|室内|室外|房间|卧室|海滩|街道|星空|夜景|黄昏|夕阳|教室|浴室|泳池|温泉|废墟|森林|城堡)/i) ||
+            body.match(/\b(indoors|outdoors|scenery|landscape|beach|forest|bedroom|living_room|classroom|dungeon|ruins|cityscape|sky|clouds)\b/i)
+        );
 
         let bestMatch = null;
-        let highestScore = 0;
+        let highestScore = -9999;
 
         for (const [mainKey, mainGroup] of Object.entries(SDT_LOREBOOK_TAXONOMY)) {
             for (const sub of mainGroup.subcategories) {
                 let score = 0;
 
-                // 1. Title prefix exact or substring match (ABSOLUTE HIGHEST PRIORITY: +250)
-                if (titleLower) {
-                    if (titleLower === sub.name.toLowerCase() || titleLower.includes(sub.name.toLowerCase())) {
-                        score += 300;
+                // 核心法则 1：动作/行为后缀绝对优先！(+350 分)
+                // 词条名为 "巫女-性爱"、"魔法少女-口交" 时，后面的 "性爱"、"口交" 是事件核心，决定一级大类！
+                if (actionSubTopic) {
+                    if (sub.name.toLowerCase().includes(actionSubTopic) || actionSubTopic.includes(sub.name.toLowerCase())) {
+                        score += 380;
                     }
                     for (const kw of sub.keywords) {
                         const kwL = kw.toLowerCase();
-                        if (titleLower === kwL || titleLower.startsWith(kwL) || titleLower.includes(kwL)) {
-                            score += 250;
+                        if (actionSubTopic.includes(kwL) || kwL.includes(actionSubTopic)) {
+                            score += 350;
                             break;
                         }
                     }
                 }
 
-                // 2. Keyword match in comment / keys (High Priority: +50)
-                for (const kw of sub.keywords) {
-                    const kwL = kw.toLowerCase();
-                    if (commentLower.includes(kwL)) {
-                        score += 50;
+                // 核心法则 2：身份主体匹配 (+220 分)
+                // 词条名为 "巫女-日常服装" 时，没有行为后缀，"巫女" 作为主体归入制服
+                if (titleLower) {
+                    if (titleLower === sub.name.toLowerCase() || titleLower.includes(sub.name.toLowerCase())) {
+                        score += 260;
                     }
-                    if (keyList.some(k => k.toLowerCase().includes(kwL))) {
-                        score += 40;
+                    for (const kw of sub.keywords) {
+                        const kwL = kw.toLowerCase();
+                        if (titleLower === kwL || titleLower.startsWith(kwL) || titleLower.includes(kwL)) {
+                            score += 220;
+                            break;
+                        }
                     }
                 }
 
-                // 3. Tag Regex match in body (Low Priority: +5)
+                // 核心法则 3：全文/注释关键词命中 (+60 / +50 分)
+                for (const kw of sub.keywords) {
+                    const kwL = kw.toLowerCase();
+                    if (commentLower.includes(kwL)) {
+                        score += 60;
+                    }
+                    if (keyList.some(k => k.toLowerCase().includes(kwL))) {
+                        score += 50;
+                    }
+                }
+
+                // 核心法则 4：Prompt 正文 Tag 规则匹配 (+40 分)
                 if (sub.tagRegex && sub.tagRegex.test(body)) {
-                    score += 5;
+                    score += 40;
+                }
+
+                // 核心法则 5：跨域防污染负向惩罚机制 (Crucial Penalties)
+                // ① 若词条属于强性爱/体位/恶堕/触手：严厉惩罚【服装穿搭】和【外貌特征】，绝对禁止把体位误判为衣服！
+                if (isNSFW) {
+                    if (mainGroup.id === 'outfit' || mainGroup.id === 'appearance') {
+                        score -= 800; // 服装穿搭吃 -800 分，彻底断绝误判为衣服的可能
+                    } else if (mainGroup.id === 'nsfw') {
+                        score += 150; // 优先互动体位
+                    }
+                }
+
+                // ② 若词条为激烈战斗动态或动作：惩罚【服装穿搭】，优先【日常姿态】
+                if (isCombatOrAction && !isNSFW) {
+                    if (mainGroup.id === 'outfit') {
+                        score -= 400;
+                    } else if (mainGroup.id === 'pose') {
+                        score += 120;
+                    }
+                }
+
+                // ③ 若词条为场景环境：惩罚【服装穿搭】
+                if (isScene && !isNSFW && !isCombatOrAction) {
+                    if (mainGroup.id === 'outfit' || mainGroup.id === 'appearance') {
+                        score -= 500;
+                    } else if (mainGroup.id === 'scene') {
+                        score += 150;
+                    }
                 }
 
                 if (score > highestScore) {

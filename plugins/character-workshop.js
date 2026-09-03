@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.7';
+    const VERSION = '2.2.8';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -719,6 +719,45 @@
     }
 
     // ══════════════════════════════════════════════════════════
+    //  Intelligent Outfit-Camera Conflict Pruning
+    //  半身/特写/大腿以上构图时，自动清洗鞋袜/下装冲突词，避免 AI 被鞋子迫使拉远画全身
+    // ══════════════════════════════════════════════════════════
+    function pruneConflictingOutfitTags(outfit, cameraText) {
+        if (!outfit || !cameraText) return outfit;
+        const camLower = cameraText.toLowerCase();
+
+        const isCloseUp = /\b(close-up|face focus|headshot|portrait)\b/i.test(camLower);
+        const isUpperBody = isCloseUp || /\b(upper body|upper_body)\b/i.test(camLower);
+        const isCowboy = isUpperBody || /\b(cowboy shot|cowboy_shot)\b/i.test(camLower);
+
+        if (!isCowboy) return outfit;
+
+        const FOOTWEAR_PATTERN = /\b(loafers|shoes|boots|sneakers|sandals|high heels|high_heels|barefoot|feet|toes|socks|tights|stockings|pantyhose|legwear|kneehighs|thighhighs)\b/i;
+        const LOWER_GARMENT_PATTERN = /\b(skirt|pants|shorts|jeans|trousers|panties|thong|underwear|bottomless|leggings)\b/i;
+
+        const rawTags = outfit.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+        const resultTags = [];
+
+        for (let tag of rawTags) {
+            if (isCowboy && FOOTWEAR_PATTERN.test(tag)) {
+                // 剔除鞋袜词汇，但保留可能拼在一起的其他修饰词（如 brown loafers noctchill -> noctchill）
+                const cleaned = tag.replace(/\b([a-z_-]+\s+)?(loafers|shoes|boots|sneakers|sandals|high heels|high_heels|barefoot|feet|toes|socks|tights|stockings|pantyhose|legwear|kneehighs|thighhighs)\b/gi, '').trim();
+                if (cleaned && cleaned.length > 2) {
+                    resultTags.push(cleaned);
+                }
+                continue;
+            }
+            if (isCloseUp && LOWER_GARMENT_PATTERN.test(tag)) {
+                // 肖像特写下彻底剔除下装（裙子、裤子等）
+                continue;
+            }
+            resultTags.push(tag);
+        }
+
+        return resultTags.join(', ');
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  Prompt Composition & Multi-Engine Template Adaptation
     // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
@@ -749,9 +788,9 @@
             }
         });
 
+        const cameraTags = cleanLorebookTags(comp?.camera || '');
         if (comp?.customActionInput) soloActionList.push(cleanLorebookTags(comp.customActionInput));
         if (comp?.scene) sceneList.push(cleanLorebookTags(comp.scene));
-        if (comp?.camera) sceneList.push(cleanLorebookTags(comp.camera));
         if (comp?.atmosphere) sceneList.push(cleanLorebookTags(comp.atmosphere));
 
         const totalInteractions = interactionList.filter(Boolean).join(', ');
@@ -761,14 +800,8 @@
         const extraChar2Tpl = tplChar2Actions.filter(Boolean).join(', ');
 
         // 关键判断：是否属于双人/多角色语境
-        // 只要满足以下任一条件，就属于双人/多角色交互：
-        // 1. 槽位数为 2 人或以上；
-        // 2. 模板中含有 Char2 动作；
-        // 3. 选入了双人互动/体位条目 (interactionList)；
-        // 4. 动作或模板自带 1girl, 1boy / 2girls / 2boys / 双人交互关键词。
         const hasDuoContext = slots.length > 1 || !!extraChar2Tpl || interactionList.length > 0 || /\b(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys)\b/i.test(totalInteractions + ' ' + totalSoloActions);
 
-        // 有效参演槽位：在双人语境下，即使配角未绑定专属档案，也代表模板/动作中的配角（如男主/背后控制者），绝不能过滤掉！
         let effectiveSlots;
         if (hasDuoContext) {
             effectiveSlots = slots.length > 1 ? slots : [...slots, { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' }];
@@ -788,6 +821,10 @@
             const rawName = profile?.displayName || slot.charName || '';
             const base = cleanLorebookTags(profile?.baseTags || '');
             let outfit = cleanLorebookTags(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
+            // 智能构图冲突清洗：半身/特写时自动剔除鞋袜，避免 AI 强行拉远画全身以展示鞋子
+            if (cameraTags) {
+                outfit = pruneConflictingOutfitTags(outfit, cameraTags);
+            }
             const slotAction = cleanLorebookTags(slot.action || '');
 
             // 若名字含有中文字符，严禁作为 Danbooru 提示词标签注入！
@@ -876,15 +913,15 @@
             }
 
             if (comp?.useCoords === true) {
-                const scenePart = [genderSolo, allActions, totalScene].filter(Boolean).join(', ');
+                const scenePart = [genderSolo, cameraTags, allActions, totalScene].filter(Boolean).join(', ');
                 const charPart = [char.namePrefix, base, outfit].filter(Boolean).join(', ');
                 const res = [`Scene: ${scenePart}`, `Char1: ${charPart}${char.centersSuffix}`];
                 if (char.uc) res.push(`Char1 UC: ${char.uc}`);
                 return res.join('; ');
             }
 
-            // Universal clean solo prompt
-            return [genderSolo, char.namePrefix, base, outfit, allActions, totalScene].filter(Boolean).join(', ');
+            // Universal clean solo prompt: camera framing tags at the front for maximum canvas crop influence
+            return [genderSolo, cameraTags, char.namePrefix, base, outfit, allActions, totalScene].filter(Boolean).join(', ');
         }
 
         // ── CASE 2: DUO / MULTI-CHARACTER MODE ──
@@ -912,7 +949,7 @@
 
         // 仅在用户显式勾选 5x5 坐标时，输出坐标分片语法
         if (comp?.useCoords === true) {
-            const scenePart = [countTag, totalInteractions, totalScene].filter(Boolean).join(', ');
+            const scenePart = [countTag, cameraTags, totalInteractions, totalScene].filter(Boolean).join(', ');
             const parts = [`Scene: ${scenePart}`];
 
             charDetails.forEach(char => {
@@ -934,7 +971,9 @@
         }).filter(Boolean);
 
         const hasCountInInteraction = new RegExp(`\\b(${countTag.replace(/,\s*/g, '|')})\\b`, 'i').test(totalInteractions);
-        const sceneLead = hasCountInInteraction ? totalInteractions : [countTag, totalInteractions].filter(Boolean).join(', ');
+        const sceneLead = hasCountInInteraction
+            ? [totalInteractions, cameraTags].filter(Boolean).join(', ')
+            : [countTag, cameraTags, totalInteractions].filter(Boolean).join(', ');
 
         return [
             sceneLead,
@@ -1076,7 +1115,8 @@
 
                 toastr.info(`正在为「${cleanName}」生成 ${preset.title}...`, PLUGIN_NAME);
 
-                const prompt = [cleanName, baseTags, outfitTags, preset.tags].filter(Boolean).join(', ');
+                const cleanOutfit = pruneConflictingOutfitTags(outfitTags, preset.tags);
+                const prompt = [preset.tags, cleanName, baseTags, cleanOutfit].filter(Boolean).join(', ');
 
                 const result = await RBQ.api.generateImage(prompt, 'cw-portrait-test', {}, (progress) => {
                     if (triggerBtn && typeof progress === 'string') {

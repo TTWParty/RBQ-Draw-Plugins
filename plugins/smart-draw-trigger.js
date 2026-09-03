@@ -1683,6 +1683,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
         geminiJailbreak: false,
         geminiJailbreakPrompt: DEFAULT_JAILBREAK_PROMPT,
+        toolCallMode: false,
         cache: {},
         apiTemplates: [],
     };
@@ -5005,13 +5006,50 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function normalizeTaggerResult(data, matchedLorebooks = []) {
+        // 1. Tool Call extraction (OpenAI tool_calls, legacy function_call, or Gemini functionCall)
+        let toolRaw = null;
+        const choice = data?.choices?.[0];
+        const toolCalls = choice?.message?.tool_calls || choice?.delta?.tool_calls;
+        if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+            const tc = toolCalls.find(t => t?.function?.name === 'generate_draw_spec') || toolCalls[0];
+            const args = tc?.function?.arguments;
+            if (typeof args === 'string') {
+                toolRaw = extractJson(args);
+            } else if (typeof args === 'object' && args !== null) {
+                toolRaw = args;
+            }
+        } else if (choice?.message?.function_call?.arguments) {
+            const args = choice.message.function_call.arguments;
+            toolRaw = typeof args === 'string' ? extractJson(args) : args;
+        }
+
+        if (!toolRaw) {
+            const parts = data?.candidates?.[0]?.content?.parts;
+            if (Array.isArray(parts)) {
+                for (const p of parts) {
+                    if (p?.functionCall) {
+                        const args = p.functionCall.args;
+                        if (typeof args === 'object' && args !== null) {
+                            toolRaw = args;
+                            break;
+                        } else if (typeof args === 'string') {
+                            toolRaw = extractJson(args);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         const rawContent = data?.choices?.[0]?.message?.content
             ?? data?.choices?.[0]?.text
             ?? data?.choices?.[0]?.delta?.content
             ?? data?.content;
-        const source = typeof rawContent === 'string'
-            ? extractJson(rawContent)
-            : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {}));
+        const source = (toolRaw && typeof toolRaw === 'object' && Object.keys(toolRaw).length > 0)
+            ? toolRaw
+            : (typeof rawContent === 'string'
+                ? extractJson(rawContent)
+                : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {})));
         let segments = Array.isArray(source?.segments)
             ? source.segments.map((item, index) => {
                 const anchor = normalizeAnchor(item?.anchor, index + 1);
@@ -6533,11 +6571,89 @@ SCHEMA:
         return response;
     }
 
+    const DRAW_SPEC_TOOL = {
+        type: 'function',
+        function: {
+            name: 'generate_draw_spec',
+            description: 'Submit the structured drawing spec and scene prompts for image generation.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    shouldDraw: {
+                        type: 'boolean',
+                        description: 'Whether image generation should be triggered for this scene'
+                    },
+                    reason: {
+                        type: 'string',
+                        description: 'Thinking chain and decision reason'
+                    },
+                    segments: {
+                        type: 'array',
+                        description: 'List of prompt segments to render',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                label: { type: 'string' },
+                                anchor: {
+                                    type: 'object',
+                                    properties: {
+                                        text: { type: 'string', description: 'Exact 10-40 characters from current message' }
+                                    },
+                                    required: ['text']
+                                },
+                                scene: { type: 'string', description: 'Layered scene and environment tags' },
+                                negative: { type: 'string', description: 'Scene negative prompt (Scene UC)' },
+                                characters: {
+                                    type: 'array',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            name: { type: 'string' },
+                                            base: { type: 'string' },
+                                            outfit: { type: 'string' },
+                                            action: { type: 'string' },
+                                            center: { type: 'string' },
+                                            uc: { type: 'string' }
+                                        },
+                                        required: ['name', 'base', 'outfit', 'action']
+                                    }
+                                }
+                            },
+                            required: ['anchor', 'scene', 'characters']
+                        }
+                    }
+                },
+                required: ['shouldDraw']
+            }
+        }
+    };
+    const DRAW_SPEC_TOOL_RULE = '\n\n[System Rule]: 严格执行以下输出规范：1. 必须调用 generate_draw_spec 工具提交你的最终生图分镜与分析 2. 不要在普通文本中输出任何外部内容。';
+
     async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj) {
         let response = await smartFetch(url, {
             ...fetchOptions,
             body: JSON.stringify(reqBodyObj),
         });
+
+        if (!response.ok && response.status === 400 && reqBodyObj.tools) {
+            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑接口不支持强制 tool_choice，尝试转为 auto 重试...`);
+            const retryBody = { ...reqBodyObj, tool_choice: 'auto' };
+            response = await smartFetch(url, {
+                ...fetchOptions,
+                body: JSON.stringify(retryBody),
+            });
+            if (!response.ok && response.status === 400) {
+                console.warn(`[${PLUGIN_NAME}] API 依然返回 HTTP 400，怀疑接口不支持 tools，正在剥离 tools 并退回 json_object 重试...`);
+                const noToolsBody = { ...reqBodyObj };
+                delete noToolsBody.tools;
+                delete noToolsBody.tool_choice;
+                noToolsBody.response_format = { type: 'json_object' };
+                response = await smartFetch(url, {
+                    ...fetchOptions,
+                    body: JSON.stringify(noToolsBody),
+                });
+            }
+        }
 
         if (!response.ok && response.status === 400 && reqBodyObj.response_format) {
             console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
@@ -6589,9 +6705,27 @@ SCHEMA:
             messages.push({ role: 'system', content: ecSysPrompt });
         }
 
+        if (store.toolCallMode) {
+            messages.push({ role: 'system', content: DRAW_SPEC_TOOL_RULE.trim() });
+        }
+
         messages.push({ role: 'user', content: JSON.stringify(payload, null, 2) });
 
         applyPostProcessPrompt(messages, store);
+
+        const reqBody = {
+            model: modelName,
+            temperature: 0.2,
+            stream: false,
+            messages,
+        };
+
+        if (store.toolCallMode) {
+            reqBody.tools = [DRAW_SPEC_TOOL];
+            reqBody.tool_choice = { type: 'function', function: { name: 'generate_draw_spec' } };
+        } else {
+            reqBody.response_format = { type: 'json_object' };
+        }
 
         const response = await callApiWithJsonFallback(url, {
             method: 'POST',
@@ -6600,13 +6734,7 @@ SCHEMA:
                 'Content-Type': 'application/json',
                 ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
             },
-        }, {
-            model: modelName,
-            temperature: 0.2,
-            response_format: { type: 'json_object' },
-            stream: false,
-            messages,
-        });
+        }, reqBody);
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await response.json();
         logTaggerPayload('tagger raw response', json);
@@ -7787,6 +7915,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
                 <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词 <button id="rbq-sdt-reset-jailbreak" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-gemini-jailbreak-prompt" placeholder="在此输入用于绕过系统审核的破限词... \n如需构造伪造对话记录 (Few-shot)，可使用 <|system|>, <|user|>, <|assistant|> 作为分隔符。"></textarea></label>
+                <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="利用大模型 Function Calling / Tool Calling 免审机制，自动将生图契约包装为 generate_draw_spec 工具调用，规避 Gemini 等渠道的流式外审截断、中途断流与道歉说教"><span>🛡️ 工具调用抗外审 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-post-process-role-field" class="st-scene-trigger-field" style="display:none;" title="选择引导身份。若模型（如 Gemini 3.6+）不支持以 Assistant 回合结尾，请选择 User 末尾追加或 System。"><span>引导身份 (Role)</span><select id="rbq-sdt-post-process-role"><option value="assistant">Assistant (模型预填充)</option><option value="user_append">User 末尾追加 (Gemini 3.6+ 推荐)</option><option value="system">System (系统指令)</option></select></label>
                 <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>尾部引导内容 <button id="rbq-sdt-reset-post-process" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-post-process-prompt" placeholder="思考完成\n</think>\n我将按照要求输出..."></textarea></label>
@@ -7866,6 +7995,7 @@ SCHEMA:
         populateModelSelect(store.openaiModels || [], store.openaiModel);
         document.getElementById('rbq-sdt-openai-model-custom').value = store.openaiModelCustom || '';
         document.getElementById('rbq-sdt-gemini-jailbreak').checked = !!store.geminiJailbreak;
+        document.getElementById('rbq-sdt-tool-call-mode').checked = !!store.toolCallMode;
         document.getElementById('rbq-sdt-inject-char-card').checked = !!store.injectCharacterCard;
         document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = store.geminiJailbreakPrompt || '';
         document.getElementById('rbq-sdt-post-process-enabled').checked = !!store.postProcessEnabled;
@@ -7895,6 +8025,7 @@ SCHEMA:
         bindSwitch('rbq-sdt-lorebook-badge-field', 'rbq-sdt-lorebook-badge');
         bindSwitch('rbq-sdt-char-coord-badge-field', 'rbq-sdt-char-coord-badge');
         bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
+        bindSwitch('rbq-sdt-tool-call-mode-field', 'rbq-sdt-tool-call-mode');
         bindSwitch('rbq-sdt-inject-char-card-field', 'rbq-sdt-inject-char-card');
         bindSwitch('rbq-sdt-post-process-field', 'rbq-sdt-post-process-enabled');
         document.getElementById('rbq-sdt-gemini-jailbreak').addEventListener('change', updateProviderVisibility);
@@ -7953,6 +8084,7 @@ SCHEMA:
             if (tpl.customApiKey !== undefined) setVal('rbq-sdt-custom-key', tpl.customApiKey);
             
             if (tpl.geminiJailbreak !== undefined) setChecked('rbq-sdt-gemini-jailbreak', tpl.geminiJailbreak);
+            if (tpl.toolCallMode !== undefined) setChecked('rbq-sdt-tool-call-mode', tpl.toolCallMode);
             if (tpl.injectPresetsToTagger !== undefined) setChecked('rbq-sdt-inject-presets', tpl.injectPresetsToTagger);
             if (tpl.geminiJailbreakPrompt !== undefined) setVal('rbq-sdt-gemini-jailbreak-prompt', tpl.geminiJailbreakPrompt);
             
@@ -7974,6 +8106,7 @@ SCHEMA:
             s.customApiKeyHeader = tpl.customApiKeyHeader;
             s.customApiKey = tpl.customApiKey;
             s.geminiJailbreak = tpl.geminiJailbreak;
+            s.toolCallMode = tpl.toolCallMode !== undefined ? tpl.toolCallMode : false;
             s.geminiJailbreakPrompt = tpl.geminiJailbreakPrompt;
             s.injectPresetsToTagger = tpl.injectPresetsToTagger !== undefined ? tpl.injectPresetsToTagger : false;
             s.postProcessEnabled = tpl.postProcessEnabled;
@@ -8009,6 +8142,7 @@ SCHEMA:
                 customApiKeyHeader: val('rbq-sdt-custom-key-header').trim() || 'Authorization',
                 customApiKey: val('rbq-sdt-custom-key').trim(),
                 geminiJailbreak: checked('rbq-sdt-gemini-jailbreak'),
+                toolCallMode: checked('rbq-sdt-tool-call-mode'),
                 injectPresetsToTagger: checked('rbq-sdt-inject-presets'),
                 geminiJailbreakPrompt: val('rbq-sdt-gemini-jailbreak-prompt').trim(),
                 postProcessEnabled: checked('rbq-sdt-post-process-enabled'),
@@ -8081,6 +8215,7 @@ SCHEMA:
             s.openaiModel = val('rbq-sdt-openai-model').trim();
             s.openaiModelCustom = val('rbq-sdt-openai-model-custom').trim();
             s.geminiJailbreak = checked('rbq-sdt-gemini-jailbreak');
+            s.toolCallMode = checked('rbq-sdt-tool-call-mode');
             s.injectCharacterCard = checked('rbq-sdt-inject-char-card');
             s.geminiJailbreakPrompt = val('rbq-sdt-gemini-jailbreak-prompt').trim();
             s.postProcessEnabled = checked('rbq-sdt-post-process-enabled');

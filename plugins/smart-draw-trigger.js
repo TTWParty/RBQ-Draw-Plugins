@@ -6635,18 +6635,19 @@ SCHEMA:
             body: JSON.stringify(reqBodyObj),
         });
 
-        if (!response.ok && response.status === 400 && reqBodyObj.tools) {
-            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑接口不支持强制 tool_choice，尝试转为 auto 重试...`);
+        if (!response.ok && (response.status === 400 || response.status === 500) && reqBodyObj.tools) {
+            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP ${response.status}，怀疑接口不支持当前 tool_choice，尝试转为 auto 重试...`);
             const retryBody = { ...reqBodyObj, tool_choice: 'auto' };
             response = await smartFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(retryBody),
             });
-            if (!response.ok && response.status === 400) {
-                console.warn(`[${PLUGIN_NAME}] API 依然返回 HTTP 400，怀疑接口不支持 tools，正在剥离 tools 并退回 json_object 重试...`);
+            if (!response.ok && (response.status === 400 || response.status === 500)) {
+                console.warn(`[${PLUGIN_NAME}] API 依然返回 HTTP ${response.status}，判定代理端点不支持 Gemini 工具调用，正在自动剥离 tools 并退回 json_object 模式...`);
                 const noToolsBody = { ...reqBodyObj };
                 delete noToolsBody.tools;
                 delete noToolsBody.tool_choice;
+                noToolsBody.stream = false;
                 noToolsBody.response_format = { type: 'json_object' };
                 response = await smartFetch(url, {
                     ...fetchOptions,
@@ -6723,6 +6724,7 @@ SCHEMA:
         if (store.toolCallMode) {
             reqBody.tools = [DRAW_SPEC_TOOL];
             reqBody.tool_choice = { type: 'function', function: { name: 'generate_draw_spec' } };
+            reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
             reqBody.response_format = { type: 'json_object' };
         }
@@ -6736,7 +6738,47 @@ SCHEMA:
             },
         }, reqBody);
         if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status} ${await response.text()}`);
-        const json = await response.json();
+
+        let json;
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('text/event-stream')) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let sseBuffer = '';
+            let accumulatedArgs = '';
+            let accumulatedContent = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                sseBuffer += decoder.decode(value, { stream: true });
+                const lines = sseBuffer.split('\n');
+                sseBuffer = lines.pop();
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed || !trimmed.startsWith('data:')) continue;
+                    const dataStr = trimmed.slice(5).trim();
+                    if (dataStr === '[DONE]') continue;
+                    try {
+                        const chunk = JSON.parse(dataStr);
+                        const delta = chunk.choices?.[0]?.delta;
+                        const tc = delta?.tool_calls?.[0];
+                        if (tc?.function?.arguments) accumulatedArgs += tc.function.arguments;
+                        if (delta?.content) accumulatedContent += delta.content;
+                    } catch (_e) {}
+                }
+            }
+            json = {
+                choices: [{
+                    message: {
+                        ...(accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: accumulatedArgs } }] } : {}),
+                        content: accumulatedContent
+                    }
+                }]
+            };
+        } else {
+            json = await response.json();
+        }
+
         logTaggerPayload('tagger raw response', json);
         const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
         logTaggerPayload('tagger normalized result', normalized);

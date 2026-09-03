@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.6';
+    const VERSION = '2.2.7';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -2135,14 +2135,53 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     </div>` : ''}
 
                     <!-- 场景与镜头输入 -->
-                    <div style="flex:1;min-width:240px;display:grid;grid-template-columns:1fr 1fr;gap:7px">
-                        <div>
-                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">场景环境 (Scene):</label>
-                            <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, soft lighting..." value="${esc(comp.scene || '')}" />
-                        </div>
-                        <div>
-                            <label style="font-size:11px;font-weight:bold;color:#cbd5e1;display:block;margin-bottom:2px">视角与光影 (Camera):</label>
-                            <input id="cw-camera" class="cw-in" type="text" placeholder="from_side, depth_of_field..." value="${esc(comp.camera || '')}" />
+                    <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:10px">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:9px">
+                            <div>
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+                                    <label style="font-size:11px;font-weight:bold;color:#cbd5e1"><i class="fa-solid fa-mountain-sun" style="color:#f1fa8c"></i> 场景环境 (Scene):</label>
+                                    <button class="cw-btn sm" id="cw-pick-scene" type="button" style="padding:1px 6px;font-size:10px;background:rgba(241,250,140,.15);border:1px solid rgba(241,250,140,.35);color:#f1fa8c"><i class="fa-solid fa-book"></i> 查世界书场景</button>
+                                </div>
+                                <input id="cw-scene" class="cw-in" type="text" placeholder="indoors, living room, dark background..." value="${esc(comp.scene || '')}" />
+                                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                                    ${[
+                                        { label: '室内', tag: 'indoors' },
+                                        { label: '卧室', tag: 'bedroom' },
+                                        { label: '暗黑背景', tag: 'dark background' },
+                                        { label: '简单背景', tag: 'simple background' },
+                                        { label: '室外', tag: 'outdoors' },
+                                        { label: '夜景', tag: 'night' }
+                                    ].map(item => {
+                                        const isOn = (comp.scene || '').toLowerCase().includes(item.tag.toLowerCase());
+                                        return `<button class="cw-chip ${isOn ? 'on' : ''} cw-quick-scene" data-tag="${item.tag}" type="button">${item.label}</button>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                            <div>
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+                                    <label style="font-size:11px;font-weight:bold;color:#cbd5e1"><i class="fa-solid fa-camera" style="color:#bd93f9"></i> 视角与光影 (Camera):</label>
+                                    <button class="cw-btn sm" id="cw-pick-camera" type="button" style="padding:1px 6px;font-size:10px;background:rgba(189,147,249,.15);border:1px solid rgba(189,147,249,.35);color:#bd93f9"><i class="fa-solid fa-book"></i> 查世界书视角</button>
+                                </div>
+                                <input id="cw-camera" class="cw-in" type="text" placeholder="from_above, close-up, depth_of_field..." value="${esc(comp.camera || '')}" />
+                                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                                    ${[
+                                        { label: '俯视', tag: 'from above' },
+                                        { label: '仰视', tag: 'from below' },
+                                        { label: '特写', tag: 'close-up' },
+                                        { label: '半身', tag: 'upper body' },
+                                        { label: '全身', tag: 'full body' },
+                                        { label: '看镜头', tag: 'looking at viewer' },
+                                        { label: '男主视角', tag: 'male pov' },
+                                        { label: '侧面', tag: 'from side' },
+                                        { label: '背面', tag: 'from behind' },
+                                        { label: '景深', tag: 'depth of field' },
+                                        { label: '电影光', tag: 'cinematic lighting' }
+                                    ].map(item => {
+                                        const isOn = (comp.camera || '').toLowerCase().includes(item.tag.toLowerCase());
+                                        return `<button class="cw-chip ${isOn ? 'on' : ''} cw-quick-camera" data-tag="${item.tag}" type="button">${item.label}</button>`;
+                                    }).join('')}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2565,9 +2604,59 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             updatePromptPreview();
         });
 
-        // Scene & Camera inputs
+        // Scene & Camera inputs & quick tags
         container.querySelector('#cw-scene')?.addEventListener('input', e => { comp.scene = e.target.value; wsSave(); updatePromptPreview(); });
         container.querySelector('#cw-camera')?.addEventListener('input', e => { comp.camera = e.target.value; wsSave(); updatePromptPreview(); });
+
+        function toggleFieldTag(inputEl, fieldKey, tag) {
+            let tags = (comp[fieldKey] || '').split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+            const lower = tag.toLowerCase();
+            const idx = tags.findIndex(t => t.toLowerCase() === lower);
+            if (idx >= 0) {
+                tags.splice(idx, 1);
+            } else {
+                tags.push(tag);
+            }
+            comp[fieldKey] = tags.join(', ');
+            if (inputEl) inputEl.value = comp[fieldKey];
+            wsSave();
+            updatePromptPreview();
+            refresh('composer');
+        }
+
+        container.querySelectorAll('.cw-quick-scene').forEach(btn => {
+            btn.addEventListener('click', () => {
+                toggleFieldTag(container.querySelector('#cw-scene'), 'scene', btn.dataset.tag);
+            });
+        });
+
+        container.querySelectorAll('.cw-quick-camera').forEach(btn => {
+            btn.addEventListener('click', () => {
+                toggleFieldTag(container.querySelector('#cw-camera'), 'camera', btn.dataset.tag);
+            });
+        });
+
+        container.querySelector('#cw-pick-scene')?.addEventListener('click', () => {
+            openWorldbookPicker('选择场景环境', (tags) => {
+                if (tags) {
+                    const merged = [comp.scene, tags].filter(Boolean).join(', ');
+                    comp.scene = merged;
+                    wsSave();
+                    refresh('composer');
+                }
+            }, 'scene');
+        });
+
+        container.querySelector('#cw-pick-camera')?.addEventListener('click', () => {
+            openWorldbookPicker('选择视角与镜头', (tags) => {
+                if (tags) {
+                    const merged = [comp.camera, tags].filter(Boolean).join(', ');
+                    comp.camera = merged;
+                    wsSave();
+                    refresh('composer');
+                }
+            }, 'camera');
+        });
 
         // 5x5 Coords toggle
         container.querySelector('#cw-toggle-coords')?.addEventListener('change', (e) => {

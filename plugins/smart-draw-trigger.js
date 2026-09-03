@@ -1711,8 +1711,15 @@ Zimage 擅长理解复杂的英文长句和语境。
         setInterval(() => {
             const streaming = isHostStreaming();
             if (wasStreaming && !streaming) {
-                console.info(`[${PLUGIN_NAME}] \u2705 streaming ended, scheduling auto-run for latest message`);
-                setTimeout(() => triggerAutoRunForLatest(), 600);
+                console.info(`[${PLUGIN_NAME}] ✅ streaming ended, scheduling auto-run for latest message`);
+                const latest = getLatestMessageId();
+                if (latest != null) {
+                    // 流式结束立即执行消息处理，确保卡片挂载到位
+                    clearTimeout(pendingTimers.get(latest));
+                    pendingTimers.delete(latest);
+                    processMessage(latest, { force: true });
+                }
+                setTimeout(() => triggerAutoRunForLatest(), 200);
             }
             wasStreaming = streaming;
         }, 500);
@@ -1729,9 +1736,15 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         const latest = getLatestMessageId();
         if (latest == null) return;
-        const container = RBQ.api.getMessageTextContainer(latest);
+        let container = RBQ.api.getMessageTextContainer(latest);
         if (!(container instanceof HTMLElement)) return;
-        const wrapper = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
+        let wrapper = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
+        if (!wrapper) {
+            // 若卡片尚未就位，强制立即挂载
+            await processMessage(latest, { force: true });
+            container = RBQ.api.getMessageTextContainer(latest);
+            wrapper = container?.querySelector?.(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
+        }
         if (!wrapper) return;
         if (wrapper.dataset.rbqSdtIsResult === '1') return;
         const stage = wrapper.dataset.rbqSdtStage;
@@ -4487,8 +4500,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function getMessageSnapshot(messageId) {
         const source = RBQ.api.getMessage(messageId) || {};
-        const domText = getDomMessageText(messageId);
-        const mes = domText || String(source.mes || '');
+        const mes = String(source.mes || domText || '').trim();
         return {
             ...source,
             mes,
@@ -6824,6 +6836,8 @@ SCHEMA:
             if (isCardForBaseKey(card, baseKey)) continue;
             // Don't remove cards with an active tagger running
             if (card._taggerAbort || card.dataset?.rbqSdtStage === 'parsing') continue;
+            // 严禁删除已有生图结果或已生成图片的卡片，杜绝因文本微变或时序误删
+            if (card.dataset?.rbqSdtIsResult === '1' || card.dataset?.rbqSdtStage === 'generated' || card.querySelector?.('.st-scene-trigger-inline-result img')) continue;
             card.remove();
             removed += 1;
         }
@@ -7261,16 +7275,16 @@ SCHEMA:
         if (!Number.isFinite(id)) return;
         clearTimeout(pendingTimers.get(id));
 
-        // 优化切换分身/滑动时的生图还原体验：如果该版本文本已有缓存结果，则直接以 50ms 的超低延迟立刻渲染，实现秒出。
-        // 如果没有缓存，则保持 900ms 的防抖延迟，防止频繁打字或连续切换时触发过度请求。
+        // 优化切换分身/滑动时的生图还原体验：如果该版本文本已有缓存结果，则直接以 16ms 超低延迟立刻渲染，实现无感秒出。
+        // 如果没有缓存，则保持 400ms 的防抖延迟，敏捷响应打字与流式。
         const store = getStore();
         const message = getMessageSnapshot(id);
         const trigger = getTrigger(message);
-        let delay = 900;
+        let delay = options.force ? 16 : 400;
         if (trigger) {
             const key = makeKey(id, message, trigger.type, trigger.marker || 'auto');
             if (store.cache[key]) {
-                delay = 50;
+                delay = 16;
             }
         }
 
@@ -8030,14 +8044,13 @@ SCHEMA:
                     continue;
                 }
                 if (mutation.type === 'childList') {
-                    const targetMessage = mutation.target instanceof Element ? mutation.target.closest?.('.mes[mesid]') : null;
+                    const targetMessage = mutation.target instanceof Element ? (mutation.target.matches?.('.mes[mesid]') ? mutation.target : mutation.target.closest?.('.mes[mesid]')) : null;
                     if (targetMessage) {
                         const mesId = Number(targetMessage.getAttribute('mesid'));
-                        // When .mes_text content changes (e.g. swipe), clear processedKeys for this
-                        // message so the new content can be processed with a fresh key.
-                        const isInTextArea = mutation.target instanceof Element &&
-                            mutation.target.classList?.contains('mes_text');
-                        if (isInTextArea) {
+                        // 当消息容器或其内部发生 childList 变动（如 swipe 切换分身），清空 processedKeys
+                        const isTextOrRoot = mutation.target instanceof Element &&
+                            (mutation.target.matches?.('.mes[mesid]') || mutation.target.classList?.contains('mes_text') || !!mutation.target.closest?.('.mes_text'));
+                        if (isTextOrRoot) {
                             for (const pk of processedKeys) {
                                 if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
                             }
@@ -8048,11 +8061,44 @@ SCHEMA:
                 for (const node of mutation.addedNodes) {
                     if (!(node instanceof Element)) continue;
                     const message = node.matches?.('.mes[mesid]') ? node : node.querySelector?.('.mes[mesid]');
-                    if (message) scheduleProcess(Number(message.getAttribute('mesid')));
+                    if (message) {
+                        const mesId = Number(message.getAttribute('mesid'));
+                        for (const pk of processedKeys) {
+                            if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
+                        }
+                        scheduleProcess(mesId, { allowHistorical: true });
+                    }
                 }
             }
         });
         observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+
+        // 订阅 SillyTavern 官方生命周期事件（完美解决 Swipe 切换分身及楼层恢复）
+        if (RBQ?.api?.eventSource && RBQ?.api?.event_types) {
+            const es = RBQ.api.eventSource;
+            const et = RBQ.api.event_types;
+            const handleMessageRender = (id) => {
+                const mesId = Number(id);
+                if (Number.isFinite(mesId)) {
+                    for (const pk of processedKeys) {
+                        if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
+                    }
+                    scheduleProcess(mesId, { force: true, allowHistorical: true });
+                }
+            };
+            try {
+                if (et.CHARACTER_MESSAGE_RENDERED) es.on(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
+                if (et.MESSAGE_UPDATED) es.on(et.MESSAGE_UPDATED, handleMessageRender);
+                if (et.USER_MESSAGE_RENDERED) es.on(et.USER_MESSAGE_RENDERED, handleMessageRender);
+                if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => {
+                    processedKeys.clear();
+                    setTimeout(scanAllVisible, 200);
+                });
+            } catch (e) {
+                console.warn(`[${PLUGIN_NAME}] 订阅宿主事件失败:`, e);
+            }
+        }
+
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
         setTimeout(scanAllVisible, 1500);

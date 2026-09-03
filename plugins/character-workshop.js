@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.11';
+    const VERSION = '2.2.12';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -972,16 +972,15 @@
                 base = base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
             }
 
-            if (comp?.useCoords === true) {
-                const scenePart = [genderSolo, cameraTags, allActions, totalScene].filter(Boolean).join(', ');
-                const charPart = [char.namePrefix, base, outfit].filter(Boolean).join(', ');
-                const res = [`Scene: ${scenePart}`, `Char1: ${charPart}${char.centersSuffix}`];
-                if (char.uc) res.push(`Char1 UC: ${char.uc}`);
-                return res.join('; ');
-            }
-
-            // Universal clean solo prompt: camera framing tags at the front for maximum canvas crop influence
-            return [genderSolo, cameraTags, char.namePrefix, base, outfit, allActions, totalScene].filter(Boolean).join(', ');
+            // 单人标准多角色分片结构：Scene: ...; Char1: ...
+            // 无论单人还是双人，统一遵循多角色规范！
+            // 当开启 5x5 严格坐标时附带 |centers:XY；关闭时由 AI 自主决定站位 (NovelAI V4 原生 Order-based 多角色模式)
+            const soloScenePart = [genderSolo, cameraTags, totalScene].filter(Boolean).join(', ');
+            const centerSuffix = (comp?.useCoords === true) ? char.centersSuffix : '';
+            const charPart = [char.namePrefix, base, outfit, allActions].filter(Boolean).join(', ');
+            const res = [`Scene: ${soloScenePart}`, `Char1: ${charPart}${centerSuffix}`];
+            if (char.uc) res.push(`Char1 UC: ${char.uc}`);
+            return res.join('; ');
         }
 
         // ── CASE 2: DUO / MULTI-CHARACTER MODE ──

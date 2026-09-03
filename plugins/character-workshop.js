@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.2';
+    const VERSION = '2.2.3';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -31,15 +31,24 @@
     function cleanLorebookTags(rawText) {
         if (!rawText) return '';
         let s = String(rawText).trim();
-        // 1. 剥离行首注释标题，例如 "- 自慰:", "【公主抱】:", "## 动作", "1. "
+        // 1. 剥离行首注释标题，例如 "- 自慰:", "【公主抱】:", "## 动作", "1. ", "- 动作 (哺乳):"
         s = s.replace(/^[#\-\*\s]*[^\n:：]+[:：]\s*/gm, '');
-        // 2. 将斜杠同义词转为逗号
+        // 2. 剥离中段常见的中文标签头 (如 核心特征:, 服饰- 上身服饰:, 身份:, 拓展资料区- 道具/武器:)
+        s = s.replace(/(身份|核心特征|固有特征|外貌特征|服饰|上身服饰|下身服饰|拓展资料区|道具|武器|特征|外貌|体态|服装|饰品|装备|常服|战斗服|泳装|睡衣|私服|校服|正装)[-_—－\s]*(上身|下身|头部|面部|手部|足部|道具|武器|服饰)?[:：]\s*/g, ', ');
+        // 3. 将斜杠同义词转为逗号
         s = s.replace(/\s*\/\s*/g, ', ');
-        // 3. 去掉带有中文的括号说明
+        // 4. 去掉带有中文的括号说明
         s = s.replace(/[（\(][^\)）]*[\u4e00-\u9fa5][^\)）]*[）\)]/g, '');
-        // 4. 彻底剔除中文字符
+        // 5. 保护 NAI 的 :: 权重语法，将孤立冒号转为逗号
+        s = s.replace(/::/g, '__DOUBLE_COLON__');
+        s = s.replace(/[:：]/g, ', ');
+        s = s.replace(/__DOUBLE_COLON__/g, '::');
+        // 6. 彻底剔除中文字符
         s = s.replace(/[\u4e00-\u9fa5]/g, '');
-        // 5. 规范标点符号
+        // 7. 清理残余的连接符和破折号
+        s = s.replace(/(?:^|\s)-+\s*/g, ' ');
+        s = s.replace(/\s*-+(?:\s|$)/g, ' ');
+        // 8. 规范标点符号
         s = s.replace(/[-_]{2,}/g, '_');
         s = s.replace(/[,;，；\s]+,/g, ', ');
         s = s.replace(/^[,\s;]+|[,\s;]+$/g, '');
@@ -140,6 +149,71 @@
     let _cachedDoujinProfiles = null;
     let _cachedDoujinSourceId = null;
 
+    function parseDoujinProfile(rawContent, fallbackName) {
+        let text = String(rawContent || '').trim();
+
+        // 1. 如果有以 # 或 // 或 [ 开头的显式差分分段，按标准分段解析
+        const outfitSections = text.split(/\n(?=#|\/\/|\[)/);
+        if (outfitSections.length > 1) {
+            const baseTags = cleanLorebookTags(outfitSections[0].replace(/^#+[^\n]*\n?/, '').trim());
+            const wardrobe = [];
+            for (let i = 1; i < outfitSections.length; i++) {
+                const sec = outfitSections[i].trim();
+                const titleMatch = sec.match(/^#+([^\n]+)/);
+                const wName = titleMatch ? titleMatch[1].trim() : `服装${i}`;
+                const wTags = cleanLorebookTags(sec.replace(/^#+[^\n]*\n?/, '').trim());
+                if (wTags) wardrobe.push({ id: 'w_' + i, name: wName, outfit: wTags });
+            }
+            if (wardrobe.length === 0) {
+                wardrobe.push({ id: 'w_default', name: '默认立绘', outfit: '' });
+            }
+            return { baseTags, wardrobe };
+        }
+
+        // 2. 针对常见自然语言格式世界书同人库（提取特征、服装和道具/武器）
+        const outfitStartRegex = /((?:服饰|服装|衣着|装束)[-_—－\s]*(?:上身|下身)?[:：])/i;
+        const propStartRegex = /((?:拓展资料区|拓展资料|道具\/武器|道具|武器|装备)[-_—－\s]*[:：])/i;
+
+        let baseRaw = text;
+        let outfitRaw = '';
+        let propRaw = '';
+
+        const propMatch = text.match(propStartRegex);
+        if (propMatch && propMatch.index !== undefined) {
+            propRaw = text.slice(propMatch.index);
+            text = text.slice(0, propMatch.index);
+        }
+
+        const outfitMatch = text.match(outfitStartRegex);
+        if (outfitMatch && outfitMatch.index !== undefined) {
+            outfitRaw = text.slice(outfitMatch.index);
+            baseRaw = text.slice(0, outfitMatch.index);
+        }
+
+        let baseClean = cleanLorebookTags(baseRaw);
+        let outfitClean = cleanLorebookTags(outfitRaw);
+        let propClean = cleanLorebookTags(propRaw);
+
+        if (!outfitClean && !propClean) {
+            baseClean = cleanLorebookTags(rawContent);
+        }
+
+        const wardrobe = [];
+        if (outfitClean) {
+            wardrobe.push({ id: 'w_default', name: '默认服装', outfit: outfitClean });
+            if (propClean) {
+                wardrobe.push({ id: 'w_combat', name: '全套战斗装 (含武器/道具)', outfit: `${outfitClean}, ${propClean}` });
+            }
+        } else {
+            wardrobe.push({ id: 'w_default', name: '默认立绘', outfit: propClean || '' });
+        }
+
+        return {
+            baseTags: baseClean,
+            wardrobe: wardrobe
+        };
+    }
+
     function extractDoujinProfilesFromLorebook(lorebookSource) {
         if (!lorebookSource || !lorebookSource.rawJson) return {};
         let parsed;
@@ -172,24 +246,9 @@
 
             const keys = Array.isArray(e.key) ? e.key : (typeof e.key === 'string' ? e.key.split(',') : []);
             
-            let baseTags = content;
-            let wardrobe = [];
-
-            const outfitSections = content.split(/\n(?=#|\/\/|\[)/);
-            if (outfitSections.length > 1) {
-                baseTags = outfitSections[0].replace(/^#+[^\n]*\n?/, '').trim();
-                for (let i = 1; i < outfitSections.length; i++) {
-                    const sec = outfitSections[i].trim();
-                    const titleMatch = sec.match(/^#+([^\n]+)/);
-                    const wName = titleMatch ? titleMatch[1].trim() : `服装${i}`;
-                    const wTags = sec.replace(/^#+[^\n]*\n?/, '').trim();
-                    if (wTags) wardrobe.push({ id: 'w_' + i, name: wName, outfit: wTags });
-                }
-            }
-
-            if (wardrobe.length === 0) {
-                wardrobe.push({ id: 'w_default', name: '默认立绘', outfit: '' });
-            }
+            const parsedProfile = parseDoujinProfile(content, rawName);
+            const baseTags = parsedProfile.baseTags;
+            const wardrobe = parsedProfile.wardrobe;
 
             profiles[rawName] = {
                 displayName: rawName,
@@ -482,25 +541,25 @@
 
         wbActions.forEach(act => {
             if (act.type === 'template') {
-                if (act.scene) interactionList.push(sanitizePromptSegment(act.scene));
-                if (act.char1Action) tplChar1Actions.push(sanitizePromptSegment(act.char1Action));
-                if (act.char2Action) tplChar2Actions.push(sanitizePromptSegment(act.char2Action));
+                if (act.scene) interactionList.push(cleanLorebookTags(act.scene));
+                if (act.char1Action) tplChar1Actions.push(cleanLorebookTags(act.char1Action));
+                if (act.char2Action) tplChar2Actions.push(cleanLorebookTags(act.char2Action));
             } else if (act.type === 'interaction') {
-                const clean = sanitizePromptSegment(act.tags || '');
+                const clean = cleanLorebookTags(act.tags || '');
                 if (clean) interactionList.push(clean);
             } else if (act.type === 'scene') {
-                const clean = sanitizePromptSegment(act.tags || '');
+                const clean = cleanLorebookTags(act.tags || '');
                 if (clean) sceneList.push(clean);
             } else {
-                const clean = sanitizePromptSegment(act.tags || '');
+                const clean = cleanLorebookTags(act.tags || '');
                 if (clean) soloActionList.push(clean);
             }
         });
 
-        if (comp?.customActionInput) soloActionList.push(sanitizePromptSegment(comp.customActionInput));
-        if (comp?.scene) sceneList.push(sanitizePromptSegment(comp.scene));
-        if (comp?.camera) sceneList.push(sanitizePromptSegment(comp.camera));
-        if (comp?.atmosphere) sceneList.push(sanitizePromptSegment(comp.atmosphere));
+        if (comp?.customActionInput) soloActionList.push(cleanLorebookTags(comp.customActionInput));
+        if (comp?.scene) sceneList.push(cleanLorebookTags(comp.scene));
+        if (comp?.camera) sceneList.push(cleanLorebookTags(comp.camera));
+        if (comp?.atmosphere) sceneList.push(cleanLorebookTags(comp.atmosphere));
 
         const totalInteractions = interactionList.filter(Boolean).join(', ');
         const totalSoloActions = soloActionList.filter(Boolean).join(', ');
@@ -520,9 +579,9 @@
             const n = i + 1;
             const profile = slot.charName ? getProfile(slot.charName) : null;
             const rawName = profile?.displayName || slot.charName || '';
-            const base = sanitizePromptSegment(profile?.baseTags || '');
-            const outfit = sanitizePromptSegment(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
-            const slotAction = sanitizePromptSegment(slot.action || '');
+            const base = cleanLorebookTags(profile?.baseTags || '');
+            const outfit = cleanLorebookTags(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
+            const slotAction = cleanLorebookTags(slot.action || '');
 
             const combinedLower = (rawName + ' ' + base).toLowerCase();
             if (combinedLower.match(/\b(1boy|male|man)\b/)) {
@@ -531,7 +590,9 @@
                 girlCount++;
             }
 
-            const namePrefix = (rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
+            // 若名字含有中文字符，严禁作为 Danbooru 提示词标签注入！
+            const isChineseName = /[\u4e00-\u9fa5]/.test(rawName);
+            const namePrefix = (!isChineseName && rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
             const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
             const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + center) : '';
 
@@ -558,7 +619,7 @@
                 tplActionForSlot,
                 center,
                 centersSuffix,
-                uc: sanitizePromptSegment(slot.uc)
+                uc: cleanLorebookTags(slot.uc)
             };
         });
 
@@ -592,10 +653,16 @@
                 .replace(/^[,;\s]+|[,;\s]+$/g, '')
                 .trim();
 
-            // 动作与服装姿态冲突清洗：如坐姿/跪姿自动清理服装和外貌里的 standing
+            // 动作与服装姿态冲突清洗：如坐姿/跪姿/卧姿自动清理服装和外貌里的 standing
             if (allActions.match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
                 outfit = outfit.replace(/\bstanding\b,?\s*/gi, '').trim();
                 base = base.replace(/\bstanding\b,?\s*/gi, '').trim();
+            }
+
+            // 亲密/身体/非战斗动作自动清理手持武器/法杖，防止 AI 强行画立正持杖图
+            if (allActions.match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
+                outfit = outfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+                base = base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
             }
 
             if (isNai && comp?.useCoords === true) {
@@ -626,8 +693,18 @@
             const parts = [`Scene: ${scenePart}`];
 
             charDetails.forEach((char, i) => {
-                const slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
-                const charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+                let slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
+                let cOutfit = char.outfit;
+                let cBase = char.base;
+                if ((slotActions + ' ' + totalInteractions).match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
+                    cOutfit = cOutfit.replace(/\bstanding\b,?\s*/gi, '').trim();
+                    cBase = cBase.replace(/\bstanding\b,?\s*/gi, '').trim();
+                }
+                if ((slotActions + ' ' + totalInteractions).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
+                    cOutfit = cOutfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+                    cBase = cBase.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+                }
+                const charContent = [char.namePrefix, cBase, cOutfit, slotActions].filter(Boolean).join(', ');
                 parts.push(`Char${char.n}: ${charContent}${char.centersSuffix}`);
                 if (char.uc) parts.push(`Char${char.n} UC: ${char.uc}`);
             });
@@ -636,8 +713,18 @@
         } else {
             // ComfyUI / WebUI / General SDXL Flat Syntax
             const charSummaries = charDetails.map((char, i) => {
-                const slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
-                return [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+                let slotActions = [char.tplActionForSlot, i === 0 ? totalSoloActions : '', char.slotAction].filter(Boolean).join(', ');
+                let cOutfit = char.outfit;
+                let cBase = char.base;
+                if ((slotActions + ' ' + totalInteractions).match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
+                    cOutfit = cOutfit.replace(/\bstanding\b,?\s*/gi, '').trim();
+                    cBase = cBase.replace(/\bstanding\b,?\s*/gi, '').trim();
+                }
+                if ((slotActions + ' ' + totalInteractions).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
+                    cOutfit = cOutfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+                    cBase = cBase.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+                }
+                return [char.namePrefix, cBase, cOutfit, slotActions].filter(Boolean).join(', ');
             });
 
             return [
@@ -1711,7 +1798,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                                 ${act.type === 'template' ? '📜 模板' : (act.type === 'interaction' ? '👥 互动' : (act.type === 'scene' ? '🏞️ 场景' : '💃 动作'))}
                             </span>
                             <strong>${esc(act.name)}</strong>
-                            <span class="cw-wb-tags" title="${esc(act.tags)}">${esc(act.tags)}</span>
+                            <span class="cw-wb-tags" title="${esc(cleanLorebookTags(act.tags))}">${esc(cleanLorebookTags(act.tags))}</span>
                             <button type="button" class="cw-wb-toggle-type" data-idx="${idx}" title="切换分类: 💃单人动作 ⇄ 👥双人互动 ⇄ 🏞️场景 ⇄ 📜模板">⇄</button>
                             <button type="button" class="cw-wb-del" data-idx="${idx}" title="移除">✕</button>
                         </div>
@@ -2182,7 +2269,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                 comp.selectedWbActions.push({
                     id: uid('act'),
                     name: entryName,
-                    tags: tags,
+                    tags: cleanLorebookTags(tags || rawContent),
                     type: actType
                 });
 
@@ -2202,7 +2289,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
                 wsSave();
                 refresh('composer');
-            }, 'all', false);
+            }, 'all', true);
         });
 
         // Pick Worldbook Scene

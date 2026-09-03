@@ -4501,7 +4501,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function getMessageSnapshot(messageId) {
         const source = RBQ.api.getMessage(messageId) || {};
-        const mes = String(source.mes || domText || '').trim();
+        const mes = String(source.mes || getDomMessageText(messageId) || '').trim();
         return {
             ...source,
             mes,
@@ -4511,7 +4511,8 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function makeKey(messageId, message, mode, marker) {
-        return `${messageId}:${hashText(message?.mes || '')}:${mode}:${hashText(marker || '')}`;
+        const chatKey = getChatKey();
+        return `${chatKey}:${messageId}:${hashText(message?.mes || '')}:${mode}:${hashText(marker || '')}`;
     }
 
     function pruneCache() {
@@ -6777,13 +6778,28 @@ SCHEMA:
                 btn.style.alignItems = 'center';
                 btn.style.justifyContent = 'center';
                 btn.style.margin = '0 2px';
-                btn.addEventListener('click', (e) => {
+                btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    const stage = wrapper?.dataset?.rbqSdtStage;
-                    if (stage === 'idle' || !stage) {
-                        runTaggerForWrapper(wrapper, trigger, messageId, key);
+                    let targetWrapper = wrapper;
+                    if (!(targetWrapper instanceof HTMLElement) || !targetWrapper.isConnected) {
+                        const placeholder = {
+                            shouldDraw: true,
+                            prompt: trigger?.marker || '[Smart Draw]',
+                            negative: '',
+                            anchor: { type: 'bottom' },
+                            reason: '正在调用 tagger API 解析世界书与提示词...',
+                            multiChar: false,
+                            scene: '',
+                            characters: [],
+                        };
+                        targetWrapper = insertCard(messageId, trigger, placeholder, key);
+                    }
+                    if (!(targetWrapper instanceof HTMLElement)) return;
+                    const stage = targetWrapper.dataset?.rbqSdtStage;
+                    if (stage === 'idle' || !stage || stage === 'error') {
+                        runTaggerForWrapper(targetWrapper, trigger, messageId, key);
                     } else {
-                        wrapper?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 });
                 btnBar.appendChild(btn);
@@ -6877,7 +6893,20 @@ SCHEMA:
             if (isCardForBaseKey(card, baseKey)) continue;
             // Don't remove cards with an active tagger running
             if (card._taggerAbort || card.dataset?.rbqSdtStage === 'parsing') continue;
-            // 严禁删除已有生图结果或已生成图片的卡片，杜绝因文本微变或时序误删
+
+            const cardKey = String(card.dataset.rbqSdtKey || card.dataset.rbqSdtBaseKey || '').trim();
+            if (cardKey && baseKey) {
+                const cardChat = cardKey.split(':')[0];
+                const curChat = baseKey.split(':')[0];
+                // 若所属会话根本不同，说明是开新对话或换卡时残留的旧会话卡片，必须立刻销毁！
+                if (cardChat !== curChat) {
+                    card.remove();
+                    removed += 1;
+                    continue;
+                }
+            }
+
+            // 同一会话内，严禁删除已有生图结果或已生成图片的卡片，杜绝因文本微变或时序误删
             if (card.dataset?.rbqSdtIsResult === '1' || card.dataset?.rbqSdtStage === 'generated' || card.querySelector?.('.st-scene-trigger-inline-result img')) continue;
             card.remove();
             removed += 1;
@@ -7182,10 +7211,13 @@ SCHEMA:
         const { allowHistorical = false, force = false } = options;
         const store = getStore();
 
-        // Auto-refresh profile UI when chat context becomes available
+        // Auto-refresh profile UI & purge lingering cards when chat context becomes available or changes
         const currentChatKey = getChatKey();
         if (currentChatKey && currentChatKey !== '_global' && currentChatKey !== lastChatKey) {
+            console.info(`[Smart Draw] 🔄 chat changed: ${lastChatKey} -> ${currentChatKey}, purging old cards`);
             lastChatKey = currentChatKey;
+            processedKeys.clear();
+            document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
             refreshCharacterProfileListUi();
         }
 
@@ -7281,6 +7313,13 @@ SCHEMA:
                     bindWrapperManualRun(reparseWrapper, trigger, messageId, key);
                 }
             }
+            processedKeys.add(key);
+            return;
+        }
+
+        // 若用户选择了「消息操作栏小图标」纯净模式，在未解析前绝不在正文插入占位大卡片与按钮
+        if (store.cardPosition === 'message_actions') {
+            injectMessageActionButton(messageId, null, trigger, key);
             processedKeys.add(key);
             return;
         }
@@ -8136,6 +8175,7 @@ SCHEMA:
                 if (et.USER_MESSAGE_RENDERED) es.on(et.USER_MESSAGE_RENDERED, handleMessageRender);
                 if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => {
                     processedKeys.clear();
+                    document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
                     setTimeout(scanAllVisible, 200);
                 });
             } catch (e) {

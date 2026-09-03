@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.15';
+    const VERSION = '2.2.16';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -807,13 +807,13 @@
     // ══════════════════════════════════════════════════════════
     //  Modular Feature Filter (头部/身体/服装特征装配过滤器)
     // ══════════════════════════════════════════════════════════
-    const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia|tareme|tsurime|sclera)\b/i;
-    const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairstyle|hair_style|cut|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|braids|ponytail|twintails|pigtails|bun|buns|chignon|drill\s+hair|hime|feather\s+weaving|ears?|cat_ears?|fox_ears?|cat\s+ears?|fox\s+ears?|animal\s+ears?|rabbit_ears?|pointy_ears?|horns?|demon_horns?|halo|straight|wavy|curly|short|long|bob|dreadlocks|afro)\b/i;
-    const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|delicate_face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|expression|looking_at_viewer|looking\s+at\s+viewer)\b/i;
+    const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia|tareme|tsurime|sclera|glasses|sunglasses|eyepatch|goggles|monocle|blindfold)\b/i;
+    const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairstyle|hair_style|cut|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|braids|ponytail|twintails|twin\s*tails|twin_tails|pigtails|bun|buns|hair_buns|hair\s+buns|chignon|drill\s+hair|hime|feather\s+weaving|ears?|cat_ears?|fox_ears?|cat\s+ears?|fox\s+ears?|animal\s+ears?|rabbit_ears?|pointy_ears?|horns?|demon_horns?|halo|floating_halo|floating\s+halo|straight|wavy|curly|short|long|bob|dreadlocks|afro|hat|top_hat|top\s*hat|cap|porkpie_hat|porkpie\s*hat|beret|helmet|headdress|veil)\b/i;
+    const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|delicate_face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|expression|looking_at_viewer|looking\s+at\s+viewer|mask)\b/i;
 
-    const BODY_PATTERN = /\b(breast|breasts|chest|flat_chest|cleavage|bust|petite|slender|curvy|tall|short_stature|abs|muscular|thighs|thick_thighs|legs|skin|tan|pale|tattoo|wings|tail|fangs|belly|navel|waist|hips)\b/i;
+    const BODY_PATTERN = /\b(breast|breasts|chest|flat_chest|cleavage|bust|petite|slender|curvy|tall|short_stature|abs|muscular|thighs|thick_thighs|legs|bare_legs|bare\s+legs|skin|tan|pale|tattoo|wings|tail|fangs|belly|navel|waist|hips)\b/i;
 
-    const OUTFIT_PATTERN = /\b(shirt|t-shirt|blouse|sweater|hoodie|jacket|coat|shawl|cardigan|vest|suit|uniform|serafuku|sailor|dress|skirt|pants|jeans|shorts|trousers|panties|underwear|bra|bikini|swimsuit|leotard|bodysuit|corset|robe|kimono|yukata|apron|maid|cape|cloak|socks|stockings|pantyhose|tights|legwear|boots|shoes|sneakers|loafers|heels|sandals|footwear|gloves|mittens|gauntlets|wristband|wrist_guard|wrist\s*guard|collar|choker|tie|necktie|bow|bowtie|scarf|belt|armor|pauldrons|breastplate|chest\s*wrap|sarashi|fabric)\b/i;
+    const OUTFIT_PATTERN = /\b(shirt|t-shirt|blouse|crop_top|crop\s*top|halterneck|halter_neck|halter\s*neck|sleeveless|tank_top|sweater|turtleneck|hoodie|jacket|coat|tailcoat|shawl|cardigan|vest|suit|uniform|serafuku|sailor|dress|skirt|side_slit|side\s*slit|cleavage_cutout|cleavage\s*cutout|pants|jeans|shorts|trousers|panties|underwear|bra|bikini|swimsuit|leotard|bodysuit|corset|robe|kimono|yukata|qipao|cheongsam|apron|maid|cape|cloak|socks|stockings|thighhighs|thigh_highs|thigh\s*highs|pantyhose|tights|legwear|boots|shoes|sneakers|loafers|heels|high\s*heels|sandals|footwear|barefoot|bare_feet|bare\s+feet|gloves|mittens|gauntlets|wristband|wrist_guard|wrist\s*guard|arm_warmers|sleeves|detached_sleeves|detached\s+sleeves|wide_sleeves|collar|choker|tie|necktie|ascot|bow|bowtie|scarf|belt|garter|garter_straps|garter\s*straps|strap|thigh_strap|thigh\s*strap|armor|pauldrons|breastplate|chest\s*wrap|sarashi|fabric|rings?|bandages?|holster)\b/i;
 
     function filterBaseTags(baseTags, includeHead, includeBody, includeOutfit) {
         if (!baseTags) return '';

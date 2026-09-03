@@ -1669,6 +1669,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         lorebookSources: [],
         showLorebookHitBadge: false,
         showCharCoordBadge: false,
+        cardPosition: 'bottom', // 'bottom' | 'top' | 'message_actions'
 
         characterMemoryEnabled: false,
         characterProfiles: {},
@@ -6759,6 +6760,37 @@ SCHEMA:
         return -1;
     }
 
+    function injectMessageActionButton(messageId, wrapper, trigger, key) {
+        try {
+            const mesEl = document.querySelector(`.mes[mesid="${messageId}"]`);
+            if (!mesEl) return;
+            const btnBar = mesEl.querySelector('.extraMesButtons') || mesEl.querySelector('.mes_buttons') || mesEl.querySelector('.flex-container');
+            if (!btnBar) return;
+            let existing = btnBar.querySelector(`.rbq-sdt-action-btn`);
+            if (!existing) {
+                const btn = document.createElement('div');
+                btn.className = 'mes_button extra_mes_button rbq-sdt-action-btn';
+                btn.title = '智能生图 / 解析分镜';
+                btn.innerHTML = '<i class="fa-solid fa-camera" style="color:#38bdf8"></i>';
+                btn.style.cursor = 'pointer';
+                btn.style.display = 'inline-flex';
+                btn.style.alignItems = 'center';
+                btn.style.justifyContent = 'center';
+                btn.style.margin = '0 2px';
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const stage = wrapper?.dataset?.rbqSdtStage;
+                    if (stage === 'idle' || !stage) {
+                        runTaggerForWrapper(wrapper, trigger, messageId, key);
+                    } else {
+                        wrapper?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+                btnBar.appendChild(btn);
+            }
+        } catch (_e) { /* noop */ }
+    }
+
     function insertCard(messageId, trigger, result, key) {
         const container = RBQ.api.getMessageTextContainer(messageId);
         if (!(container instanceof HTMLElement)) return null;
@@ -6788,15 +6820,24 @@ SCHEMA:
             try { wrapper.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch (_e) { /* noop */ }
         }
 
-        // 短标记按标记位置替换；自动定位默认插入消息末尾，避免 anchor.index=1 时挤到正文最前面。
+        // 短标记按标记位置替换；自动定位根据 cardPosition 设置决定插入开头或结尾
         let inserted = false;
         if (trigger.type === 'marker' && trigger.marker) {
             inserted = insertAtMarker(container, trigger.marker, wrapper);
         } else if (result?.anchor?.text) {
-            // Only try anchor text matching; if it fails, fall through to append (bottom)
             inserted = insertBySentenceMap(messageId, result.anchor, wrapper);
         }
-        if (!inserted) container.append(wrapper);
+        if (!inserted) {
+            const store = getStore();
+            if (store.cardPosition === 'top') {
+                container.prepend(wrapper);
+            } else {
+                container.append(wrapper);
+            }
+        }
+
+        // 无论何种位置模式，均在消息右上角操作栏注入一键直达的相机图标
+        injectMessageActionButton(messageId, wrapper, trigger, key);
 
         console.info(`[${PLUGIN_NAME}] insertCard =>`, {
             messageId,
@@ -7556,6 +7597,7 @@ SCHEMA:
                 <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
+                <label class="st-scene-trigger-field" title="设置未解析时的生图/Tag卡片在消息中的默认呈现位置"><span>初始生图按钮位置</span><select id="rbq-sdt-card-position"><option value="bottom">消息末尾 (默认)</option><option value="top">消息开头 (置顶封面，免滑屏)</option><option value="message_actions">消息操作栏小图标 (纯净免占位)</option></select></label>
                 <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div class="st-scene-trigger-field wide">
@@ -7650,6 +7692,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-autorun').checked = !!store.autoRunTagger;
         document.getElementById('rbq-sdt-auto-generate').checked = !!store.autoRunGenerate;
         document.getElementById('rbq-sdt-min-segments').value = store.minSegments || 0;
+        document.getElementById('rbq-sdt-card-position').value = store.cardPosition || 'bottom';
         document.getElementById('rbq-sdt-manual-draw').checked = !!store.manualDrawEnabled;
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
@@ -7864,6 +7907,7 @@ SCHEMA:
             s.autoRunTagger = checked('rbq-sdt-autorun');
             s.autoRunGenerate = checked('rbq-sdt-auto-generate');
             s.minSegments = Math.max(0, Math.min(10, Number(val('rbq-sdt-min-segments')) || 0));
+            s.cardPosition = val('rbq-sdt-card-position') || 'bottom';
             s.manualDrawEnabled = checked('rbq-sdt-manual-draw');
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');

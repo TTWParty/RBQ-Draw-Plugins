@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.14';
+    const VERSION = '2.2.15';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -807,30 +807,31 @@
     // ══════════════════════════════════════════════════════════
     //  Modular Feature Filter (头部/身体/服装特征装配过滤器)
     // ══════════════════════════════════════════════════════════
-    const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia|tareme|tsurime)\b/i;
-    const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|ponytail|twintails|pigtails|bun|chignon|drill\s+hair|glasses|sunglasses|eyepatch|goggles|mask|headband)\b/i;
-    const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|delicate_face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|looking_at_viewer|looking\s+at\s+viewer)\b/i;
-    const BODY_PATTERN = /\b(breast|breasts|chest|flat_chest|petite|slender|curvy|tall|abs|thighs|thick_thighs|skin|tan|pale|tattoo|wings|tail|ears|cat_ears|fox_ears|rabbit_ears|pointy_ears|fangs|horns|demon_horns|halo)\b/i;
+    const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia|tareme|tsurime|sclera)\b/i;
+    const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairstyle|hair_style|cut|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|braids|ponytail|twintails|pigtails|bun|buns|chignon|drill\s+hair|hime|feather\s+weaving|ears?|cat_ears?|fox_ears?|cat\s+ears?|fox\s+ears?|animal\s+ears?|rabbit_ears?|pointy_ears?|horns?|demon_horns?|halo|straight|wavy|curly|short|long|bob|dreadlocks|afro)\b/i;
+    const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|delicate_face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|expression|looking_at_viewer|looking\s+at\s+viewer)\b/i;
 
-    function filterBaseTags(baseTags, includeHead, includeBody) {
+    const BODY_PATTERN = /\b(breast|breasts|chest|flat_chest|cleavage|bust|petite|slender|curvy|tall|short_stature|abs|muscular|thighs|thick_thighs|legs|skin|tan|pale|tattoo|wings|tail|fangs|belly|navel|waist|hips)\b/i;
+
+    const OUTFIT_PATTERN = /\b(shirt|t-shirt|blouse|sweater|hoodie|jacket|coat|shawl|cardigan|vest|suit|uniform|serafuku|sailor|dress|skirt|pants|jeans|shorts|trousers|panties|underwear|bra|bikini|swimsuit|leotard|bodysuit|corset|robe|kimono|yukata|apron|maid|cape|cloak|socks|stockings|pantyhose|tights|legwear|boots|shoes|sneakers|loafers|heels|sandals|footwear|gloves|mittens|gauntlets|wristband|wrist_guard|wrist\s*guard|collar|choker|tie|necktie|bow|bowtie|scarf|belt|armor|pauldrons|breastplate|chest\s*wrap|sarashi|fabric)\b/i;
+
+    function filterBaseTags(baseTags, includeHead, includeBody, includeOutfit) {
         if (!baseTags) return '';
-        if (includeHead !== false && includeBody !== false) return baseTags;
+        if (includeHead !== false && includeBody !== false && includeOutfit !== false) return baseTags;
 
         const tags = baseTags.split(/[,，;；]+/).map(t => t.trim()).filter(Boolean);
         const result = [];
 
         for (const tag of tags) {
-            const isHead = EYE_PATTERN.test(tag) || HAIR_HEAD_PATTERN.test(tag) || FACE_PATTERN.test(tag);
-            if (isHead) {
+            if (OUTFIT_PATTERN.test(tag)) {
+                if (includeOutfit !== false) result.push(tag);
+            } else if (EYE_PATTERN.test(tag) || HAIR_HEAD_PATTERN.test(tag) || FACE_PATTERN.test(tag)) {
                 if (includeHead !== false) result.push(tag);
+            } else if (BODY_PATTERN.test(tag)) {
+                if (includeBody !== false) result.push(tag);
             } else {
-                const isBody = BODY_PATTERN.test(tag);
-                if (isBody) {
-                    if (includeBody !== false) result.push(tag);
-                } else {
-                    // 身份/IP/其他未识别项：始终保留
-                    result.push(tag);
-                }
+                // 身份/IP/随身武器/其他未识别项：始终保留
+                result.push(tag);
             }
         }
         return result.join(', ');
@@ -906,7 +907,7 @@
             const includeBody = slot.includeBody !== false;
             const includeOutfit = slot.includeOutfit !== false;
 
-            const base = filterBaseTags(rawBase, includeHead, includeBody);
+            const base = filterBaseTags(rawBase, includeHead, includeBody, includeOutfit);
 
             let outfit = '';
             if (includeOutfit) {

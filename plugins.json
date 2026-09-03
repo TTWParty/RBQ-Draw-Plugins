@@ -11,9 +11,9 @@
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
     "description": "保存常用的正面/负面提示词组合为预设，生图时自动拼接到主提示词的前面或后面。支持全局正面前置/后置提示词、全局负面提示词、添加、编辑、删除、选择性导入导出，并可在保存时附带保存当前 Vibe 状态。",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "author": "TTWP-09",
-    "main": "plugins/prompt-presets.js?v=1.3.1"
+    "main": "plugins/prompt-presets.js?v=1.3.2"
   },
   {
     "id": "rbq-png-metadata",
@@ -59,8 +59,8 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集多角色空间舞台合成、7维全息外貌定制、多套衣柜管理、世界书搭积木点选与智能生图记忆双向联动于一体的专业级工作台。支持5x5空间站位网格、经典双人分镜模板库与NAI多角色一键合成。",
-    "version": "2.0.12",
+    "version": "2.0.13",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.0.12"
+    "main": "plugins/character-workshop.js?v=2.0.13"
   }
 ]

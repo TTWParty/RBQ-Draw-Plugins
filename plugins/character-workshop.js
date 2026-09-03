@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.0.12';
+    const VERSION = '2.0.13';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -411,6 +411,19 @@
         }
     };
 
+    function registerSubmodal(modal) {
+        if (!modal) return;
+        document.body.classList.add('cw-submodal-open');
+        const checkClose = () => {
+            if (!modal.isConnected) {
+                document.body.classList.remove('cw-submodal-open');
+            } else {
+                requestAnimationFrame(checkClose);
+            }
+        };
+        requestAnimationFrame(checkClose);
+    }
+
     function openPortraitTestModal(name, baseTags, outfitTags, onSetAvatar = null, triggerBtn = null) {
         const cleanName = (name || 'Character').trim();
         const existing = document.getElementById('cw-test-mode-modal');
@@ -419,7 +432,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-test-mode-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:100000060 !important;background:rgba(0,0,0,.85) !important;backdrop-filter:blur(8px) !important;display:flex !important;align-items:flex-start !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.94) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
         modal.innerHTML = `
             <div class="cw-modal" style="width:480px;max-width:95vw">
                 <div class="cw-modal-hd">
@@ -476,6 +489,7 @@
         });
 
         document.body.appendChild(modal);
+        registerSubmodal(modal);
     }
 
     async function executePortraitTest(cleanName, baseTags, outfitTags, mode = 'portrait', onSetAvatar = null, triggerBtn = null) {
@@ -611,6 +625,7 @@
         renderGallery();
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
+        registerSubmodal(modal);
     }
 
     function showGeneratedImageModal(title, prompt, result) {
@@ -658,6 +673,7 @@
         });
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
+        registerSubmodal(modal);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -712,8 +728,8 @@
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
-.cw-modal-mask{position:fixed;inset:0;z-index:100000020;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:16px;box-sizing:border-box;-webkit-overflow-scrolling:touch}
-.cw-modal{background:#0f172a;border:1px solid rgba(56,189,248,.35);border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.9);box-sizing:border-box;margin:auto;position:relative;flex-shrink:0}
+.cw-modal-mask{position:fixed;inset:0;z-index:2147483647!important;background:rgba(10,15,29,.92)!important;backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch}
+.cw-modal{background:#0f172a!important;border:1px solid rgba(56,189,248,.35)!important;border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.95)!important;box-sizing:border-box;margin:auto!important;position:relative;flex-shrink:0}
 .cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08);flex-shrink:0}
 .cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;min-height:0}
 .cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3);flex-shrink:0;flex-wrap:wrap;gap:8px}
@@ -732,7 +748,7 @@
   .cw-card-tt{font-size:12px}
   .cw-chgrid{grid-template-columns:1fr;gap:8px}
   .cw-chcard{padding:9px;gap:6px}
-  .cw-modal-mask{padding:max(12px, env(safe-area-inset-top, 12px)) 8px max(12px, env(safe-area-inset-bottom, 12px)) !important;display:flex!important;align-items:flex-start!important;justify-content:center!important;overflow-y:auto!important}
+  .cw-modal-mask{padding:max(12px, env(safe-area-inset-top, 12px)) 10px max(12px, env(safe-area-inset-bottom, 12px)) !important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;background:rgba(10,15,29,.94)!important;z-index:2147483647!important}
   .cw-modal{width:100%!important;max-width:100%!important;max-height:calc(100vh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;max-height:calc(100dvh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;margin:auto 0!important}
   .cw-modal-hd{padding:9px 12px}
   .cw-modal-bd{padding:10px 12px;gap:10px}
@@ -1043,6 +1059,7 @@
         }
         render();
         document.body.appendChild(mask);
+        registerSubmodal(mask);
     }
 
     // ══════════════════════════════════════════════════════════

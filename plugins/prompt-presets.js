@@ -335,18 +335,18 @@
                     <i class="fa-solid fa-earth-americas" style="color:#38bdf8;"></i>
                     <span>全局提示词 (无论选择何种预设均生效)</span>
                 </div>
-                <div class="st-scene-trigger-modal-grid">
-                    <label class="st-scene-trigger-field wide">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局正面提示词 (前置 / Prefix)</span>
-                        <textarea id="rbq-pp-global-pos-prefix" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
+                <div class="st-scene-trigger-modal-grid" style="display:flex;flex-direction:column;gap:10px;">
+                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
+                        <span style="font-size:11px; color:rgba(255,255,255,0.7);font-weight:600;">全局正面提示词 (前置 / Prefix)</span>
+                        <textarea id="rbq-pp-global-pos-prefix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
                     </label>
-                    <label class="st-scene-trigger-field wide">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局正面提示词 (后置 / Suffix)</span>
-                        <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
+                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
+                        <span style="font-size:11px; color:rgba(255,255,255,0.7);font-weight:600;">全局正面提示词 (后置 / Suffix)</span>
+                        <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                     </label>
-                    <label class="st-scene-trigger-field wide">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.6);">全局负面提示词</span>
-                        <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
+                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
+                        <span style="font-size:11px; color:rgba(255,255,255,0.7);font-weight:600;">全局负面提示词</span>
+                        <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
                     </label>
                 </div>
             </div>

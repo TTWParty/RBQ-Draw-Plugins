@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.12';
+    const VERSION = '2.2.13';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -506,6 +506,17 @@
             delete ws.activeComposer.interaction;
             wsSave();
         }
+        // 彻底清除各槽位中残留的历史幽灵 action 字段 (如旧测试残留的折扇/动作)，避免阴魂不散
+        if (Array.isArray(ws.activeComposer.slots)) {
+            let clearedAction = false;
+            ws.activeComposer.slots.forEach(s => {
+                if (s && s.action) {
+                    s.action = '';
+                    clearedAction = true;
+                }
+            });
+            if (clearedAction) wsSave();
+        }
         return ws;
     }
     function wsSave() { RBQ.api.saveSettings(); }
@@ -794,6 +805,44 @@
     }
 
     // ══════════════════════════════════════════════════════════
+    //  Headless & Faceless Conflict Pruning
+    //  当动作包含 headless (无头), body only (仅身体), decapitated (斩首), faceless (无脸) 时，
+    //  自动清洗角色外貌与特征中的头发、眼睛、发饰、发带、五官表情等，
+    //  避免 AI 看到蓝眼睛/浅蓝头发强行画出头部，破坏无头/身体动作设定。
+    // ══════════════════════════════════════════════════════════
+    function pruneHeadAndFaceTags(text, actionText) {
+        if (!text || !actionText) return text;
+        const actLower = actionText.toLowerCase();
+
+        const isHeadless = /\b(headless|body\s*only|body_only|decapitated|decapitation|headless\s*corpse|beheaded)\b/i.test(actLower);
+        const isFaceless = isHeadless || /\b(faceless|no\s*face|covered\s*face)\b/i.test(actLower);
+
+        if (!isFaceless) return text;
+
+        const rawTags = text.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
+        const resultTags = [];
+
+        const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia)\b/i;
+        const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|ponytail|twintails|pigtails|bun|chignon|drill\s+hair|glasses|sunglasses|eyepatch|goggles|mask|headband)\b/i;
+        const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|looking_at_viewer|looking\s+at\s+viewer)\b/i;
+
+        for (const tag of rawTags) {
+            if (isHeadless) {
+                if (EYE_PATTERN.test(tag) || HAIR_HEAD_PATTERN.test(tag) || FACE_PATTERN.test(tag)) {
+                    continue;
+                }
+            } else if (isFaceless) {
+                if (EYE_PATTERN.test(tag) || FACE_PATTERN.test(tag)) {
+                    continue;
+                }
+            }
+            resultTags.push(tag);
+        }
+
+        return resultTags.join(', ');
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  Prompt Composition & Multi-Engine Template Adaptation
     // ══════════════════════════════════════════════════════════
     function composeFinalPrompt(comp) {
@@ -862,7 +911,8 @@
             if (cameraTags) {
                 outfit = pruneConflictingOutfitTags(outfit, cameraTags);
             }
-            const slotAction = cleanLorebookTags(slot.action || '');
+            const hasTemplate = wbActions.some(act => act.type === 'template');
+            const slotAction = hasTemplate ? cleanLorebookTags(slot.action || '') : '';
 
             // 若名字含有中文字符，严禁作为 Danbooru 提示词标签注入！
             const isChineseName = /[\u4e00-\u9fa5]/.test(rawName);
@@ -972,6 +1022,12 @@
                 base = base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
             }
 
+            // 无头/无脸与头部五官发型冲突清洗：当动作为无头/仅身体/无脸时，自动清洗外貌和服装中的眼睛、头发、发饰、发带等
+            if (allActions) {
+                base = pruneHeadAndFaceTags(base, allActions);
+                outfit = pruneHeadAndFaceTags(outfit, allActions);
+            }
+
             // 单人标准多角色分片结构：Scene: ...; Char1: ...
             // 无论单人还是双人，统一遵循多角色规范！
             // 当开启 5x5 严格坐标时附带 |centers:XY；关闭时由 AI 自主决定站位 (NovelAI V4 原生 Order-based 多角色模式)
@@ -1003,6 +1059,11 @@
             if ((char.tplActionForSlot + ' ' + allInteractionText).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
                 char.outfit = char.outfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
                 char.base = char.base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
+            }
+            const actForChar = char.tplActionForSlot + ' ' + allInteractionText;
+            if (actForChar) {
+                char.base = pruneHeadAndFaceTags(char.base, actForChar);
+                char.outfit = pruneHeadAndFaceTags(char.outfit, actForChar);
             }
         });
 
@@ -2435,8 +2496,11 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
         // 2. Check SDT classification metadata if available
         const mainId = entry?.classification?.mainId;
-        if (mainId === 'interaction' || mainId === 'nsfw') {
+        if (mainId === 'interaction') {
             return 'interaction';
+        }
+        if (mainId === 'nsfw') {
+            return 'action';
         }
         if (mainId === 'scene') {
             return 'scene';

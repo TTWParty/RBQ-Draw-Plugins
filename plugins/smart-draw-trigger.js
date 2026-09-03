@@ -3766,8 +3766,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 { 
                     id: 'positions', 
                     name: '经典交合体位', 
-                    keywords: ['正常位', '传教士', '骑乘位', '女上位', '后入位', '后背位', '狗爬式', '侧入位', '侧入', '站交', '立位', '火车便当', '坐姿体位', '坐姿做爱', '坐位', '坐骑', '交尾', '配种', '插入', '性交', '做爱', '交配', '对坐', '面对面', '背面', '肛交', '69式', '69', '大车小孩', '腹击交', '性爱', '整体体位'],
-                    tagRegex: /\b(missionary|cowgirl_position|doggystyle|standing_sex|mating_press|spooning|sex_from_behind|sex|penetration|vaginal|anal)\b/i 
+                    keywords: ['正常位', '传教士', '骑乘位', '女上位', '后入位', '后背位', '狗爬式', '侧入位', '侧入', '站交', '立位', '火车便当', '坐姿体位', '坐姿做爱', '坐位', '坐骑', '交尾', '配种', '插入', '性交', '做爱', '交配', '对坐', '面对面', '背面', '肛交', '69式', '69', '大车小孩', '腹击交', '性爱', '整体体位', '跨坐', '跨骑', '上位', '腿抬起', '坐大腿'],
+                    tagRegex: /\b(missionary|cowgirl_position|doggystyle|standing_sex|mating_press|spooning|sex_from_behind|sex|penetration|vaginal|anal|straddle|straddling|sitting\s*on\s*lap|legs\s*lift|front-to-back|clothed\s*female\s*nude\s*male)\b/i 
                 },
                 { 
                     id: 'service', 

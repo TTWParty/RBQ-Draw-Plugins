@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.1.1';
+    const VERSION = '2.1.2';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -203,6 +203,11 @@
         if (!Array.isArray(ws.activeComposer.slots)) ws.activeComposer.slots = [];
         if (!Array.isArray(ws.activeComposer.selectedWbActions)) ws.activeComposer.selectedWbActions = [];
         if (typeof ws.activeComposer.customActionInput !== 'string') ws.activeComposer.customActionInput = '';
+        // 彻底清除历史旧版本中残留的幽灵 interaction 字段，防止污染生图预览
+        if (ws.activeComposer.interaction) {
+            delete ws.activeComposer.interaction;
+            wsSave();
+        }
         return ws;
     }
     function wsSave() { RBQ.api.saveSettings(); }
@@ -370,7 +375,6 @@
             }
         });
 
-        if (comp?.interaction) interactionList.push(sanitizePromptSegment(comp.interaction));
         if (comp?.customActionInput) soloActionList.push(sanitizePromptSegment(comp.customActionInput));
         if (comp?.scene) sceneList.push(sanitizePromptSegment(comp.scene));
         if (comp?.camera) sceneList.push(sanitizePromptSegment(comp.camera));
@@ -436,6 +440,13 @@
             };
         });
 
+        // 空状态保护：当用户既没有选动作、也没有指定任何角色时，展示友好提示，绝不凭空捏造 Prompt
+        const hasAnyChar = charDetails.some(c => c.rawName || c.base || c.outfit || c.slotAction);
+        const hasAnyAction = wbActions.length > 0 || !!comp?.customActionInput;
+        if (!hasAnyChar && !hasAnyAction) {
+            return '// 💡 动作工坊就绪：请在上方挑选世界书动作/分镜模板，并安排参演角色档案...';
+        }
+
         const s = typeof RBQ?.api?.getSettings === 'function' ? RBQ.api.getSettings() : {};
         const isNai = s.currentMode === 'nai';
 
@@ -448,8 +459,19 @@
             let outfit = char.outfit;
             let base = char.base;
 
-            // Conflict resolution: if action specifies sitting/lying/kneeling/crawling, remove conflicting standing
-            if (allActions.match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back)\b/i)) {
+            // 单人模式清洗：自动清洗误入的双人体位/人数标签，避免 1girl, solo 与 1girl, 1boy 产生矛盾冲突
+            allActions = allActions
+                .replace(/\b1girl\s*,\s*1boy\b,?\s*/gi, '')
+                .replace(/\b1boy\s*,\s*1girl\b,?\s*/gi, '')
+                .replace(/\b2girls\b,?\s*/gi, '')
+                .replace(/\b2boys\b,?\s*/gi, '')
+                .replace(/\bfaceless\s+male\b,?\s*/gi, '')
+                .replace(/\bclothed\s+female\s+nude\s+male\b,?\s*/gi, '')
+                .replace(/^[,;\s]+|[,;\s]+$/g, '')
+                .trim();
+
+            // 动作与服装姿态冲突清洗：如坐姿/跪姿自动清理服装和外貌里的 standing
+            if (allActions.match(/\b(sitting|lying|kneeling|seiza|crawling|on_stomach|on_back|straddle|squatting)\b/i)) {
                 outfit = outfit.replace(/\bstanding\b,?\s*/gi, '').trim();
                 base = base.replace(/\bstanding\b,?\s*/gi, '').trim();
             }
@@ -1307,7 +1329,10 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                         <button class="cw-btn sm" id="cw-pick-scene-wb" type="button">
                             <i class="fa-solid fa-mountain-sun"></i> 挑选场景/环境
                         </button>
-                        ${wbActions.length > 0 ? `<button class="cw-btn rd sm" id="cw-clear-wb-actions" type="button"><i class="fa-solid fa-trash-can"></i> 清空</button>` : ''}
+                        ${wbActions.length > 0 ? `<button class="cw-btn rd sm" id="cw-clear-wb-actions" type="button"><i class="fa-solid fa-trash-can"></i> 清空动作</button>` : ''}
+                        <button class="cw-btn sm" id="cw-reset-all" type="button" title="重置全场：清空动作、解绑角色并重置场景" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#cbd5e1">
+                            <i class="fa-solid fa-rotate-left"></i> 重置全场
+                        </button>
                     </div>
                 </div>
 
@@ -1588,24 +1613,40 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         };
     }
 
-    function classifyWorldbookItem(entry, tags) {
-        let actType = 'action';
+    function classifyWorldbookItem(entry, tags, rawContent) {
+        const raw = String(rawContent || entry?.content || tags || '');
+        if (/\bchar\s*1\s*[:：]/i.test(raw) || /\bchar\s*2\s*[:：]/i.test(raw)) {
+            return 'template';
+        }
+
+        const title = (entry?.comment || entry?.name || entry?.key || '').toLowerCase();
+        const tagStr = String(tags || '').toLowerCase();
+        const combined = (title + ' ' + tagStr + ' ' + raw).toLowerCase();
+
+        // 1. Interaction / Multi-person / Sex Poses (HIGHEST PRIORITY for duo/poses)
+        const interactionRegex = /(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys|multiple\s*(?:girls|boys)|group\s*sex|threesome|gangbang|princess_carry|hug|kiss|carrying|holding_hands|lap_pillow|kabedon|back_to_back|straddle|straddling|cowgirl|missionary|doggy|sitting\s*on\s*lap|sex\s*from\s*behind|penetration|cunnilingus|fellatio|blowjob|paizuri|spooning|creampie|faceless\s*male|clothed\s*female\s*nude\s*male|tribadism|frottage|groping|breast_grab|ass_grab|pegging|double_penetration|fingering|handjob|footjob|glory_hole|sumata|titfuck|deepthroat|irrumatio|bukkake|gokkun|prostate|femdom|spanking|bondage|shibari|rope_bondage|体位|骑乘|公主抱|拥抱|接吻|做爱|性爱|后入|传教士|正常位|双人|互动|对视|牵手|壁咚|膝枕|并肩|口交|乳交|群交|轮奸|中出|调教|双飞|胸推|颜射|深吻|舌吻|潮吹|拘束|捆绑|合体|二人|亲密|依偎|摸头|捏脸)/i;
+
+        if (interactionRegex.test(combined)) {
+            return 'interaction';
+        }
+
+        // 2. Check SDT classification metadata if available
         const mainId = entry?.classification?.mainId;
         if (mainId === 'interaction' || mainId === 'nsfw') {
-            actType = 'interaction';
-        } else if (mainId === 'scene') {
-            actType = 'scene';
-        } else {
-            const title = (entry?.comment || entry?.name || entry?.key || '').toLowerCase();
-            const tagStr = String(tags || '').toLowerCase();
-            const combined = title + ' ' + tagStr;
-            if (combined.match(/(hug|kiss|carrying|princess_carry|holding_hands|hand_holding|back-to-back|sex|penetration|kabedon|lap_pillow|双人|互动|接吻|拥抱|牵手|公主抱|壁咚|膝枕|体位|群交|并肩)/i)) {
-                actType = 'interaction';
-            } else if (combined.match(/(indoors|outdoors|scenery|room|street|beach|forest|sky|ruins|bed|night|sunset|classroom|场景|室内|室外|环境|背景|教室|海滩|街道|星空|卧室)/i)) {
-                actType = 'scene';
-            }
+            return 'interaction';
         }
-        return actType;
+        if (mainId === 'scene') {
+            return 'scene';
+        }
+
+        // 3. Scene / Environment
+        const sceneRegex = /(indoors|outdoors|scenery|landscape|room|bedroom|living_room|bathroom|kitchen|classroom|beach|ocean|sea|forest|mountain|sky|clouds|night|sunset|sunrise|rain|snow|street|cityscape|ruins|dungeon|castle|bed|couch|sofa|table|chair|pool|onsen|hot_spring|library|park|balcony|rooftop|lighting|sunlight|moonlight|depth_of_field|cinematic|scenic|interior|exterior|场景|环境|背景|室内|室外|房间|卧室|客厅|浴室|教室|海滩|街道|城市|星空|夜景|黄昏|夕阳|雨天|雪天|森林|废墟|城堡|泳池|温泉|天台|阳台|图书馆|光影|氛围)/i;
+        if (sceneRegex.test(combined)) {
+            return 'scene';
+        }
+
+        // 4. Default to Action
+        return 'action';
     }
 
     // ══════════════════════════════════════════════════════════
@@ -1648,6 +1689,23 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             const el = container.querySelector('#cw-prompt-preview');
             if (el) el.textContent = composeFinalPrompt(comp);
         };
+
+        // Reset all composer data to initial clean slate
+        container.querySelector('#cw-reset-all')?.addEventListener('click', () => {
+            if (!confirm('确定要清空并重置全场的动作、角色绑定与场景设定吗？')) return;
+            comp.selectedWbActions = [];
+            comp.customActionInput = '';
+            comp.scene = '';
+            comp.camera = '';
+            comp.atmosphere = '';
+            delete comp.interaction;
+            comp.slots = [
+                { charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' }
+            ];
+            wsSave();
+            refresh('composer');
+            toastr.info('已重置全场设定', PLUGIN_NAME);
+        });
 
         // Add duo slot
         container.querySelector('#cw-add-duo-slot')?.addEventListener('click', () => {
@@ -1751,17 +1809,31 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     return;
                 }
 
-                // 2. Otherwise classify normally
-                const actType = classifyWorldbookItem(entry, tags);
+                // 2. Comprehensive classification (template / interaction / scene / action)
+                const actType = classifyWorldbookItem(entry, tags, rawContent);
                 comp.selectedWbActions.push({
                     id: uid('act'),
                     name: entryName,
                     tags: tags,
                     type: actType
                 });
+
+                // 关键自适应：若选入的是双人互动动作/体位，且当前处于单人模式，自动扩充并开启双人同框槽位！
+                if (actType === 'interaction') {
+                    if (comp.slots.length < 2) {
+                        comp.slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'D3' });
+                        toastr.success(`已载入双人互动动作「${entryName}」，已自动为你开启双人同框槽位！`, PLUGIN_NAME);
+                    } else {
+                        toastr.success(`已添加双人动作「${entryName}」`, PLUGIN_NAME);
+                    }
+                } else if (actType === 'scene') {
+                    toastr.success(`已添加场景环境「${entryName}」`, PLUGIN_NAME);
+                } else {
+                    toastr.success(`已添加单人动作「${entryName}」`, PLUGIN_NAME);
+                }
+
                 wsSave();
                 refresh('composer');
-                toastr.success(`已添加动作条目「${entryName}」(${actType === 'interaction' ? '双人互动' : (actType === 'scene' ? '场景' : '单人动作')})`, PLUGIN_NAME);
             }, 'all', false);
         });
 

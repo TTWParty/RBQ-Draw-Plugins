@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.9';
+    const VERSION = '2.2.10';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -800,7 +800,8 @@
         const extraChar2Tpl = tplChar2Actions.filter(Boolean).join(', ');
 
         // 关键判断：是否属于双人/多角色语境
-        const hasDuoContext = slots.length > 1 || !!extraChar2Tpl || interactionList.length > 0 || /\b(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys)\b/i.test(totalInteractions + ' ' + totalSoloActions);
+        // 判定准则：用户在面板显式配置了2人以上槽位，或者所选模板具有独立的 Char 2 动作，或者动作文本明确声明了多位人物 (1girl, 1boy / 2girls 等)
+        const hasDuoContext = slots.length > 1 || !!extraChar2Tpl || /\b(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys|3girls|3boys|multiple\s*(?:girls|boys)|group\s*sex|threesome|gangbang)\b/i.test(totalInteractions + ' ' + totalSoloActions);
 
         let effectiveSlots;
         if (hasDuoContext) {
@@ -853,10 +854,25 @@
 
             // 性别检测 (结合名字、特征、服装与模板动作)
             const combinedLower = (rawName + ' ' + base + ' ' + outfit + ' ' + tplActionForSlot + ' ' + slotAction).toLowerCase();
-            if (combinedLower.match(/\b(1boy|huge male|faceless male|male|man|guy|boy)\b/)) {
-                boyCount++;
+            const isAssigned = !!(rawName || base || outfit || tplActionForSlot || slotAction);
+            if (isAssigned) {
+                if (combinedLower.match(/\b(1boy|huge male|faceless male|male|man|guy|boy)\b/)) {
+                    boyCount++;
+                } else {
+                    girlCount++;
+                }
             } else {
-                girlCount++;
+                // 未分配具体档案的陪衬槽位 (Char 2)：根据全局上下文推断性别，严禁盲目默认成第二位女性！
+                const globalDuoText = (totalInteractions + ' ' + totalSoloActions + ' ' + extraChar2Tpl).toLowerCase();
+                if (globalDuoText.match(/\b(1boy|huge male|faceless male|male|man|guy|boy|penis|dick|cock|penetration)\b/)) {
+                    boyCount++;
+                } else if (globalDuoText.match(/\b(2girls|yuri|lesbian|tribadism)\b/)) {
+                    girlCount++;
+                } else if (girlCount === 1) {
+                    boyCount++;
+                } else {
+                    girlCount++;
+                }
             }
 
             return {
@@ -889,7 +905,7 @@
             let outfit = char.outfit;
             let base = char.base;
 
-            // 单人模式清洗：自动清洗误入的双人体位/人数标签，避免 1girl, solo 与 1girl, 1boy 产生矛盾冲突
+            // 单人模式清洗：自动清洗误入的双人体位/人数标签，以及开头重叠的单人词，避免 1girl, solo 与 1girl 产生多余重复
             allActions = allActions
                 .replace(/\b1girl\s*,\s*1boy\b,?\s*/gi, '')
                 .replace(/\b1boy\s*,\s*1girl\b,?\s*/gi, '')
@@ -897,6 +913,8 @@
                 .replace(/\b2boys\b,?\s*/gi, '')
                 .replace(/\bfaceless\s+male\b,?\s*/gi, '')
                 .replace(/\bclothed\s+female\s+nude\s+male\b,?\s*/gi, '')
+                .replace(/^(1girl|1boy|solo)\s*,?\s*/gi, '')
+                .replace(/,\s*(1girl|1boy|solo)\s*(?=,|$)/gi, '')
                 .replace(/^[,;\s]+|[,;\s]+$/g, '')
                 .trim();
 
@@ -970,10 +988,12 @@
             return [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
         }).filter(Boolean);
 
-        const hasCountInInteraction = new RegExp(`\\b(${countTag.replace(/,\s*/g, '|')})\\b`, 'i').test(totalInteractions);
-        const sceneLead = hasCountInInteraction
-            ? [totalInteractions, cameraTags].filter(Boolean).join(', ')
-            : [countTag, cameraTags, totalInteractions].filter(Boolean).join(', ');
+        // 彻底杜绝 "2girls, 1girl" 或 "1girl, 1boy, 1girl" 的重叠矛盾：
+        // 如果 totalInteractions 开头自带人数词，将其清洗规范化由 countTag 统一置顶统御
+        let cleanInteractions = totalInteractions
+            .replace(/^(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys|1girl|1boy)\s*,?\s*/gi, '')
+            .trim();
+        const sceneLead = [countTag, cameraTags, cleanInteractions].filter(Boolean).join(', ');
 
         return [
             sceneLead,

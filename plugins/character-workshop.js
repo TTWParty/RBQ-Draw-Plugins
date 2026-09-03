@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.13';
+    const VERSION = '2.2.14';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -805,41 +805,35 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Headless & Faceless Conflict Pruning
-    //  当动作包含 headless (无头), body only (仅身体), decapitated (斩首), faceless (无脸) 时，
-    //  自动清洗角色外貌与特征中的头发、眼睛、发饰、发带、五官表情等，
-    //  避免 AI 看到蓝眼睛/浅蓝头发强行画出头部，破坏无头/身体动作设定。
+    //  Modular Feature Filter (头部/身体/服装特征装配过滤器)
     // ══════════════════════════════════════════════════════════
-    function pruneHeadAndFaceTags(text, actionText) {
-        if (!text || !actionText) return text;
-        const actLower = actionText.toLowerCase();
+    const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia|tareme|tsurime)\b/i;
+    const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|ponytail|twintails|pigtails|bun|chignon|drill\s+hair|glasses|sunglasses|eyepatch|goggles|mask|headband)\b/i;
+    const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|delicate_face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|looking_at_viewer|looking\s+at\s+viewer)\b/i;
+    const BODY_PATTERN = /\b(breast|breasts|chest|flat_chest|petite|slender|curvy|tall|abs|thighs|thick_thighs|skin|tan|pale|tattoo|wings|tail|ears|cat_ears|fox_ears|rabbit_ears|pointy_ears|fangs|horns|demon_horns|halo)\b/i;
 
-        const isHeadless = /\b(headless|body\s*only|body_only|decapitated|decapitation|headless\s*corpse|beheaded)\b/i.test(actLower);
-        const isFaceless = isHeadless || /\b(faceless|no\s*face|covered\s*face)\b/i.test(actLower);
+    function filterBaseTags(baseTags, includeHead, includeBody) {
+        if (!baseTags) return '';
+        if (includeHead !== false && includeBody !== false) return baseTags;
 
-        if (!isFaceless) return text;
+        const tags = baseTags.split(/[,，;；]+/).map(t => t.trim()).filter(Boolean);
+        const result = [];
 
-        const rawTags = text.split(/[,，;；]+/).map(s => s.trim()).filter(Boolean);
-        const resultTags = [];
-
-        const EYE_PATTERN = /\b([a-z_-]+\s+)?(eyes?|pupils?|eyebrows?|heterochromia)\b/i;
-        const HAIR_HEAD_PATTERN = /\b([a-z_-]+\s+)?(hair|hairband|hairclip|hair_ornament|hair\s+ornament|hair_intakes|hair\s+intakes|ribbon|ahoge|bangs|braid|ponytail|twintails|pigtails|bun|chignon|drill\s+hair|glasses|sunglasses|eyepatch|goggles|mask|headband)\b/i;
-        const FACE_PATTERN = /\b([a-z_-]+\s+)?(face|smile|smirk|blush|mouth|lips|teeth|tongue|tears|gaze|looking_at_viewer|looking\s+at\s+viewer)\b/i;
-
-        for (const tag of rawTags) {
-            if (isHeadless) {
-                if (EYE_PATTERN.test(tag) || HAIR_HEAD_PATTERN.test(tag) || FACE_PATTERN.test(tag)) {
-                    continue;
-                }
-            } else if (isFaceless) {
-                if (EYE_PATTERN.test(tag) || FACE_PATTERN.test(tag)) {
-                    continue;
+        for (const tag of tags) {
+            const isHead = EYE_PATTERN.test(tag) || HAIR_HEAD_PATTERN.test(tag) || FACE_PATTERN.test(tag);
+            if (isHead) {
+                if (includeHead !== false) result.push(tag);
+            } else {
+                const isBody = BODY_PATTERN.test(tag);
+                if (isBody) {
+                    if (includeBody !== false) result.push(tag);
+                } else {
+                    // 身份/IP/其他未识别项：始终保留
+                    result.push(tag);
                 }
             }
-            resultTags.push(tag);
         }
-
-        return resultTags.join(', ');
+        return result.join(', ');
     }
 
     // ══════════════════════════════════════════════════════════
@@ -905,11 +899,22 @@
             const n = i + 1;
             const profile = slot.charName ? getProfile(slot.charName) : null;
             const rawName = profile?.displayName || slot.charName || '';
-            const base = cleanLorebookTags(profile?.baseTags || '');
-            let outfit = cleanLorebookTags(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
-            // 智能构图冲突清洗：半身/特写时自动剔除鞋袜，避免 AI 强行拉远画全身以展示鞋子
-            if (cameraTags) {
-                outfit = pruneConflictingOutfitTags(outfit, cameraTags);
+            const rawBase = cleanLorebookTags(profile?.baseTags || '');
+
+            // 槽位装配特征开关 (头部/体态/服装)
+            const includeHead = slot.includeHead !== false;
+            const includeBody = slot.includeBody !== false;
+            const includeOutfit = slot.includeOutfit !== false;
+
+            const base = filterBaseTags(rawBase, includeHead, includeBody);
+
+            let outfit = '';
+            if (includeOutfit) {
+                outfit = cleanLorebookTags(getOutfitTagsForSlot(profile, slot.outfitId, slot.customOutfit));
+                // 智能构图冲突清洗：半身/特写时自动剔除鞋袜，避免 AI 强行拉远画全身以展示鞋子
+                if (cameraTags) {
+                    outfit = pruneConflictingOutfitTags(outfit, cameraTags);
+                }
             }
             const hasTemplate = wbActions.some(act => act.type === 'template');
             const slotAction = hasTemplate ? cleanLorebookTags(slot.action || '') : '';
@@ -1022,12 +1027,6 @@
                 base = base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
             }
 
-            // 无头/无脸与头部五官发型冲突清洗：当动作为无头/仅身体/无脸时，自动清洗外貌和服装中的眼睛、头发、发饰、发带等
-            if (allActions) {
-                base = pruneHeadAndFaceTags(base, allActions);
-                outfit = pruneHeadAndFaceTags(outfit, allActions);
-            }
-
             // 单人标准多角色分片结构：Scene: ...; Char1: ...
             // 无论单人还是双人，统一遵循多角色规范！
             // 当开启 5x5 严格坐标时附带 |centers:XY；关闭时由 AI 自主决定站位 (NovelAI V4 原生 Order-based 多角色模式)
@@ -1059,11 +1058,6 @@
             if ((char.tplActionForSlot + ' ' + allInteractionText).match(/\b(breast|lactation|sucking|nipple|fellatio|blowjob|paizuri|sex|penetration|cunnilingus|lying|sleeping|bed|kiss|hug|straddle|kneeling|sitting|on_stomach|on_back)\b/i)) {
                 char.outfit = char.outfit.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
                 char.base = char.base.replace(/\b(purple\s+magic\s+staff|magic\s+staff|holding\s+staff|holding\s+weapon|staff|weapon|magic\s+wand)\b,?\s*/gi, '').trim();
-            }
-            const actForChar = char.tplActionForSlot + ' ' + allInteractionText;
-            if (actForChar) {
-                char.base = pruneHeadAndFaceTags(char.base, actForChar);
-                char.outfit = pruneHeadAndFaceTags(char.outfit, actForChar);
             }
         });
 
@@ -2244,6 +2238,23 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                                     </select>
                                 </div>
                             </div>
+                            <div class="cw-slot-components" style="display:flex;align-items:center;gap:12px;margin-top:8px;padding-top:6px;border-top:1px dashed rgba(255,255,255,0.08);flex-wrap:wrap">
+                                <span style="font-size:10.5px;color:rgba(255,255,255,0.5);display:flex;align-items:center;gap:4px">
+                                    <i class="fa-solid fa-layer-group"></i> 特征装配:
+                                </span>
+                                <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${slot.includeHead !== false ? '#38bdf8' : 'rgba(255,255,255,0.4)'};cursor:pointer;user-select:none" title="是否包含头部发型发饰与面容五官（无头尸体可关闭，断头在旁可开启）">
+                                    <input type="checkbox" class="cw-slot-toggle-head" data-idx="${i}" ${slot.includeHead !== false ? 'checked' : ''} style="cursor:pointer;margin:0" />
+                                    <span>头部面容</span>
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${slot.includeBody !== false ? '#38bdf8' : 'rgba(255,255,255,0.4)'};cursor:pointer;user-select:none" title="是否包含身材体态与身体标记（胸围、身材、肤色等）">
+                                    <input type="checkbox" class="cw-slot-toggle-body" data-idx="${i}" ${slot.includeBody !== false ? 'checked' : ''} style="cursor:pointer;margin:0" />
+                                    <span>体态特征</span>
+                                </label>
+                                <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${slot.includeOutfit !== false ? '#38bdf8' : 'rgba(255,255,255,0.4)'};cursor:pointer;user-select:none" title="是否包含衣柜服装套件（沐浴/裸体/动作自带全套衣服可关闭）">
+                                    <input type="checkbox" class="cw-slot-toggle-outfit" data-idx="${i}" ${slot.includeOutfit !== false ? 'checked' : ''} style="cursor:pointer;margin:0" />
+                                    <span>当前服装</span>
+                                </label>
+                            </div>
                         </div>`;
                     }).join('')}
                 </div>
@@ -2638,6 +2649,32 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     comp.slots[idx].outfitId = sel.value;
                     comp.slots[idx].customOutfit = '';
                 }
+                wsSave();
+                refresh('composer');
+            }
+        }));
+
+        // 槽位装配特征开关 (头部/面容, 身体/体态, 服装/配饰)
+        container.querySelectorAll('.cw-slot-toggle-head').forEach(cb => cb.addEventListener('change', () => {
+            const idx = +cb.dataset.idx;
+            if (comp.slots[idx]) {
+                comp.slots[idx].includeHead = cb.checked;
+                wsSave();
+                refresh('composer');
+            }
+        }));
+        container.querySelectorAll('.cw-slot-toggle-body').forEach(cb => cb.addEventListener('change', () => {
+            const idx = +cb.dataset.idx;
+            if (comp.slots[idx]) {
+                comp.slots[idx].includeBody = cb.checked;
+                wsSave();
+                refresh('composer');
+            }
+        }));
+        container.querySelectorAll('.cw-slot-toggle-outfit').forEach(cb => cb.addEventListener('change', () => {
+            const idx = +cb.dataset.idx;
+            if (comp.slots[idx]) {
+                comp.slots[idx].includeOutfit = cb.checked;
                 wsSave();
                 refresh('composer');
             }

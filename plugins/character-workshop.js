@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.3';
+    const VERSION = '2.2.4';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -149,28 +149,107 @@
     let _cachedDoujinProfiles = null;
     let _cachedDoujinSourceId = null;
 
+    function splitCharAndOutfit(title) {
+        let t = String(title || '').trim();
+        const bracketRegex = /[\s\-_—－]*[\(（\[【]([^\)）\]】]+)[\)）\]】]\s*$/;
+        const bm = t.match(bracketRegex);
+        if (bm && bm.index > 0) {
+            const potentialOutfit = bm[1].trim();
+            const charName = t.slice(0, bm.index).trim();
+            if (charName.length >= 2 && /(服|装|立绘|衣|裙|袍|制服|校服|泳装|比基尼|睡衣|兔女郎|内衣|战服|和服|旗袍|私服|女仆|礼服|便服|日常|战斗|常服|bikini|swimsuit|pajamas|maid|bunny|casual|battle|combat|underwear|dress|costume)/i.test(potentialOutfit)) {
+                return { charName, outfitName: potentialOutfit };
+            }
+        }
+        const sepRegex = /[\s\-_—－]+([\u4e00-\u9fa5a-zA-Z0-9_\-]+?(?:服|装|立绘|衣|裙|袍|制服|校服|泳装|比基尼|睡衣|兔女郎|内衣|战服|和服|旗袍|私服|女仆|礼服|便服|日常|战斗|常服|bikini|swimsuit|pajamas|maid|bunny|casual|battle|combat))\s*$/i;
+        const sm = t.match(sepRegex);
+        if (sm && sm.index > 0) {
+            const potentialOutfit = sm[1].trim();
+            const charName = t.slice(0, sm.index).trim();
+            if (charName.length >= 2) {
+                return { charName, outfitName: potentialOutfit };
+            }
+        }
+        return { charName: t, outfitName: '' };
+    }
+
+    function parseMultiOutfits(content) {
+        const text = String(content || '').trim();
+        const lines = text.split(/\r?\n/);
+        const outfits = [];
+        let currentOutfit = null;
+
+        const NON_OUTFIT_REGEX = /^[-*#\s]*(角色|人物|身份|核心特征|固有特征|外貌特征|外貌|容貌|身体特征|拓展资料区|道具|武器|装备|说明|介绍|背景)/;
+        const OUTFIT_KEYWORD = /(服|装|立绘|衣|裙|袍|制服|校服|泳装|比基尼|睡衣|兔女郎|内衣|战服|和服|旗袍|私服|女仆|礼服|便服|日常|战斗|常服|bikini|swimsuit|pajamas|maid|bunny|casual|battle|combat|underwear|dress|costume)/i;
+
+        const isOutfitLine = (line) => {
+            if (NON_OUTFIT_REGEX.test(line)) return { isTerminator: true };
+            const m = line.match(/^[-*#\s]*(?:(?:服饰|服装|衣着|装束)[-_—－\s]*)?([【\[]?[\u4e00-\u9fa5a-zA-Z0-9_\-\/]+[\]】]?)\s*[:：]\s*(.*)$/);
+            if (!m) {
+                const h = line.match(/^#+\s*([^\n]+)$/) || line.match(/^[【\[]([^】\]]+)[\]\]]$/);
+                if (h) {
+                    const hName = h[1].trim();
+                    if (NON_OUTFIT_REGEX.test(hName)) return { isTerminator: true };
+                    if (OUTFIT_KEYWORD.test(hName)) return { name: hName, content: '' };
+                    return null;
+                }
+                return null;
+            }
+            const name = m[1].replace(/^[【\[（\(]+|[】\]）\)]+$/g, '').trim();
+            if (!OUTFIT_KEYWORD.test(name)) return null;
+            return { name, content: m[2].trim() };
+        };
+
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            const oInfo = isOutfitLine(line);
+            if (oInfo) {
+                if (currentOutfit && currentOutfit.tags.length > 0) {
+                    outfits.push({ name: currentOutfit.name, tags: currentOutfit.tags.join(', ') });
+                    currentOutfit = null;
+                }
+                if (!oInfo.isTerminator) {
+                    currentOutfit = { name: oInfo.name, tags: oInfo.content ? [oInfo.content] : [] };
+                }
+            } else if (currentOutfit) {
+                currentOutfit.tags.push(line);
+            }
+        }
+        if (currentOutfit && currentOutfit.tags.length > 0) {
+            outfits.push({ name: currentOutfit.name, tags: currentOutfit.tags.join(', ') });
+        }
+        return outfits;
+    }
+
     function parseDoujinProfile(rawContent, fallbackName) {
         let text = String(rawContent || '').trim();
 
-        // 1. 如果有以 # 或 // 或 [ 开头的显式差分分段，按标准分段解析
-        const outfitSections = text.split(/\n(?=#|\/\/|\[)/);
-        if (outfitSections.length > 1) {
-            const baseTags = cleanLorebookTags(outfitSections[0].replace(/^#+[^\n]*\n?/, '').trim());
-            const wardrobe = [];
-            for (let i = 1; i < outfitSections.length; i++) {
-                const sec = outfitSections[i].trim();
-                const titleMatch = sec.match(/^#+([^\n]+)/);
-                const wName = titleMatch ? titleMatch[1].trim() : `服装${i}`;
-                const wTags = cleanLorebookTags(sec.replace(/^#+[^\n]*\n?/, '').trim());
-                if (wTags) wardrobe.push({ id: 'w_' + i, name: wName, outfit: wTags });
+        // 1. 检查是否有明确的多个服装分段（如 服饰- 常服:、服饰- 泳装: 或 # 泳装）
+        const multiOutfits = parseMultiOutfits(text);
+        if (multiOutfits.length > 1) {
+            const lines = text.split(/\r?\n/);
+            let firstOutfitIdx = -1;
+            const OUTFIT_KW = /(服|装|立绘|衣|裙|袍|制服|校服|泳装|比基尼|睡衣|兔女郎|内衣|战服|和服|旗袍|私服|女仆|礼服|便服|日常|战斗|常服|bikini|swimsuit|pajamas|maid|bunny|casual|battle|combat|underwear|dress|costume)/i;
+            for (let i = 0; i < lines.length; i++) {
+                const l = lines[i].trim();
+                if (/^[-*#\s]*(?:(?:服饰|服装)[-_—－\s]*)?[【\[]?[\u4e00-\u9fa5a-zA-Z0-9_\-\/]+[\]】]?[:：\n]/.test(l) && OUTFIT_KW.test(l)) {
+                    firstOutfitIdx = i;
+                    break;
+                }
             }
-            if (wardrobe.length === 0) {
-                wardrobe.push({ id: 'w_default', name: '默认立绘', outfit: '' });
-            }
-            return { baseTags, wardrobe };
+            const baseRaw = firstOutfitIdx > 0 ? lines.slice(0, firstOutfitIdx).join('\n') : text;
+            const baseClean = cleanLorebookTags(baseRaw) || cleanLorebookTags(text);
+
+            const wardrobe = multiOutfits.map((o, idx) => ({
+                id: 'w_' + (idx + 1),
+                name: o.name || `服装${idx + 1}`,
+                outfit: cleanLorebookTags(o.tags)
+            }));
+
+            return { baseTags: baseClean, wardrobe };
         }
 
-        // 2. 针对常见自然语言格式世界书同人库（提取特征、服装和道具/武器）
+        // 2. 单服装或普通语义格式（提取特征、服装和道具/武器）
         const outfitStartRegex = /((?:服饰|服装|衣着|装束)[-_—－\s]*(?:上身|下身)?[:：])/i;
         const propStartRegex = /((?:拓展资料区|拓展资料|道具\/武器|道具|武器|装备)[-_—－\s]*[:：])/i;
 
@@ -231,6 +310,7 @@
             ? rawEntries
             : (rawEntries && typeof rawEntries === 'object' ? Object.values(rawEntries) : []);
         const profiles = {};
+        const pendingVariantEntries = [];
 
         for (const e of entries) {
             if (!e || typeof e !== 'object') continue;
@@ -246,23 +326,59 @@
 
             const keys = Array.isArray(e.key) ? e.key : (typeof e.key === 'string' ? e.key.split(',') : []);
             
-            const parsedProfile = parseDoujinProfile(content, rawName);
-            const baseTags = parsedProfile.baseTags;
-            const wardrobe = parsedProfile.wardrobe;
-
-            profiles[rawName] = {
-                displayName: rawName,
-                charName: rawName,
-                baseTags: baseTags,
-                currentOutfit: wardrobe[0]?.outfit || '',
-                currentOutfitId: wardrobe[0]?.id || 'w_default',
-                wardrobe: wardrobe,
-                source: 'lorebook',
-                sourceId: lorebookSource.id,
-                sourceName: lorebookSource.name,
-                keys: keys
-            };
+            const { charName, outfitName } = splitCharAndOutfit(rawName);
+            if (outfitName && charName && charName !== rawName) {
+                pendingVariantEntries.push({ e, charName, outfitName, content, keys });
+            } else {
+                const parsedProfile = parseDoujinProfile(content, rawName);
+                profiles[rawName] = {
+                    displayName: rawName,
+                    charName: rawName,
+                    baseTags: parsedProfile.baseTags,
+                    currentOutfit: parsedProfile.wardrobe[0]?.outfit || '',
+                    currentOutfitId: parsedProfile.wardrobe[0]?.id || 'w_default',
+                    wardrobe: parsedProfile.wardrobe,
+                    source: 'lorebook',
+                    sourceId: lorebookSource.id,
+                    sourceName: lorebookSource.name,
+                    keys: keys
+                };
+            }
         }
+
+        // 第二轮：将独立服装变体条目（如 角色 (泳装)）智能合并到主角色档案的衣柜 (Wardrobe)
+        for (const item of pendingVariantEntries) {
+            let target = profiles[item.charName];
+            if (!target) {
+                // 如果还没有主档案，以该变体初始化
+                const p = parseDoujinProfile(item.content, item.charName);
+                profiles[item.charName] = {
+                    displayName: item.charName,
+                    charName: item.charName,
+                    baseTags: p.baseTags,
+                    currentOutfit: p.wardrobe[0]?.outfit || '',
+                    currentOutfitId: p.wardrobe[0]?.id || 'w_default',
+                    wardrobe: p.wardrobe,
+                    source: 'lorebook',
+                    sourceId: lorebookSource.id,
+                    sourceName: lorebookSource.name,
+                    keys: item.keys
+                };
+                target = profiles[item.charName];
+            }
+
+            const pVar = parseDoujinProfile(item.content, item.outfitName);
+            const varOutfitTags = pVar.wardrobe[0]?.outfit || pVar.baseTags;
+            const existing = target.wardrobe.find(w => w.name.toLowerCase() === item.outfitName.toLowerCase());
+            if (!existing && varOutfitTags) {
+                target.wardrobe.push({
+                    id: 'w_' + uid('outfit'),
+                    name: item.outfitName,
+                    outfit: cleanLorebookTags(varOutfitTags)
+                });
+            }
+        }
+
         return profiles;
     }
 
@@ -524,6 +640,82 @@
         { n: '浴衣/和服', t: 'yukata, kimono' },
         { n: '全裸', t: 'nude, uncensored' }
     ];
+
+    // ══════════════════════════════════════════════════════════
+    //  Intelligent Outfit Matching (动作与服装智能自动联动匹配)
+    // ══════════════════════════════════════════════════════════
+    function findBestMatchingOutfit(actionsStr, wardrobe) {
+        if (!actionsStr || !Array.isArray(wardrobe) || wardrobe.length <= 1) return null;
+        const act = actionsStr.toLowerCase();
+
+        const rules = [
+            {
+                actPattern: /(swim|pool|beach|ocean|seaside|bikini|swimsuit|onsen|hot_spring|water|resort|游泳|泳池|海滩|沙滩|温泉|比基尼|戏水)/i,
+                outfitPattern: /(泳装|比基尼|泳衣|swimsuit|bikini)/i
+            },
+            {
+                actPattern: /(sleep|bed|pillow|lying|yawning|pajamas|nightgown|futon|blanket|睡觉|卧床|睡衣|床上|起床|赖床)/i,
+                outfitPattern: /(睡衣|寝服|pajamas|nightgown|sleepwear)/i
+            },
+            {
+                actPattern: /(maid|serving|tray|cleaning|tea|broom|女仆|侍奉|端茶|打扫)/i,
+                outfitPattern: /(女仆|maid)/i
+            },
+            {
+                actPattern: /(bunny|casino|bunny_ears|兔女郎|赌场|兔耳)/i,
+                outfitPattern: /(兔女郎|bunny)/i
+            },
+            {
+                actPattern: /(combat|fight|battle|attack|magic|spell|sword|staff|weapon|战斗|施法|攻击|拔剑|迎战|武器)/i,
+                outfitPattern: /(战斗|战服|武装|全套|combat|battle|armor)/i
+            },
+            {
+                actPattern: /(running|workout|gym|sport|exercise|bloomers|跑步|运动|锻炼|体操|健身)/i,
+                outfitPattern: /(运动|体操|瑜伽|sport|bloomers)/i
+            },
+            {
+                actPattern: /(breast|lactation|sucking|sex|masturbation|naked|nude|lingerie|underwear|哺乳|乳交|性爱|做爱|自慰|全裸|内衣|裸体)/i,
+                outfitPattern: /(内衣|清凉|裸体|lingerie|underwear|nude)/i
+            }
+        ];
+
+        for (const rule of rules) {
+            if (rule.actPattern.test(act)) {
+                const matched = wardrobe.find(w => rule.outfitPattern.test((w.name + ' ' + (w.outfit || '')).toLowerCase()));
+                if (matched) return matched;
+            }
+        }
+        return null;
+    }
+
+    function autoMatchOutfitsForActiveComposer() {
+        const ws = getWs();
+        const comp = ws.activeComposer;
+        if (!comp || !Array.isArray(comp.slots)) return;
+
+        const wbActions = Array.isArray(comp.selectedWbActions) ? comp.selectedWbActions : [];
+        const actionStr = [
+            ...wbActions.map(a => `${a.name || ''} ${a.tags || ''}`),
+            comp.customActionInput || '',
+            comp.scene || ''
+        ].join(' ');
+
+        if (!actionStr.trim()) return;
+
+        comp.slots.forEach(slot => {
+            if (!slot.charName) return;
+            const prof = getProfile(slot.charName) || getAllProfiles()[slot.charName];
+            if (!prof || !Array.isArray(prof.wardrobe) || prof.wardrobe.length <= 1) return;
+
+            if (!slot.customOutfit) {
+                const bestOutfit = findBestMatchingOutfit(actionStr, prof.wardrobe);
+                if (bestOutfit && slot.outfitId !== bestOutfit.id) {
+                    slot.outfitId = bestOutfit.id;
+                    toastr.info(`💡 检测到动作分镜，已自动为「${prof.displayName || slot.charName}」切换至【${bestOutfit.name}】！`, PLUGIN_NAME);
+                }
+            }
+        });
+    }
 
     // ══════════════════════════════════════════════════════════
     //  Prompt Composition & Multi-Engine Template Adaptation
@@ -2208,6 +2400,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
             if (comp.slots[idx]) {
                 comp.slots[idx].charName = sel.value;
                 comp.slots[idx].outfitId = '';
+                autoMatchOutfitsForActiveComposer();
                 wsSave();
                 refresh('composer');
             }
@@ -2259,6 +2452,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                         toastr.success(`已载入分镜模板「${entryName}」！`, PLUGIN_NAME);
                     }
 
+                    autoMatchOutfitsForActiveComposer();
                     wsSave();
                     refresh('composer');
                     return;
@@ -2287,6 +2481,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     toastr.success(`已添加单人动作「${entryName}」`, PLUGIN_NAME);
                 }
 
+                autoMatchOutfitsForActiveComposer();
                 wsSave();
                 refresh('composer');
             }, 'all', true);
@@ -2303,6 +2498,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     tags: tags,
                     type: 'scene'
                 });
+                autoMatchOutfitsForActiveComposer();
                 wsSave();
                 refresh('composer');
                 toastr.success(`已载入场景环境「${entryName}」`, PLUGIN_NAME);

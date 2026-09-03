@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.5';
+    const VERSION = '2.2.6';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -993,14 +993,14 @@
         const modal = document.createElement('div');
         modal.id = 'cw-test-mode-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483620 !important;background:rgba(10,15,29,.94) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;height:100dvh !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.96) !important;backdrop-filter:blur(14px) !important;-webkit-backdrop-filter:blur(14px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
         modal.innerHTML = `
-            <div class="cw-modal" style="width:480px;max-width:95vw">
-                <div class="cw-modal-hd">
+            <div class="cw-modal" style="width:480px;max-width:96vw;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;min-height:min-content">
+                <div class="cw-modal-hd" style="flex-shrink:0">
                     <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-palette"></i> 选择立绘测试视角 · ${esc(cleanName)}</strong>
                     <button class="cw-btn sm" id="cw-test-mode-close">✕</button>
                 </div>
-                <div class="cw-modal-bd" style="gap:10px">
+                <div class="cw-modal-bd" style="flex:1 1 auto;min-height:min-content;overflow-y:auto;gap:10px;-webkit-overflow-scrolling:touch">
                     <div style="font-size:12px;opacity:.75;margin-bottom:2px">请选择本次测试生成的视角模式或一键全景套图：</div>
                     
                     <button class="cw-btn cw-test-opt" data-mode="portrait" type="button" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px">
@@ -1124,7 +1124,7 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.95) !important;backdrop-filter:blur(12px) !important;-webkit-backdrop-filter:blur(12px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;height:100dvh !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.96) !important;backdrop-filter:blur(14px) !important;-webkit-backdrop-filter:blur(14px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
 
         function renderGallery() {
             const currentItem = results[activeIndex] || results[0];
@@ -1139,13 +1139,13 @@
             ` : '';
 
             modal.innerHTML = `
-                <div class="cw-modal" style="width:680px;max-width:96vw">
-                    <div class="cw-modal-hd">
+                <div class="cw-modal" style="width:680px;max-width:96vw;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;min-height:min-content">
+                    <div class="cw-modal-hd" style="flex-shrink:0">
                         <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-palette"></i> 角色立绘测试画廊 · ${esc(cleanName)} ${hasMultiple ? `(${activeIndex + 1}/${results.length})` : ''}</strong>
                         <button class="cw-btn sm" id="cw-gal-close">✕</button>
                     </div>
                     ${tabsHtml}
-                    <div class="cw-modal-bd" style="align-items:center;gap:8px">
+                    <div class="cw-modal-bd" style="flex:1 1 auto;min-height:min-content;overflow-y:auto;align-items:center;gap:8px;-webkit-overflow-scrolling:touch">
                         <div style="width:100%;flex:1 1 auto;max-height:48vh;min-height:140px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
                             <img src="${esc(currentItem.url)}" style="max-width:100%;max-height:46vh;width:auto;height:auto;object-fit:contain;display:block" alt="Test Result" />
                         </div>
@@ -1202,14 +1202,14 @@
         const modal = document.createElement('div');
         modal.id = 'cw-image-viewer-modal';
         modal.className = 'cw-modal-mask';
-        modal.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.95) !important;backdrop-filter:blur(12px) !important;-webkit-backdrop-filter:blur(12px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        modal.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;height:100dvh !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.96) !important;backdrop-filter:blur(14px) !important;-webkit-backdrop-filter:blur(14px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
         modal.innerHTML = `
-            <div class="cw-modal" style="width:680px;max-width:95vw">
-                <div class="cw-modal-hd">
+            <div class="cw-modal" style="width:680px;max-width:96vw;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;min-height:min-content">
+                <div class="cw-modal-hd" style="flex-shrink:0">
                     <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-image"></i> ${esc(title)}</strong>
                     <button class="cw-btn sm" id="cw-img-close">✕</button>
                 </div>
-                <div class="cw-modal-bd" style="align-items:center;gap:8px">
+                <div class="cw-modal-bd" style="flex:1 1 auto;min-height:min-content;overflow-y:auto;align-items:center;gap:8px;-webkit-overflow-scrolling:touch">
                     <div style="width:100%;flex:1 1 auto;max-height:50vh;min-height:140px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:8px;overflow:hidden">
                         <img src="${esc(url)}" style="max-width:100%;max-height:48vh;width:auto;height:auto;object-fit:contain;display:block" alt="Generated Image" />
                     </div>
@@ -1289,16 +1289,16 @@
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
-.cw-modal-mask{position:fixed;inset:0;z-index:2147483500!important;background:rgba(10,15,29,.92)!important;backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch}
+.cw-modal-mask{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;height:100dvh!important;inset:0!important;z-index:2147483647!important;background:rgba(10,15,29,.96)!important;backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch!important}
 #cw-image-viewer-modal{z-index:2147483647!important}
-#cw-test-mode-modal{z-index:2147483620!important}
-#cw-character-editor-modal{z-index:2147483550!important}
+#cw-test-mode-modal{z-index:2147483647!important}
+#cw-character-editor-modal{z-index:2147483647!important}
 body.cw-viewer-open #cw-character-editor-modal,
 body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!important;pointer-events:none!important;transition:opacity .2s ease,filter .2s ease}
-.cw-modal{background:#0f172a!important;border:1px solid rgba(56,189,248,.35)!important;border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.95)!important;box-sizing:border-box;margin:auto!important;position:relative;flex-shrink:0}
-.cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08);flex-shrink:0}
-.cw-modal-bd{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;min-height:0}
-.cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3);flex-shrink:0;flex-wrap:wrap;gap:8px}
+.cw-modal{background:#0f172a!important;border:1px solid rgba(56,189,248,.35)!important;border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex!important;flex-direction:column!important;min-height:min-content!important;overflow:hidden!important;box-shadow:0 25px 60px rgba(0,0,0,.95)!important;box-sizing:border-box;margin:auto!important;position:relative!important;flex-shrink:0!important}
+.cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08);flex-shrink:0!important}
+.cw-modal-bd{flex:1 1 auto!important;min-height:min-content!important;overflow-y:auto!important;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;-webkit-overflow-scrolling:touch!important}
+.cw-modal-ft{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3);flex-shrink:0!important;flex-wrap:wrap;gap:8px}
 .cw-warn{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:8px 12px;font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:8px}
 .cw-wb-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);font-size:11.5px;color:#f8fafc;box-sizing:border-box;transition:.15s}
 .cw-wb-chip.interaction{background:rgba(244,114,182,.12);border-color:rgba(244,114,182,.45)}
@@ -1320,22 +1320,22 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
 
 @media (max-width: 768px) {
   .cw-wrap{min-height:0;flex:1}
-  .cw-hdr{padding:8px 10px;gap:8px;flex-shrink:0}
+  .cw-hdr{padding:6px 8px;gap:6px;flex-shrink:0}
   .cw-logo{font-size:13px}
   .cw-tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;scrollbar-width:none;gap:3px;padding:2px}
   .cw-tabs::-webkit-scrollbar{display:none}
-  .cw-tab{white-space:nowrap;flex-shrink:0;font-size:11px;padding:4px 8px}
-  .cw-body{padding:8px 6px;gap:10px}
-  .cw-card{padding:9px;gap:7px}
+  .cw-tab{white-space:nowrap;flex-shrink:0;font-size:11px;padding:4px 7px}
+  .cw-body{padding:6px 4px;gap:8px}
+  .cw-card{padding:8px;gap:6px}
   .cw-card-hd{gap:6px}
   .cw-card-tt{font-size:12px}
   .cw-chgrid{grid-template-columns:1fr;gap:8px}
-  .cw-chcard{padding:9px;gap:6px}
-  .cw-modal-mask{padding:max(12px, env(safe-area-inset-top, 12px)) 10px max(12px, env(safe-area-inset-bottom, 12px)) !important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;background:rgba(10,15,29,.94)!important;z-index:2147483647!important}
-  .cw-modal{width:100%!important;max-width:100%!important;max-height:calc(100vh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;max-height:calc(100dvh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;margin:auto 0!important}
-  .cw-modal-hd{padding:9px 12px}
-  .cw-modal-bd{padding:10px 12px;gap:10px}
-  .cw-modal-ft{padding:8px 12px;gap:6px}
+  .cw-chcard{padding:8px;gap:6px}
+  .cw-modal-mask{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;height:100dvh!important;inset:0!important;padding:max(12px, env(safe-area-inset-top, 12px)) 8px max(12px, env(safe-area-inset-bottom, 12px))!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;background:rgba(10,15,29,.96)!important;z-index:2147483647!important;-webkit-overflow-scrolling:touch!important}
+  .cw-modal{width:100%!important;max-width:100%!important;min-height:min-content!important;max-height:calc(100vh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;max-height:calc(100dvh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;margin:auto 0!important;display:flex!important;flex-direction:column!important}
+  .cw-modal-hd{padding:9px 12px;flex-shrink:0!important}
+  .cw-modal-bd{padding:10px 12px;gap:10px;flex:1 1 auto!important;min-height:min-content!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch!important}
+  .cw-modal-ft{padding:8px 12px;gap:6px;flex-shrink:0!important}
 }
 `;
         document.head.appendChild(s);
@@ -1389,19 +1389,19 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         const mask = document.createElement('div');
         mask.id = 'cw-character-editor-modal';
         mask.className = 'cw-modal-mask';
-        mask.style.cssText = 'position:fixed !important;inset:0 !important;z-index:2147483550 !important;background:rgba(10,15,29,.92) !important;backdrop-filter:blur(10px) !important;-webkit-backdrop-filter:blur(10px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        mask.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;height:100dvh !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.96) !important;backdrop-filter:blur(14px) !important;-webkit-backdrop-filter:blur(14px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
 
         function render() {
             const cw = draft.wardrobe[activeWIdx] || draft.wardrobe[0];
             const isCurrentlyWorn = (draft.currentOutfitId ? cw?.id === draft.currentOutfitId : (cw?.outfit && cw?.outfit === draft.currentOutfit));
 
             mask.innerHTML = `
-                <div class="cw-modal" style="width:820px">
-                    <div class="cw-modal-hd">
+                <div class="cw-modal" style="width:820px;max-width:96vw;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;min-height:min-content">
+                    <div class="cw-modal-hd" style="flex-shrink:0">
                         <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-id-card"></i> ${isEdit ? '编辑角色 · ' + esc(draft.displayName) : '✨ 新建角色档案'}</strong>
                         <button class="cw-btn sm" id="cw-ce-x">✕</button>
                     </div>
-                    <div class="cw-modal-bd">
+                    <div class="cw-modal-bd" style="flex:1 1 auto;min-height:min-content;overflow-y:auto;-webkit-overflow-scrolling:touch">
                         <!-- Name & Avatar -->
                         <div class="cw-card" style="padding:9px 12px">
                             <div style="display:flex;gap:10px;align-items:center">

@@ -6780,6 +6780,9 @@ SCHEMA:
             let sseBuffer = '';
             let accumulatedArgs = '';
             let accumulatedContent = '';
+            let accumulatedReasoning = '';
+            let hasSafetyBlock = false;
+            let safetyReason = '';
             const rawDebugChunks = [];
 
             while (true) {
@@ -6788,11 +6791,7 @@ SCHEMA:
                     sseBuffer += decoder.decode(value, { stream: !done });
                 }
                 const lines = sseBuffer.split('\n');
-                if (!done) {
-                    sseBuffer = lines.pop(); // 保留未闭合的半行
-                } else {
-                    sseBuffer = '';
-                }
+                sseBuffer = lines.pop() || '';
 
                 for (const line of lines) {
                     const trimmed = line.trim();
@@ -6808,11 +6807,22 @@ SCHEMA:
                             throw new Error(`SSE 流返回错误: ${chunk.error.message || JSON.stringify(chunk.error)}`);
                         }
 
-                        // 2. OpenAI 兼容格式 (delta 或 message)
+                        // 检查模型安全拦截标记
                         const choice = chunk.choices?.[0];
                         const delta = choice?.delta || choice?.message;
+                        const candidate = chunk.candidates?.[0];
 
-                        // Modern tool_calls
+                        const finishReason = choice?.finish_reason || candidate?.finishReason;
+                        if (finishReason && String(finishReason).toLowerCase() === 'safety') {
+                            hasSafetyBlock = true;
+                            safetyReason = 'finishReason: SAFETY';
+                        }
+                        if (chunk.promptFeedback?.blockReason) {
+                            hasSafetyBlock = true;
+                            safetyReason = `promptFeedback: ${chunk.promptFeedback.blockReason}`;
+                        }
+
+                        // 2. OpenAI 兼容格式 (delta 或 message)
                         const toolCalls = delta?.tool_calls || choice?.tool_calls;
                         if (Array.isArray(toolCalls)) {
                             for (const tc of toolCalls) {
@@ -6833,7 +6843,6 @@ SCHEMA:
                         }
 
                         // 3. Google Vertex AI / Gemini Native parts
-                        const candidate = chunk.candidates?.[0];
                         const parts = candidate?.content?.parts;
                         if (Array.isArray(parts)) {
                             for (const p of parts) {
@@ -6846,12 +6855,21 @@ SCHEMA:
                                 if (p.text) {
                                     accumulatedContent += p.text;
                                 }
+                                if (p.thought) {
+                                    accumulatedReasoning += p.thought;
+                                }
                             }
                         }
 
-                        // 4. 普通正文文本
+                        // 4. 普通正文文本与思维链支持
                         if (delta?.content) {
                             accumulatedContent += delta.content;
+                        }
+                        if (delta?.reasoning_content) {
+                            accumulatedReasoning += delta.reasoning_content;
+                        }
+                        if (delta?.thought) {
+                            accumulatedReasoning += delta.thought;
                         }
                     } catch (err) {
                         if (err.message?.includes('SSE 流返回错误')) throw err;
@@ -6865,13 +6883,24 @@ SCHEMA:
                 console.info(`[${PLUGIN_NAME}] SSE 流解包统计: 提取工具参数 ${accumulatedArgs.length} 字符, 提取正文 ${accumulatedContent.length} 字符`, rawDebugChunks);
             }
 
-            // 如果两者都为空，说明当前代理渠道虽以 200 响应了流式，但丢弃了工具调用数据（或返回空流），触发自愈重试
+            // 若模型把输出放进了思维链
+            if (!accumulatedArgs && !accumulatedContent && accumulatedReasoning) {
+                if (accumulatedReasoning.includes('shouldDraw') || accumulatedReasoning.includes('segments')) {
+                    accumulatedContent = accumulatedReasoning;
+                }
+            }
+
+            // 如果两者都为空，说明流式未产出内容
             if (!accumulatedArgs && !accumulatedContent) {
-                console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并退回常规 json_object 模式重试...`);
+                if (hasSafetyBlock) {
+                    throw new Error(`Gemini 模型触发了官方前置安全审查熔断 (${safetyReason})。请尝试精简或避免敏感词。`);
+                }
+
+                console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并保持纯流式重试...`);
                 const noToolsBody = { ...reqBody };
                 delete noToolsBody.tools;
                 delete noToolsBody.tool_choice;
-                noToolsBody.stream = false;
+                noToolsBody.stream = true; // 务必保持 stream: true，以防代理报 Invalid non-streaming 500
                 noToolsBody.response_format = { type: 'json_object' };
                 const fallbackRes = await smartFetch(url, {
                     method: 'POST',
@@ -6883,7 +6912,37 @@ SCHEMA:
                     body: JSON.stringify(noToolsBody),
                 });
                 if (!fallbackRes.ok) throw new Error(`tagger 降级重试请求失败: HTTP ${fallbackRes.status} ${await fallbackRes.text()}`);
-                json = await fallbackRes.json();
+                
+                // 对降级重试同样采用流式读取解析
+                const fallbackReader = fallbackRes.body.getReader();
+                const fallbackDecoder = new TextDecoder();
+                let fallbackBuffer = '';
+                let fallbackContent = '';
+                while (true) {
+                    const { done, value } = await fallbackReader.read();
+                    if (value) {
+                        fallbackBuffer += fallbackDecoder.decode(value, { stream: !done });
+                    }
+                    const lines = fallbackBuffer.split('\n');
+                    fallbackBuffer = lines.pop() || '';
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed || !trimmed.startsWith('data:')) continue;
+                        const dataStr = trimmed.slice(5).trim();
+                        if (dataStr === '[DONE]') continue;
+                        try {
+                            const c = JSON.parse(dataStr);
+                            const text = c.choices?.[0]?.delta?.content || c.choices?.[0]?.message?.content || c.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                            fallbackContent += text;
+                        } catch (_e) {}
+                    }
+                    if (done) break;
+                }
+
+                if (!fallbackContent.trim()) {
+                    throw new Error('tagger 降级流式重试完成，但模型未输出任何内容（可能被 Gemini 安全策略熔断）。');
+                }
+                json = { choices: [{ message: { content: fallbackContent } }] };
             } else {
                 json = {
                     choices: [{

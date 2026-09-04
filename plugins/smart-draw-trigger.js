@@ -7723,6 +7723,30 @@ SCHEMA:
 
         const cached = store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
+            // 如果缓存中判定为“无需生图”，依然渲染一个可重新解析的卡片，防止按钮凭空消失导致用户无法手动生图
+            const noDrawPlaceholder = {
+                shouldDraw: false,
+                prompt: '',
+                negative: '',
+                anchor: { type: 'bottom' },
+                reason: cached.reason || 'tagger 判断无需生图',
+                multiChar: false,
+                scene: '',
+                characters: [],
+            };
+            const wrapper = insertCard(messageId, trigger, noDrawPlaceholder, key);
+            if (wrapper instanceof HTMLElement) {
+                wrapper.dataset.messageId = String(messageId);
+                wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
+                wrapper.dataset.rbqSdtKey = key;
+                wrapper.dataset.rbqSdtBaseKey = key;
+                ensureTaggerButtonState(wrapper, '⚠️ tagger 判定无需生图（点击重新解析）');
+                setGenerateButtonState(wrapper, false);
+                setWrapperStage(wrapper, 'done-no-draw');
+                bindWrapperManualRun(wrapper, trigger, messageId, key);
+                const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
+                if (loader instanceof HTMLElement) loader.style.display = 'none';
+            }
             processedKeys.add(key);
             return;
         }

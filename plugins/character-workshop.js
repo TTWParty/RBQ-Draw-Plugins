@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.16';
+    const VERSION = '2.2.17';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -991,24 +991,38 @@
         // ── CASE 1: SOLO MODE ──
         if (isSolo) {
             const char = charDetails[0] || { n: 1, namePrefix: '', base: '', outfit: '', slotAction: '', tplActionForSlot: '', centersSuffix: '', uc: '' };
-            const genderSolo = boyCount > 0 ? '1boy, solo' : '1girl, solo';
-
             let allActions = [char.tplActionForSlot, totalSoloActions, totalInteractions, char.slotAction].filter(Boolean).join(', ');
             let outfit = char.outfit;
             let base = char.base;
 
-            // 单人模式清洗：自动清洗误入的双人体位/人数标签，以及开头重叠的单人词，避免 1girl, solo 与 1girl 产生多余重复
-            allActions = allActions
-                .replace(/\b1girl\s*,\s*1boy\b,?\s*/gi, '')
-                .replace(/\b1boy\s*,\s*1girl\b,?\s*/gi, '')
-                .replace(/\b2girls\b,?\s*/gi, '')
-                .replace(/\b2boys\b,?\s*/gi, '')
-                .replace(/\bfaceless\s+male\b,?\s*/gi, '')
-                .replace(/\bclothed\s+female\s+nude\s+male\b,?\s*/gi, '')
-                .replace(/^(1girl|1boy|solo)\s*,?\s*/gi, '')
-                .replace(/,\s*(1girl|1boy|solo)\s*(?=,|$)/gi, '')
-                .replace(/^[,;\s]+|[,;\s]+$/g, '')
-                .trim();
+            // 第一人称 POV / 互动性动作智能检测：如果动作带有 pov 且包含他人交互器官/肢体，严禁在场景中注入 solo！
+            const isPovInteraction = /\b(pov|first-person\s+pov)\b/i.test(allActions) && /\b(1boy|faceless\s+male|penis|dick|cock|hand|grab|penetration|oral|fellatio|throat|deepthroat|cum|sex)\b/i.test(allActions);
+
+            let genderSolo = boyCount > 0 ? '1boy, solo' : '1girl, solo';
+            if (isPovInteraction) {
+                genderSolo = boyCount > 0 ? '1boy, 1girl, pov' : '1girl, 1boy, pov';
+            }
+
+            // 单人模式清洗：自动清洗误入的双人体位/人数标签，以及开头重叠的单人词
+            if (!isPovInteraction) {
+                allActions = allActions
+                    .replace(/\b1girl\s*,\s*1boy\b,?\s*/gi, '')
+                    .replace(/\b1boy\s*,\s*1girl\b,?\s*/gi, '')
+                    .replace(/\b2girls\b,?\s*/gi, '')
+                    .replace(/\b2boys\b,?\s*/gi, '')
+                    .replace(/\bfaceless\s+male\b,?\s*/gi, '')
+                    .replace(/\bclothed\s+female\s+nude\s+male\b,?\s*/gi, '')
+                    .replace(/^(1girl|1boy|solo)\s*,?\s*/gi, '')
+                    .replace(/,\s*(1girl|1boy|solo)\s*(?=,|$)/gi, '');
+            } else {
+                allActions = allActions
+                    .replace(/\bsolo\b,?\s*/gi, '')
+                    .replace(/\b2::pov::\s*,?\s*/gi, '')
+                    .replace(/\bpov\b,?\s*/gi, '')
+                    .replace(/^(1girl|1boy)\s*,?\s*/gi, '')
+                    .replace(/,\s*(1girl|1boy)\s*(?=,|$)/gi, '');
+            }
+            allActions = allActions.replace(/^[,;\s]+|[,;\s]+$/g, '').trim();
 
             // 构图冲突清洗：清除动作中与用户选择的机位相矛盾的构图/姿态词
             // 例如用户选了 face focus + close-up，动作里的 full body / legs focus / standing 等必须被剔除
@@ -1063,7 +1077,9 @@
         });
 
         // 彻底杜绝 "2girls, 1girl" 或 "1girl, 1boy, 1girl" 的重叠矛盾：
-        let cleanInteractions = totalInteractions
+        // 关键修复：无论是标记为 [👥 互动] 还是普通 [💃 动作]，在双人同框模式下都必须作为共享动作并入，严禁丢弃！
+        const allGeneralActions = [totalInteractions, totalSoloActions].filter(Boolean).join(', ');
+        let cleanInteractions = allGeneralActions
             .replace(/^(1girl\s*,\s*1boy|1boy\s*,\s*1girl|2girls|2boys|1girl|1boy)\s*,?\s*/gi, '')
             .trim();
         if (cameraTags) {
@@ -1075,9 +1091,22 @@
         const scenePart = [countTag, cameraTags, cleanInteractions, totalScene].filter(Boolean).join(', ');
         const parts = [`Scene: ${scenePart}`];
 
-        charDetails.forEach(char => {
+        charDetails.forEach((char, idx) => {
             let slotActions = [char.tplActionForSlot, char.slotAction].filter(Boolean).join(', ');
-            const charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+            let charContent = [char.namePrefix, char.base, char.outfit, slotActions].filter(Boolean).join(', ');
+
+            // 关键修复：如果该槽位未绑定任何具体角色档案（如双人同框中的匿名配角/路人），根据推断性别自动补全占位符，
+            // 严禁产生空 Char 或直接漏掉 Char2 导致与 Scene 中的人数不匹配！
+            if (!charContent && effectiveSlots.length > 1) {
+                if (boyCount > 0 && girlCount > 0 && idx === 1) {
+                    charContent = '1boy, faceless male';
+                } else if (boyCount > 1) {
+                    charContent = '1boy';
+                } else {
+                    charContent = '1girl';
+                }
+            }
+
             if (charContent) {
                 const centerSuffix = (comp?.useCoords === true) ? char.centersSuffix : '';
                 parts.push(`Char${char.n}: ${charContent}${centerSuffix}`);

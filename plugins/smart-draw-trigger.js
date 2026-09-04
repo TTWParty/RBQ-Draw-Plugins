@@ -4615,10 +4615,14 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (list instanceof HTMLElement) list.innerHTML = renderLorebookSourceList();
     }
 
-    function debugInfo(message) {
+    function debugInfo(message, data) {
         try {
-            if (!RBQ.api.getSettings()?.[STORAGE_KEY]?.debugToast) return;
-            console.info(`[${PLUGIN_NAME}] ${message}`);
+            if (!RBQ?.api?.getSettings()?.[STORAGE_KEY]?.debugToast && !getStore()?.debugToast) return;
+            if (data !== undefined) {
+                console.info(`[${PLUGIN_NAME}] ${message}`, data);
+            } else {
+                console.info(`[${PLUGIN_NAME}] ${message}`);
+            }
         } catch (_e) {}
     }
 
@@ -7351,18 +7355,7 @@ SCHEMA:
         // 无论何种位置模式，均在消息右上角操作栏注入一键直达的相机图标
         injectMessageActionButton(messageId, wrapper, trigger, key);
 
-        console.info(`[${PLUGIN_NAME}] insertCard =>`, {
-            messageId,
-            key,
-            triggerType: trigger.type,
-            anchor: result?.anchor,
-            insertedByAnchor: inserted,
-            fallbackAppend: !inserted,
-            wrapperConnected: wrapper.isConnected,
-            containerTag: container.tagName,
-            containerClass: container.className,
-            cardCountAfterInsert: container.querySelectorAll(`.${CARD_CLASS}`).length,
-        });
+        debugInfo(`insertCard => #${messageId} (${key}) [${trigger.type}]`);
         return wrapper;
     }
 
@@ -7727,19 +7720,19 @@ SCHEMA:
         if (container instanceof HTMLElement) {
             const removedStaleCards = removeStaleCards(container, key);
             if (removedStaleCards > 0) {
-                console.info(`[Smart Draw] 🧹 removed ${removedStaleCards} stale card(s) for message ${messageId}`, { key });
+                debugInfo(`🧹 removed ${removedStaleCards} stale card(s) for message ${messageId}`, { key });
             }
             // If any card in this message is currently being parsed, don't create new cards
             const activeParsingCard = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-stage="parsing"]`);
             if (activeParsingCard) {
-                console.info(`[Smart Draw] ⏳ skipping processMessage for #${messageId} — tagger is active`);
+                debugInfo(`⏳ skipping processMessage for #${messageId} — tagger is active`);
                 return;
             }
             const hasCurrentCards = hasCardsForBaseKey(container, key);
             if (processedKeys.has(key) && !force) {
                 if (hasCurrentCards) return;
                 processedKeys.delete(key);
-                console.info(`[Smart Draw] ♻️ cards missing for processed key, restoring from cache`, { messageId, key });
+                debugInfo(`♻️ cards missing for processed key, restoring from cache`, { messageId, key });
             }
             if (hasCurrentCards && !force) {
                 processedKeys.add(key);
@@ -7791,7 +7784,7 @@ SCHEMA:
                 if (segmentState.imageResult) {
                     // Restore valid display URL from IndexedDB via cacheId (blob URLs expire on refresh)
                     const restoredResult = { ...segmentState.imageResult };
-                    console.info(`[Smart Draw] 🔄 restoring image for ${item.key}`, {
+                    debugInfo(`🔄 restoring image for ${item.key}`, {
                         cacheId: restoredResult.cacheId || '(none)',
                         storedUrl: restoredResult.url?.substring(0, 60),
                         apiAvailable: typeof RBQ.api.ensureHistoryItemDisplayUrl === 'function',
@@ -7799,7 +7792,7 @@ SCHEMA:
                     if (restoredResult.cacheId && typeof RBQ.api.ensureHistoryItemDisplayUrl === 'function') {
                         try {
                             const freshUrl = await RBQ.api.ensureHistoryItemDisplayUrl(restoredResult);
-                            console.info(`[Smart Draw] ✅ restored URL from IndexedDB:`, freshUrl?.substring(0, 60));
+                            debugInfo(`✅ restored URL from IndexedDB: ${freshUrl?.substring(0, 60)}`);
                             if (freshUrl) restoredResult.url = freshUrl;
                         } catch (e) {
                             console.warn(`[Smart Draw] ❌ ensureHistoryItemDisplayUrl failed:`, e);
@@ -7894,9 +7887,9 @@ SCHEMA:
         }, delay));
     }
 
-    function scanAllVisible() {
+    function scanAllVisible(force = false) {
         document.querySelectorAll('.mes[mesid]').forEach(element => {
-            scheduleProcess(Number(element.getAttribute('mesid')), { allowHistorical: true, force: true });
+            scheduleProcess(Number(element.getAttribute('mesid')), { allowHistorical: true, force: !!force });
         });
         // Chat context is likely loaded by now. Refresh the profile list UI if the panel is open.
         refreshCharacterProfileListUi();
@@ -8624,7 +8617,7 @@ SCHEMA:
             save();
             toastr.success('智能触发缓存已清空', PLUGIN_NAME);
         };
-        document.getElementById('rbq-sdt-scan').onclick = scanAllVisible;
+        document.getElementById('rbq-sdt-scan').onclick = () => scanAllVisible(true);
 
         // Character profile toolbar events (delegated on document to survive dynamic innerHTML updates)
         document.addEventListener('click', (e) => {

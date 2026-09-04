@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 29;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 30;
 
     const V5_SPEC_93_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.3[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的高光瞬间，输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -248,15 +248,15 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
   "segments": [
     {
       "label": "屈辱结合",
-      "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
-      "scene": "Scene: NSFW, {1girl}, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia, vaginal fluids smearing close to camera. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Character occupying around 75% of the image height. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow;",
+      "anchor": {"text": "她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起"},
+      "scene": "Scene: NSFW, {1girl}, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Character occupying around 75% of the image height. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow;",
       "negative": "censored, mosaic",
       "characters": [
         {
           "name": "Ami (original)",
-          "base": "girl, japanese, delicate_face, teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin",
-          "outfit": "white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs",
-          "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
+          "base": "girl, japanese, delicate_face, young_adult, gyaru, long blonde hair, twintails, blue eyes, medium breasts, slender, fair skin",
+          "outfit": "white collared shirt, unbuttoned, open collar, bottomless, black thighhighs",
+          "action": "straddling viewer, 1.4::lowering hips, cowgirl position, intimate penetration::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
           "center": "C3",
           "uc": "nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
         }
@@ -434,14 +434,14 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
   "segments": [
     {
       "label": "屈辱结合",
-      "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
-      "scene": "Scene: nsfw, 1girl, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia, vaginal fluids smearing close to camera. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow, masterpiece, best quality, very aesthetic",
+      "anchor": {"text": "她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起"},
+      "scene": "Scene: nsfw, 1girl, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow, masterpiece, best quality, very aesthetic",
       "characters": [
         {
           "name": "Ami (original)",
-          "base": "girl, japanese, delicate_face, teenager, gyaru, long_blonde_hair, twin_tails, blue_eyes, small_breasts, petite, fair_skin",
-          "outfit": "white sailor serafuku, unbuttoned, open_collar, bottomless, black thighhighs",
-          "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
+          "base": "girl, japanese, delicate_face, young_adult, gyaru, long_blonde_hair, twin_tails, blue_eyes, medium_breasts, slender, fair_skin",
+          "outfit": "white collared shirt, unbuttoned, open_collar, bottomless, black thighhighs",
+          "action": "straddling viewer, 1.4::lowering hips, cowgirl position, intimate penetration::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
           "center": "C3",
           "uc": "nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands"
         }
@@ -596,14 +596,14 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
   "segments": [
     {
       "label": "屈辱骑乘",
-      "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
-      "scene": "Scene: nsfw, 1girl, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia, vaginal fluids smearing close to camera. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow, masterpiece, best quality, very aesthetic",
+      "anchor": {"text": "她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起"},
+      "scene": "Scene: nsfw, 1girl, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow, masterpiece, best quality, very aesthetic",
       "characters": [
         {
           "name": "Ami (original)",
-          "base": "girl, japanese, delicate_face, teenager, gyaru, long_blonde_hair, twin_tails, blue_eyes, small_breasts, petite, fair_skin",
-          "outfit": "white sailor serafuku, unbuttoned, open_collar, bottomless, black thighhighs",
-          "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
+          "base": "girl, japanese, delicate_face, young_adult, gyaru, long_blonde_hair, twin_tails, blue_eyes, medium_breasts, slender, fair_skin",
+          "outfit": "white collared shirt, unbuttoned, open_collar, bottomless, black thighhighs",
+          "action": "straddling viewer, 1.4::lowering hips, cowgirl position, intimate penetration::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
           "center": "C3",
           "uc": "nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands"
         }
@@ -702,13 +702,13 @@ uc（角色负面词）的内容必须根据实际画面判定，不能一刀切
   "segments": [
     {
       "label": "屈辱结合",
-      "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
-      "scene": "nsfw, 1girl, pov, from_below, looking_down_at_viewer, cowgirl_position, straddling, pov_penis, imminent_penetration, size_difference, wet_pussy, pussy_juice, swollen_labia, on_bed, indoors, soft_ambient_lighting, masterpiece, best quality, very aesthetic",
+      "anchor": {"text": "她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起"},
+      "scene": "nsfw, 1girl, pov, from_below, looking_down_at_viewer, cowgirl_position, straddling, pov_penis, imminent_penetration, size_difference, wet_pussy, on_bed, indoors, soft_ambient_lighting, masterpiece, best quality, very aesthetic",
       "characters": [
         {
           "name": "Ami (original)",
-          "base": "girl, japanese, delicate_face, teenager, gyaru, long_blonde_hair, twin_tails, blue_eyes, small_breasts, petite, fair_skin",
-          "outfit": "white sailor serafuku, open_collar, bottomless, black_thighhighs",
+          "base": "girl, japanese, delicate_face, young_adult, gyaru, long_blonde_hair, twin_tails, blue_eyes, medium_breasts, slender, fair_skin",
+          "outfit": "white collared shirt, open_collar, bottomless, black_thighhighs",
           "action": "straddling viewer, lowering hips, looking_down_at_viewer, disgusted_expression, slight_blush, condescending_gaze, parted_lips",
           "center": "C3",
           "uc": "bad hands, deformed limbs, extra fingers, blurry, male"

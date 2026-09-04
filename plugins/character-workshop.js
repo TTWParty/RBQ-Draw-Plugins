@@ -1179,6 +1179,13 @@
                         </div>
                         <i class="fa-solid fa-angles-right" style="color:#38bdf8"></i>
                     </button>
+
+                    <div style="margin-top:6px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.12)">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#38bdf8;cursor:pointer;user-select:none">
+                            <input id="cw-test-transparent-bg" type="checkbox" style="cursor:pointer;accent-color:#38bdf8;width:15px;height:15px">
+                            <span>✨ 启用透明背景 (NAI V5 原生 32位 RGBA 免抠图立绘)</span>
+                        </label>
+                    </div>
                 </div>
             </div>
         `;
@@ -1186,11 +1193,20 @@
         modal.querySelector('#cw-test-mode-close')?.addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 
+        const transCheckbox = modal.querySelector('#cw-test-transparent-bg');
+        if (transCheckbox) {
+            transCheckbox.checked = localStorage.getItem('rbq-cw-test-transparent-bg') === '1';
+            transCheckbox.addEventListener('change', () => {
+                localStorage.setItem('rbq-cw-test-transparent-bg', transCheckbox.checked ? '1' : '0');
+            });
+        }
+
         modal.querySelectorAll('.cw-test-opt').forEach(btn => {
             btn.addEventListener('click', () => {
                 const mode = btn.dataset.mode;
+                const isTransparent = Boolean(modal.querySelector('#cw-test-transparent-bg')?.checked);
                 modal.remove();
-                executePortraitTest(cleanName, baseTags, outfitTags, mode, onSetAvatar, triggerBtn);
+                executePortraitTest(cleanName, baseTags, outfitTags, mode, onSetAvatar, triggerBtn, isTransparent);
             });
         });
 
@@ -1198,7 +1214,7 @@
         registerSubmodal(modal);
     }
 
-    async function executePortraitTest(cleanName, baseTags, outfitTags, mode = 'portrait', onSetAvatar = null, triggerBtn = null) {
+    async function executePortraitTest(cleanName, baseTags, outfitTags, mode = 'portrait', onSetAvatar = null, triggerBtn = null, transparentBg = false) {
         const origHtml = triggerBtn ? triggerBtn.innerHTML : '';
         if (triggerBtn) {
             triggerBtn.disabled = true;
@@ -1219,10 +1235,24 @@
                         : `<i class="fa-solid fa-spinner fa-spin"></i> 生成中...`;
                 }
 
-                toastr.info(`正在为「${cleanName}」生成 ${preset.title}...`, PLUGIN_NAME);
+                toastr.info(`正在为「${cleanName}」生成 ${preset.title}${transparentBg ? ' (透明底)' : ''}...`, PLUGIN_NAME);
 
-                const cleanOutfit = pruneConflictingOutfitTags(outfitTags, preset.tags);
-                const prompt = [preset.tags, cleanName, baseTags, cleanOutfit].filter(Boolean).join(', ');
+                let presetTags = preset.tags;
+                let suffixTags = [];
+                if (transparentBg) {
+                    presetTags = presetTags.split(',')
+                        .map(t => t.trim())
+                        .filter(t => !/^(white_background|white background|simple_background|simple background|grey_background|gray_background|black_background|solid_background|scenery)$/i.test(t))
+                        .join(', ');
+                    if (currentMode === 'fullbody') {
+                        suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency', 'shoes'];
+                    } else {
+                        suffixTags = ['2.0::transparent background::', 'has alpha', 'alpha transparency'];
+                    }
+                }
+
+                const cleanOutfit = pruneConflictingOutfitTags(outfitTags, presetTags);
+                const prompt = [presetTags, cleanName, baseTags, cleanOutfit, ...suffixTags].filter(Boolean).join(', ');
 
                 const result = await RBQ.api.generateImage(prompt, 'cw-portrait-test', {}, (progress) => {
                     if (triggerBtn && typeof progress === 'string') {
@@ -1233,7 +1263,7 @@
 
                 if (result && result.url) {
                     results.push({
-                        title: preset.title,
+                        title: `${preset.title}${transparentBg ? ' 🌟透明底' : ''}`,
                         modeKey: currentMode,
                         url: result.url,
                         prompt

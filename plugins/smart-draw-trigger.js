@@ -1839,9 +1839,8 @@ Zimage 擅长理解复杂的英文长句和语境。
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
 
-                // Auto-upgrade jailbreak prompt to the clean system-only sandbox version
-        if (store.geminiJailbreakPrompt && (store.geminiJailbreakPrompt.includes('<|user|>') || !store.geminiJailbreakPrompt.includes('env: sandboxed_virtual'))) {
-            store.geminiJailbreakPrompt = DEFAULT_JAILBREAK_PROMPT;
+        if (!store.geminiJailbreakPreset) {
+            store.geminiJailbreakPreset = DEFAULT_JAILBREAK_PRESET;
         }
         
         // Auto-upgrade post process prompt to include <think> tag if they are using the old default
@@ -8054,6 +8053,7 @@ SCHEMA:
         if (jbPromptField) {
             const isJbOn = document.getElementById('rbq-sdt-gemini-jailbreak').checked;
             jbPromptField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
+            if (jbPresetField) jbPresetField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
         }
 
         const postProcessRoleField = document.getElementById('rbq-sdt-post-process-role-field');

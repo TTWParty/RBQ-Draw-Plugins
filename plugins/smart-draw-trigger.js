@@ -6747,12 +6747,20 @@ SCHEMA:
             let sseBuffer = '';
             let accumulatedArgs = '';
             let accumulatedContent = '';
+            const rawDebugChunks = [];
+
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
-                sseBuffer += decoder.decode(value, { stream: true });
+                if (value) {
+                    sseBuffer += decoder.decode(value, { stream: !done });
+                }
                 const lines = sseBuffer.split('\n');
-                sseBuffer = lines.pop();
+                if (!done) {
+                    sseBuffer = lines.pop(); // 保留未闭合的半行
+                } else {
+                    sseBuffer = '';
+                }
+
                 for (const line of lines) {
                     const trimmed = line.trim();
                     if (!trimmed || !trimmed.startsWith('data:')) continue;
@@ -6760,21 +6768,99 @@ SCHEMA:
                     if (dataStr === '[DONE]') continue;
                     try {
                         const chunk = JSON.parse(dataStr);
-                        const delta = chunk.choices?.[0]?.delta;
-                        const tc = delta?.tool_calls?.[0];
-                        if (tc?.function?.arguments) accumulatedArgs += tc.function.arguments;
-                        if (delta?.content) accumulatedContent += delta.content;
-                    } catch (_e) {}
-                }
-            }
-            json = {
-                choices: [{
-                    message: {
-                        ...(accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: accumulatedArgs } }] } : {}),
-                        content: accumulatedContent
+                        if (rawDebugChunks.length < 5) rawDebugChunks.push(chunk);
+
+                        // 1. 错误拦截
+                        if (chunk.error) {
+                            throw new Error(`SSE 流返回错误: ${chunk.error.message || JSON.stringify(chunk.error)}`);
+                        }
+
+                        // 2. OpenAI 兼容格式 (delta 或 message)
+                        const choice = chunk.choices?.[0];
+                        const delta = choice?.delta || choice?.message;
+
+                        // Modern tool_calls
+                        const toolCalls = delta?.tool_calls || choice?.tool_calls;
+                        if (Array.isArray(toolCalls)) {
+                            for (const tc of toolCalls) {
+                                const rawArg = tc?.function?.arguments ?? tc?.arguments;
+                                if (rawArg !== undefined && rawArg !== null) {
+                                    accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
+                                }
+                            }
+                        }
+
+                        // Legacy function_call
+                        const fc = delta?.function_call || choice?.function_call;
+                        if (fc) {
+                            const rawArg = fc.arguments;
+                            if (rawArg !== undefined && rawArg !== null) {
+                                accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
+                            }
+                        }
+
+                        // 3. Google Vertex AI / Gemini Native parts
+                        const candidate = chunk.candidates?.[0];
+                        const parts = candidate?.content?.parts;
+                        if (Array.isArray(parts)) {
+                            for (const p of parts) {
+                                if (p.functionCall) {
+                                    const rawArg = p.functionCall.args;
+                                    if (rawArg !== undefined && rawArg !== null) {
+                                        accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
+                                    }
+                                }
+                                if (p.text) {
+                                    accumulatedContent += p.text;
+                                }
+                            }
+                        }
+
+                        // 4. 普通正文文本
+                        if (delta?.content) {
+                            accumulatedContent += delta.content;
+                        }
+                    } catch (err) {
+                        if (err.message?.includes('SSE 流返回错误')) throw err;
                     }
-                }]
-            };
+                }
+                if (done) break;
+            }
+
+            // 调试信息：输出实际解包结果
+            if (rawDebugChunks.length > 0) {
+                console.info(`[${PLUGIN_NAME}] SSE 流解包统计: 提取工具参数 ${accumulatedArgs.length} 字符, 提取正文 ${accumulatedContent.length} 字符`, rawDebugChunks);
+            }
+
+            // 如果两者都为空，说明当前代理渠道虽以 200 响应了流式，但丢弃了工具调用数据（或返回空流），触发自愈重试
+            if (!accumulatedArgs && !accumulatedContent) {
+                console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并退回常规 json_object 模式重试...`);
+                const noToolsBody = { ...reqBody };
+                delete noToolsBody.tools;
+                delete noToolsBody.tool_choice;
+                noToolsBody.stream = false;
+                noToolsBody.response_format = { type: 'json_object' };
+                const fallbackRes = await smartFetch(url, {
+                    method: 'POST',
+                    signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                    },
+                    body: JSON.stringify(noToolsBody),
+                });
+                if (!fallbackRes.ok) throw new Error(`tagger 降级重试请求失败: HTTP ${fallbackRes.status} ${await fallbackRes.text()}`);
+                json = await fallbackRes.json();
+            } else {
+                json = {
+                    choices: [{
+                        message: {
+                            ...(accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: accumulatedArgs } }] } : {}),
+                            content: accumulatedContent
+                        }
+                    }]
+                };
+            }
         } else {
             json = await response.json();
         }

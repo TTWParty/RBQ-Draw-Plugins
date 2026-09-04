@@ -59,8 +59,8 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集角色7维外貌档案、差分衣柜、世界书动作智能适配与多角色同框演练于一体的智能工作台。直通世界书词条智能分类、单双人自适应模板合成与一键头像立绘演练。",
-    "version": "2.2.17",
+    "version": "2.2.18",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.2.17"
+    "main": "plugins/character-workshop.js?v=2.2.18"
   }
 ]

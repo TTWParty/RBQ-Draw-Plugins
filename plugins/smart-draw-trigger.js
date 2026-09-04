@@ -4223,7 +4223,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000080 !important;
+            z-index: 2147483647 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;

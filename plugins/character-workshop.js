@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.18';
+    const VERSION = '2.2.19';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1494,12 +1494,15 @@
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
 .cw-chip:hover{background:rgba(255,255,255,.12);color:#fff}
 .cw-chip.on{background:rgba(56,189,248,.2)!important;border-color:rgba(56,189,248,.7)!important;color:#38bdf8!important;font-weight:bold}
-.cw-modal-mask{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;height:100dvh!important;inset:0!important;z-index:2147483647!important;background:rgba(10,15,29,.96)!important;backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch!important}
+.cw-modal-mask{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;height:100dvh!important;inset:0!important;z-index:2147483600!important;background:rgba(10,15,29,.96)!important;backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;padding:16px!important;box-sizing:border-box!important;-webkit-overflow-scrolling:touch!important}
 #cw-image-viewer-modal{z-index:2147483647!important}
 #cw-test-mode-modal{z-index:2147483647!important}
-#cw-character-editor-modal{z-index:2147483647!important}
+#cw-character-editor-modal{z-index:2147483600!important}
+#rbq-sdt-lorebook-search-modal{z-index:2147483647!important}
 body.cw-viewer-open #cw-character-editor-modal,
-body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!important;pointer-events:none!important;transition:opacity .2s ease,filter .2s ease}
+body.cw-viewer-open #cw-test-mode-modal,
+body.cw-lorebook-picker-open #cw-character-editor-modal,
+body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!important;pointer-events:none!important;transition:opacity .2s ease,filter .2s ease}
 .cw-modal{background:#0f172a!important;border:1px solid rgba(56,189,248,.35)!important;border-radius:13px;width:820px;max-width:96vw;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex!important;flex-direction:column!important;min-height:min-content!important;overflow:hidden!important;box-shadow:0 25px 60px rgba(0,0,0,.95)!important;box-sizing:border-box;margin:auto!important;position:relative!important;flex-shrink:0!important}
 .cw-modal-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(56,189,248,.08);flex-shrink:0!important}
 .cw-modal-bd{flex:1 1 auto!important;min-height:min-content!important;overflow-y:auto!important;padding:14px 16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;-webkit-overflow-scrolling:touch!important}
@@ -1551,7 +1554,14 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
     // ══════════════════════════════════════════════════════════
     function openWorldbookPicker(title, onSelect, initialCategory = 'all', autoClean = true) {
         if (typeof RBQ?.api?.openLorebookSearchModal === 'function') {
+            document.body.classList.add('cw-lorebook-picker-open');
+
+            const handleClose = () => {
+                document.body.classList.remove('cw-lorebook-picker-open');
+            };
+
             RBQ.api.openLorebookSearchModal('all', (entry) => {
+                handleClose();
                 let rawText = typeof entry === 'string' ? entry : (entry?.content || entry?.tags || '');
                 if (!rawText) return;
                 const finalTags = autoClean ? cleanLorebookTags(rawText) : rawText.trim();
@@ -1562,6 +1572,18 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
                     if (fallback) onSelect(fallback, entry);
                 }
             }, initialCategory);
+
+            // 持续确保世界书搜索弹窗的 z-index 处于最顶层，且在弹窗关闭时自动恢复背景
+            const checkPicker = () => {
+                const sdtModal = document.getElementById('rbq-sdt-lorebook-search-modal');
+                if (sdtModal && sdtModal.isConnected) {
+                    sdtModal.style.setProperty('z-index', '2147483647', 'important');
+                    requestAnimationFrame(checkPicker);
+                } else {
+                    handleClose();
+                }
+            };
+            requestAnimationFrame(checkPicker);
         } else {
             toastr.warning('世界书搜索功能不可用，请确保智能生图触发器已启用', PLUGIN_NAME);
         }
@@ -1594,7 +1616,7 @@ body.cw-viewer-open #cw-test-mode-modal{opacity:0.15!important;filter:blur(5px)!
         const mask = document.createElement('div');
         mask.id = 'cw-character-editor-modal';
         mask.className = 'cw-modal-mask';
-        mask.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;height:100dvh !important;inset:0 !important;z-index:2147483647 !important;background:rgba(10,15,29,.96) !important;backdrop-filter:blur(14px) !important;-webkit-backdrop-filter:blur(14px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
+        mask.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;height:100dvh !important;inset:0 !important;z-index:2147483600 !important;background:rgba(10,15,29,.96) !important;backdrop-filter:blur(14px) !important;-webkit-backdrop-filter:blur(14px) !important;display:flex !important;align-items:center !important;justify-content:center !important;overflow-y:auto !important;padding:max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;box-sizing:border-box !important;-webkit-overflow-scrolling:touch !important;';
 
         function render() {
             const cw = draft.wardrobe[activeWIdx] || draft.wardrobe[0];

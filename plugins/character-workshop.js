@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.19';
+    const VERSION = '2.2.20';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1446,20 +1446,22 @@
     //  CSS Injection
     // ══════════════════════════════════════════════════════════
     (function injectStyles() {
-        if (document.getElementById('cw-styles-v2')) return;
+        const old = document.getElementById('cw-styles-v2');
+        if (old) old.remove();
         const s = document.createElement('style');
         s.id = 'cw-styles-v2';
         s.textContent = `
-.cw-wrap{display:flex;flex-direction:column;width:100%;height:100%;color:#f1f5f9;font-family:inherit}
-.cw-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(15,23,42,.4);backdrop-filter:blur(12px);gap:10px;flex-wrap:wrap}
-.cw-logo{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#38bdf8}
-.cw-tabs{display:flex;gap:4px;background:rgba(0,0,0,.3);padding:3px;border-radius:8px;border:1px solid rgba(255,255,255,.06)}
-.cw-tab{background:0 0;border:none;color:rgba(255,255,255,.6);padding:5px 11px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:5px}
+.cw-wrap{display:flex;flex-direction:column;width:100%;max-width:100%;height:100%;color:#f1f5f9;font-family:inherit;overflow-x:hidden;box-sizing:border-box}
+.cw-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(15,23,42,.4);backdrop-filter:blur(12px);gap:10px;flex-wrap:wrap;max-width:100%;box-sizing:border-box}
+.cw-logo{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#38bdf8;flex-shrink:0}
+.cw-tabs{display:flex;gap:4px;background:rgba(0,0,0,.3);padding:3px;border-radius:8px;border:1px solid rgba(255,255,255,.06);max-width:100%;box-sizing:border-box}
+.cw-tab{background:0 0;border:none;color:rgba(255,255,255,.6);padding:5px 11px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .cw-tab:hover{color:#fff;background:rgba(255,255,255,.08)}
 .cw-tab.on{color:#38bdf8;background:rgba(56,189,248,.15);box-shadow:0 2px 8px rgba(56,189,248,.2)}
-.cw-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
-.cw-card{background:rgba(30,41,59,.45);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:12px;backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:9px}
-.cw-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cw-tab-short{display:none}
+.cw-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px;display:flex;flex-direction:column;gap:14px;max-width:100%;box-sizing:border-box}
+.cw-card{background:rgba(30,41,59,.45);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:12px;backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:9px;max-width:100%;box-sizing:border-box;overflow:hidden}
+.cw-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;max-width:100%;box-sizing:border-box}
 .cw-card-tt{font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:6px;color:#e2e8f0}
 .cw-grid5{width:250px;height:250px;background:rgba(15,23,42,.7);border:1.5px solid rgba(56,189,248,.35);border-radius:9px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:2px;padding:3px;position:relative;box-shadow:inset 0 0 18px rgba(0,0,0,.5);flex-shrink:0}
 .cw-cell{background:rgba(255,255,255,.03);border-radius:3px;border:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;position:relative;font-size:9.5px;color:rgba(255,255,255,.3);font-weight:bold}
@@ -1467,7 +1469,7 @@
 .cw-cell.has{border-style:solid}
 .cw-pin{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:2;cursor:pointer;transition:.15s}
 .cw-pin:hover{transform:scale(1.2)}
-.cw-slot{background:rgba(15,23,42,.55);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px;display:flex;flex-direction:column;gap:9px;transition:.2s}
+.cw-slot{background:rgba(15,23,42,.55);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px;display:flex;flex-direction:column;gap:9px;transition:.2s;box-sizing:border-box;max-width:100%}
 .cw-slot.on{border-color:#38bdf8;box-shadow:0 0 10px rgba(56,189,248,.15)}
 .cw-slot-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .cw-badge{padding:2px 7px;border-radius:5px;font-size:11px;font-weight:bold}
@@ -1486,9 +1488,10 @@
 .cw-btn.sm{padding:3px 7px;font-size:11px}
 .cw-preview{background:rgba(15,23,42,.7);border:1px solid rgba(56,189,248,.3);border-radius:9px;padding:11px;display:flex;flex-direction:column;gap:7px}
 .cw-code{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:7px 9px;font-family:monospace;font-size:11px;color:#a5f3fc;word-break:break-all;max-height:110px;overflow-y:auto}
-.cw-chgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
-.cw-chcard{background:rgba(30,41,59,.5);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:11px;display:flex;flex-direction:column;gap:8px;transition:.2s;position:relative}
+.cw-chgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;width:100%;max-width:100%;box-sizing:border-box}
+.cw-chcard{background:rgba(30,41,59,.5);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:11px;display:flex !important;flex-direction:column !important;gap:8px;transition:.2s;position:relative;width:100% !important;max-width:100% !important;box-sizing:border-box !important;overflow:hidden}
 .cw-chcard:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.4);box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.cw-chcard-actions{display:flex !important;gap:6px !important;justify-content:flex-end !important;align-items:center !important;margin-top:6px !important;flex-wrap:wrap !important;width:100% !important;box-sizing:border-box !important}
 .cw-avatar{width:42px;height:42px;border-radius:7px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;flex-shrink:0}
 .cw-avatar img{width:100%;height:100%;object-fit:cover}
 .cw-chip{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:2px 6px;font-size:10.5px;color:rgba(255,255,255,.75);cursor:pointer;transition:.15s;white-space:nowrap !important;flex-shrink:0 !important;user-select:none;display:inline-flex;align-items:center}
@@ -1527,23 +1530,38 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
 .cw-actor-card.on{background:rgba(56,189,248,.14);border-color:rgba(56,189,248,.6);box-shadow:0 0 10px rgba(56,189,248,.2)}
 
 @media (max-width: 768px) {
-  .cw-wrap{min-height:0;flex:1}
-  .cw-hdr{padding:6px 8px;gap:6px;flex-shrink:0}
+  .cw-wrap{min-height:0;flex:1;max-width:100%!important;overflow-x:hidden!important}
+  .cw-hdr{padding:6px 8px;gap:6px;flex-shrink:0;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
   .cw-logo{font-size:13px}
-  .cw-tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;scrollbar-width:none;gap:3px;padding:2px}
+  .cw-tabs{width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;flex-wrap:nowrap!important;scrollbar-width:none;gap:3px;padding:2px;box-sizing:border-box!important}
   .cw-tabs::-webkit-scrollbar{display:none}
   .cw-tab{white-space:nowrap;flex-shrink:0;font-size:11px;padding:4px 7px}
-  .cw-body{padding:6px 4px;gap:8px}
-  .cw-card{padding:8px;gap:6px}
-  .cw-card-hd{gap:6px}
+  .cw-tab-full{display:none!important}
+  .cw-tab-short{display:inline!important}
+  .cw-body{padding:6px 4px;gap:8px;max-width:100%!important;overflow-x:hidden!important}
+  .cw-card{padding:8px 7px;gap:8px;max-width:100%!important;width:100%!important;box-sizing:border-box!important}
+  .cw-card-hd{gap:6px;flex-direction:column!important;align-items:stretch!important;width:100%!important}
   .cw-card-tt{font-size:12px}
-  .cw-chgrid{grid-template-columns:1fr;gap:8px}
-  .cw-chcard{padding:8px;gap:6px}
+  .cw-scope-box{width:100%!important;display:flex!important;justify-content:space-between!important;overflow-x:auto!important;box-sizing:border-box!important}
+  .cw-scope-box .cw-scope-btn{flex:1 1 auto!important;text-align:center!important;justify-content:center!important;padding:3px 4px!important;font-size:10.5px!important;white-space:nowrap!important}
+  .cw-archive-tools{display:flex!important;gap:6px!important;width:100%!important;justify-content:stretch!important;box-sizing:border-box!important}
+  .cw-archive-tools .cw-btn{flex:1 1 auto!important;justify-content:center!important;padding:4px 8px!important;font-size:11px!important}
+  .cw-chgrid{grid-template-columns:100%!important;gap:8px!important;width:100%!important;box-sizing:border-box!important}
+  .cw-chcard{padding:8px 9px!important;gap:7px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+  .cw-chcard-actions{display:flex!important;flex-wrap:wrap!important;justify-content:flex-start!important;gap:5px!important;width:100%!important;box-sizing:border-box!important}
+  .cw-chcard-actions .cw-btn{flex:1 1 auto!important;min-width:0!important;justify-content:center!important;padding:4px 7px!important;font-size:11px!important;box-sizing:border-box!important}
+  .cw-chcard-actions .cw-del-char{flex:0 0 auto!important;width:32px!important;padding:4px 0!important}
+  .cw-slots-grid{grid-template-columns:1fr!important;width:100%!important;box-sizing:border-box!important}
+  .cw-slot{width:100%!important;max-width:100%!important;box-sizing:border-box!important;padding:8px!important}
+  .cw-slot-grid{grid-template-columns:1fr!important;gap:6px!important;width:100%!important}
   .cw-modal-mask{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;height:100dvh!important;inset:0!important;padding:max(12px, env(safe-area-inset-top, 12px)) 8px max(12px, env(safe-area-inset-bottom, 12px))!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow-y:auto!important;background:rgba(10,15,29,.96)!important;z-index:2147483647!important;-webkit-overflow-scrolling:touch!important}
   .cw-modal{width:100%!important;max-width:100%!important;min-height:min-content!important;max-height:calc(100vh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;max-height:calc(100dvh - max(24px, env(safe-area-inset-top, 24px)) - max(24px, env(safe-area-inset-bottom, 24px)))!important;margin:auto 0!important;display:flex!important;flex-direction:column!important}
   .cw-modal-hd{padding:9px 12px;flex-shrink:0!important}
   .cw-modal-bd{padding:10px 12px;gap:10px;flex:1 1 auto!important;min-height:min-content!important;overflow-y:auto!important;-webkit-overflow-scrolling:touch!important}
-  .cw-modal-ft{padding:8px 12px;gap:6px;flex-shrink:0!important}
+  .cw-modal-ft{padding:8px 12px;gap:6px;flex-shrink:0!important;flex-wrap:wrap!important;justify-content:flex-end!important}
+  .cw-modal-ft .cw-btn{flex:1 1 auto!important;min-width:0!important;justify-content:center!important;text-align:center!important}
+  .cw-composer-actions{width:100%!important;display:flex!important}
+  .cw-composer-actions .cw-btn{width:100%!important;justify-content:center!important}
 }
 `;
         document.head.appendChild(s);
@@ -2117,13 +2135,13 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                         <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色档案库 (${names.length} 位)</span>
-                        <div style="display:inline-flex;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:2px;gap:2px">
+                        <div class="cw-scope-box" style="display:inline-flex;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:2px;gap:2px">
                             <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'chat' ? 'cy' : ''}" data-scope="chat" style="padding:2px 8px;font-size:11px"><i class="fa-solid fa-comments"></i> 当前会话 (${chatCount})</button>
                             <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'all' ? 'cy' : ''}" data-scope="all" style="padding:2px 8px;font-size:11px"><i class="fa-solid fa-globe"></i> 全局历史 (${allCount})</button>
                             <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'lorebook' ? 'cy' : ''}" data-scope="lorebook" style="padding:2px 8px;font-size:11px" title="${doujinSrc ? '已挂载同人库: ' + esc(doujinSrc.name) : '点击查看或挂载同人库'}"><i class="fa-solid fa-book-bookmark"></i> 📖 同人库 (${doujinCount})</button>
                         </div>
                     </div>
-                    <div style="display:flex;gap:6px;align-items:center">
+                    <div class="cw-archive-tools" style="display:flex;gap:6px;align-items:center">
                         <button type="button" class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
                         <button type="button" class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
                     </div>
@@ -2142,18 +2160,18 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         const activeOutfitName = activeW?.name || '默认';
 
                         return `<div class="cw-chcard">
-                            <div style="display:flex;gap:10px;align-items:flex-start">
+                            <div style="display:flex;gap:10px;align-items:flex-start;min-width:0">
                                 <div class="cw-avatar">${p.avatarUrl ? '<img src="' + esc(p.avatarUrl) + '"/>' : (isFromLorebook ? '📖' : '👤')}</div>
-                                <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:2px">
+                                <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:2px">
                                     <div style="display:flex;align-items:center;gap:6px">
                                         <span style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.displayName || n)}</span>
                                         ${isFromLorebook ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(192,132,252,0.25);border:1px solid rgba(192,132,252,0.5);color:#e9d5ff">同人库</span>` : ''}
                                     </div>
                                     <span style="font-size:11px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.baseTags)}"><span style="color:#79e4ff">外貌:</span> ${esc(p.baseTags || '未设置')}</span>
-                                    <span style="font-size:10.5px;color:#ffb86c">👗 当前: <strong>${esc(activeOutfitName)}</strong> <span style="opacity:0.6">(${wCount}套)</span></span>
+                                    <span style="font-size:10.5px;color:#ffb86c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👗 当前: <strong>${esc(activeOutfitName)}</strong> <span style="opacity:0.6">(${wCount}套)</span></span>
                                 </div>
                             </div>
-                            <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px;flex-wrap:wrap">
+                            <div class="cw-chcard-actions">
                                 <button class="cw-btn sm cw-test-dossier-char" data-name="${esc(n)}" title="测试该角色立绘"><i class="fa-solid fa-wand-magic-sparkles"></i> 测试</button>
                                 <button class="cw-btn cy sm cw-go-action" data-name="${esc(n)}" title="为该角色搭配世界书动作生图"><i class="fa-solid fa-person-running"></i> 配动作生图</button>
                                 ${isFromLorebook ? `
@@ -2264,7 +2282,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 </div>
 
                 <!-- 角色卡片列表 (Slots) -->
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">
+                <div class="cw-slots-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;width:100%;box-sizing:border-box">
                     ${slots.map((slot, i) => {
                         const cl = COLORS[i % COLORS.length];
                         const prof = slot.charName ? (getProfile(slot.charName) || globalProfiles[slot.charName]) : null;
@@ -2450,7 +2468,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     </div>
                 </div>
                 <div class="cw-code" id="cw-prompt-preview">${esc(finalPrompt)}</div>
-                <div style="display:flex;justify-content:flex-end;margin-top:4px">
+                <div class="cw-composer-actions" style="display:flex;justify-content:flex-end;margin-top:4px">
                     <button class="cw-btn pri" id="cw-generate" type="button" style="padding:8px 24px;font-size:13.5px;font-weight:bold">
                         <i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 立即演练生图
                     </button>
@@ -2478,7 +2496,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             <span class="cw-badge" style="background:rgba(56,189,248,.15);color:#38bdf8">${t.slots.length} 人</span>
                         </div>
                         <div style="font-size:11px;opacity:.7;line-height:1.4">${esc(t.desc)}</div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:4px">
+                        <div class="cw-chcard-actions" style="margin-top:auto">
                             <button class="cw-btn gn sm cw-load-tpl" data-idx="${i}"><i class="fa-solid fa-download"></i> 载入舞台</button>
                         </div>
                     </div>`).join('')}
@@ -2496,7 +2514,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             <span class="cw-badge" style="background:rgba(251,191,36,.15);color:#fbbf24">${p.slots?.length || 0} 人</span>
                         </div>
                         <div style="font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.scene || '无场景描述')}</div>
-                        <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">
+                        <div class="cw-chcard-actions" style="margin-top:auto">
                             <button class="cw-btn gn sm cw-load-preset" data-idx="${i}"><i class="fa-solid fa-download"></i> 载入</button>
                             <button class="cw-btn rd sm cw-del-preset" data-idx="${i}"><i class="fa-solid fa-trash"></i></button>
                         </div>
@@ -2624,9 +2642,9 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             <div class="cw-hdr">
                 <div class="cw-logo"><i class="fa-solid fa-palette"></i> 角色工坊 2.0</div>
                 <div class="cw-tabs">
-                    <button class="cw-tab cw-main-tab ${activeTab === 'dossier' ? 'on' : ''}" data-tab="dossier"><i class="fa-solid fa-users"></i> 角色档案库 (${pCount})</button>
-                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-person-running"></i> 动作工坊 · 动作分镜×角色适配</button>
-                    <button class="cw-tab cw-main-tab ${activeTab === 'presets' ? 'on' : ''}" data-tab="presets"><i class="fa-solid fa-bookmark"></i> 分镜模板与预设 (${presetCount})</button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'dossier' ? 'on' : ''}" data-tab="dossier"><i class="fa-solid fa-users"></i> <span class="cw-tab-full">角色档案库 (${pCount})</span><span class="cw-tab-short">档案库 (${pCount})</span></button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'composer' ? 'on' : ''}" data-tab="composer"><i class="fa-solid fa-person-running"></i> <span class="cw-tab-full">动作工坊 · 动作分镜×角色适配</span><span class="cw-tab-short">动作工坊</span></button>
+                    <button class="cw-tab cw-main-tab ${activeTab === 'presets' ? 'on' : ''}" data-tab="presets"><i class="fa-solid fa-bookmark"></i> <span class="cw-tab-full">分镜模板与预设 (${presetCount})</span><span class="cw-tab-short">预设 (${presetCount})</span></button>
                 </div>
             </div>
             <div id="cw-tab-content" style="flex:1;overflow:hidden;display:flex;flex-direction:column">

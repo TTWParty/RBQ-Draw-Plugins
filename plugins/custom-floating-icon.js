@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 摸鱼悬浮球 (Slack-off Floating Ball)
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: TTWP-09
  * Description: 将生图触发器的悬浮球样式替换为超可爱的摸鱼猫咪图标，并带有精致的悬停微动画。
  */
@@ -13,7 +13,7 @@
         const style = document.createElement('style');
         style.id = styleId;
         style.innerHTML = `
-            #st-scene-trigger-floating-toggle {
+            #st-scene-trigger-floating-toggle:not(.st-scene-trigger-hidden):not([style*="display: none"]) {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
@@ -24,6 +24,13 @@
                 transform: none !important;
                 transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.25s ease !important;
                 filter: drop-shadow(0 4px 10px rgba(255, 158, 187, 0.45)) !important;
+            }
+            #st-scene-trigger-floating-toggle.st-scene-trigger-hidden,
+            #st-scene-trigger-floating-toggle[style*="display: none"] {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
             }
             #st-scene-trigger-floating-toggle:hover {
                 transform: scale(1.12) rotate(4deg) !important;

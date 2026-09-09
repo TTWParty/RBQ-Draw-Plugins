@@ -6465,35 +6465,52 @@ SCHEMA:
         wrapper.querySelector('.rbq-sdt-debug-box')?.remove();
         wrapper.querySelector('.rbq-sdt-debug-toggle-btn')?.remove();
 
-        const reason = String(result?.reason || result?.thinkContent || '').trim() || '日常闲聊/独白/无视觉变化，模型判定无需生图';
+        const isError = !!result?.isError;
+        const defaultReason = isError ? 'Tagger 请求或解析过程发生异常' : '日常闲聊/独白/无视觉变化，模型判定无需生图';
+        const reason = String(result?.reason || result?.thinkContent || '').trim() || defaultReason;
         const rawOutput = String(result?.rawOutput || '').trim();
 
-        const isDebugEnabled = !!store.showTaggerDebug;
+        // 如果是报错状态，或者用户开启了调试模式，则直接展示详情框
+        const isDebugEnabled = !!store.showTaggerDebug || isError;
 
         const debugBox = document.createElement('div');
-        debugBox.className = 'rbq-sdt-debug-box no-draw';
+        debugBox.className = isError ? 'rbq-sdt-debug-box is-error' : 'rbq-sdt-debug-box no-draw';
         if (!isDebugEnabled) {
             debugBox.style.display = 'none';
         }
 
         const titleEl = document.createElement('div');
         titleEl.className = 'rbq-sdt-debug-title';
-        titleEl.innerHTML = '<i class="fa-solid fa-circle-question"></i> <span>Tagger 判定无需生图原因</span>';
+        if (isError) {
+            titleEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <span>Tagger 解析失败诊断</span>';
+        } else {
+            titleEl.innerHTML = '<i class="fa-solid fa-circle-question"></i> <span>Tagger 判定无需生图原因</span>';
+        }
 
         const reasonEl = document.createElement('div');
         reasonEl.className = 'rbq-sdt-debug-reason';
         reasonEl.textContent = reason;
 
-        debugBox.append(titleEl, reasonEl);
+        if (isError) {
+            const tipEl = document.createElement('div');
+            tipEl.style.cssText = 'font-size: 11px; margin-top: 6px; padding: 6px 8px; background: rgba(239, 68, 68, 0.12); border-left: 3px solid #ef4444; border-radius: 3px; line-height: 1.4; color: #ffcdd2;';
+            tipEl.innerHTML = '💡 <strong>排查建议：</strong><br>'
+                + '1. 若提示安全审查 / 内容熔断，可进入插件通用设置开启<strong>「开启破限」</strong>或<strong>「工具调用抗外审」</strong>。<br>'
+                + '2. 若使用的是第三方中转代理，可能模型未开放 Tool Call 或被代理拦截，可在设置中切换为「纯文本+Schema(兼容降级)」模式。<br>'
+                + '3. 可展开下方查看详细错误日志与原始响应。';
+            debugBox.append(titleEl, reasonEl, tipEl);
+        } else {
+            debugBox.append(titleEl, reasonEl);
+        }
 
         if (rawOutput) {
             const details = document.createElement('details');
             details.className = 'rbq-sdt-debug-details';
-            if (isDebugEnabled) {
+            if (isDebugEnabled && !isError) {
                 details.open = true;
             }
             const summary = document.createElement('summary');
-            summary.innerHTML = '<i class="fa-solid fa-code"></i> LLM 原始响应与思考过程 (Raw Output)';
+            summary.innerHTML = isError ? '<i class="fa-solid fa-code"></i> 异常堆栈与原始输出 (Debug Trace)' : '<i class="fa-solid fa-code"></i> LLM 原始响应与思考过程 (Raw Output)';
 
             const copyBtn = document.createElement('button');
             copyBtn.type = 'button';
@@ -6504,7 +6521,7 @@ SCHEMA:
                 e.stopPropagation();
                 e.preventDefault();
                 navigator.clipboard.writeText(rawOutput).then(() => {
-                    toastr.success('已复制 LLM 原始响应到剪贴板', PLUGIN_NAME);
+                    toastr.success('已复制内容到剪贴板', PLUGIN_NAME);
                 }).catch(() => {
                     toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
                 });
@@ -6520,7 +6537,7 @@ SCHEMA:
         } else {
             const emptyHint = document.createElement('div');
             emptyHint.style.cssText = 'font-size: 11px; opacity: 0.6; margin-top: 4px;';
-            emptyHint.textContent = '（该条目暂无缓存的原始 LLM 输出。点击重新解析可捕获完整输出）';
+            emptyHint.textContent = isError ? '（无附加堆栈信息）' : '（该条目暂无缓存的原始 LLM 输出。点击重新解析可捕获完整输出）';
             debugBox.append(emptyHint);
         }
 
@@ -6532,13 +6549,13 @@ SCHEMA:
             wrapper.append(debugBox);
         }
 
-        // 若调试模式未在设置开启，提供轻量调试原因按钮供点击临时查看
+        // 若未直接展示，提供轻量调试原因按钮供点击临时查看
         if (!isDebugEnabled) {
             const toggleBtn = document.createElement('button');
             toggleBtn.type = 'button';
             toggleBtn.className = 'menu_button rbq-sdt-debug-toggle-btn';
             toggleBtn.style.cssText = 'margin-left: 6px !important; font-size: 11px !important; opacity: 0.8 !important; padding: 2px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; border-radius: 4px !important;';
-            toggleBtn.innerHTML = '<i class="fa-solid fa-bug"></i> 调试原因';
+            toggleBtn.innerHTML = isError ? '<i class="fa-solid fa-triangle-exclamation"></i> 查看失败详情' : '<i class="fa-solid fa-bug"></i> 调试原因';
             toggleBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (debugBox.style.display === 'none') {
@@ -7407,12 +7424,23 @@ SCHEMA:
                 const noToolsBody = { ...reqBodyObj };
                 delete noToolsBody.tools;
                 delete noToolsBody.tool_choice;
+                noToolsBody.messages = (reqBodyObj.messages || [])
+                    .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
+                    .map(m => ({ ...m }));
                 noToolsBody.stream = false;
                 noToolsBody.response_format = { type: 'json_object' };
                 response = await smartFetch(url, {
                     ...fetchOptions,
                     body: JSON.stringify(noToolsBody),
                 });
+                if (!response.ok && response.status === 400) {
+                    console.warn(`[${PLUGIN_NAME}] 剥离 tools 后仍返回 HTTP 400，怀疑接口不支持 response_format，正在剥离 response_format 重试...`);
+                    delete noToolsBody.response_format;
+                    response = await smartFetch(url, {
+                        ...fetchOptions,
+                        body: JSON.stringify(noToolsBody),
+                    });
+                }
             }
         }
 
@@ -7539,10 +7567,13 @@ SCHEMA:
                         const delta = choice?.delta || choice?.message;
                         const candidate = chunk.candidates?.[0];
 
-                        const finishReason = choice?.finish_reason || candidate?.finishReason;
-                        if (finishReason && String(finishReason).toLowerCase() === 'safety') {
-                            hasSafetyBlock = true;
-                            safetyReason = 'finishReason: SAFETY';
+                        const finishReason = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
+                        if (finishReason) {
+                            const frLower = String(finishReason).toLowerCase();
+                            if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
+                                hasSafetyBlock = true;
+                                safetyReason = `finish_reason: ${finishReason}`;
+                            }
                         }
                         if (chunk.promptFeedback?.blockReason) {
                             hasSafetyBlock = true;
@@ -7579,11 +7610,11 @@ SCHEMA:
                                         accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
                                     }
                                 }
-                                if (p.text) {
+                                if (p.thought === true || p.thought) {
+                                    if (typeof p.thought === 'string') accumulatedReasoning += p.thought;
+                                    else if (p.text) accumulatedReasoning += p.text;
+                                } else if (p.text) {
                                     accumulatedContent += p.text;
-                                }
-                                if (p.thought) {
-                                    accumulatedReasoning += p.thought;
                                 }
                             }
                         }
@@ -7592,11 +7623,17 @@ SCHEMA:
                         if (delta?.content) {
                             accumulatedContent += delta.content;
                         }
+                        if (delta?.text) {
+                            accumulatedContent += delta.text;
+                        }
                         if (delta?.reasoning_content) {
                             accumulatedReasoning += delta.reasoning_content;
                         }
                         if (delta?.thought) {
                             accumulatedReasoning += delta.thought;
+                        }
+                        if (delta?.reasoning) {
+                            accumulatedReasoning += delta.reasoning;
                         }
                     } catch (err) {
                         if (err.message?.includes('SSE 流返回错误')) throw err;
@@ -7607,28 +7644,39 @@ SCHEMA:
 
             // 调试信息：输出实际解包结果
             if (rawDebugChunks.length > 0) {
-                console.info(`[${PLUGIN_NAME}] SSE 流解包统计: 提取工具参数 ${accumulatedArgs.length} 字符, 提取正文 ${accumulatedContent.length} 字符`, rawDebugChunks);
+                console.info(`[${PLUGIN_NAME}] SSE 流解包统计: 提取工具参数 ${accumulatedArgs.length} 字符, 提取正文 ${accumulatedContent.length} 字符, 提取思维链 ${accumulatedReasoning.length} 字符`, rawDebugChunks);
             }
 
             // 若模型把输出放进了思维链
             if (!accumulatedArgs && !accumulatedContent && accumulatedReasoning) {
-                if (accumulatedReasoning.includes('shouldDraw') || accumulatedReasoning.includes('segments')) {
-                    accumulatedContent = accumulatedReasoning;
-                }
+                accumulatedContent = accumulatedReasoning;
             }
 
             // 如果两者都为空，说明流式未产出内容
             if (!accumulatedArgs && !accumulatedContent) {
                 if (hasSafetyBlock) {
-                    throw new Error(`Gemini 模型触发了官方前置安全审查熔断 (${safetyReason})。请尝试精简或避免敏感词。`);
+                    throw new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
                 }
 
-                console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并保持纯流式重试...`);
-                const noToolsBody = { ...reqBody };
-                delete noToolsBody.tools;
-                delete noToolsBody.tool_choice;
-                noToolsBody.stream = true; // 务必保持 stream: true，以防代理报 Invalid non-streaming 500
-                noToolsBody.response_format = { type: 'json_object' };
+                console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并尝试纯文本/标准 JSON 模式重试...`);
+                
+                // 彻底清理 messages 中的工具调用指令，避免模型被 "严禁输出正文" 规则抑制
+                const fallbackMessages = reqBody.messages
+                    .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
+                    .map(m => ({ ...m }));
+
+                fallbackMessages.push({
+                    role: 'system',
+                    content: '\n\n[输出指令]: 请直接以纯文本输出最终 JSON 对象，包含 shouldDraw、reason、segments 字段。严禁调用任何外部工具，直接输出 JSON。'
+                });
+
+                const noToolsBody = {
+                    model: modelName,
+                    temperature: 0.2,
+                    stream: true,
+                    messages: fallbackMessages,
+                };
+
                 const fallbackRes = await smartFetch(url, {
                     method: 'POST',
                     signal,
@@ -7640,36 +7688,121 @@ SCHEMA:
                 });
                 if (!fallbackRes.ok) throw new Error(`tagger 降级重试请求失败: HTTP ${fallbackRes.status} ${await fallbackRes.text()}`);
                 
-                // 对降级重试同样采用流式读取解析
-                const fallbackReader = fallbackRes.body.getReader();
-                const fallbackDecoder = new TextDecoder();
-                let fallbackBuffer = '';
+                const fallbackCt = fallbackRes.headers.get('content-type') || '';
                 let fallbackContent = '';
-                while (true) {
-                    const { done, value } = await fallbackReader.read();
-                    if (value) {
-                        fallbackBuffer += fallbackDecoder.decode(value, { stream: !done });
+                let fallbackReasoning = '';
+                let fallbackFinishReason = '';
+
+                if (fallbackCt.includes('text/event-stream')) {
+                    const fallbackReader = fallbackRes.body.getReader();
+                    const fallbackDecoder = new TextDecoder();
+                    let fallbackBuffer = '';
+                    while (true) {
+                        const { done, value } = await fallbackReader.read();
+                        if (value) {
+                            fallbackBuffer += fallbackDecoder.decode(value, { stream: !done });
+                        }
+                        const lines = fallbackBuffer.split('\n');
+                        fallbackBuffer = lines.pop() || '';
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (!trimmed || !trimmed.startsWith('data:')) continue;
+                            const dataStr = trimmed.slice(5).trim();
+                            if (dataStr === '[DONE]') continue;
+                            try {
+                                const c = JSON.parse(dataStr);
+                                const choice = c.choices?.[0];
+                                const delta = choice?.delta || choice?.message;
+                                const text = delta?.content || delta?.text || '';
+                                if (text) fallbackContent += text;
+                                const reasoning = delta?.reasoning_content || delta?.thought || delta?.reasoning || '';
+                                if (reasoning) fallbackReasoning += reasoning;
+
+                                const candidate = c.candidates?.[0];
+                                if (Array.isArray(candidate?.content?.parts)) {
+                                    for (const p of candidate.content.parts) {
+                                        if (p.thought === true || p.thought) {
+                                            if (typeof p.thought === 'string') fallbackReasoning += p.thought;
+                                            else if (p.text) fallbackReasoning += p.text;
+                                        } else if (p.text) {
+                                            fallbackContent += p.text;
+                                        }
+                                    }
+                                }
+
+                                const fr = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
+                                if (fr) fallbackFinishReason = String(fr);
+                            } catch (_e) {}
+                        }
+                        if (done) break;
                     }
-                    const lines = fallbackBuffer.split('\n');
-                    fallbackBuffer = lines.pop() || '';
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (!trimmed || !trimmed.startsWith('data:')) continue;
-                        const dataStr = trimmed.slice(5).trim();
-                        if (dataStr === '[DONE]') continue;
+                    // 容错：如果全行都不带 data: 前缀，尝试直接解析缓冲区
+                    if (!fallbackContent && fallbackBuffer) {
                         try {
-                            const c = JSON.parse(dataStr);
-                            const text = c.choices?.[0]?.delta?.content || c.choices?.[0]?.message?.content || c.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                            fallbackContent += text;
+                            const parsedDirect = JSON.parse(fallbackBuffer);
+                            fallbackContent = parsedDirect.choices?.[0]?.message?.content || parsedDirect.choices?.[0]?.text || '';
+                            fallbackReasoning = parsedDirect.choices?.[0]?.message?.reasoning_content || '';
+                            fallbackFinishReason = String(parsedDirect.choices?.[0]?.finish_reason || '');
                         } catch (_e) {}
                     }
-                    if (done) break;
+                } else {
+                    const fbJson = await fallbackRes.json();
+                    fallbackContent = fbJson.choices?.[0]?.message?.content
+                        || fbJson.choices?.[0]?.text
+                        || (Array.isArray(fbJson.candidates?.[0]?.content?.parts) ? fbJson.candidates[0].content.parts.map(p => p.text).join('') : '')
+                        || '';
+                    fallbackReasoning = fbJson.choices?.[0]?.message?.reasoning_content || '';
+                    fallbackFinishReason = String(fbJson.choices?.[0]?.finish_reason || fbJson.candidates?.[0]?.finishReason || '');
+                }
+
+                if (!fallbackContent.trim() && fallbackReasoning.trim()) {
+                    fallbackContent = fallbackReasoning.trim();
                 }
 
                 if (!fallbackContent.trim()) {
-                    throw new Error('tagger 降级流式重试完成，但模型未输出任何内容（可能被 Gemini 安全策略熔断）。');
+                    console.warn(`[${PLUGIN_NAME}] 降级流式仍未获得正文，尝试以非流式纯文本发起最终兜底请求...`);
+                    try {
+                        const finalNonStreamBody = {
+                            model: modelName,
+                            temperature: 0.2,
+                            stream: false,
+                            messages: fallbackMessages,
+                        };
+                        const finalRes = await smartFetch(url, {
+                            method: 'POST',
+                            signal,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                            },
+                            body: JSON.stringify(finalNonStreamBody),
+                        });
+                        if (finalRes.ok) {
+                            const finalJson = await finalRes.json();
+                            fallbackContent = finalJson.choices?.[0]?.message?.content
+                                || finalJson.choices?.[0]?.text
+                                || (Array.isArray(finalJson.candidates?.[0]?.content?.parts) ? finalJson.candidates[0].content.parts.map(p => p.text).join('') : '')
+                                || '';
+                            fallbackReasoning = finalJson.choices?.[0]?.message?.reasoning_content || '';
+                            fallbackFinishReason = String(finalJson.choices?.[0]?.finish_reason || finalJson.candidates?.[0]?.finishReason || fallbackFinishReason);
+                            if (!fallbackContent.trim() && fallbackReasoning.trim()) {
+                                fallbackContent = fallbackReasoning.trim();
+                            }
+                        }
+                    } catch (_err) {}
                 }
-                json = { choices: [{ message: { content: fallbackContent } }] };
+
+                if (!fallbackContent.trim()) {
+                    const frLower = fallbackFinishReason.toLowerCase();
+                    if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
+                        throw new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
+                    }
+                    if (frLower === 'length' || frLower === 'max_tokens') {
+                        throw new Error('Tagger 模型输出达到最大 Token 限制 (MAX_TOKENS) 提前截断。请尝试减少上下文条数。');
+                    }
+                    throw new Error('tagger 降级重试完成，但模型未输出任何内容（可能被代理静默拦截或安全策略熔断）。建议检查代理日志或开启破限。');
+                }
+                json = { choices: [{ message: { content: fallbackContent, reasoning_content: fallbackReasoning } }] };
             } else {
                 json = {
                     choices: [{
@@ -8380,13 +8513,22 @@ SCHEMA:
             if (error.name === 'AbortError') {
                 console.info(`[${PLUGIN_NAME}] tagger 解析已被用户停止`);
                 toastr.warning('解析已停止', PLUGIN_NAME);
+                ensureTaggerButtonState(wrapper, '📷 开始解析/生成 tag');
+                setGenerateButtonState(wrapper, false);
+                setWrapperStage(wrapper, 'idle');
             } else {
                 console.error('[Smart Draw Trigger]', error);
                 toastr.error(error.message || String(error), PLUGIN_NAME);
+                ensureTaggerButtonState(wrapper, '⚠️ 解析失败（点击重试）');
+                setGenerateButtonState(wrapper, false);
+                setWrapperStage(wrapper, 'error');
+                renderTaggerDebugInfo(wrapper, {
+                    isError: true,
+                    shouldDraw: false,
+                    reason: error.message || String(error),
+                    rawOutput: error.stack || ''
+                });
             }
-            ensureTaggerButtonState(wrapper, '📷 开始解析/生成 tag');
-            setGenerateButtonState(wrapper, false);
-            setWrapperStage(wrapper, 'idle');
         } finally {
             delete wrapper._taggerAbort;
             clearWrapperLoading(wrapper);
@@ -8634,8 +8776,10 @@ SCHEMA:
             .rbq-sdt-save-btn:hover { background:rgba(100,180,255,.32)!important; }
             .rbq-sdt-debug-box { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: rgba(0, 0, 0, 0.28); border: 1px dashed rgba(255, 180, 50, 0.35); font-size: 12px; line-height: 1.5; color: #e0e0e0; }
             .rbq-sdt-debug-box.no-draw { border-color: rgba(255, 100, 100, 0.45); background: rgba(255, 80, 80, 0.07); }
+            .rbq-sdt-debug-box.is-error { border-color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.09); }
             .rbq-sdt-debug-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #ffb86c; margin-bottom: 4px; font-size: 12.5px; }
             .rbq-sdt-debug-box.no-draw .rbq-sdt-debug-title { color: #ff7b72; }
+            .rbq-sdt-debug-box.is-error .rbq-sdt-debug-title { color: #f87171; }
             .rbq-sdt-debug-reason { font-size: 12px; color: #eee; word-break: break-word; }
             .rbq-sdt-debug-details { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px; }
             .rbq-sdt-debug-details summary { cursor: pointer; font-size: 11px; opacity: 0.8; user-select: none; transition: opacity .2s; outline: none; }

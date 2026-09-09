@@ -6,9 +6,17 @@
     // ── Storage ──
     function getStore() {
         const s = RBQ.api.getSettings();
-        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', presets: [] };
+        if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { activeId: '', position: 'prepend', globalPositivePrefix: '', globalPositiveSuffix: '', globalNegative: '', presets: [] };
         const store = s[STORAGE_KEY];
         let mutated = false;
+        if (store.globalPositive && !store.globalPositivePrefix) {
+            store.globalPositivePrefix = store.globalPositive;
+            delete store.globalPositive;
+            mutated = true;
+        }
+        if (typeof store.globalPositivePrefix !== 'string') { store.globalPositivePrefix = ''; mutated = true; }
+        if (typeof store.globalPositiveSuffix !== 'string') { store.globalPositiveSuffix = ''; mutated = true; }
+        if (typeof store.globalNegative !== 'string') { store.globalNegative = ''; mutated = true; }
         const seenIds = new Set();
         store.presets = (Array.isArray(store.presets) ? store.presets : []).map((item) => {
             if (!item || typeof item !== 'object') return null;
@@ -115,69 +123,116 @@
     }
 
     // ── Join Logic ──
-    function joinPrompt(original, presetText, position) {
-        const a = (original || '').trim();
-        const b = (presetText || '').trim();
-        if (!b) return a;
-        if (!a) return b;
-        return position === 'prepend' ? (b + ', ' + a) : (a + ', ' + b);
+    function combineParts(...parts) {
+        return parts
+            .map(p => (p || '').trim())
+            .filter(Boolean)
+            .join(', ');
+    }
+
+    function resolvePositivePrompt(original, presetText, globalPrefix, globalSuffix, position) {
+        const orig = (original || '').trim();
+        const preset = (presetText || '').trim();
+        const gPre = (globalPrefix || '').trim();
+        const gSuf = (globalSuffix || '').trim();
+
+        let middle = orig;
+        if (preset) {
+            middle = position === 'prepend'
+                ? combineParts(preset, orig)
+                : combineParts(orig, preset);
+        }
+
+        return combineParts(gPre, middle, gSuf);
+    }
+
+    function resolveNegativePrompt(original, presetText, globalText) {
+        const orig = (original || '').trim();
+        const preset = (presetText || '').trim();
+        const global = (globalText || '').trim();
+        if (!preset && !global) return orig;
+        return combineParts(global, preset, orig);
     }
 
     // ── Payload Hooks ──
     RBQ.on('buildNaiV4Payload', (payload) => {
+        const store = getStore();
         const preset = getActivePreset();
-        if (!preset) return payload;
-        const pos = getStore().position || 'prepend';
-        if (preset.positive) {
-            payload.input = joinPrompt(payload.input, preset.positive, pos);
+        const pos = store.position || 'prepend';
+        const gPre = store.globalPositivePrefix || '';
+        const gSuf = store.globalPositiveSuffix || '';
+        const gNeg = store.globalNegative || '';
+        const presetPos = preset ? (preset.positive || '') : '';
+        const presetNeg = preset ? (preset.negative || '') : '';
+
+        if (gPre || gSuf || presetPos) {
+            payload.input = resolvePositivePrompt(payload.input, presetPos, gPre, gSuf, pos);
             if (payload.parameters?.v4_prompt?.caption) {
-                payload.parameters.v4_prompt.caption.base_caption = joinPrompt(
-                    payload.parameters.v4_prompt.caption.base_caption, preset.positive, pos
+                payload.parameters.v4_prompt.caption.base_caption = resolvePositivePrompt(
+                    payload.parameters.v4_prompt.caption.base_caption, presetPos, gPre, gSuf, pos
                 );
             }
         }
-        if (preset.negative) {
+        if (gNeg || presetNeg) {
             if (payload.parameters) {
-                payload.parameters.negative_prompt = joinPrompt(payload.parameters.negative_prompt, preset.negative, pos);
+                payload.parameters.negative_prompt = resolveNegativePrompt(
+                    payload.parameters.negative_prompt, presetNeg, gNeg
+                );
             }
             if (payload.parameters?.v4_negative_prompt?.caption) {
-                payload.parameters.v4_negative_prompt.caption.base_caption = joinPrompt(
-                    payload.parameters.v4_negative_prompt.caption.base_caption, preset.negative, pos
+                payload.parameters.v4_negative_prompt.caption.base_caption = resolveNegativePrompt(
+                    payload.parameters.v4_negative_prompt.caption.base_caption, presetNeg, gNeg
                 );
             }
         }
-        console.info('[Prompt Presets] NAI payload modified:', preset.name);
+        console.info('[Prompt Presets] NAI payload modified with presets/global prompts');
         return payload;
     });
 
     RBQ.on('buildGeneratePayload', (payload) => {
+        const store = getStore();
         const preset = getActivePreset();
-        if (!preset) return payload;
-        const pos = getStore().position || 'prepend';
-        if (preset.positive) payload.positive_prompt = joinPrompt(payload.positive_prompt, preset.positive, pos);
-        if (preset.negative) payload.negative_prompt = joinPrompt(payload.negative_prompt, preset.negative, pos);
-        console.info('[Prompt Presets] Free payload modified:', preset.name);
+        const pos = store.position || 'prepend';
+        const gPre = store.globalPositivePrefix || '';
+        const gSuf = store.globalPositiveSuffix || '';
+        const gNeg = store.globalNegative || '';
+        const presetPos = preset ? (preset.positive || '') : '';
+        const presetNeg = preset ? (preset.negative || '') : '';
+
+        if (gPre || gSuf || presetPos) {
+            payload.positive_prompt = resolvePositivePrompt(payload.positive_prompt, presetPos, gPre, gSuf, pos);
+        }
+        if (gNeg || presetNeg) {
+            payload.negative_prompt = resolveNegativePrompt(payload.negative_prompt, presetNeg, gNeg);
+        }
+        console.info('[Prompt Presets] Free payload modified with presets/global prompts');
         return payload;
     });
 
     RBQ.on('buildComfyUiWorkflow', (payload) => {
+        const store = getStore();
         const preset = getActivePreset();
-        if (!preset) return payload;
-        const pos = getStore().position || 'prepend';
+        const pos = store.position || 'prepend';
+        const gPre = store.globalPositivePrefix || '';
+        const gSuf = store.globalPositiveSuffix || '';
+        const gNeg = store.globalNegative || '';
+        const presetPos = preset ? (preset.positive || '') : '';
+        const presetNeg = preset ? (preset.negative || '') : '';
+
         for (const key of Object.keys(payload)) {
             const node = payload[key];
             if (node?.class_type === 'CLIPTextEncode' && node?.inputs?.text !== undefined) {
                 const isNeg = Object.values(payload).some(n =>
                     n?.inputs?.negative && Array.isArray(n.inputs.negative) && n.inputs.negative[0] === key
                 );
-                if (isNeg && preset.negative) {
-                    node.inputs.text = joinPrompt(node.inputs.text, preset.negative, pos);
-                } else if (!isNeg && preset.positive) {
-                    node.inputs.text = joinPrompt(node.inputs.text, preset.positive, pos);
+                if (isNeg && (gNeg || presetNeg)) {
+                    node.inputs.text = resolveNegativePrompt(node.inputs.text, presetNeg, gNeg);
+                } else if (!isNeg && (gPre || gSuf || presetPos)) {
+                    node.inputs.text = resolvePositivePrompt(node.inputs.text, presetPos, gPre, gSuf, pos);
                 }
             }
         }
-        console.info('[Prompt Presets] ComfyUI workflow modified:', preset.name);
+        console.info('[Prompt Presets] ComfyUI workflow modified with presets/global prompts');
         return payload;
     });
 
@@ -274,7 +329,29 @@
         container.innerHTML = `
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-bookmark"></i><span>提示词预设 (Prompt Presets)</span></div>
             <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
-            <div class="st-scene-trigger-modal-grid">
+            
+            <div style="margin-top:8px; padding:10px; background:var(--linear-surface, rgba(255,255,255,0.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,0.08)); border-radius:8px;">
+                <div style="font-size:12px; font-weight:600; color:var(--linear-text-primary, rgba(255,255,255,0.85)); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                    <i class="fa-solid fa-earth-americas" style="color:#38bdf8;"></i>
+                    <span>全局提示词 (无论选择何种预设均生效)</span>
+                </div>
+                <div class="st-scene-trigger-modal-grid" style="display:flex;flex-direction:column;gap:10px;">
+                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局正面提示词 (前置 / Prefix)</span>
+                        <textarea id="rbq-pp-global-pos-prefix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
+                    </label>
+                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局正面提示词 (后置 / Suffix)</span>
+                        <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
+                    </label>
+                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局负面提示词</span>
+                        <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
+                    </label>
+                </div>
+            </div>
+
+            <div class="st-scene-trigger-modal-grid" style="margin-top:10px;">
                 <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
                     <select id="rbq-pp-select" class="text_pole" data-action="plugin-ignore" style="flex:1; padding: 6px; appearance: auto;"></select>
                     <select id="rbq-pp-position" class="text_pole" data-action="plugin-ignore" style="width:80px; padding: 6px; appearance: auto;">
@@ -286,8 +363,8 @@
             <div id="rbq-pp-editor" style="display:none; margin-top:8px;">
                 <div class="st-scene-trigger-modal-grid">
                     <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用"></label>
-                    <label class="st-scene-trigger-field wide"><span>正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
-                    <label class="st-scene-trigger-field wide"><span>负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
+                    <label class="st-scene-trigger-field wide"><span>预设正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
+                    <label class="st-scene-trigger-field wide"><span>预设负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
                 </div>
                 <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
                     <button id="rbq-pp-save" class="menu_button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
@@ -296,7 +373,7 @@
             </div>
             <label class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center; flex-direction:row; cursor:pointer; min-height:auto; padding:8px 14px; margin-top:8px;">
                 <input type="checkbox" id="rbq-pp-show-floating" data-action="plugin-ignore" style="width:auto;">
-                <span style="font-size:13px; color:rgba(255,255,255,0.7);">在悬浮球菜单中显示快捷切换</span>
+                <span style="font-size:13px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));">在悬浮球菜单中显示快捷切换</span>
             </label>
             <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
                 <button id="rbq-pp-new" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-plus"></i> 新建</button>
@@ -320,6 +397,9 @@
         container.addEventListener('change', (e) => e.stopPropagation());
         container.addEventListener('input', (e) => e.stopPropagation());
 
+        const globalPosPreInput = document.getElementById('rbq-pp-global-pos-prefix');
+        const globalPosSufInput = document.getElementById('rbq-pp-global-pos-suffix');
+        const globalNegInput = document.getElementById('rbq-pp-global-negative');
         const select = document.getElementById('rbq-pp-select');
         const posSelect = document.getElementById('rbq-pp-position');
         const floatingCheckbox = document.getElementById('rbq-pp-show-floating');
@@ -327,6 +407,21 @@
         const nameInput = document.getElementById('rbq-pp-name');
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
+
+        globalPosPreInput?.addEventListener('input', () => {
+            getStore().globalPositivePrefix = globalPosPreInput.value.trim();
+            save();
+        });
+
+        globalPosSufInput?.addEventListener('input', () => {
+            getStore().globalPositiveSuffix = globalPosSufInput.value.trim();
+            save();
+        });
+
+        globalNegInput?.addEventListener('input', () => {
+            getStore().globalNegative = globalNegInput.value.trim();
+            save();
+        });
 
         function applyPresetSelection(nextId) {
             const store = getStore();
@@ -381,12 +476,11 @@
 
                 const fSelect = document.getElementById('rbq-pp-floating-select');
                 if (fSelect) {
-                    fSelect.innerHTML = '<option value="" style="color:#000">-- 不使用预设 --</option>';
+                    fSelect.innerHTML = '<option value="">-- 不使用预设 --</option>';
                     store.presets.forEach(p => {
                         const opt = document.createElement('option');
                         opt.value = p.id;
                         opt.textContent = p.name || p.id;
-                        opt.style.color = '#000';
                         fSelect.appendChild(opt);
                     });
                     fSelect.value = store.activeId || '';
@@ -398,6 +492,15 @@
 
         function renderSelect() {
             const store = getStore();
+            if (globalPosPreInput && document.activeElement !== globalPosPreInput) {
+                globalPosPreInput.value = store.globalPositivePrefix || '';
+            }
+            if (globalPosSufInput && document.activeElement !== globalPosSufInput) {
+                globalPosSufInput.value = store.globalPositiveSuffix || '';
+            }
+            if (globalNegInput && document.activeElement !== globalNegInput) {
+                globalNegInput.value = store.globalNegative || '';
+            }
             floatingCheckbox.checked = !!store.showFloating;
             select.innerHTML = '<option value="">-- 不使用预设 --</option>';
             store.presets.forEach(p => {
@@ -607,6 +710,15 @@
                 suffix: s.suffix || '',
                 negative: s.negative || '',
             };
+            if (!store.globalPositivePrefix && s.prefix) {
+                store.globalPositivePrefix = s.prefix;
+            }
+            if (!store.globalPositiveSuffix && s.suffix) {
+                store.globalPositiveSuffix = s.suffix;
+            }
+            if (!store.globalNegative && s.negative) {
+                store.globalNegative = s.negative;
+            }
         }
 
         // Clear the extension's built-in values so its joinPrompt logic becomes a no-op

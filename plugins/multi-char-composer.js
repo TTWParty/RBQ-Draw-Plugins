@@ -4,6 +4,8 @@
     const PLUGIN_NAME = 'Multi-Char Composer';
     const STORAGE_KEY = '_multiCharComposer';
 
+    const VERSION = '1.0.8';
+
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
         const s = RBQ.api.getSettings();
@@ -40,8 +42,8 @@
             .replace(/Character\s*(\d+)\s*UC:/gi, 'Char$1 UC:')
             .replace(/Scene\s*Composition:/gi, 'Scene:');
 
-        // Quick guard: must contain at least one Char with centers
-        if (!/Char\d+:/i.test(normalized) || !/\|centers:/i.test(normalized)) {
+        // Quick guard: must contain at least one Char
+        if (!/Char\d+:/i.test(normalized)) {
             return null;
         }
 
@@ -50,25 +52,27 @@
         const charUCs = {};
 
         // 1. Extract "Char{N} UC:...;" segments first (before Char{N}: to avoid partial match)
-        //    Pattern: Char1 UC:content;  (terminated by semicolon)
-        remaining = remaining.replace(/Char(\d+)\s+UC:([^;]*);?/gi, (match, idx, content) => {
+        //    Pattern: Char1 UC:content; (terminated by semicolon or end of string)
+        remaining = remaining.replace(/Char(\d+)\s+UC\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
             charUCs[idx] = content.trim();
             return ''; // remove from remaining
         });
 
-        // 2. Extract "Char{N}:content|centers:XY;" segments
-        //    Pattern: Char1:content|centers:C3;  (terminated by semicolon)
-        remaining = remaining.replace(/Char(\d+):([^;]*\|centers:[A-Ea-e][1-5])\s*;?/gi, (match, idx, content) => {
+        // 2. Extract "Char{N}:content" segments (with optional |centers:XY)
+        //    Pattern: Char1:content|centers:C3; or Char1:content; (terminated by semicolon or end of string)
+        remaining = remaining.replace(/Char(\d+)\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
             let caption = content.trim();
             let coord = { x: 0.5, y: 0.5 };
+            let hasCoord = false;
 
             const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5])\s*$/i);
             if (centersMatch) {
                 coord = parseCoord(centersMatch[1]);
                 caption = caption.slice(0, centersMatch.index).trim();
+                hasCoord = true;
             }
 
-            chars[idx] = { caption: caption, centers: [coord] };
+            chars[idx] = { caption: caption, centers: [coord], hasCoord };
             return ''; // remove from remaining
         });
 
@@ -95,6 +99,8 @@
         if (!parsed) return payload;
 
         const { remaining, chars, charUCs, charIndices } = parsed;
+        const hasExplicitCoords = charIndices.some(idx => chars[idx].hasCoord);
+        const useCoords = hasExplicitCoords || !!store.useCoords;
 
         // Build v4_prompt char_captions
         const charCaptions = charIndices.map(idx => ({
@@ -120,13 +126,12 @@
         // Update payload
         payload.input = baseCaption;
 
-        const isV5Model = String(payload.model || '').toLowerCase().includes('nai-diffusion-5');
         payload.parameters.v4_prompt = {
             caption: {
                 base_caption: baseCaption,
                 char_captions: charCaptions
             },
-            use_coords: isV5Model ? false : !!store.useCoords,
+            use_coords: !!useCoords,
             use_order: true,
             legacy_uc: false
         };

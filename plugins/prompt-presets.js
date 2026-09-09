@@ -476,12 +476,11 @@
 
                 const fSelect = document.getElementById('rbq-pp-floating-select');
                 if (fSelect) {
-                    fSelect.innerHTML = '<option value="" style="color:#000">-- 不使用预设 --</option>';
+                    fSelect.innerHTML = '<option value="">-- 不使用预设 --</option>';
                     store.presets.forEach(p => {
                         const opt = document.createElement('option');
                         opt.value = p.id;
                         opt.textContent = p.name || p.id;
-                        opt.style.color = '#000';
                         fSelect.appendChild(opt);
                     });
                     fSelect.value = store.activeId || '';

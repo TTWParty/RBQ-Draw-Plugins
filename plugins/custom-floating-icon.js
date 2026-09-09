@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 摸鱼悬浮球 (Slack-off Floating Ball)
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: TTWP-09
  * Description: 自定义生图触发器的悬浮球样式，支持超可爱的摸鱼猫咪与小孩（愣住）表情，可在通用设置中自由切换。
  */
@@ -72,7 +72,7 @@
             document.head.appendChild(style);
         }
         style.innerHTML = [
-            '#st-scene-trigger-floating-toggle:not(.st-scene-trigger-hidden):not([style*="display: none"]) {',
+            '#st-scene-trigger-floating-toggle {',
             '    background: transparent !important;',
             '    border: none !important;',
             '    box-shadow: none !important;',
@@ -80,9 +80,19 @@
             '    display: flex !important;',
             '    align-items: center !important;',
             '    justify-content: center !important;',
-            '    transform: none !important;',
+            '    transform: none;',
             '    transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.25s ease !important;',
-            '    filter: ' + icon.filter + ' !important;',
+            '    filter: ' + icon.filter + ';',
+            '}',
+            '#st-scene-trigger-floating-toggle:hover,',
+            '#st-scene-trigger-floating-toggle:not(.st-scene-trigger-hidden):hover {',
+            '    transform: ' + icon.hoverTransform + ' !important;',
+            '    filter: ' + icon.hoverFilter + ' !important;',
+            '}',
+            '#st-scene-trigger-floating-toggle:active,',
+            '#st-scene-trigger-floating-toggle:not(.st-scene-trigger-hidden):active {',
+            '    transform: scale(0.92) !important;',
+            '    filter: ' + icon.activeFilter + ' !important;',
             '}',
             '#st-scene-trigger-floating-toggle.st-scene-trigger-hidden,',
             '#st-scene-trigger-floating-toggle[style*="display: none"] {',
@@ -90,14 +100,6 @@
             '    visibility: hidden !important;',
             '    opacity: 0 !important;',
             '    pointer-events: none !important;',
-            '}',
-            '#st-scene-trigger-floating-toggle:hover {',
-            '    transform: ' + icon.hoverTransform + ' !important;',
-            '    filter: ' + icon.hoverFilter + ' !important;',
-            '}',
-            '#st-scene-trigger-floating-toggle:active {',
-            '    transform: scale(0.92) !important;',
-            '    filter: ' + icon.activeFilter + ' !important;',
             '}',
             '#st-scene-trigger-floating-toggle .st-scene-trigger-kite-icon {',
             '    display: none !important;',
@@ -175,5 +177,5 @@
         setTimeout(injectSettingUi, 50);
     });
 
-    console.info('[RBQ Plugin] Slack-off Floating Ball (摸鱼悬浮球) v1.1.0 loaded.');
+    console.info('[RBQ Plugin] Slack-off Floating Ball (摸鱼悬浮球) v1.1.1 loaded.');
 })(window.RBQ, typeof jQuery !== 'undefined' ? jQuery : window.$, typeof toastr !== 'undefined' ? toastr : window.toastr);

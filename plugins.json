@@ -43,9 +43,9 @@
     "id": "rbq-custom-floating-icon",
     "name": "摸鱼悬浮球",
     "description": "自定义生图触发器的悬浮球样式，支持超可爱的摸鱼猫咪与小孩（愣住）表情，可在通用设置中自由切换。",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "author": "TTWP-09",
-    "main": "plugins/custom-floating-icon.js?v=1.1.0"
+    "main": "plugins/custom-floating-icon.js?v=1.1.1"
   },
   {
     "id": "rbq-grok-draw",

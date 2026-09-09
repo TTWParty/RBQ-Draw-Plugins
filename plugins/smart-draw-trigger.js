@@ -1701,6 +1701,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         markers: '[draw]\n[画图]',
         targetRole: 'assistant',
         debugToast: false,
+        showTaggerDebug: false,
         multiCharOutput: false,
         multiCharUseCoords: false,
         autoRunTagger: false,
@@ -5100,10 +5101,48 @@ Zimage 擅长理解复杂的英文长句和语境。
             }
         }
 
+        let reasoningContent = choice?.message?.reasoning_content
+            || choice?.delta?.reasoning_content
+            || choice?.reasoning_content
+            || '';
+        if (!reasoningContent && Array.isArray(data?.candidates?.[0]?.content?.parts)) {
+            const thoughtPart = data.candidates[0].content.parts.find(p => p.thought === true || p.thought);
+            if (thoughtPart?.text) reasoningContent = thoughtPart.text;
+        }
+
         const rawContent = data?.choices?.[0]?.message?.content
             ?? data?.choices?.[0]?.text
             ?? data?.choices?.[0]?.delta?.content
             ?? data?.content;
+
+        let thinkContent = '';
+        if (typeof rawContent === 'string') {
+            const m = rawContent.match(/<(?:think|thinking)>([\s\S]*?)<\/(?:think|thinking)>/i);
+            if (m) thinkContent = m[1].trim();
+        }
+        if (!thinkContent && typeof reasoningContent === 'string' && reasoningContent.trim()) {
+            thinkContent = reasoningContent.trim();
+        }
+
+        let rawOutputText = '';
+        if (typeof reasoningContent === 'string' && reasoningContent.trim()) {
+            rawOutputText += `[思考过程 / Thinking]:\n${reasoningContent.trim()}\n\n`;
+        }
+        if (typeof rawContent === 'string' && rawContent.trim()) {
+            rawOutputText += (rawOutputText ? `[模型输出 / Content]:\n${rawContent.trim()}` : rawContent.trim());
+        }
+        if (toolRaw) {
+            const toolStr = typeof toolRaw === 'string' ? toolRaw : JSON.stringify(toolRaw, null, 2);
+            rawOutputText += (rawOutputText ? `\n\n[工具调用 / Tool Call: generate_draw_spec]:\n${toolStr}` : toolStr);
+        }
+        if (!rawOutputText) {
+            try {
+                rawOutputText = JSON.stringify(data, null, 2);
+            } catch (_e) {
+                rawOutputText = String(data || '');
+            }
+        }
+
         const source = (toolRaw && typeof toolRaw === 'object' && Object.keys(toolRaw).length > 0)
             ? toolRaw
             : (typeof rawContent === 'string'
@@ -5198,6 +5237,22 @@ Zimage 擅长理解复杂的英文长句和语境。
             shouldDraw = segments.length > 0 || !!source?.prompt || !!source?.scene;
         }
 
+        let decisionReason = String(source?.reason || '').trim();
+        if (!decisionReason && thinkContent) {
+            decisionReason = thinkContent;
+        }
+        if (!decisionReason) {
+            if (!shouldDraw) {
+                if (rawShouldDraw === false || rawShouldDraw === 'false' || rawShouldDraw === 0 || rawShouldDraw === '0') {
+                    decisionReason = '模型显式判定 shouldDraw: false（当前剧情属于日常闲聊/内心独白/无显著视觉变化）';
+                } else if (!segments.length && !source?.prompt && !source?.scene) {
+                    decisionReason = '未能从模型输出中提取到合法分镜 JSON 或生图 Tag（见下方原始输出）';
+                } else {
+                    decisionReason = '日常闲聊/内心独白/无视觉变化，模型判定无需生图';
+                }
+            }
+        }
+
         const normalized = {
             shouldDraw,
             prompt: segments.length ? segments[0].prompt : '',
@@ -5206,7 +5261,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             scene: segments.length ? segments[0].scene : '',
             characters: segments.length ? segments[0].characters : [],
             anchor: normalizeAnchor(source?.anchor, 1),
-            reason: String(source?.reason || '').trim(),
+            reason: decisionReason,
+            thinkContent,
+            rawOutput: rawOutputText,
             segments,
             matchedLorebooks: validMatchedLorebooks,
         };
@@ -6400,6 +6457,231 @@ SCHEMA:
         }
     }
 
+    function renderTaggerDebugInfo(wrapper, result) {
+        if (!(wrapper instanceof HTMLElement)) return;
+        const store = getStore();
+
+        // 移除已有的调试容器和切换按钮，避免重复注入
+        wrapper.querySelector('.rbq-sdt-debug-box')?.remove();
+        wrapper.querySelector('.rbq-sdt-debug-toggle-btn')?.remove();
+
+        const reason = String(result?.reason || result?.thinkContent || '').trim() || '日常闲聊/独白/无视觉变化，模型判定无需生图';
+        const rawOutput = String(result?.rawOutput || '').trim();
+
+        const isDebugEnabled = !!store.showTaggerDebug;
+
+        const debugBox = document.createElement('div');
+        debugBox.className = 'rbq-sdt-debug-box no-draw';
+        if (!isDebugEnabled) {
+            debugBox.style.display = 'none';
+        }
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'rbq-sdt-debug-title';
+        titleEl.innerHTML = '<i class="fa-solid fa-circle-question"></i> <span>Tagger 判定无需生图原因</span>';
+
+        const reasonEl = document.createElement('div');
+        reasonEl.className = 'rbq-sdt-debug-reason';
+        reasonEl.textContent = reason;
+
+        debugBox.append(titleEl, reasonEl);
+
+        if (rawOutput) {
+            const details = document.createElement('details');
+            details.className = 'rbq-sdt-debug-details';
+            if (isDebugEnabled) {
+                details.open = true;
+            }
+            const summary = document.createElement('summary');
+            summary.innerHTML = '<i class="fa-solid fa-code"></i> LLM 原始响应与思考过程 (Raw Output)';
+
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'menu_button';
+            copyBtn.style.cssText = 'float: right; font-size: 11px !important; padding: 1px 6px !important; margin: 0 !important; cursor: pointer;';
+            copyBtn.textContent = '📋 复制';
+            copyBtn.onclick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                navigator.clipboard.writeText(rawOutput).then(() => {
+                    toastr.success('已复制 LLM 原始响应到剪贴板', PLUGIN_NAME);
+                }).catch(() => {
+                    toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+                });
+            };
+            summary.append(copyBtn);
+
+            const pre = document.createElement('pre');
+            pre.className = 'rbq-sdt-debug-raw';
+            pre.textContent = rawOutput;
+
+            details.append(summary, pre);
+            debugBox.append(details);
+        } else {
+            const emptyHint = document.createElement('div');
+            emptyHint.style.cssText = 'font-size: 11px; opacity: 0.6; margin-top: 4px;';
+            emptyHint.textContent = '（该条目暂无缓存的原始 LLM 输出。点击重新解析可捕获完整输出）';
+            debugBox.append(emptyHint);
+        }
+
+        // 插入到卡片中
+        const ui = wrapper.querySelector('.st-scene-trigger-inline-ui');
+        if (ui) {
+            ui.insertAdjacentElement('afterend', debugBox);
+        } else {
+            wrapper.append(debugBox);
+        }
+
+        // 若调试模式未在设置开启，提供轻量调试原因按钮供点击临时查看
+        if (!isDebugEnabled) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'menu_button rbq-sdt-debug-toggle-btn';
+            toggleBtn.style.cssText = 'margin-left: 6px !important; font-size: 11px !important; opacity: 0.8 !important; padding: 2px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; border-radius: 4px !important;';
+            toggleBtn.innerHTML = '<i class="fa-solid fa-bug"></i> 调试原因';
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (debugBox.style.display === 'none') {
+                    debugBox.style.display = 'block';
+                    toggleBtn.style.opacity = '1';
+                    const details = debugBox.querySelector('details');
+                    if (details) details.open = true;
+                } else {
+                    debugBox.style.display = 'none';
+                    toggleBtn.style.opacity = '0.8';
+                }
+            });
+            const mainBtn = wrapper.querySelector('.st-scene-trigger-generate');
+            if (mainBtn && mainBtn.parentNode) {
+                mainBtn.parentNode.insertBefore(toggleBtn, mainBtn.nextSibling);
+            }
+        }
+    }
+
+    function openTaggerDebugModal(segResult, wrapper) {
+        const existing = document.getElementById('rbq-sdt-tagger-debug-modal');
+        if (existing) existing.remove();
+
+        const reason = String(segResult?.reason || segResult?.thinkContent || '').trim() || '(无显式判定原因)';
+        const rawOutput = String(segResult?.rawOutput || '').trim();
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-tagger-debug-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: rgba(0,0,0,0.85) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+        `;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            background: #1e1f29 !important;
+            color: #f8f8f2 !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(255,200,50,0.4) !important;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
+            width: 720px !important;
+            max-width: 95vw !important;
+            max-height: 85vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            font-family: inherit !important;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+            padding: 12px 18px !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+            background: rgba(255,255,255,0.03) !important;
+        `;
+        header.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; color: #ffd166;">
+                <i class="fa-solid fa-bug"></i> <span>Tagger 调试日志与原始输出</span>
+            </div>
+            <button class="menu_button rbq-sdt-debug-close-btn" type="button" style="padding: 4px 10px !important; margin: 0 !important; font-size: 12px !important;">✕</button>
+        `;
+
+        const body = document.createElement('div');
+        body.style.cssText = `
+            padding: 16px 18px !important;
+            overflow-y: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 14px !important;
+            font-size: 13px !important;
+            line-height: 1.5 !important;
+        `;
+
+        const reasonSection = document.createElement('div');
+        reasonSection.innerHTML = `
+            <div style="font-weight: 600; color: #ffb86c; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-circle-question"></i> 模型判定原因 / 思考链:
+            </div>
+            <div style="background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); color: #eee; font-size: 12px; word-break: break-word;">
+                ${escapeHtml(reason)}
+            </div>
+        `;
+
+        const outputSection = document.createElement('div');
+        outputSection.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-weight: 600; color: #79e4ff; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-code"></i> LLM 原始响应 (Raw Output):
+                </span>
+                <button class="menu_button rbq-sdt-copy-raw-btn" type="button" style="font-size: 11px !important; padding: 2px 8px !important; margin: 0 !important;">
+                    <i class="fa-solid fa-copy"></i> 复制全文
+                </button>
+            </div>
+            <pre style="max-height: 360px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; padding: 10px 12px; background: rgba(0,0,0,0.5); border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); color: #a8d1ff; margin: 0; user-select: text;">${escapeHtml(rawOutput || '(无原始输出)')}</pre>
+        `;
+
+        body.append(reasonSection, outputSection);
+
+        const footer = document.createElement('div');
+        footer.style.cssText = `
+            padding: 10px 18px !important;
+            display: flex !important;
+            justify-content: flex-end !important;
+            border-top: 1px solid rgba(255,255,255,0.1) !important;
+            background: rgba(255,255,255,0.02) !important;
+        `;
+        footer.innerHTML = `<button class="menu_button rbq-sdt-debug-close-btn2" type="button" style="padding: 6px 18px !important; font-size: 13px !important;">关闭</button>`;
+
+        panel.append(header, body, footer);
+        modal.append(panel);
+        document.body.append(modal);
+
+        const closeModal = () => modal.remove();
+        header.querySelector('.rbq-sdt-debug-close-btn')?.addEventListener('click', closeModal);
+        footer.querySelector('.rbq-sdt-debug-close-btn2')?.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        outputSection.querySelector('.rbq-sdt-copy-raw-btn')?.addEventListener('click', () => {
+            navigator.clipboard.writeText(rawOutput).then(() => {
+                toastr.success('已复制 LLM 原始响应', PLUGIN_NAME);
+            }).catch(() => {
+                toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+            });
+        });
+    }
+
     function renderViewerBottomBar(bottomBar, segResult, wrapper, currentItem, modal) {
         if (!(bottomBar instanceof HTMLElement)) return;
         bottomBar.innerHTML = '';
@@ -6438,6 +6720,11 @@ SCHEMA:
         // 5. Manual Tag Refinement button
         badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
 
+        // 6. Tagger Debug / Raw Output button if store.showTaggerDebug is enabled (or debug info present)
+        if (store.showTaggerDebug) {
+            badges.push(`<button class="menu_button rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
+        }
+
         bottomBar.innerHTML = badges.join('');
 
         bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
@@ -6458,6 +6745,11 @@ SCHEMA:
         bottomBar.querySelector('.rbq-sdt-viewer-manual-tag-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             openSegmentManualTagModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
+        });
+
+        bottomBar.querySelector('.rbq-sdt-viewer-debug-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openTaggerDebugModal(segResult, wrapper);
         });
     }
 
@@ -7383,7 +7675,8 @@ SCHEMA:
                     choices: [{
                         message: {
                             ...(accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: accumulatedArgs } }] } : {}),
-                            content: accumulatedContent
+                            content: accumulatedContent,
+                            reasoning_content: accumulatedReasoning
                         }
                     }]
                 };
@@ -8005,6 +8298,8 @@ SCHEMA:
         if (!(wrapper instanceof HTMLElement)) return;
         const abortController = new AbortController();
         wrapper._taggerAbort = abortController;
+        wrapper.querySelector('.rbq-sdt-debug-box')?.remove();
+        wrapper.querySelector('.rbq-sdt-debug-toggle-btn')?.remove();
         setWrapperStage(wrapper, 'parsing');
         const button = ensureTaggerButtonState(wrapper, '解析中... (点击停止)');
         if (button) button.disabled = false;
@@ -8028,10 +8323,11 @@ SCHEMA:
             const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment) || segment.scene || (segment.characters && segment.characters.length > 0));
             const hasTopLevelPrompt = !!getFinalPrompt(result) || !!result?.scene;
             if (!result.shouldDraw && !hasUsableSegments && !hasTopLevelPrompt) {
-                ensureTaggerButtonState(wrapper, 'tagger 判断无需生图');
+                ensureTaggerButtonState(wrapper, '⚠️ tagger 判定无需生图（点击重新解析）');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'done-no-draw');
                 processedKeys.add(cacheKey);
+                renderTaggerDebugInfo(wrapper, result);
                 return;
             }
             // Remove old segment cards before re-materializing — prevents stale cards
@@ -8154,6 +8450,8 @@ SCHEMA:
                 negative: '',
                 anchor: { type: 'bottom' },
                 reason: cached.reason || 'tagger 判断无需生图',
+                rawOutput: cached.rawOutput || '',
+                thinkContent: cached.thinkContent || '',
                 multiChar: false,
                 scene: '',
                 characters: [],
@@ -8168,6 +8466,7 @@ SCHEMA:
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'done-no-draw');
                 bindWrapperManualRun(wrapper, trigger, messageId, key);
+                renderTaggerDebugInfo(wrapper, noDrawPlaceholder);
                 const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
                 if (loader instanceof HTMLElement) loader.style.display = 'none';
             }
@@ -8333,6 +8632,15 @@ SCHEMA:
             .rbq-sdt-sticky-save { position:sticky; top:0; z-index:10; padding:10px 0; background:inherit; }
             .rbq-sdt-save-btn { width:100%; font-size:14px!important; font-weight:600!important; padding:10px 16px!important; background:rgba(100,180,255,.18)!important; border:1px solid rgba(100,180,255,.35)!important; transition:background .2s; }
             .rbq-sdt-save-btn:hover { background:rgba(100,180,255,.32)!important; }
+            .rbq-sdt-debug-box { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: rgba(0, 0, 0, 0.28); border: 1px dashed rgba(255, 180, 50, 0.35); font-size: 12px; line-height: 1.5; color: #e0e0e0; }
+            .rbq-sdt-debug-box.no-draw { border-color: rgba(255, 100, 100, 0.45); background: rgba(255, 80, 80, 0.07); }
+            .rbq-sdt-debug-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #ffb86c; margin-bottom: 4px; font-size: 12.5px; }
+            .rbq-sdt-debug-box.no-draw .rbq-sdt-debug-title { color: #ff7b72; }
+            .rbq-sdt-debug-reason { font-size: 12px; color: #eee; word-break: break-word; }
+            .rbq-sdt-debug-details { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px; }
+            .rbq-sdt-debug-details summary { cursor: pointer; font-size: 11px; opacity: 0.8; user-select: none; transition: opacity .2s; outline: none; }
+            .rbq-sdt-debug-details summary:hover { opacity: 1; }
+            .rbq-sdt-debug-raw { margin-top: 6px; max-height: 220px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; padding: 8px 10px; background: rgba(0, 0, 0, 0.45); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); color: #a8d1ff; user-select: text; margin-bottom: 0; }
         `;
         document.head.append(style);
     }
@@ -8548,6 +8856,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field" title="选择前情增强分析版本。V10: 9.1 全息空间六步思维链推演（推荐）。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v10">V10 · 9.1全息六步推演 (推荐)</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -8646,6 +8955,7 @@ SCHEMA:
         const ecVal = store.enhancedContext === true ? 'v10' : (['v1','v3','v4'].includes(store.enhancedContext) ? 'v10' : (store.enhancedContext || 'off'));
         document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
+        document.getElementById('rbq-sdt-tagger-debug').checked = !!store.showTaggerDebug;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
         document.getElementById('rbq-sdt-multichar-coords').checked = !!store.multiCharUseCoords;
         document.getElementById('rbq-sdt-inject-presets').checked = !!store.injectPresetsToTagger;
@@ -8688,6 +8998,7 @@ SCHEMA:
         bindSwitch('rbq-sdt-enabled-field', 'rbq-sdt-enabled');
         // enhanced-context is now a <select>, no bindSwitch needed
         bindSwitch('rbq-sdt-debug-field', 'rbq-sdt-debug');
+        bindSwitch('rbq-sdt-tagger-debug-field', 'rbq-sdt-tagger-debug');
         bindSwitch('rbq-sdt-multichar-field', 'rbq-sdt-multichar');
         bindSwitch('rbq-sdt-multichar-coords-field', 'rbq-sdt-multichar-coords');
         bindSwitch('rbq-sdt-inject-presets-field', 'rbq-sdt-inject-presets');
@@ -8867,6 +9178,7 @@ SCHEMA:
             s.contextCount = Math.max(1, Math.min(50, Number(val('rbq-sdt-context-count')) || 5));
             s.enhancedContext = val('rbq-sdt-enhanced-context') || 'off';
             s.debugToast = checked('rbq-sdt-debug');
+            s.showTaggerDebug = checked('rbq-sdt-tagger-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');
             s.multiCharUseCoords = checked('rbq-sdt-multichar-coords');
             s.injectPresetsToTagger = checked('rbq-sdt-inject-presets');
@@ -8903,6 +9215,21 @@ SCHEMA:
             s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
             save();
             toastr.success('智能生图触发器设置已保存', PLUGIN_NAME);
+
+            // 立即响应当前页面已有的无需生图卡片
+            document.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-stage="done-no-draw"]`).forEach(card => {
+                const box = card.querySelector('.rbq-sdt-debug-box');
+                const toggle = card.querySelector('.rbq-sdt-debug-toggle-btn');
+                if (s.showTaggerDebug) {
+                    if (box) box.style.display = 'block';
+                    if (toggle) toggle.style.display = 'none';
+                    const details = box?.querySelector('details');
+                    if (details) details.open = true;
+                } else {
+                    if (box) box.style.display = 'none';
+                    if (toggle) toggle.style.display = '';
+                }
+            });
             if (window.location.protocol === 'https:') {
                 const isOpenaiInsecure = s.provider === 'openai' && s.openaiBaseUrl.startsWith('http://') && !s.openaiBaseUrl.includes('localhost') && !s.openaiBaseUrl.includes('127.0.0.1') && !s.openaiBaseUrl.includes('[::1]');
                 const isCustomInsecure = s.provider === 'custom' && s.customUrl.startsWith('http://') && !s.customUrl.includes('localhost') && !s.customUrl.includes('127.0.0.1') && !s.customUrl.includes('[::1]');

@@ -5749,6 +5749,401 @@ SCHEMA:
         inputEl?.focus();
     }
 
+    function openSegmentManualTagModal(wrapper, segResult, viewerContext = null) {
+        const existing = document.getElementById('rbq-sdt-manual-tag-modal');
+        if (existing) existing.remove();
+
+        const hasRealCharacters = Array.isArray(segResult?.characters) && segResult.characters.length > 0
+            && segResult.characters.some(c => (c.name && c.name !== '角色') || c.caption || c.outfit || c.base || c.action);
+        const isMultiChar = hasRealCharacters;
+        const characters = isMultiChar ? segResult.characters : [];
+        const initialScene = String(segResult?.scene || '').trim();
+        const initialFullPrompt = String(getFinalPrompt(segResult) || segResult?.prompt || segResult?.scene || '').trim();
+        const initialNegative = String(segResult?.negativePrompt || segResult?.uc || '').trim();
+
+        const COORD_OPTIONS = [
+            { val: 'C3', label: 'C3 (居中·站姿)' },
+            { val: 'B3', label: 'B3 (左侧·站姿)' },
+            { val: 'D3', label: 'D3 (右侧·站姿)' },
+            { val: 'A3', label: 'A3 (最左·站姿)' },
+            { val: 'E3', label: 'E3 (最右·站姿)' },
+            { val: 'C2', label: 'C2 (居中·特写/上半身)' },
+            { val: 'C4', label: 'C4 (居中·坐姿/低位)' },
+            { val: 'B2', label: 'B2 (左侧·特写/上半身)' },
+            { val: 'D2', label: 'D2 (右侧·特写/上半身)' },
+            { val: 'B4', label: 'B4 (左侧·坐姿/低位)' },
+            { val: 'D4', label: 'D4 (右侧·坐姿/低位)' },
+            { val: 'A2', label: 'A2 (最左·上半身)' },
+            { val: 'E2', label: 'E2 (最右·上半身)' },
+            { val: 'C1', label: 'C1 (居中·顶部/俯视)' },
+            { val: 'C5', label: 'C5 (居中·底部/仰视)' }
+        ];
+
+        let activeTab = isMultiChar ? 'structured' : 'raw';
+
+        const modal = document.createElement('div');
+        modal.id = 'rbq-sdt-manual-tag-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: rgba(0,0,0,0.85) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+            backdrop-filter: blur(8px) !important;
+            -webkit-backdrop-filter: blur(8px) !important;
+        `;
+
+        const charItemsHtml = characters.map((c, idx) => {
+            const charName = c._rawName || c.name || `角色 ${idx + 1}`;
+            const currentCenter = String(c.center || 'C3').trim().toUpperCase();
+            const hasOption = COORD_OPTIONS.some(opt => opt.val === currentCenter);
+            const optionsToRender = hasOption ? COORD_OPTIONS : [{ val: currentCenter, label: `${currentCenter} (自定义)` }, ...COORD_OPTIONS];
+            const coordOpts = optionsToRender.map(opt => `
+                <option value="${escapeHtml(opt.val)}"${opt.val === currentCenter ? ' selected' : ''}>${escapeHtml(opt.label)}</option>
+            `).join('');
+
+            const charCaption = c.caption || [c.base, c.outfit, c.action].filter(Boolean).join(', ') || [c._rawBase, c._rawOutfit, c._rawAction].filter(Boolean).join(', ');
+            const charUc = c.uc || '';
+
+            return `
+                <div class="rbq-sdt-manual-char-card" data-index="${idx}" style="background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 8px !important; padding: 10px 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                    <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 8px !important;">
+                        <div style="display: flex !important; align-items: center !important; gap: 6px !important;">
+                            <strong style="font-size: 13px !important; color: #ffb86c !important; display: flex !important; align-items: center !important; gap: 5px !important;">
+                                <i class="fa-solid fa-user"></i> ${escapeHtml(charName)}
+                            </strong>
+                            <input class="rbq-sdt-manual-char-name" type="hidden" value="${escapeHtml(charName)}">
+                        </div>
+                        <div style="display: flex !important; align-items: center !important; gap: 6px !important;">
+                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important;">构图坐标:</span>
+                            <select class="rbq-sdt-manual-char-center" style="background: rgba(0,0,0,0.5) !important; border: 1px solid rgba(104,215,255,0.35) !important; color: #79e4ff !important; border-radius: 4px !important; padding: 3px 8px !important; font-size: 11px !important; cursor: pointer !important;">
+                                ${coordOpts}
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold !important;">角色专属 Tag (发型、服装、姿态、动作、表情):</span>
+                        <textarea class="rbq-sdt-manual-char-caption" style="width: 100% !important; min-height: 56px !important; padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #fff !important; box-sizing: border-box !important; line-height: 1.4 !important;" placeholder="例如: 1girl, frieren, green eyes, white hair, twintails, striped dress, staff">${escapeHtml(charCaption)}</textarea>
+                    </div>
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
+                        <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important;">角色专属负面 Tag / UC (可选):</span>
+                        <input class="rbq-sdt-manual-char-uc" type="text" value="${escapeHtml(charUc)}" placeholder="可选，该角色的独立负面提示词" style="width: 100% !important; padding: 5px 8px !important; font-size: 11px !important; border-radius: 4px !important; background: rgba(0,0,0,0.25) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #ccc !important; box-sizing: border-box !important;">
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        modal.innerHTML = `
+            <div style="
+                background: #1e1f24 !important;
+                border: 1px solid rgba(104,215,255,0.35) !important;
+                border-radius: 14px !important;
+                width: 650px !important;
+                max-width: 95vw !important;
+                max-height: 88vh !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.9) !important;
+                box-sizing: border-box !important;
+            ">
+                <div style="
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    padding: 14px 18px !important;
+                    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                    background: rgba(104,215,255,0.08) !important;
+                ">
+                    <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
+                        <i class="fa-solid fa-tags"></i> 🏷️ 手动调整分镜 Tag
+                    </strong>
+                    <button class="menu_button" id="rbq-sdt-manual-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                </div>
+
+                ${isMultiChar ? `
+                <div style="display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; padding: 8px 18px !important; background: rgba(0,0,0,0.2) !important;">
+                    <button id="rbq-sdt-tab-btn-structured" type="button" class="menu_button" style="font-size: 12px !important; padding: 4px 12px !important; margin: 0 !important; background: rgba(104,215,255,0.2) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 6px !important; cursor: pointer !important; font-weight: bold !important;">
+                        📑 分场景与角色结构化编辑
+                    </button>
+                    <button id="rbq-sdt-tab-btn-raw" type="button" class="menu_button" style="font-size: 12px !important; padding: 4px 12px !important; margin: 0 !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; cursor: pointer !important;">
+                        📝 整体合并文本直接编辑
+                    </button>
+                </div>
+                ` : ''}
+
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 14px !important; overflow-y: auto !important; flex: 1 !important; box-sizing: border-box !important;">
+                    <div id="rbq-sdt-panel-structured" style="display: ${isMultiChar ? 'flex' : 'none'} !important; flex-direction: column !important; gap: 12px !important;">
+                        <div style="display: flex !important; flex-direction: column !important; gap: 5px !important;">
+                            <label style="font-size: 12px !important; font-weight: bold !important; color: #79e4ff !important; display: flex !important; align-items: center !important; justify-content: space-between !important;">
+                                <span>🏞️ 场景、环境、光影与镜头视角 Tag:</span>
+                                <span style="font-size: 10px !important; font-weight: normal !important; color: rgba(255,255,255,0.5) !important;">(不含特定角色的发色/服装)</span>
+                            </label>
+                            <textarea id="rbq-sdt-manual-scene" style="width: 100% !important; min-height: 70px !important; padding: 8px 10px !important; font-size: 12px !important; border-radius: 6px !important; background: rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; box-sizing: border-box !important; line-height: 1.45 !important;" placeholder="例如: 1girl, indoors, warm sunlight, window, aesthetic, masterpiece...">${escapeHtml(initialScene)}</textarea>
+                        </div>
+
+                        <div style="display: flex !important; flex-direction: column !important; gap: 6px !important;">
+                            <label style="font-size: 12px !important; font-weight: bold !important; color: #ffb86c !important;">
+                                👥 角色独立设定与 Tag (${characters.length}位角色):
+                            </label>
+                            <div style="display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                                ${charItemsHtml}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="rbq-sdt-panel-raw" style="display: ${isMultiChar ? 'none' : 'flex'} !important; flex-direction: column !important; gap: 6px !important;">
+                        <label style="font-size: 12px !important; font-weight: bold !important; color: #79e4ff !important;">
+                            ✍️ 正面提示词 Tag (Prompt):
+                        </label>
+                        <textarea id="rbq-sdt-manual-raw-prompt" style="width: 100% !important; min-height: 130px !important; padding: 10px 12px !important; font-size: 12px !important; border-radius: 6px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; box-sizing: border-box !important; line-height: 1.45 !important;" placeholder="输入完整的正面提示词，以英文逗号分隔...">${escapeHtml(initialFullPrompt)}</textarea>
+                    </div>
+
+                    <div style="display: flex !important; flex-direction: column !important; gap: 4px !important; margin-top: 4px !important;">
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
+                            <span style="font-size: 11px !important; font-weight: bold !important; color: rgba(255,255,255,0.75) !important;">🚫 全局负面提示词 (UC / Negative Prompt):</span>
+                            <span style="font-size: 10px !important; color: rgba(255,255,255,0.4) !important;">(留空则沿用当前模式默认负面词)</span>
+                        </div>
+                        <input id="rbq-sdt-manual-negative" type="text" value="${escapeHtml(initialNegative)}" placeholder="可选负面提示词，如 nsfw, lowres, bad anatomy, bad hands..." style="width: 100% !important; padding: 6px 10px !important; font-size: 12px !important; border-radius: 6px !important; background: rgba(0,0,0,0.3) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; box-sizing: border-box !important;">
+                    </div>
+                </div>
+
+                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; padding: 12px 18px !important; border-top: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-shrink: 0 !important; box-sizing: border-box !important;">
+                    <div style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important;">
+                        💡 支持保存后直接出图，或仅更新卡片记录
+                    </div>
+                    <div style="display: flex !important; align-items: center !important; gap: 10px !important;">
+                        <button class="menu_button" id="rbq-sdt-manual-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important; margin: 0 !important; cursor: pointer !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-manual-save-only" type="button" style="padding: 6px 14px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.08) !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.2) !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-solid fa-floppy-disk"></i> 仅更新 Tag</button>
+                        <button class="menu_button" id="rbq-sdt-manual-submit" type="button" style="padding: 6px 18px !important; font-size: 12px !important; margin: 0 !important; background: rgba(104,215,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; font-weight: bold !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; white-space: nowrap !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 保存并重新生图</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const close = () => modal.remove();
+        modal.querySelector('#rbq-sdt-manual-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-manual-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+
+        if (isMultiChar) {
+            const tabBtnStructured = modal.querySelector('#rbq-sdt-tab-btn-structured');
+            const tabBtnRaw = modal.querySelector('#rbq-sdt-tab-btn-raw');
+            const panelStructured = modal.querySelector('#rbq-sdt-panel-structured');
+            const panelRaw = modal.querySelector('#rbq-sdt-panel-raw');
+
+            tabBtnStructured?.addEventListener('click', () => {
+                activeTab = 'structured';
+                panelStructured.style.setProperty('display', 'flex', 'important');
+                panelRaw.style.setProperty('display', 'none', 'important');
+                tabBtnStructured.style.background = 'rgba(104,215,255,0.2)';
+                tabBtnStructured.style.color = '#79e4ff';
+                tabBtnStructured.style.borderColor = 'rgba(104,215,255,0.4)';
+                tabBtnStructured.style.fontWeight = 'bold';
+                tabBtnRaw.style.background = 'rgba(255,255,255,0.06)';
+                tabBtnRaw.style.color = 'rgba(255,255,255,0.7)';
+                tabBtnRaw.style.borderColor = 'rgba(255,255,255,0.12)';
+                tabBtnRaw.style.fontWeight = 'normal';
+            });
+
+            tabBtnRaw?.addEventListener('click', () => {
+                activeTab = 'raw';
+                panelStructured.style.setProperty('display', 'none', 'important');
+                panelRaw.style.setProperty('display', 'flex', 'important');
+                const tempSeg = gatherUpdatedSegment('structured');
+                const combined = getFinalPrompt(tempSeg);
+                const rawInput = modal.querySelector('#rbq-sdt-manual-raw-prompt');
+                if (rawInput && combined) rawInput.value = combined;
+
+                tabBtnRaw.style.background = 'rgba(104,215,255,0.2)';
+                tabBtnRaw.style.color = '#79e4ff';
+                tabBtnRaw.style.borderColor = 'rgba(104,215,255,0.4)';
+                tabBtnRaw.style.fontWeight = 'bold';
+                tabBtnStructured.style.background = 'rgba(255,255,255,0.06)';
+                tabBtnStructured.style.color = 'rgba(255,255,255,0.7)';
+                tabBtnStructured.style.borderColor = 'rgba(255,255,255,0.12)';
+                tabBtnStructured.style.fontWeight = 'normal';
+            });
+        }
+
+        function gatherUpdatedSegment(tab) {
+            const updatedSeg = JSON.parse(JSON.stringify(segResult || {}));
+            const negVal = String(modal.querySelector('#rbq-sdt-manual-negative')?.value || '').trim();
+            updatedSeg.negativePrompt = negVal;
+            updatedSeg.uc = negVal;
+
+            if (tab === 'raw' || !isMultiChar) {
+                const rawPrompt = String(modal.querySelector('#rbq-sdt-manual-raw-prompt')?.value || '').trim();
+                updatedSeg.prompt = rawPrompt;
+                updatedSeg.scene = rawPrompt;
+                if (!isMultiChar) {
+                    updatedSeg.characters = [];
+                }
+            } else {
+                const sceneVal = String(modal.querySelector('#rbq-sdt-manual-scene')?.value || '').trim();
+                updatedSeg.scene = sceneVal;
+                const charCards = modal.querySelectorAll('.rbq-sdt-manual-char-card');
+                charCards.forEach(card => {
+                    const idx = parseInt(card.dataset.index, 10);
+                    if (updatedSeg.characters && updatedSeg.characters[idx]) {
+                        const charObj = updatedSeg.characters[idx];
+                        const centerVal = String(card.querySelector('.rbq-sdt-manual-char-center')?.value || 'C3').trim().toUpperCase();
+                        const captionVal = String(card.querySelector('.rbq-sdt-manual-char-caption')?.value || '').trim();
+                        const ucVal = String(card.querySelector('.rbq-sdt-manual-char-uc')?.value || '').trim();
+                        charObj.center = centerVal;
+                        charObj.caption = captionVal;
+                        charObj.uc = ucVal;
+                    }
+                });
+            }
+            return updatedSeg;
+        }
+
+        function syncUpdatedSegmentState(updatedSeg, newFinalPrompt) {
+            if (wrapper) {
+                wrapper.dataset.prompt = newFinalPrompt;
+                wrapper.dataset.rbqSdtFinalPrompt = newFinalPrompt;
+                if (Array.isArray(updatedSeg.characters) && updatedSeg.characters.length > 0) {
+                    try { wrapper.dataset.rbqSdtCharData = JSON.stringify(updatedSeg.characters); } catch (_) {}
+                }
+                renderCardBadges(wrapper, updatedSeg);
+            }
+
+            const baseKey = wrapper?.dataset?.rbqSdtBaseKey;
+            const segmentKey = wrapper?.dataset?.rbqSdtSegmentKey;
+            const segData = { segResult: updatedSeg, wrapper: wrapper || null, validLorebooks: updatedSeg.matchedLorebooks || [], finalPrompt: newFinalPrompt };
+            if (baseKey) sdtSegmentMap.set(baseKey, segData);
+            if (segmentKey) sdtSegmentMap.set(segmentKey, segData);
+            if (viewerContext?.currentItem?.url) sdtSegmentMap.set(viewerContext.currentItem.url, segData);
+            if (viewerContext?.currentItem?.displayUrl) sdtSegmentMap.set(viewerContext.currentItem.displayUrl, segData);
+            sdtSegmentMap.set(newFinalPrompt, segData);
+
+            if (baseKey) {
+                const store = getStore();
+                const cache = store?.cache?.[baseKey];
+                if (cache) {
+                    if (segmentKey && cache.segments) {
+                        const m = segmentKey.match(/-seg-(\d+)$/);
+                        if (m && cache.segments[parseInt(m[1], 10)]) {
+                            cache.segments[parseInt(m[1], 10)] = { ...cache.segments[parseInt(m[1], 10)], ...updatedSeg };
+                        }
+                    }
+                    save();
+                }
+            }
+
+            if (viewerContext) {
+                if (viewerContext.currentItem) {
+                    viewerContext.currentItem.prompt = newFinalPrompt;
+                }
+                if (viewerContext.bottomBar) {
+                    renderViewerBottomBar(viewerContext.bottomBar, updatedSeg, wrapper, viewerContext.currentItem, viewerContext.modal);
+                }
+            }
+        }
+
+        // Action: 仅更新 Tag
+        modal.querySelector('#rbq-sdt-manual-save-only')?.addEventListener('click', () => {
+            const updatedSeg = gatherUpdatedSegment(activeTab);
+            prepareNaiCharData(updatedSeg);
+            const newFinalPrompt = getFinalPrompt(updatedSeg);
+            if (!newFinalPrompt) {
+                toastr.warning('提示词不能为空', PLUGIN_NAME);
+                return;
+            }
+
+            syncUpdatedSegmentState(updatedSeg, newFinalPrompt);
+            toastr.success('分镜 Tag 已成功更新！', PLUGIN_NAME);
+            close();
+        });
+
+        // Action: 保存并重新生图
+        const submitBtn = modal.querySelector('#rbq-sdt-manual-submit');
+        submitBtn?.addEventListener('click', async () => {
+            const updatedSeg = gatherUpdatedSegment(activeTab);
+            prepareNaiCharData(updatedSeg);
+            const newFinalPrompt = getFinalPrompt(updatedSeg);
+            if (!newFinalPrompt) {
+                toastr.warning('提示词不能为空', PLUGIN_NAME);
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成新图像...';
+            close();
+
+            const baseKey = wrapper?.dataset?.rbqSdtBaseKey;
+            const segmentKey = wrapper?.dataset?.rbqSdtSegmentKey;
+
+            const viewerModal = viewerContext?.modal;
+            const viewerImg = viewerModal?.querySelector('.st-scene-trigger-viewer-image');
+            if (viewerImg) viewerImg.style.opacity = '0.3';
+
+            if (wrapper) {
+                wrapper.dataset.prompt = newFinalPrompt;
+                setCardLoadingState(wrapper, true, '🏷️ 手动调整生图中...', newFinalPrompt.slice(0, 30));
+            }
+            toastr.info('开始按手动调整的 Tag 重新生图...', PLUGIN_NAME);
+
+            try {
+                prepareNaiCharData(updatedSeg);
+                const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-manual-refine', {
+                    negative_prompt: updatedSeg.negativePrompt || undefined,
+                }, (progress) => {
+                    if (wrapper) setCardLoadingState(wrapper, true, '🏷️ 手动调整生图中...', typeof progress === 'string' ? progress : '');
+                });
+
+                if (wrapper) setCardLoadingState(wrapper, false);
+                if (viewerImg) viewerImg.style.opacity = '1';
+
+                if (imageResult && (imageResult.url || imageResult.displayUrl)) {
+                    syncUpdatedSegmentState(updatedSeg, newFinalPrompt);
+                    if (wrapper) {
+                        RBQ.api.renderInlineGeneratedImage(wrapper, imageResult);
+                        if (baseKey && segmentKey) {
+                            markSegmentAutoGenerated(baseKey, segmentKey, imageResult);
+                        }
+                    }
+                    if (viewerContext) {
+                        if (typeof RBQ.api.updateViewerCurrentItem === 'function') {
+                            RBQ.api.updateViewerCurrentItem(imageResult, newFinalPrompt);
+                        }
+                        if (viewerContext.bottomBar) {
+                            renderViewerBottomBar(viewerContext.bottomBar, updatedSeg, wrapper, viewerContext.currentItem, viewerContext.modal);
+                        }
+                    }
+                    toastr.success('已根据手动调整的 Tag 成功生成新图像！', PLUGIN_NAME);
+                } else {
+                    throw new Error('生图未返回有效图像');
+                }
+            } catch (err) {
+                if (wrapper) setCardLoadingState(wrapper, false);
+                if (viewerImg) viewerImg.style.opacity = '1';
+                console.error(`[${PLUGIN_NAME}] 手动调整生图失败:`, err);
+                toastr.error(`生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
+                if (wrapper) renderCardBadges(wrapper, segResult);
+            }
+        });
+
+        document.body.appendChild(modal);
+        if (isMultiChar) {
+            modal.querySelector('#rbq-sdt-manual-scene')?.focus();
+        } else {
+            modal.querySelector('#rbq-sdt-manual-raw-prompt')?.focus();
+        }
+    }
+
     function openCardOutfitModal(wrapper, segResult, viewerContext = null) {
         const existing = document.getElementById('rbq-sdt-card-outfit-modal');
         if (existing) existing.remove();
@@ -6040,6 +6435,9 @@ SCHEMA:
         // 4. AI Segment Refinement button
         badges.push(`<button class="menu_button rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
 
+        // 5. Manual Tag Refinement button
+        badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
+
         bottomBar.innerHTML = badges.join('');
 
         bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
@@ -6055,6 +6453,11 @@ SCHEMA:
         bottomBar.querySelector('.rbq-sdt-viewer-refine-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             openSegmentAiRefinerModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
+        });
+
+        bottomBar.querySelector('.rbq-sdt-viewer-manual-tag-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openSegmentManualTagModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
         });
     }
 

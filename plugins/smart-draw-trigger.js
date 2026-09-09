@@ -6510,12 +6510,15 @@ SCHEMA:
                 details.open = true;
             }
             const summary = document.createElement('summary');
-            summary.innerHTML = isError ? '<i class="fa-solid fa-code"></i> 异常堆栈与原始输出 (Debug Trace)' : '<i class="fa-solid fa-code"></i> LLM 原始响应与思考过程 (Raw Output)';
+            summary.style.cssText = 'display: flex !important; align-items: center !important; justify-content: space-between !important; cursor: pointer;';
+            const titleSpan = document.createElement('span');
+            titleSpan.innerHTML = isError ? '<i class="fa-solid fa-code"></i> 详细错误诊断与原始数据 (Debug Trace)' : '<i class="fa-solid fa-code"></i> LLM 原始响应与思考过程 (Raw Output)';
+            summary.append(titleSpan);
 
             const copyBtn = document.createElement('button');
             copyBtn.type = 'button';
             copyBtn.className = 'menu_button';
-            copyBtn.style.cssText = 'float: right; font-size: 11px !important; padding: 1px 6px !important; margin: 0 !important; cursor: pointer;';
+            copyBtn.style.cssText = 'font-size: 11px !important; padding: 1px 8px !important; margin: 0 !important; cursor: pointer; white-space: nowrap !important; flex-shrink: 0 !important; line-height: normal !important;';
             copyBtn.textContent = '📋 复制';
             copyBtn.onclick = (e) => {
                 e.stopPropagation();
@@ -7655,7 +7658,14 @@ SCHEMA:
             // 如果两者都为空，说明流式未产出内容
             if (!accumulatedArgs && !accumulatedContent) {
                 if (hasSafetyBlock) {
-                    throw new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
+                    const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
+                    err.debugInfo = {
+                        reason: `大模型触发前置安全策略熔断 (${safetyReason})`,
+                        model: modelName,
+                        llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
+                        chunks: rawDebugChunks,
+                    };
+                    throw err;
                 }
 
                 console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并尝试纯文本/标准 JSON 模式重试...`);
@@ -7795,12 +7805,33 @@ SCHEMA:
                 if (!fallbackContent.trim()) {
                     const frLower = fallbackFinishReason.toLowerCase();
                     if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
-                        throw new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
+                        const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
+                        err.debugInfo = {
+                            reason: `大模型触发前置安全策略熔断 (${fallbackFinishReason})`,
+                            model: modelName,
+                            llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
+                            chunks: rawDebugChunks,
+                        };
+                        throw err;
                     }
                     if (frLower === 'length' || frLower === 'max_tokens') {
-                        throw new Error('Tagger 模型输出达到最大 Token 限制 (MAX_TOKENS) 提前截断。请尝试减少上下文条数。');
+                        const err = new Error('Tagger 模型输出达到最大 Token 限制 (MAX_TOKENS) 提前截断。请尝试减少上下文条数。');
+                        err.debugInfo = {
+                            reason: `大模型输出达到最大 Token 限制截断 (${fallbackFinishReason})`,
+                            model: modelName,
+                            llmOutput: fallbackContent || '(未获得完整输出)',
+                            chunks: rawDebugChunks,
+                        };
+                        throw err;
                     }
-                    throw new Error('tagger 降级重试完成，但模型未输出任何内容（可能被代理静默拦截或安全策略熔断）。建议检查代理日志或开启破限。');
+                    const err = new Error('tagger 降级重试完成，但模型未输出任何内容（可能被代理静默拦截或安全策略熔断）。建议检查代理日志或开启破限。');
+                    err.debugInfo = {
+                        reason: '降级重试依然未获得任何有效正文',
+                        model: modelName,
+                        llmOutput: '(空)',
+                        chunks: rawDebugChunks,
+                    };
+                    throw err;
                 }
                 json = { choices: [{ message: { content: fallbackContent, reasoning_content: fallbackReasoning } }] };
             } else {
@@ -8522,11 +8553,24 @@ SCHEMA:
                 ensureTaggerButtonState(wrapper, '⚠️ 解析失败（点击重试）');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'error');
+                let formattedDebugTrace = '';
+                if (error.debugInfo) {
+                    formattedDebugTrace += `【拦截状态】: ${error.debugInfo.reason || '大模型未响应'}\n`;
+                    formattedDebugTrace += `【目标模型】: ${error.debugInfo.model || '未知'}\n`;
+                    formattedDebugTrace += `【大模型原始正文】: ${error.debugInfo.llmOutput || '(空)'}\n`;
+                    if (Array.isArray(error.debugInfo.chunks) && error.debugInfo.chunks.length > 0) {
+                        formattedDebugTrace += `\n【服务端原始响应报文 (Raw Chunks)】:\n${JSON.stringify(error.debugInfo.chunks, null, 2)}\n`;
+                    }
+                    formattedDebugTrace += `\n【JavaScript 异常调用栈 (Stack Trace)】:\n${error.stack || ''}`;
+                } else {
+                    formattedDebugTrace = `【错误信息】: ${error.message || String(error)}\n\n【说明】: 该错误由接口或网络异常触发，服务端未返回有效大模型正文。\n\n【JavaScript 异常调用栈 (Stack Trace)】:\n${error.stack || ''}`;
+                }
+
                 renderTaggerDebugInfo(wrapper, {
                     isError: true,
                     shouldDraw: false,
                     reason: error.message || String(error),
-                    rawOutput: error.stack || ''
+                    rawOutput: formattedDebugTrace
                 });
             }
         } finally {

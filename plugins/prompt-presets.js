@@ -330,22 +330,22 @@
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-bookmark"></i><span>提示词预设 (Prompt Presets)</span></div>
             <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
             
-            <div style="margin-top:8px; padding:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px;">
-                <div style="font-size:12px; font-weight:600; color:rgba(255,255,255,0.85); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+            <div style="margin-top:8px; padding:10px; background:var(--linear-surface, rgba(255,255,255,0.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,0.08)); border-radius:8px;">
+                <div style="font-size:12px; font-weight:600; color:var(--linear-text-primary, rgba(255,255,255,0.85)); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
                     <i class="fa-solid fa-earth-americas" style="color:#38bdf8;"></i>
                     <span>全局提示词 (无论选择何种预设均生效)</span>
                 </div>
                 <div class="st-scene-trigger-modal-grid" style="display:flex;flex-direction:column;gap:10px;">
                     <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.7);font-weight:600;">全局正面提示词 (前置 / Prefix)</span>
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局正面提示词 (前置 / Prefix)</span>
                         <textarea id="rbq-pp-global-pos-prefix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
                     </label>
                     <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.7);font-weight:600;">全局正面提示词 (后置 / Suffix)</span>
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局正面提示词 (后置 / Suffix)</span>
                         <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                     </label>
                     <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:rgba(255,255,255,0.7);font-weight:600;">全局负面提示词</span>
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局负面提示词</span>
                         <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
                     </label>
                 </div>
@@ -373,7 +373,7 @@
             </div>
             <label class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center; flex-direction:row; cursor:pointer; min-height:auto; padding:8px 14px; margin-top:8px;">
                 <input type="checkbox" id="rbq-pp-show-floating" data-action="plugin-ignore" style="width:auto;">
-                <span style="font-size:13px; color:rgba(255,255,255,0.7);">在悬浮球菜单中显示快捷切换</span>
+                <span style="font-size:13px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));">在悬浮球菜单中显示快捷切换</span>
             </label>
             <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
                 <button id="rbq-pp-new" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-plus"></i> 新建</button>

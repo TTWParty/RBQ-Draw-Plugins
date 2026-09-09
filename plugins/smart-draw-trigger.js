@@ -2186,11 +2186,11 @@ Zimage 擅长理解复杂的英文长句和语境。
                     const outfit = String(profile.currentOutfit || '').trim();
                     const wCount = Array.isArray(profile.wardrobe) ? profile.wardrobe.length : 0;
                     return `
-                        <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); padding: 4px 10px; border-radius: 8px;">
+                        <div style="display: inline-flex; align-items: center; gap: 6px; background: var(--linear-surface, rgba(255,255,255,0.04)); border: 1px solid var(--linear-border-standard, rgba(255,255,255,0.12)); padding: 4px 10px; border-radius: 8px;">
                             ${profile.avatarUrl ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 20px; height: 20px; border-radius: 4px; object-fit: cover;" />` : '<span>👤</span>'}
-                            <strong style="color: #79e4ff; font-size: 12.5px;">${escapeHtml(name)}</strong>
+                            <strong style="color: var(--linear-brand, #79e4ff); font-size: 12.5px;">${escapeHtml(name)}</strong>
                             ${wCount > 0 ? `<span style="font-size: 10.5px; color: #ffb86c;">(${wCount}套)</span>` : ''}
-                            ${outfit ? `<span style="font-size: 10.5px; opacity: 0.55; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(outfit)}">[${escapeHtml(outfit)}]</span>` : ''}
+                            ${outfit ? `<span style="font-size: 10.5px; color: var(--linear-text-muted, #71717a); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(outfit)}">[${escapeHtml(outfit)}]</span>` : ''}
                         </div>
                     `;
                 }).join('')}
@@ -7922,9 +7922,10 @@ SCHEMA:
                 letter-spacing:.02em;
             }
             #rbq-sdt-lorebook-list { display:flex; flex-direction:column; gap:8px; }
-            .rbq-sdt-lorebook-item { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); }
+            .rbq-sdt-lorebook-item { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 12px; border-radius:10px; background:var(--linear-surface, rgba(255,255,255,.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,.05)); }
             .rbq-sdt-lorebook-meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
-            .rbq-sdt-lorebook-meta strong, .rbq-sdt-lorebook-meta small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+            .rbq-sdt-lorebook-meta strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--linear-text-primary, #f7f8f8); }
+            .rbq-sdt-lorebook-meta small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--linear-text-muted, #8a8f98); }
             .rbq-sdt-lorebook-actions { display:flex; gap:8px; flex-shrink:0; }
             .rbq-sdt-sticky-save { position:sticky; top:0; z-index:10; padding:10px 0; background:inherit; }
             .rbq-sdt-save-btn { width:100%; font-size:14px!important; font-weight:600!important; padding:10px 16px!important; background:rgba(100,180,255,.18)!important; border:1px solid rgba(100,180,255,.35)!important; transition:background .2s; }

@@ -1711,6 +1711,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         lorebookEnabled: false,
         lorebookBase64: true,
+        lorebookWafRetry: false,
         lorebookContextDepth: 5,
         lorebookBudget: 8000,
         lorebookSources: [],
@@ -7584,7 +7585,7 @@ SCHEMA:
                 || errText.includes('Prohibited Use policy')
                 || errText.includes('The prompt could not be submitted');
             const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
-            if (isInputWafHttpError && !retryWithoutLorebook && hasLorebookAttached) {
+            if (store.lorebookWafRetry && isInputWafHttpError && !retryWithoutLorebook && hasLorebookAttached) {
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                 return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
@@ -7733,7 +7734,7 @@ SCHEMA:
 
                     // 🛡️ 自动自愈重试：若当前请求携带了世界书/角色卡，且触发了 Google 前置输入审核阻断，自动剥离世界书发起重试
                     const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
-                    if (isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
+                    if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
                         console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                         toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                         return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
@@ -7887,7 +7888,7 @@ SCHEMA:
                     const frLower = fallbackFinishReason.toLowerCase();
                     if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
                         const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
-                        if (!retryWithoutLorebook && hasLorebookAttached) {
+                        if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                             return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
@@ -9198,6 +9199,7 @@ SCHEMA:
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-lorebook-base64-field" class="st-scene-trigger-field switch" title="将注入给大模型的世界书与角色卡设定通过 Base64 进行混淆封装，防止 Google 网关层前置输入审核机制误杀。"><span>🛡️ 世界书防输入审核混淆 (Base64)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-base64" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <div id="rbq-sdt-lorebook-waf-retry-field" class="st-scene-trigger-field switch" title="当触发 Google 或大模型前置敏感词审核熔断时，自动剥离世界书发起纯净正文自愈重试保底（默认关闭，方便检验 Base64 混淆是否奏效）。"><span>🛡️ 审核熔断自愈重试 (剥离世界书保底)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-waf-retry" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
             </div>
@@ -9248,6 +9250,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
         document.getElementById('rbq-sdt-lorebook-badge').checked = !!store.showLorebookHitBadge;
         document.getElementById('rbq-sdt-lorebook-base64').checked = store.lorebookBase64 !== false;
+        document.getElementById('rbq-sdt-lorebook-waf-retry').checked = !!store.lorebookWafRetry;
         document.getElementById('rbq-sdt-char-coord-badge').checked = store.showCharCoordBadge !== false;
         document.getElementById('rbq-sdt-lorebook-depth').value = store.lorebookContextDepth;
         document.getElementById('rbq-sdt-lorebook-budget').value = store.lorebookBudget || 8000;
@@ -9288,6 +9291,7 @@ SCHEMA:
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
         bindSwitch('rbq-sdt-lorebook-badge-field', 'rbq-sdt-lorebook-badge');
         bindSwitch('rbq-sdt-lorebook-base64-field', 'rbq-sdt-lorebook-base64');
+        bindSwitch('rbq-sdt-lorebook-waf-retry-field', 'rbq-sdt-lorebook-waf-retry');
         bindSwitch('rbq-sdt-char-coord-badge-field', 'rbq-sdt-char-coord-badge');
         bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
         bindSwitch('rbq-sdt-tool-call-mode-field', 'rbq-sdt-tool-call-mode');
@@ -9473,6 +9477,7 @@ SCHEMA:
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
             s.showLorebookHitBadge = checked('rbq-sdt-lorebook-badge');
             s.lorebookBase64 = checked('rbq-sdt-lorebook-base64');
+            s.lorebookWafRetry = checked('rbq-sdt-lorebook-waf-retry');
             s.showCharCoordBadge = checked('rbq-sdt-char-coord-badge');
             s.lorebookContextDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-lorebook-depth')) || 5));
             s.lorebookBudget = Math.max(500, Number(val('rbq-sdt-lorebook-budget')) || 8000);

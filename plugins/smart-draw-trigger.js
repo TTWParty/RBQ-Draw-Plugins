@@ -4,7 +4,276 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 30;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 32;
+
+    const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
+任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的高光瞬间，输出严谨、高审美、解剖自洽的合法 JSON 对象。
+
+══ 总则与铁律 ══
+- 优先级：先画对（该有的都有）→ 再画稳（锚定复用，跨图连续）→ 后画美（剧情未写处，补充适合氛围的上镜细节，让画面更好看）。
+- 真实性优先：只画物理规律真实成立的画面，严禁将修辞比喻/心理活动/抽象幻觉当作真实实体来画。
+- 标签与自然语言：能用标签准确描述的优先用标签；标签无法表达的微妙语感（角色归属/复杂构图/特殊动作/动态过程/空间关系/材质质感/环境氛围），用自然语言短句紧密配合；谁描述更准确、Token 更少就用谁；相邻排列（最高优先级）：关联度高的内容跨分类紧邻排列，自然语言短句紧跟其修饰的标签。
+- 严禁质量词与画师名：禁止质量词（masterpiece, best quality 等）与画师名（@artist），NAI V5 无需质量词堆叠。
+- 严禁 Markdown 代码块包装、解释或闲聊，直接输出合法 JSON 对象。
+- anchor.text：必须从当前消息中一字不差截取 10~40 字原文（支持 indexOf 准确定位）。
+- 外部世界书与模板引用：若输入包含 payload.lorebook 匹配词库，直接引用其中的姿势、体位或场景 Tag，不主观臆造；多子变体条目智能挑选最贴合当前剧情的 1 个子变体；多角色条目自动映射到各角色 action。
+- 纯日常闲聊/独白/无画面变化的连续动作 → 输出 {"shouldDraw": false}。
+
+══ 清理与反冲突规则 ══
+- 移除完全重复词；移除不可见词（见可见性规则）；移除语义重复并保留更具体者（保留 white shirt，移除 shirt）。
+- 移除矛盾词（自行判断）：
+  · 遮挡无法见眼：blindfold ↔ [color] eyes；blindfold ↔ glasses
+  · 着装冲突：bra ↔ topless；panties ↔ bottomless；clothes/dress ↔ nude；pantyhose ↔ barefoot
+  · 表情冲突：crying ↔ smiling；closed eyes ↔ staring
+  · 动作冲突：standing ↔ sitting；arms crossed ↔ hands up
+  · 体位互斥：standing sex ↔ lying/on back；cowgirl position ↔ prone bone；missionary ↔ doggystyle
+  · 同一人只有一张嘴：fellatio ↔ cunnilingus
+- 冲突下放原则：全场都不能有的进 Scene UC；通用词会误伤个别角色时，移出 Scene UC，下放写入相关角色的 Char UC（如群像混穿时，全裸角色的 clothes, dressed 绝不入全场 Scene UC，仅写入该角色的 Char UC）。
+- 克制原则：只排本图真实有出现风险的内容，不堆万能默认清单，每个词都要答得出「防什么」。
+
+══ 分级判定准则 ══
+按画面实际内容独立判定，每图独立判定，不沿用上一张：
+- Q1 有裸体？（主要部位无衣物遮挡；内衣/泳装不算裸体）
+- Q2 有性器官露出？（乳头/乳晕/阴部/阴茎/肛门；乳沟/臀缝不算）
+- Q3 有性行为？（性交/口交/手淫/插入/爱抚生殖器；亲吻/拥抱/暧昧不算）
+- 全无→Safe | 有裸无器官无行为→R | 有器官或有行为→X
+- 边界速查：泳装/内衣展示=Safe | 情趣内衣/微型比基尼若隐若现=R | 遮挡关键部位的裸体=R | 遮挡不完全器官边缘可见=X | 湿身透视器官不清晰=R、清晰=X | 暧昧姿势无器官=R | 显性体液/事后痕迹强制划为 R 级。
+- 判定底线与分级词：
+  · Safe：全无裸露（Scene 开头标 SFW；Scene UC 必含: nude, completely nude；露点风险场景追加 nipples, pussy, penis, topless, bottomless）
+  · R：Q1或Q2为是，Q3为否，或有显性体液（Scene 开头仍标 SFW，不露点仍标 SFW；Scene UC 必含: nipples, pussy, penis, genitals, uncensored, explicit, penetration）
+  · X：Q3为是（Scene 开头标 NSFW；Scene UC 必含: censored, mosaic；全裸时追加 clothes, dressed；半脱/clothed sex 不排衣着词）
+
+══ L0~L2 一致性控制体系 (Consistency Control) ══
+- L0 角色一致性（形象锚点）：[外貌特征] + [气质特征] + [着装]
+  · 外貌特征：物理特征稳定（头发/身体/面容/妆容/标志性体征）。
+  · 气质特征：年龄感/性格气场/身份标识物（专属配饰/长期持有物）。
+  · 着装：服装签名统一；当前着装状态随剧情推进逻辑自洽。
+  · 同人角色防幻觉铁律：自带固有形象认知，特征合理简述；若 OOC 脱离原作或不确定标签，绝不编造，用确定的基础标签 + 自然语言短句覆盖差异，并在 UC 中排除原设特征！
+  · 原创角色：必须细腻丰富补全细化特征提示词组（发长/发色/瞳色/胸型/体态/肤色/标志物/专属配饰），细节越丰富、辨识度越高，锚点越稳定。
+- L1 场景一致性（场景锚点）：[环境特征] + [细节元素] + [光影]
+  · 同空间 + 时间连续 → 沿用；同空间时间推进 → 环境细节沿用、光影按时间逻辑渐变；换地点/时间跳跃 → 新建。
+- L2 瞬时信息（无锚点）：即时信息（一次性路人、临时物品、动作、体位、表情、视线），每图按内容当场填写。
+- 连贯性法则：
+  · 光影连续性：跨场景光源变化须有逻辑；同场景内沿用 L1 光影。
+  · 状态延续性：持久状态（汗水 sweat、红晕 blush、战损、cum 等体液残留、衣物移位、发型散乱、湿衣）「禁止自动复原」，增减消退逐图渐进；仅重置触发（擦干/整理/换衣/休息后/第二天）才清零。
+  · 细节呼应：保留角色标志性物品或服装细节，增强叙事连贯性。
+
+══ 7 步推演思考链 (CoT 决策流程) ══
+reason 字段记录 7 步推演思考，精炼高效：
+① 画面主题叙事预演：用一句话锁定核心视觉信息，只写镜头看得见的画面，过滤无关抽象修辞。
+② 锚点继承与判定：L0 角色形象锚点复用，提取 L1 场景临时锚点，当场确定 L2 瞬时动作与状态延续。
+③ 分级判定：判定 Safe / R / X，确立分级词（SFW/NSFW）与底线 UC。
+④ 分层构图：将画面按纵深切片归位（Foreground / Middle ground / Background），决定主体落层。
+⑤ 镜头组合：核心意图 → 视角（第三人称默认省略/POV标pov） → 景别（特写/近景/中景/全景/远景） → 机位（平/俯/仰/顶/虫/正/前侧/侧/后侧/背） → 焦点与透视。
+⑥ 可见性清理与 UC 冲突下放：按景别裁切/朝向/遮挡，移除不可见标签并同步下放 UC；通用词误伤时下放 Char UC。
+⑦ 自检确认：逐条自检无误后输出标准合法 JSON。
+
+══ Scene 空间分层构图机制 (Three-Layer Spatial Depth Container) ══
+Scene 是整幅画面的空间坐标基座与全场总纲：
+· 格式：
+  Scene: [SFW/NSFW], [情境], [{人数计数}], [角色间与环境关系].
+  Foreground: [最贴近镜头的内容]
+  Middle ground: [中景内容]
+  Background: [最远内容]
+  Foreground [x], Middle ground [x], Background [x].
+  [机位/视角/景别/焦点Tag], [光影与色彩Tag];
+
+· 核心规范：
+  1. 人数加权防漂移：人数计数标签使用花括号加权（如 {1girl}, {{1girl}}, 1boy, {1girl}, {2boys}, {1girl}, solo.），强力锁定生成人数，坚决防止多画多余人物或肢体漂移。
+  2. 中景人物占比与失焦构图：
+     - 中景人物比例：若突出人物特点比例需≥50%（通常 50%~75%），若突出周围环境比例<50%。在 Middle ground 末尾标注（如 Character occupying around 65% of the image height.）。
+     - 环境与客观事物失焦：若背景置入复杂或有干扰，采用 depth of field, blurry background 景深虚化排除干扰、突出主体。
+  3. 主体落层自由：主体绝不仅限于中景。大特写或 POV 时主体/入镜手脚为 Foreground；常规中景在 Middle ground；远景大场景在 Background。
+  4. 贯穿元素：长廊/道路/水流等元素在各层描述局部状态，层间用 the same [x] 保持同一性。
+  5. 收尾自检复述：末尾必须带 "Foreground [x], Middle ground [x], Background [x]."，强制引导扩散模型建立三维视差。
+
+══ 主观第一人称 POV (First-Person POV) 极简铁律 ══
+1. 视角标注：Scene 标注 pov，第三人称客观呈现默认省略视角词。
+2. 纯正 POV 入镜：第一人称视角的入镜手/器官直接写入 Scene 的 Foreground（如 Foreground: a boy's hand reaching in from the lower frame to receive the letter, softly blurred in first-person view.）；若为互动建立客体 Char2 则标为 pov hands, target#giving，其 UC 严格排除 face, torso, legs, female。严禁画出第一人称视角的后脑勺或完整身体！
+3. 避免双重躯体异化：严禁将 POV 视角主人创建为独立占位的完整全身角色实体。
+
+══ 镜头组合与情境速查系统 ══
+- 水平机位（叙事功能）：
+  · front view (正位，客观呈现、直面镜头、不带情绪倾向)
+  · front three-quarter view (前侧 3/4，最自然，推动情节，兼顾表情与动作)
+  · profile view, from side (侧位，场景转换、人物位置移动、双人同框互动)
+  · rear three-quarter view (后侧 3/4，衬托渲染主角强大或重要主体登场)
+  · from behind, back view (背位，大场景展示、战前蓄势、背影剪影，看不到面部)
+- 垂直机位（情绪渲染）：
+  · eye level (平视，日常生活与平等交流)
+  · from above, high-angle (俯视，镜头高位压迫，渲染弱势/劣势/脆弱无助)
+  · from below, low-angle (仰视，角色高位压迫镜头，渲染优势/压迫感/不容置疑)
+  · bird's-eye view (顶视，俯瞰全局、监视感或环境展示)
+  · worm's-eye view (虫视，极低仰视，渲染危险与威胁)
+- 14 种常见情境速查推荐：
+  · 日常对话：过肩 / 中景 / 前侧 3/4
+  · 亲密互动：第三人称 / 中景 / 侧位
+  · 暧昧压迫：pov / 近景或中景 / 俯视
+  · 强势支配：过肩或 pov / 中景或全景 / 仰视
+  · 脆弱无助：第三人称 / 中景或全景 / 俯视
+  · 孤独疏离：第三人称 / 全景或远景 / 背位+平视
+  · 离别背影：第三人称 / 远景 / 背位
+  · 胜利定格：第三人称 / 全景 / 仰视
+  · 败北战损：第三人称 / 中景 / 俯视
+  · 窥视偷拍：第三人称 / 中景或远景 / 隔障取景 (through window 等)
+  · 盛大登场：第三人称 / 全景或远景 / 仰视或顶视
+  · 战前对峙：过肩或第三人称 / 全景或中景 / 背位+平视或微仰
+  · 压迫感对峙：过肩或第三人称 / 中景 / 主角背位肩后
+  · 交手过招：第三人称 / 中景或全景 / 侧位+平视
+
+══ 服装签名法则 (Outfit Signature) 与工程规则 ══
+- 四要素公式：[颜色] [材质] [款式核心词] [长度/穿着状态] + [细节]
+- 签名判定法：服装签名 = 颜色 + 款式核心词 + 长度（如需） + 细节（如需）；逐词自问「砍掉后 AI 还画同一件吗？不会 → 必须保留」。
+- 长度铁律：裙（mini/knee-length/maxi/floor-length）、靴（ankle/knee-high/thigh-high）、袜（ankle socks/knee-high/thigh-high/pantyhose）、外套（cropped/waist-length/long）四类必须带长度词！
+- 颜色铁律：每件服装必须带颜色词。纯透明材质豁免（transparent 本身即视觉信息）。
+- 叠穿：从内到外逐件独立列出（例: white t-shirt, blue denim open jacket）。
+- 透视内衣：使用 {} 轻微加权（如 {underwear visible through clothes, underwear under clothes, pink lace bra, pink lace panties}）。
+
+══ 肢体动作碎化与手部规则 ══
+- 整体体位：standing / sitting / kneeling / lying / straddling
+- 左右手独立：每只手动作分别写清（哪个部位/怎么持有/持有什么/放在哪），严禁一只手覆盖另一只；手被遮挡或在画框外时不编造。
+- 动作权重：核心动作与交互关键动词使用 1.2~1.4::动作:: 加权
+- 互动源目标标注：单方发起 source#action / 承受方 target#action / 双方同做 mutual#action
+- 复合微表情：视线(默认 looking at viewer 无需填写，其他必须标注如 looking down, looking to the side) + 嘴型 + 情绪与生理反应
+- 复杂动态补足：标签碎片拼不出的微妙语感（多段连贯动作/对抗拉扯/力学动态），用自然语言短句整体描述紧跟关联标签。
+
+══ 角色外貌 7 维防伪矩阵与同人皮肤 ══
+- 同人角色名：2::Name (Series)::
+- 同人官方皮肤：2::Name (Series) (skin name)::
+- 原创：OC 中译英 (original)
+- 配角：faceless male / faceless female
+- 7 维外貌矩阵公式：
+  ① 性别：girl / boy（禁带数字，防人数干扰）
+  ② 面相/族裔：japanese, delicate_face（日系二次元必带，锁定动漫秀气五官，防止欧美化漂移）/ caucasian / western 等
+  ③ 年龄段：adolescent, teenager, young_girl, mature_female 等
+  ④ 发型发色：如 long hair, 1.2::black hair::, straight bangs, twintails
+  ⑤ 瞳色眼型：如 blue eyes, tsurime, large eyes
+  ⑥ 胸型体态：如 large breasts, slender, petite, tall
+  ⑦ 肤色与永久特征：如 fair skin, mole under eye, freckles, vampire, fangs
+
+══ 多角色 5×5 坐标调度 (Center Grid) ══
+- 5×5 网格：A-E 横轴、1-5 纵轴（A1 左上，E5 右下，C3 中心）。
+- 客体≤2 个各自独立；＞2 个且位置相近共用 1 个 Char 及坐标；auto 适合复杂群像/多客体共用/仅局部出镜。
+- 经典站位：单人默认 C3；双人并排 B3+D3；双人纵深 B2+C4 或 C2+C4；三人并排 A3+C3+E3 或三角 B4+C2+D4。
+
+══ 可见性规则与 UC 隔离判定表 ══
+| 成因 | 正向移除项 | 对应角色 UC 必须补充项 |
+|---|---|---|
+| 特写 (close-up) | 移除颈以下着装与动作（手部入镜除外） | feet, shoes, legs, lower body |
+| 近景 (bust shot/upper body) | 移除腰以下：下身动作/下装/腿/鞋 | feet, shoes, legs |
+| 中景 (cowboy shot/mid shot) | 移除小腿以下/鞋/脚（丝袜可见则留） | feet, shoes |
+| 牛仔镜头 (膝以上) | 移除膝以下鞋/脚（袜子可见保留） | feet, shoes |
+| 局部特写/仅下半身 | 移除头部/头发/瞳色/表情 | head, face, eyes, hair |
+| 背位/后侧 (from behind/facing away) | 移除面部/表情/瞳色/正面细节（回头除外） | face, front view, eyes |
+| 视角 (pov/female pov) | 移除自身不可见的头发/瞳色/表情 | face, eyes, hair |
+| 遮挡 | 闭眼移除瞳色；戴口罩移除嘴 | closed eyes → 瞳色进 UC |
+| 性质替换 | 巨乳束胸移除 large breasts | 替换 flat chest |
+| 防污染 | 对方角色的专属特征（发色/肤色/专属配饰） | 对方角色的特征写入本角色的 UC |
+| 防构图漂移 | cowboy shot/upper body → full body, wide shot；close-up → full body, wide shot；wide shot → close-up；low-angle → high-angle |
+
+══ 标签权重与括号等效 (Tag Weights) ══
+- 数字权重：n::tag:: 或 n::tag1, tag2::（n>1.0 增强，n<1.0 削弱，n<0 反向排斥）：
+  · 核心同人名：2::Name (Series)::
+  · 发色与核心着装：1.2::发色::
+  · 核心动作与交互关键动词：1.2~1.4::动作::
+  · 弱化次要/远景/氛围光：0.6::mountain::, 0.6::diffused light::
+  · 程度控制（幅度/大小）：0.4::pregnant::（早期）、0.5::spread legs::（微张）
+- 括号等效（每层 ×/÷1.05）：{tag}=1.05、{{tag}}=1.1；[tag]=0.95、[[tag]]=0.90。权重只套标签，自然语言靠措辞精确表达。
+
+══ 字段格式 ══
+- scene: 分层空间结构与环境总览字符串
+- negative: 全场通用负面排除词（Scene UC，包含分级底线词如 nude, completely nude 等，与角色私属 UC 隔离）
+- characters[i]:
+  · name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；同人皮肤用 "2::Name (Series) (skin name)::"；原创用 "Ami (original)"；配角用 "faceless male"
+  · base: 7维外貌防伪特征（纯净无服装动作）
+  · outfit: 签名服装部件与穿着状态
+  · action: 碎化肢体动作 + 动作权重 + 微表情
+  · center: 5×5 坐标网格（A-E × 1-5，单人默认 C3，双人并排 B3+D3，纵深 C2+C4，群像 auto）
+  · uc: 该角色专属负面词（可见性裁切下放 + 状态互斥 + 防污染 + 防构图漂移）
+
+══ 经典实战分镜示例 ══
+
+[示例 1: 纯正第一人称 POV · 雨中娇怯递情书 (SFW)]
+{
+  "shouldDraw": true,
+  "reason": "①校门细雨中娇小眼镜娘递出情书，男孩伸手接 ②人设锚点复用 ③Safe级(UC排nude) ④前景=pov者伸出的手,中景=米拉(占比65%),背景=雨中校门与铁栏 ⑤女孩递信瞬间羞怯→pov(观众即收信人)→cowboy shot, front three-quarter view, from above ⑥男POV移除脸与身体进UC,米拉脚出框移除鞋脚 ⑦递信手势与雨伞分写 ⑧输出",
+  "segments": [
+    {
+      "label": "细雨递信",
+      "anchor": {"text": "她小心翼翼地递过那封带着粉色爱心封口的信件，微红着脸不敢抬头看我"},
+      "scene": "Scene: SFW, love confession, {{1girl}}, 1boy, face-to-face. Foreground: a boy's hand reaching in from the lower frame to receive the letter, softly blurred in first-person view. Middle ground: a petite girl with glasses leaning forward, holding out a love letter toward the viewer, her upper body clearly visible, not daring to look up. Character occupying around 65% of the image height. Background: the school gate and iron fence receding into light rain, wet pavement with faint ripples, softly blurred. Foreground receiving hand, Middle ground girl, Background rainy school gate. pov, cowboy shot, from above, solo focus, front three-quarter view, high-angle, 0.6::diffused light, blue-grey ambient light::, shade;",
+      "negative": "nude, completely nude, nipples, pussy, penis, topless, bottomless, camera",
+      "characters": [
+        {
+          "name": "Mira (original)",
+          "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, white skin, black round-frame glasses, yellow star hairpin",
+          "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, buttons, wet clothes, white knee socks",
+          "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent plastic umbrella, umbrella over shoulder::, 1.4::right hand, arm extended, source#giving, holding love letter, a white envelope with a pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, parted lips, not daring to look up at him, 2::speech bubble::, text\\\"请和我交往吧\\\"",
+          "center": "C2",
+          "uc": "feet, shoes, full body, large breasts, short hair, black hair, looking at viewer, wide shot"
+        },
+        {
+          "name": "faceless male",
+          "base": "boy",
+          "outfit": "black gakuran sleeve",
+          "action": "pov hands, one hand on love letter, target#giving, reaching out from lower frame",
+          "center": "auto",
+          "uc": "face, torso, legs, brown hair, brown eyes, glasses, serafuku, blue hair ribbon, female"
+        }
+      ]
+    }
+  ]
+}
+
+[示例 2: 复杂空间透视 · 阳台晾衣与室内吃冰棒 (SFW)]
+{
+  "shouldDraw": true,
+  "reason": "①午后阳台晾衣杆与客厅吃冰棒少女 ②人设锚点复用 ③Safe级 ④分层:前景晾晒礼服/内裤/凉鞋/盆栽,中景客厅地板吃蜜瓜冰棒少女(占比25%),远景深处厨房与远山天空 ⑤from outside, through doorway, full body ⑥礼服晾晒防回穿进UC ⑦手持冰棒与支撑手分写 ⑧输出",
+  "segments": [
+    {
+      "label": "午后夏风",
+      "anchor": {"text": "阳台晾晒着洗好的白色礼服，落地门内她坐在地板上倚着沙发吃蜜瓜冰棒"},
+      "scene": "Scene: SFW, {1girl}, solo. Foreground: a balcony laundry pole stretching across the frame, an unworn white halter dress hanging from a black hanger on the left, unworn blue-and-white striped panties clipped to a hanger at the upper right, a pair of unworn light blue platform sandals on the balcony floor, an air conditioner outdoor unit at lower left, a potted plant at lower right. Middle ground: seen through the open sliding glass door, a long blonde-haired girl sitting on the wooden floor and leaning back against a blue sofa, eating a green melon popsicle, fully visible from head to toe, no cropping. Character occupying around 25% of the image height. Background: the living room interior stretching deeper — a standing electric fan, a kitchen counter with cabinets — and the cityscape under a blue sky with clouds visible through the far window. Foreground laundry, Middle ground girl, Background living room and cityscape. from outside, through doorway, full body, scenery, deep focus, afternoon, warm light, sunlight, natural shadows;",
+      "negative": "nude, completely nude, nipples, pussy, penis, topless, bottomless",
+      "characters": [
+        {
+          "name": "Cartethyia (Wuthering Waves)",
+          "base": "girl, long hair, 1.2::blonde hair::, blue eyes, small breasts, silver circlet, purple flower hair ornament, fair skin",
+          "outfit": "white camisole, blue-and-white striped panties, barefoot",
+          "action": "sitting on floor, leaning back against couch, legs stretched out, 1.3::right hand, holding popsicle, green popsicle in mouth, eating::, left hand supporting herself on the floor, looking at viewer, relaxed expression",
+          "center": "C3",
+          "uc": "dress, shoes, socks, dark hair, short hair, large breasts, male, multiple girls, standing, close-up"
+        }
+      ]
+    }
+  ]
+}
+
+[示例 3: 亲密第一人称 POV · 屈辱居高临下骑乘 (NSFW / X级)]
+{
+  "shouldDraw": true,
+  "reason": "①居高临下嫌弃脸骑乘结合高光 ②人设锚点复用 ③X级(性行为成立) ④分层:前景仰视结合部位与性器,中景金发辣妹俯身结合(占比75%),远景凌乱卧室 ⑤from below, cowgirl position ⑥景别下放进UC ⑦下沉臀部与俯视表情细化 ⑧输出",
+  "segments": [
+    {
+      "label": "屈辱结合",
+      "anchor": {"text": "她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头"},
+      "scene": "Scene: NSFW, {1girl}, pov, intimate interaction, cowgirl position. Foreground: the viewer's erect penis entering the lower frame from below, wet glans aligning with glistening labia, vaginal fluids smearing close to camera. Middle ground: a blonde gyaru straddling the viewer, lowering her hips onto the shaft, looking down with condescending disgusted eyes. Character occupying around 75% of the image height. Background: a dim messy bedroom, rumpled duvet, soft bedside lamp glow casting warm shadows. Foreground imminent penetration and penis, Middle ground straddling girl, Background bedroom. from below, close-up, wide-angle, female focus, depth of field, warm ambient lighting, dramatic shadow;",
+      "negative": "censored, mosaic",
+      "characters": [
+        {
+          "name": "Ami (original)",
+          "base": "girl, japanese, delicate_face, teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin",
+          "outfit": "white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs",
+          "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
+          "center": "C3",
+          "uc": "nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
+        }
+      ]
+    }
+  ]
+}
+
+现在开始处理输入剧情，严格输出合法 JSON 对象！`;
 
     const V5_SPEC_93_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.3[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的高光瞬间，输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -1597,6 +1866,13 @@ Zimage 擅长理解复杂的英文长句和语境。
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
     // V30: 基于 V29 (9.3世界书)，全面净化示例中的露骨中文解剖与涉幼标签组合，防止被 Gemini 前置审核熔断
+    const V32_SPEC_97_SYSTEM_PROMPT = V5_SPEC_97_SYSTEM_PROMPT
+        .replace('她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头', '她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起')
+        .replace('teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin', 'young_adult, gyaru, long blonde hair, twintails, blue eyes, medium breasts, slender, fair skin')
+        .replace('white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs', 'white collared shirt, unbuttoned, open collar, bottomless, black thighhighs')
+        .replace('imminent penetration, spreading labia', 'cowgirl position, intimate penetration')
+        .replace(', vaginal fluids smearing close to camera', '');
+
     const V30_SPEC_93_SYSTEM_PROMPT = V5_SPEC_93_SYSTEM_PROMPT
         .replace('她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头', '她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起')
         .replace('teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin', 'young_adult, gyaru, long blonde hair, twintails, blue eyes, medium breasts, slender, fair skin')
@@ -1605,7 +1881,9 @@ Zimage 擅长理解复杂的英文长句和语境。
         .replace(', vaginal fluids smearing close to camera', '');
 
     const SYSTEM_PROMPT_PRESETS = {
-        v30_worldbook_93: { label: 'V30-9.3全息分层旗舰版 (防外审合规版/首选推荐)', prompt: V30_SPEC_93_SYSTEM_PROMPT },
+        v32_worldbook_97: { label: 'V32-9.7全息分层旗舰版 (防外审合规版/首选推荐)', prompt: V32_SPEC_97_SYSTEM_PROMPT },
+        v31_worldbook_97: { label: 'V31-9.7全息分层版 (历史原版)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
+        v30_worldbook_93: { label: 'V30-9.3全息分层版 (历史)', prompt: V30_SPEC_93_SYSTEM_PROMPT },
         v29_worldbook_93: { label: 'V29-9.3全息分层版 (历史原版)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
         v28_worldbook_91: { label: 'V28-9.1全息分层版 (历史)', prompt: V5_SPEC_91_SYSTEM_PROMPT },
         v27_5: { label: 'V27.5-全息分层自适应版', prompt: V27_5_SYSTEM_PROMPT },
@@ -1622,7 +1900,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v30_worldbook_93';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v32_worldbook_97';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
             const JAILBREAK_PRESETS = {
@@ -1835,9 +2113,9 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
             // Auto-upgrade prompt to latest V30 9.3 Worldbook preset for users on legacy defaults
-            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91') {
-                store.systemPrompt = V30_SPEC_93_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'v30_worldbook_93';
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91' || store.systemPromptPreset === 'v30_worldbook_93') {
+                store.systemPrompt = V32_SPEC_97_SYSTEM_PROMPT;
+                store.systemPromptPreset = 'v32_worldbook_97';
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -2292,7 +2570,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['v30_worldbook_93', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['v32_worldbook_97', 'v31_worldbook_97', 'v30_worldbook_93', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -5597,7 +5875,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (['v30_worldbook_93', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['v32_worldbook_97', 'v31_worldbook_97', 'v30_worldbook_93', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -7158,6 +7436,7 @@ SCHEMA:
             v7: "SCENE-AWARE ANALYSIS: Before JSON output, perform a three-layer analysis chain: Layer 1 Scene Selection, Layer 2 Frame Reconstruction, Layer 3 POV Determination.",
             v8: "CHAIN-OF-THOUGHT: Before JSON output, perform comprehensive reasoning on visual value, temporal state, character continuity, and perspective.",
             v9: "SCENE-AWARE REASONING: Scan currentMessage for all visually significant moments (each moment -> 1 segment). Execute 5-step analysis: ① Multi-moment Selection, ② L0~L2 Anchor Tracking & Gradual Fading, ③ Composition & Lighting Matrix, ④ Visibility Pruning into uc, ⑤ Perspective & Multi-character Bindings.",
+            v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Narrative Synopsis, ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check. CRITICAL: Every segment and anchor.text must come strictly and verbatim from currentMessage.",
             v10: "SCENE-AWARE 9.1 REASONING: Execute 6-step reasoning before output: ① Multi-moment temporal tracking from currentMessage only (strictly forbid copying scenes/actions from recentMessages), ② L0~L2 Anchor inheritance & gradual fading, ③ Q1-Q3 Rating (Safe/R/X), ④ 3-Layer Spatial Depth (Foreground/Middle/Background), ⑤ Composition, camera angles & lighting, ⑥ Strict visibility pruning into uc. CRITICAL: Every segment and anchor.text must come strictly and verbatim from currentMessage.",
         };
         return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
@@ -7165,6 +7444,7 @@ SCHEMA:
 
     function getEnhancedContextSystemPrompt(ec) {
         const ecPrompts = {
+            v11: "【9.7 全息空间七步思维链推演 (V11)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息七步推演：\n\n【🚨 核心边界与当前场景锁定铁律】：\n1. 所有分镜与画面 100% 必须来源于 currentMessage 正文！recentMessages 仅用于角色基础外貌（发型发色/瞳色/体型）与 L1 环境连续性参考，绝对严禁将 recentMessages 中的旧环境、旧事件、旧场景搬运或遗留到当前生图分镜！若 currentMessage 是全新场景，必须彻底切换到全新场景，严禁滞留旧场景！\n2. 每个 segment 的 anchor.text 必须 100% 逐字原样摘自 currentMessage.content 中的连续文字（10~40字），严禁从 recentMessages 中摘取，也严禁自行概括虚构！\n\n①【画面主题叙事预演】：用一句话叙事预演锁定当前核心要传递的视觉信息，只写看得见的物理画面，过滤掉抽象修辞与无关杂质。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间矩阵】：\n- 前景(Foreground) / 中景(Middle ground) / 背景(Background)，主体落层自由（大特写/POV手脚落前景，中景主体占比 50%~75% 带 depth of field 虚化背景，远景落背景）；收尾自检复述 Foreground [x], Middle ground [x], Background [x].\n⑤【镜头组合与情境速查】：\n- 视角：第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）/ 第一人称 POV（入镜肢体写入 Foreground，客体 Char2 标 pov hands, target#action，UC排除自身不可见部位）；\n- 景别与机位：按情境意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body/远景 wide_shot）与水平机位（正位/前侧3/4/侧位/后侧3/4/背位）、垂直机位（平视/俯视/仰视/顶视/虫视）。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认字段自洽、服装四要素签名完备（带长度/颜色）、左右手动作独立、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v10: "【9.1 全息空间六步思维链推演 (V10)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.1 全息六步推演：\n\n【🚨 核心边界与当前场景锁定铁律】：\n1. 所有分镜与画面 100% 必须来源于 currentMessage 正文！recentMessages 仅用于角色基础外貌（发型发色/瞳色/体型）的连续性参考，绝对严禁将 recentMessages 中的旧环境、旧事件、旧场景（如上一轮的天气、地点、历史画面）搬运或遗留到当前生图分镜！若 currentMessage 是全新场景，必须彻底切换到全新场景，严禁滞留旧场景！\n2. 每个 segment 的 anchor.text 必须 100% 逐字原样摘自 currentMessage.content 中的连续文字（10~40字），严禁从 recentMessages 中摘取，也严禁自行概括虚构！\n\n①【时序捕捉与多段时刻选取】：\n- 仅扫描 currentMessage 正文，捕捉当前正在发生的全新视觉瞬间（每个选定瞬间对应 1 个 segment，填入 segments 数组）；\n- 优先捕捉：动作突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/战损等）、媒介画面（正文提到照片/图片/配图/自拍/截图/画面/手机屏幕等必触发）；\n- 动作相位严控：判定当前处于哪个相位（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），只进不退，严禁提前剧透后续动作，严禁滞留旧动作；纯对话/内心独白且无新视觉信息时输出 shouldDraw:false。\n\n②【L0~L2 三级锚点状态继承与流转】：\n- L0 固有锚点：从 recentMessages 继承角色固有特征（发型发色/瞳色/胸型/种族面貌/专属饰品），未有剧情明确改变严禁擅自突变；\n- L1 近期锚点：仅当角色处于连续同一场景中时，继承其当前着装状态与破损/残留（若 currentMessage 场景或角色已切换，则以新场景描述为准）；\n- L2 瞬态痕迹：脸红(blush)、汗水(sweat)、精液(cum)、眼泪(tears)在连续场景中遵循渐进消退法则；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（谁执行、谁承受、效果在谁身上）。\n\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic。\n\n④【全息三层纵深空间矩阵】：\n- 前景(Foreground)：入镜近物、环境遮挡（门窗/树叶/栏杆）、POV者入镜肢体（如 pov_hands）、光斑或雨滴虚化；\n- 中景(Middle ground)：画面主体角色、核心互动动作、体态构图与网格站位（center: C3/B3/D3 等）；\n- 背景(Background)：环境纵深、室内外建筑格局、天空天气、空间范围（必须严格对应 currentMessage 的环境描写）。\n\n⑤【叙事机位与镜头意图决策】：\n- 视角：第一人称 POV（摄像机主体不建 Character，入镜肢体入 scene）、第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）、旁观窥视（voyeurism）；\n- 景别与机位：按情绪意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body）与机位（平视/俯视 from_above/仰视 low-angle/前侧 3/4 three-quarter view/纯侧位 side_view/过肩 over-the-shoulder/背位 from_behind）；\n- 氛围光影：智能配置氛围光（rim lighting, dramatic lighting, low-key, cinematic lighting 等）；预排裁切边界（如脚出框、腰以下出框）。\n\n⑥【可见性清理与物理互斥裁切（核心自洽）】：\n- 景别裁切：特写移除颈以下，uc 填 feet, shoes, legs, lower_body；近景移除腰以下；局部特写剔除无关面貌表情并在 uc 屏蔽；\n- 朝向裁切：背位/后侧位彻底移除正面表情、瞳色与正面着装细节（uc 填 face, front_view）；\n- 视角裁切：第一人称 POV 移除用户自身不可见的发色瞳色与面相；\n- 物理互斥：全裸/暴露移除被遮挡衣物；闭眼移除瞳色；蒙面戴口罩移除嘴部；无头彻底移除头部面部；\n- 负面隔离：角色特有负面写入该角色 uc，严禁全局广播误伤其他角色。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v9: "【8.30 前情增强思维链推演 (V9)】\n在输出 JSON 前，在思考区执行五步推演：\n\n①【视觉时刻多段选取】：\n扫描 currentMessage 正文，识别所有值得生图的视觉时刻（每个选定画面对应 1 个 segment，全部输出到 segments 数组）：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/射精/特写等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用，输出所有选定的 segments！\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族/国籍面相/发色瞳色/体型）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、过肩 over-the-shoulder、背位 from_behind）；\n- 智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与状态物理互斥（核心自洽）】：\n- 景别裁切：特写移除颈以下并在 uc 写入 feet, shoes, legs, lower_body；近景移除腰以下；局部特写(手/足/下体/道具)彻底剔除面部表情/发色/瞳色并在 uc 填 face, eyes, head；\n- 状态互斥：无头(headless)彻底剔除所有面相/发型/面部动作并在 uc 填 1.6::head, face, eyes, hair, mouth::；全裸/暴露剔除对应遮挡衣物；蒙眼/闭眼剔除瞳色；背位剔除正面细节（uc 填 face, front_view）；\n- 时态逻辑：前奏禁写事后状态词，事后禁写激烈抽插动作；\n- 负面隔离：角色特有负面严格只写该角色的 uc，严禁全局广播误伤他人。\n\n⑤【视角决策与多角色站位】：\n- 主观视角 POV：摄像机主体（用户/主角）不建 Character，其入镜肢体（如 pov_hands）写入 scene；\n- 旁观/第三人称：观察者不建 Character；scene 选用侧面(from_side)、过肩(over-the-shoulder)等机位；互动角色视线与朝向面向彼此（facing_another, eye_contact），避免无故直视镜头(facing_viewer)；\n- 局部焦点：当正文核心描写聚焦在局部肢体或动作细节时，采用对应局部特写并执行可见性裁切；\n- 多人交互：出镜角色各入 characters，使用 source#/target# 明确施受关系，并分配网格站位（center: A1-E5，如 B3, C3, D3, E3）。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何额外文字。",
             v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
@@ -9161,7 +9441,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V10: 9.1 全息空间六步思维链推演（推荐）。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v10">V10 · 9.1全息六步推演 (推荐)</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
+                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V10: 9.1 全息空间六步思维链推演（推荐）。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v11">V11 · 9.7全息七步推演 (最新)</option><option value="v10">V10 · 9.1全息六步推演 (推荐)</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>

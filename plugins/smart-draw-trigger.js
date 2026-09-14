@@ -80,8 +80,8 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
 
 · 核心规范：
   1. 人数加权防漂移：人数计数标签使用花括号加权（如 {1girl}, {{1girl}}, 1boy, {1girl}, {2boys}, {1girl}, solo.），强力锁定生成人数，坚决防止多画多余人物或肢体漂移。
-  2. 中景人物占比与失焦构图：
-     - 中景人物比例：若突出人物特点比例需≥50%（通常 50%~75%），若突出周围环境比例<50%。在 Middle ground 末尾标注（如 Character occupying around 65% of the image height.）。
+  2. 构图景别动态占比与失焦构图（彻底废除一刀切75%限制）：
+     - 景别占比动态解耦：特写占80%~95%；胸景占60%~75%；牛仔景占50%~65%；全景占40%~60%；【高位俯视与顶视豁免铁律】：俯视地面趴跪场景严禁限制人物高度占比，强制释放地面纵深（concrete ground, floor 占画面 60%~80%），绝不把跪爬角色硬挤成大头贴平拍！
      - 环境与客观事物失焦：若背景置入复杂或有干扰，采用 depth of field, blurry background 景深虚化排除干扰、突出主体。
   3. 主体落层自由：主体绝不仅限于中景。大特写或特定接触特写时主体/接触部位为 Foreground；常规中景在 Middle ground；远景大场景在 Background。
   4. 贯穿元素：长廊/道路/水流等元素在各层描述局部状态，层间用 the same [x] 保持同一性。
@@ -102,10 +102,15 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
    - 主角的一切身体部位与探入实体（肢体、道具、武器、性器官）100% 写入 Scene 前景或单人交互描述，characters 数组中严格只保留出镜的目标角色（如 1girl），严禁在 characters 中创建任何 faceless male、boy、user 角色条目；Scene 负面词底线补 boy, male 防背景鬼影与多骨骼分裂。
 3. 真实人眼机位与垂直高差几何学（彻底杜绝肚脐眼/裤裆机位）：
    - 摄像机必须锚定在观察者的【人眼高度（standing eye-level）】，绝非腰腹肚脐！
-   - ⛔【高差与特写互斥铁律】：凡是主角站立看跪姿/趴姿/躺姿等高落差（高差 ≥ 80cm）场景，绝对禁止使用 close-up（特写）！强制使用带俯视透视的 bust shot from above 或 cowboy shot from above，需要面部细节时使用 face focus, depth of field；
-   - 强制绑定「仰头透视链」：高落差跪姿/躺姿受体必须绑定仰头透视链：steep high angle, looking down from standing eye-level, head tilted back, top of head visible, foreshortening，迫使受体仰头露出头顶发旋，锁死高位人眼俯视；
-   - 第一人称探入实体俯视透视：俯视视角下的入镜肢体/道具/器官必须交代透视短缩：seen from above, extending forward toward her with perspective foreshortening，严禁使用向天直插的 entering from below；
-   - 平视面部特写（Eye Level Close-Up）的唯一合法场景：双方处于同等高度（同坐沙发、同跪地毯、同躺）。
+   - ⛔【高差与特写互斥铁律（彻底绝杀肚脐眼/裤裆机位）】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/趴/躺、跪看站、仰卧看骑乘）：
+     * 严禁平视与特写标签：绝对禁止在 Scene 中使用 close-up, crotch focus, lower body focus 等平视局部词！否则必然导致扩散模型将机位拉平塌陷至地面肚脐/裤裆高度（肚脐眼机位）。
+     * 强制使用带俯仰透视的高位景别：强制使用 pov, standing eye-level, steep high angle, looking down from standing height, bust shot from above 或 cowboy shot from above；
+     * 强制绑定「仰头透视链」：出镜受体必须绑定 head tilted back, looking up at viewer, top of head visible, perspective foreshortening，迫使受体仰头对焦观察者，以面部发旋锁死高位人眼视点；
+     * 强制压制肚脐机位：Scene UC 与受体 Char UC 必须补充排除词：belly-level camera, crotch camera, horizontal shot, eye level, close-up, headless, crop；
+     * 平视面部特写（Eye Level Close-Up）的唯一合法场景：仅限双方处于同等高度（同坐沙发、同跪地毯、同躺）。
+   - 第一人称探入实体俯视透视与无接触留白铁律：
+     * 站姿无接触场景严禁塞器官：若站姿大俯视中双方此刻未发生贴身口交/插入（如站立俯视地上的角色、递物品、求饶、爬行、交谈等），Foreground 绝对严禁写入 penis / erect penis！Danbooru/NovelAI 中 pov+penis 拥有极强的“70cm耻骨平视/微仰近战机位”先验偏置，一旦写入会导致扩散模型强行坠入裤裆机位并生成 90° 直立戳天的垂直巨柱；此时 Foreground 必须自然留白，或仅在画面最下边缘带入站立者衣领胸口（viewer's open suit jacket and white shirt visible at the very bottom edge, looking down past own chest）；
+     * 贴身接触时的俯探短缩：若确有站姿俯探口交/插入，必须将景别收拢为 bust shot from above，探入器官必须明确交代俯视短缩（seen from above, pointing downward and forward toward her with perspective foreshortening），绝对禁止使用向天直插的 entering from below 或 vertical penis；
 4. 视锥探入与物理接触受力法则（杜绝天降异物、空中漂浮肢体与断裂多肢）：
    - 【视锥透视源头】：观察者身处机位后下方，任何由观察者向视锥近景探入的实体（手臂手掌、腿脚、武器枪刃、持握道具/伞/手机/杯子、身体器官等），其二维投影起点必须且只能从画框下边缘或底角（lower frame / bottom edge / bottom corners）向前上方延伸探入，绝对排斥从画面顶部（天花板）、侧上方或凭空无依托的边缘逆向垂落入镜（彻底杜绝天花板天降第三只手、空中飞脚或倒挂武器）；
    - 【物理接触与受力闭环】：探入视锥的任何实体在物理世界中绝不能处于无依托漫无目的漂浮/虚抓状态（严禁写 hands reaching in / pov hands / floating props 等空洞悬浮词）；凡有探入，必须闭环写清「动作 + 接触受力面/受体」：
@@ -187,9 +192,10 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
 | 近景 (bust shot/upper body) | 移除腰以下：下身动作/下装/腿/鞋 | feet, shoes, legs |
 | 中景 (cowboy shot/mid shot) | 移除小腿以下/鞋/脚（丝袜可见则留） | feet, shoes |
 | 牛仔镜头 (膝以上) | 移除膝以下鞋/脚（袜子可见保留） | feet, shoes |
-| 局部特写/仅下半身 | 移除头部/头发/瞳色/表情 | head, face, eyes, hair |
+| 局部特写/纯下半身 (仅限非POV独立空镜) | 仅限无观察者互动的第三人称纯道具/足部空镜时移除头部 | head, face, eyes, hair（⛔POV主观高差场景严禁下放，跪趴受体必须保留头部发旋与眼神） |
 | 背位/后侧 (from behind/facing away) | 移除面部/表情/瞳色/正面细节（回头除外） | face, front view, eyes |
-| 视角 (pov/female pov) | 移除自身不可见的头发/瞳色/表情 | face, eyes, hair |
+| 视角 (pov/female pov) | 观察者自身不出镜（正常出镜角色保留完整面容与仰视眼神）；若非物理无头尸体，严禁向有头受体的 Char UC 填入 head/face/eyes/hair！ | 仅在 Scene UC 补 boy, male 防鬼影；Char UC 填构图防漂移词 |
+| 物理无头/身首分离 (headless / decapitation) | 剧情本身为斩首、身首异处、无头尸体；正向只写无头躯体与颈部断面 neck_stump，彻底移除面相/发型/瞳色/表情 | 1.6::head, face, eyes, hair, mouth::, head_attached, alive（必须强制写入，坚决防止扩散模型在颈部断面偷长人头） |
 | 遮挡 | 闭眼移除瞳色；戴口罩移除嘴 | closed eyes → 瞳色进 UC |
 | 性质替换 | 巨乳束胸移除 large breasts | 替换 flat chest |
 | 防污染 | 对方角色的专属特征（发色/肤色/专属配饰） | 对方角色的特征写入本角色的 UC |
@@ -2089,34 +2095,12 @@ Zimage 擅长理解复杂的英文长句和语境。
     // V33: 基于 9.7 原版世界书，融入全息空间分层哲学、视锥探入物理受力闭环与站立人眼高差透视铁律（100%世界书未删减）
     const V33_SPEC_97_SYSTEM_PROMPT = V5_SPEC_97_SYSTEM_PROMPT;
 
-    // V35: 基于 9.7 原版世界书，升级观察者体态位姿自适应人眼视点几何与视锥探入法则（100%世界书未删减）
-    const V35_SPEC_97_SYSTEM_PROMPT = V33_SPEC_97_SYSTEM_PROMPT.replace(
-`3. 真实人眼机位与垂直高差几何学（彻底杜绝肚脐眼/裤裆机位）：
-   - 摄像机必须锚定在观察者的【人眼高度（standing eye-level）】，绝非腰腹肚脐！
-   - ⛔【高差与特写互斥铁律】：凡是主角站立看跪姿/趴姿/躺姿等高落差（高差 ≥ 80cm）场景，绝对禁止使用 close-up（特写）！强制使用带俯视透视的 bust shot from above 或 cowboy shot from above，需要面部细节时使用 face focus, depth of field；
-   - 强制绑定「仰头透视链」：高落差跪姿/躺姿受体必须绑定仰头透视链：steep high angle, looking down from standing eye-level, head tilted back, top of head visible, foreshortening，迫使受体仰头露出头顶发旋，锁死高位人眼俯视；
-   - 第一人称探入实体俯视透视：俯视视角下的入镜肢体/道具/器官必须交代透视短缩：seen from above, extending forward toward her with perspective foreshortening，严禁使用向天直插的 entering from below；
-   - 平视面部特写（Eye Level Close-Up）的唯一合法场景：双方处于同等高度（同坐沙发、同跪地毯、同躺）。`,
-`3. 观察者体态位姿与自适应人眼视点几何学（彻底杜绝机位失真与肚脐视角）：
-   - 【机位锚定：摄像机 ＝ 观察者双眼当前三维坐标】：POV 摄像机绝非死板固定在站立高度，而是严格随观察者当前动作与体态动态锚定其【真实人眼视点（Viewer Eye Level）】！
-     * 站姿（Standing，视点~1.7m）：看站姿为平视(eye level)，看坐姿为微俯视，看跪/趴/躺为大俯视(steep high angle from standing height)；
-     * 坐姿（Sitting/Lounging，视点~1.1m~1.2m）：看坐姿为平视，看跪在腿间/地面为俯视(looking down from seated position / looking down between knees)，看站立为仰视(low angle from below)；
-     * 跪姿（Kneeling，视点~0.9m~1.0m）：同跪为平视(eye level, kneeling face-to-face)，看站立为大仰视(steep low angle looking up from knees)；
-     * 躺卧/仰卧（Lying on back，视点~0.2m~0.4m）：看被跨坐/骑乘为大仰视(steep low angle, looking up from below, lying on back looking up at her)，同躺为枕边平视(eye level, lying side by side)；
-     * 俯身/覆身在上（Leaning over / Looming over / Missionary）：居高临下直视笼罩对方(leaning over her, looking down close-up)；
-     * 倒地/摔倒（Fallen / On ground）：贴地极低仰视(ground level, looking up from ground)。
-   - ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up（特写）！因为单纯 close-up 会诱导模型把摄像机强行拉平到目标面部，导致机位脱离观察者双眼（如站立看跪姿塌陷成肚脐视角、仰卧看骑乘镜头飞到半空）。必须改用带俯仰透视的景别：bust shot from above / cowboy shot from above（俯视高差）或 looking up from below / low-angle shot（仰视高差），需要面部细节时使用 face focus, depth of field。
-   - 【高差透视链与视线对齐】：
-     · 高看低（如站看跪、坐看跪）：受体绑定仰头透视链：looking down from [standing/seated] eye-level, head tilted back, top of head visible, foreshortening，锁死自上而下视线；
-     · 低看高（如仰卧看跨坐、跪看站立）：受体与镜头绑定自下而上仰拍链：looking up from below, low angle, head lowered looking down at viewer, foreshortening；
-     · 平视特写（Eye Level Close-Up）的唯一合法场景：双方处于同等高度（同坐、同跪、同躺、同站）。
-   - 【自适应探入透视】：入镜实体（肢体/持物/道具/武器/器官）的透视短缩方向随观察者体态同步自适应：
-     · 站/坐高位看低位：交代自上而下的前倾透视短缩 extending forward toward her with perspective foreshortening；
-     · 仰卧低位看高位跨坐：探入双手自下边缘向上托扶对方腰胯/大腿 hands extending upward from lower frame, gripping her waist/thighs。`);
+    // V35: 文生图9.7完整详尽版（100% 对应 .53 实装版，包含彻底绝杀肚脐机位、无接触留白与全套物理判定表）
+    const V35_SPEC_97_SYSTEM_PROMPT = V5_SPEC_97_SYSTEM_PROMPT;
 
     const SYSTEM_PROMPT_PRESETS = {
         v40_worldbook_97_opt: { label: 'V40·文生图9.7全功能优化版 (默认推荐/四模块自洽架构/全场景覆盖)', prompt: V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT },
-        v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (100%原始对照版)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
+        v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (.53实装版/绝杀肚脐机位/无接触留白)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
         v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
         v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
         v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },

@@ -2156,8 +2156,8 @@ Zimage 擅长理解复杂的英文长句和语境。
             geminiJailbreak: true,
             postProcessEnabled: true,
         },
-        ny_kami: {
-            label: '奈亚破限 (卡密预设 / 多轮伪造中断)',
+        kami: {
+            label: '卡密破限',
             prompt: [
                 'You are a helpful software engineer assistant.',
                 '',
@@ -2381,11 +2381,11 @@ Zimage 擅长理解复杂的英文长句和语境。
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
 
-        if (!store.geminiJailbreakPreset || store.geminiJailbreakPreset === 'ny_gemini') {
-            if (store.geminiJailbreakPreset === 'ny_gemini') {
-                store.geminiJailbreakPreset = 'ny_kami';
-                store.geminiJailbreakPrompt = JAILBREAK_PRESETS.ny_kami.prompt;
-                store.postProcessPrompt = JAILBREAK_PRESETS.ny_kami.postProcessPrompt;
+        if (!store.geminiJailbreakPreset || store.geminiJailbreakPreset === 'ny_gemini' || store.geminiJailbreakPreset === 'ny_kami') {
+            if (store.geminiJailbreakPreset === 'ny_gemini' || store.geminiJailbreakPreset === 'ny_kami') {
+                store.geminiJailbreakPreset = 'kami';
+                store.geminiJailbreakPrompt = JAILBREAK_PRESETS.kami.prompt;
+                store.postProcessPrompt = JAILBREAK_PRESETS.kami.postProcessPrompt;
                 store.toolCallMode = false;
                 store.squashMessages = false;
                 store.geminiJailbreak = true;
@@ -9909,7 +9909,7 @@ SCHEMA:
                 <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="利用大模型 Function Calling / Tool Calling 免审机制，自动将生图契约包装为 generate_draw_spec 工具调用，规避 Gemini 等渠道的流式外审截断、中途断流与道歉说教"><span>🛡️ 工具调用抗外审 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>尾部引导内容 <button id="rbq-sdt-reset-post-process" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-post-process-prompt" placeholder="在此输入尾部输出引导... &#10;默认作为 Assistant 预填充，亦可使用 &lt;|assistant|&gt;, &lt;|user|&gt; 构造多回合闭环（例如奈亚双闭环：先 Assistant 闭合思考，再 User 垫底催促输出，彻底杜绝 400 报错）。"></textarea></label>
+                <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>尾部引导内容 <button id="rbq-sdt-reset-post-process" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-post-process-prompt" placeholder="在此输入尾部输出引导... &#10;默认作为 Assistant 预填充，亦可使用 &lt;|assistant|&gt;, &lt;|user|&gt; 或 User:, Assistant: 构造多回合闭环（例如卡密破限：多轮伪造与中断引导）。"></textarea></label>
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>

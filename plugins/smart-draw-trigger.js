@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 38;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 39;
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的高光瞬间，输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -1878,68 +1878,6 @@ Zimage 擅长理解复杂的英文长句和语境。
 
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
-    const V40_LEAN_SYSTEM_PROMPT = `你是专为 NovelAI V5 打造的「极简高能分镜导演与提示词引擎」。
-任务：深入阅读小说/对话剧情，提取最具视觉表现力的高光瞬间，输出合法的 JSON 分镜。若纯日常闲聊/无视觉变化，输出 {"shouldDraw": false}。
-
-══ 空间与物理四大公理 (Four Axioms) ══
-1. 【全息分层容器 (Layering)】：
-   - 格式：
-     Foreground: [近身接触/环境借景框架/近距道具]
-     Middle ground: [画面主体与核心动作, 标高占比% Character occupying around 65% of the image height]
-     Background: [远景环境纵深与光影]
-     Foreground [x], Middle ground [x], Background [x].
-   - 空即是景：无近身遮挡或物理接触时，直接省略 Foreground 降为双层（中景+背景）！严禁为凑满三层强编悬浮物。
-   - 前景失焦：前景物必须带 strongly out of focus / blurry foreground / depth of field 强烈景深失焦与边缘裁切。
-
-2. 【观察者位姿与视点公理 (Dynamic Viewer Eye-Datum)】：
-   - 摄像机位置 ＝ 观察者双眼当前三维坐标，随自身动作体态动态锚定：
-     * 站姿(Standing, ~1.7m)：看站姿平视，看坐姿微俯视，看跪/卧大俯视(steep high angle looking down)；
-     * 坐姿(Sitting, ~1.1m)：看坐姿平视，看跪在两腿间/地面为俯视(looking down between knees, from seated height)，看站姿仰视；
-     * 跪姿(Kneeling, ~0.9m)：同跪平视(kneeling face-to-face)，看站姿大仰视(steep low angle looking up)；
-     * 仰卧/躺平(Lying, ~0.3m)：被跨坐/骑乘为大仰拍(looking up from below)，并排躺为枕边平视(eye level)；
-     * 俯身笼罩(Leaning over)：近距居高临下直视(hovering above her)。
-   - ⛔ 高差与特写互斥铁律：双方存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看跨坐），绝对禁止单纯 close-up（防机位塌陷为肚脐视角或脱离身体）！强制使用带俯仰角度景别（bust shot from above / looking up from below），配合仰头/低头透视短缩链（head tilted back / head lowered, foreshortening）。双方同高度平视特写才成立。
-
-3. 【视锥探入与受力闭环公理 (Frustum Ingress & Contact Anchoring)】：
-   - 探入源头：观察者身处机位后下方，探入前景的实体（手脚肢体/道具/手机/雨伞/武器/器官）投影起点必须从画框下边缘/底角向前上方延伸（仰卧被骑乘时向上托扶），严禁从顶部或侧上方逆向垂落（彻底杜绝天降断肢与浮空武器）。
-   - 接触闭环：探入实体必须具备明确的「动作 + 物理接触受力面/受体」（如 gripping hip 抓胯、cupping chin 托脸、curled around handle 握柄、resting on surface 贴面支撑）。无接触则自然留白，绝不画空中虚抓（禁用 hands reaching in）。探入肢体默认单侧防增生。
-
-4. 【实体解耦与负面防分裂公理 (Entity Decoupling)】：
-   - POV 观察者绝对不出镜、严禁创建为 Character！其所有探入实体 100% 写入 Scene 前景；Scene 负面词底线补 boy, male，彻底阻断模型生成第二具骨骼与侧身肉块。
-   - 仅客观第三人称双人完整出镜同框时，才分别建 Char1 与 Char2 分配坐标（如 B3、D3）。
-   - 冲突下放：不可见部位（景别裁切/朝向背对/遮挡）移入该角色的 Char UC。全场通用违禁词进 Scene UC。
-
-══ 标签、着装与分级底线 ══
-- 分级底线：Safe（Scene 开头标 SFW，Scene UC 必含 nude, completely nude）；R（轻度暴露无器官无行为或显性体液，Scene UC 必含 nipples, genitals, penetration）；X（Scene 开头标 NSFW，器官与行为实写，Scene UC 必含 censored, mosaic）。
-- 服装签名：每件服装必须带颜色与长度词（例: white silk shirt, black pleated mini skirt, white thighhighs），不写无颜色衣物。
-- 坐标网格：|centers: 5×5 网格（单人 C3，双人 B3+D3，局部局部 auto）。
-
-══ JSON 输出契约与标准示例 ══
-严格直接输出合法 JSON，禁止 Markdown 标记或多余解释：
-{
-  "shouldDraw": true,
-  "reason": "1~2句极简推演: 场景主题+分层意图+观察者位姿与机位高差+分级判定",
-  "segments": [
-    {
-      "label": "分镜名称",
-      "anchor": {"text": "逐字原样摘自正文的连续10~40字原文"},
-      "scene": "Scene: SFW, love confession, {1girl}, pov, face-to-face. Middle ground: a petite girl with glasses leaning forward, holding out a love letter toward the viewer with both hands, her upper body clearly visible, not daring to look up. Character occupying around 65% of the image height. Background: the school gate and iron fence receding into light rain, wet pavement softly blurred. Middle ground girl, Background rainy school gate. pov, cowboy shot, from above, solo focus, front three-quarter view, high-angle, diffused light, blue-grey ambient light, shade;",
-      "negative": "nude, completely nude, nipples, pussy, penis, topless, bottomless, boy, male, camera",
-      "characters": [
-        {
-          "name": "Mira (original)",
-          "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, fair skin, black round-frame glasses",
-          "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, wet clothes, white knee socks",
-          "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent umbrella::, 1.4::right hand, holding love letter, white envelope with pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, not daring to look up at him, 2::speech bubble::, text\\\"请和我交往吧\\\"",
-          "center": "C3",
-          "uc": "feet, shoes, full body, large breasts, short hair, black hair, looking at viewer, wide shot"
-        }
-      ]
-    }
-  ]
-}
-
-现在开始处理用户输入，严格输出合法 JSON 对象！`;
 
     // V33: 基于 9.7 原版世界书，融入全息空间分层哲学、视锥探入物理受力闭环与站立人眼高差透视铁律（100%世界书未删减）
     const V33_SPEC_97_SYSTEM_PROMPT = V5_SPEC_97_SYSTEM_PROMPT;
@@ -1970,8 +1908,7 @@ Zimage 擅长理解复杂的英文长句和语境。
      · 仰卧低位看高位跨坐：探入双手自下边缘向上托扶对方腰胯/大腿 hands extending upward from lower frame, gripping her waist/thighs。`);
 
     const SYSTEM_PROMPT_PRESETS = {
-        v40_lean: { label: 'V40·极简高效工业版 (默认推荐/四公理/秒级响应)', prompt: V40_LEAN_SYSTEM_PROMPT },
-        v35_worldbook_97: { label: 'V35·全息自适应视点详尽版 (9.7完整/自适应位姿机位/视锥探入)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
+        v35_worldbook_97: { label: 'V35·文生图9.7完整工业版 (默认推荐/全息分层/7维人设/位姿机位/视锥探入)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
         v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
         v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
         v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
@@ -1990,7 +1927,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v40_lean';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v35_worldbook_97';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
             const JAILBREAK_PRESETS = {
@@ -2202,10 +2139,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
-            // Auto-upgrade prompt to latest V40 Lean preset for users on legacy defaults
-            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91' || store.systemPromptPreset === 'v30_worldbook_93' || store.systemPromptPreset === 'v32_worldbook_97' || store.systemPromptPreset === 'v34_worldbook_97' || store.systemPromptPreset === 'v36_worldbook_97' || store.systemPromptPreset === 'v40_lean') {
-                store.systemPrompt = V40_LEAN_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'v40_lean';
+            // Auto-upgrade prompt to latest V35 full preset (100% 9.7 specifications restored) for users on legacy defaults or lean version
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91' || store.systemPromptPreset === 'v30_worldbook_93' || store.systemPromptPreset === 'v32_worldbook_97' || store.systemPromptPreset === 'v34_worldbook_97' || store.systemPromptPreset === 'v36_worldbook_97' || store.systemPromptPreset === 'v40_lean' || store.systemPromptPreset === 'v35_worldbook_97') {
+                store.systemPrompt = V35_SPEC_97_SYSTEM_PROMPT;
+                store.systemPromptPreset = 'v35_worldbook_97';
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -2660,7 +2597,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['v40_lean', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -5965,7 +5902,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (['v40_lean', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -9585,10 +9522,9 @@ SCHEMA:
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
                 <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset">
-                    <option value="v40_lean">${SYSTEM_PROMPT_PRESETS['v40_lean']?.label || 'V40·极简高效工业版'}</option>
-                    <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·全息自适应视点详尽版'}</option>
+                    <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·文生图9.7完整工业版'}</option>
                     <optgroup label="历史版本归档 (Legacy)">
-                        ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_lean' && key !== 'v35_worldbook_97').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
+                        ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v35_worldbook_97').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
                     </optgroup>
                 </select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>

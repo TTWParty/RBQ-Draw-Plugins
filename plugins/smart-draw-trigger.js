@@ -1871,8 +1871,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         .replace(', vaginal fluids smearing close to camera', '');
 
     const SYSTEM_PROMPT_PRESETS = {
-        v32_worldbook_97: { label: 'V32-9.7全息分层旗舰版 (防外审合规版/首选推荐)', prompt: V32_SPEC_97_SYSTEM_PROMPT },
-        v31_worldbook_97: { label: 'V31-9.7全息分层版 (历史原版)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
+        v32_worldbook_97: { label: 'V32-9.7全息分层合规版 (防API审查拦截/推荐Gemini使用)', prompt: V32_SPEC_97_SYSTEM_PROMPT },
+        v31_worldbook_97: { label: 'V31-9.7全息分层原版 (100%世界书未删减/适合本地模型与高容忍接口)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
         v30_worldbook_93: { label: 'V30-9.3全息分层版 (历史)', prompt: V30_SPEC_93_SYSTEM_PROMPT },
         v29_worldbook_93: { label: 'V29-9.3全息分层版 (历史原版)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
         v28_worldbook_91: { label: 'V28-9.1全息分层版 (历史)', prompt: V5_SPEC_91_SYSTEM_PROMPT },

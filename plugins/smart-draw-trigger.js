@@ -2276,6 +2276,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         geminiJailbreakPrompt: DEFAULT_JAILBREAK_PROMPT,
         toolCallMode: true,
         squashMessages: true,
+        thinkingEffort: 'default', // 'default' | 'off' | 'low' | 'medium' | 'high' | 'custom'
+        thinkingBudget: 2048,
         cache: {},
         apiTemplates: [],
     };
@@ -3079,7 +3081,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                             temperature: 0.2,
                             response_format: { type: 'json_object' },
                             stream: false,
-                            messages: promptMessages
+                            messages: promptMessages,
+                            ...buildThinkingParams(store),
                         });
                         jsonRes = await res.json();
                     }
@@ -6130,7 +6133,8 @@ SCHEMA:
                 temperature: 0.3,
                 response_format: { type: 'json_object' },
                 stream: false,
-                messages
+                messages,
+                ...buildThinkingParams(store),
             });
             if (!response.ok) throw new Error(`Tagger API 请求失败: HTTP ${response.status}`);
             json = await response.json();
@@ -8122,25 +8126,128 @@ SCHEMA:
     };
     const DRAW_SPEC_TOOL_RULE = '\n\n[System Rule]: 严格执行以下输出规范：1. 必须调用 generate_draw_spec 工具提交你的最终生图分镜与分析 2. 不要在普通文本中输出任何外部内容。';
 
+    function buildThinkingParams(store) {
+        if (!store) return {};
+        const effort = store.thinkingEffort || 'default';
+        if (effort === 'default') return {};
+
+        let budget = 0;
+        let reasoning = '';
+
+        if (effort === 'off') {
+            budget = 0;
+            reasoning = 'none';
+        } else if (effort === 'low') {
+            budget = 1024;
+            reasoning = 'low';
+        } else if (effort === 'medium') {
+            budget = 4096;
+            reasoning = 'medium';
+        } else if (effort === 'high') {
+            budget = 8192;
+            reasoning = 'high';
+        } else if (effort === 'custom') {
+            budget = Math.max(0, Number(store.thinkingBudget) || 0);
+            if (budget === 0) {
+                reasoning = 'none';
+            } else if (budget <= 1500) {
+                reasoning = 'low';
+            } else if (budget <= 5000) {
+                reasoning = 'medium';
+            } else {
+                reasoning = 'high';
+            }
+        }
+
+        const params = {};
+
+        if (reasoning) {
+            params.reasoning_effort = reasoning;
+        }
+
+        if (budget > 0) {
+            params.thinking_budget = budget;
+            params.thinking = { type: 'enabled', budget_tokens: budget };
+        } else if (effort === 'off' || (effort === 'custom' && budget === 0)) {
+            params.thinking_budget = 0;
+            params.thinking = { type: 'disabled' };
+        }
+
+        return params;
+    }
+
     async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj) {
+        let currentBody = { ...reqBodyObj };
         let response = await smartFetch(url, {
             ...fetchOptions,
-            body: JSON.stringify(reqBodyObj),
+            body: JSON.stringify(currentBody),
         });
 
-        if (!response.ok && (response.status === 400 || response.status === 500) && reqBodyObj.tools) {
+        const getErrText = async (res) => {
+            try {
+                return await res.clone().text();
+            } catch (_e) {
+                return '';
+            }
+        };
+
+        // 1. 如果报错 400 且含有思维链参数，尝试思维链降级（避免思维链参数阻碍后续 tools/response_format 协商）
+        if (!response.ok && response.status === 400 && (currentBody.thinking || currentBody.thinking_budget !== undefined || currentBody.reasoning_effort)) {
+            const errText = (await getErrText(response)).toLowerCase();
+            const mentionsReasoning = errText.includes('reasoning');
+            const mentionsThinking = errText.includes('thinking') || errText.includes('budget');
+
+            if (mentionsReasoning && !mentionsThinking) {
+                console.warn(`[${PLUGIN_NAME}] API 报错包含 reasoning 关键字，怀疑端点不支持 reasoning_effort，正在剥离重试...`);
+                const retryBody = { ...currentBody };
+                delete retryBody.reasoning_effort;
+                const r = await smartFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
+                if (r.ok || r.status !== 400) {
+                    response = r;
+                    currentBody = retryBody;
+                }
+            }
+
+            if (!response.ok && response.status === 400 && (currentBody.thinking || currentBody.thinking_budget !== undefined)) {
+                console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑端点不支持非标准 thinking/thinking_budget，正在剥离重试...`);
+                const retryBody = { ...currentBody };
+                delete retryBody.thinking;
+                delete retryBody.thinking_budget;
+                const r = await smartFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
+                if (r.ok || r.status !== 400) {
+                    response = r;
+                    currentBody = retryBody;
+                }
+            }
+
+            if (!response.ok && response.status === 400 && currentBody.reasoning_effort) {
+                console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，端点可能完全不支持思维链参数，正在剥离所有思考参数重试...`);
+                const retryBody = { ...currentBody };
+                delete retryBody.reasoning_effort;
+                delete retryBody.thinking;
+                delete retryBody.thinking_budget;
+                const r = await smartFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
+                if (r.ok || r.status !== 400) {
+                    response = r;
+                    currentBody = retryBody;
+                }
+            }
+        }
+
+        // 2. 如果请求带有 tools 且报错 400/500，尝试 tool 降级
+        if (!response.ok && (response.status === 400 || response.status === 500) && currentBody.tools) {
             console.warn(`[${PLUGIN_NAME}] API 返回 HTTP ${response.status}，怀疑接口不支持当前 tool_choice，尝试转为 auto 重试...`);
-            const retryBody = { ...reqBodyObj, tool_choice: 'auto' };
+            const retryBody = { ...currentBody, tool_choice: 'auto' };
             response = await smartFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(retryBody),
             });
             if (!response.ok && (response.status === 400 || response.status === 500)) {
                 console.warn(`[${PLUGIN_NAME}] API 依然返回 HTTP ${response.status}，判定代理端点不支持 Gemini 工具调用，正在自动剥离 tools 并退回 json_object 模式...`);
-                const noToolsBody = { ...reqBodyObj };
+                const noToolsBody = { ...currentBody };
                 delete noToolsBody.tools;
                 delete noToolsBody.tool_choice;
-                noToolsBody.messages = (reqBodyObj.messages || [])
+                noToolsBody.messages = (currentBody.messages || [])
                     .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
                     .map(m => ({ ...m }));
                 noToolsBody.stream = false;
@@ -8149,26 +8256,47 @@ SCHEMA:
                     ...fetchOptions,
                     body: JSON.stringify(noToolsBody),
                 });
+                currentBody = noToolsBody;
                 if (!response.ok && response.status === 400) {
                     console.warn(`[${PLUGIN_NAME}] 剥离 tools 后仍返回 HTTP 400，怀疑接口不支持 response_format，正在剥离 response_format 重试...`);
-                    delete noToolsBody.response_format;
+                    delete currentBody.response_format;
                     response = await smartFetch(url, {
                         ...fetchOptions,
-                        body: JSON.stringify(noToolsBody),
+                        body: JSON.stringify(currentBody),
                     });
                 }
+            } else {
+                currentBody = retryBody;
             }
         }
 
-        if (!response.ok && response.status === 400 && reqBodyObj.response_format) {
+        // 3. 如果当前仍报错 400 且带有 response_format，尝试剥离 response_format
+        if (!response.ok && response.status === 400 && currentBody.response_format) {
             console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
-            const retryBody = { ...reqBodyObj };
+            const retryBody = { ...currentBody };
             delete retryBody.response_format;
             response = await smartFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(retryBody),
             });
+            if (response.ok) {
+                currentBody = retryBody;
+            }
         }
+
+        // 4. 终极兜底：如果前面 tool 降级或 response_format 降级后依然 400，且请求中残留思维链参数，再次尝试剥离所有思维链参数
+        if (!response.ok && response.status === 400 && (currentBody.thinking || currentBody.thinking_budget !== undefined || currentBody.reasoning_effort)) {
+            console.warn(`[${PLUGIN_NAME}] 降级后依然返回 HTTP 400，正在彻底剥离所有思维链相关参数发起最后重试...`);
+            const cleanBody = { ...currentBody };
+            delete cleanBody.reasoning_effort;
+            delete cleanBody.thinking;
+            delete cleanBody.thinking_budget;
+            response = await smartFetch(url, {
+                ...fetchOptions,
+                body: JSON.stringify(cleanBody),
+            });
+        }
+
         return response;
     }
 
@@ -8281,6 +8409,7 @@ SCHEMA:
             temperature: 0.2,
             stream: false,
             messages,
+            ...buildThinkingParams(store),
         };
 
         if (store.toolCallMode) {
@@ -8487,6 +8616,7 @@ SCHEMA:
                     temperature: 0.2,
                     stream: true,
                     messages: fallbackMessages,
+                    ...buildThinkingParams(store),
                 };
 
                 const fallbackRes = await smartFetch(url, {
@@ -8579,6 +8709,7 @@ SCHEMA:
                             temperature: 0.2,
                             stream: false,
                             messages: fallbackMessages,
+                            ...buildThinkingParams(store),
                         };
                         const finalRes = await smartFetch(url, {
                             method: 'POST',
@@ -9794,6 +9925,12 @@ SCHEMA:
             postProcessPromptField.style.display = (provider === 'openai' && isPpOn) ? '' : 'none';
         }
 
+        const thinkingBudgetField = document.getElementById('rbq-sdt-thinking-budget-field');
+        if (thinkingBudgetField) {
+            const effort = val('rbq-sdt-thinking-effort');
+            thinkingBudgetField.style.display = (provider === 'openai' && effort === 'custom') ? '' : 'none';
+        }
+
         const mode = val('rbq-sdt-mode');
         const markersField = document.getElementById('rbq-sdt-markers-field');
         if (markersField) {
@@ -9918,6 +10055,15 @@ SCHEMA:
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
+                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="设置大模型的思考链/推演深度。兼容 OpenAI o-series/o3-mini (reasoning_effort)、Gemini 2.5/3.7 (thinking_budget)、Claude 3.7 (thinking) 等思考模型。如遇不兼容端点将自动降级重试。"><span>思维链强度 (Thinking)</span><select id="rbq-sdt-thinking-effort">
+                    <option value="default">默认 (不限制 / 由服务端决定)</option>
+                    <option value="off">关闭思考 (0 Token / 极速模式)</option>
+                    <option value="low">低强度 (Low / 1024 Token 快速推演)</option>
+                    <option value="medium">中强度 (Medium / 4096 Token 平衡)</option>
+                    <option value="high">高强度 (High / 8192 Token 深度推演)</option>
+                    <option value="custom">自定义预算 Token 数...</option>
+                </select></label>
+                <label id="rbq-sdt-thinking-budget-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" style="display:none;" title="自定义思维链 Token 预算上限 (thinking_budget)。设为 0 即为关闭思考。"><span>思维链 Token 预算</span><input id="rbq-sdt-thinking-budget" type="number" min="0" max="65536" step="256" placeholder="例如: 2048"></label>
                 <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-gemini-jailbreak-preset-field" class="st-scene-trigger-field" style="display:none;" title="选择破限预设风格"><span>破限预设档位</span><select id="rbq-sdt-gemini-jailbreak-preset">
                     ${Object.entries(JAILBREAK_PRESETS).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
@@ -10013,6 +10159,8 @@ SCHEMA:
         document.getElementById('rbq-sdt-openai-key').value = store.openaiApiKey;
         populateModelSelect(store.openaiModels || [], store.openaiModel);
         document.getElementById('rbq-sdt-openai-model-custom').value = store.openaiModelCustom || '';
+        document.getElementById('rbq-sdt-thinking-effort').value = store.thinkingEffort || 'default';
+        document.getElementById('rbq-sdt-thinking-budget').value = store.thinkingBudget !== undefined ? store.thinkingBudget : 2048;
         document.getElementById('rbq-sdt-gemini-jailbreak').checked = !!store.geminiJailbreak;
         document.getElementById('rbq-sdt-gemini-jailbreak-preset').value = store.geminiJailbreakPreset || DEFAULT_JAILBREAK_PRESET;
         document.getElementById('rbq-sdt-tool-call-mode').checked = !!store.toolCallMode;
@@ -10056,6 +10204,7 @@ SCHEMA:
         bindSwitch('rbq-sdt-post-process-field', 'rbq-sdt-post-process-enabled');
         document.getElementById('rbq-sdt-gemini-jailbreak').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-post-process-enabled').addEventListener('change', updateProviderVisibility);
+        document.getElementById('rbq-sdt-thinking-effort').addEventListener('change', updateProviderVisibility);
         // Set checkbox value BEFORE bindSwitch — sync() reads initial state
         let charMemoryValue = !!store.characterMemoryEnabled;
         try {
@@ -10105,6 +10254,8 @@ SCHEMA:
             }
             if (tpl.openaiModelCustom !== undefined) setVal('rbq-sdt-openai-model-custom', tpl.openaiModelCustom);
             else setVal('rbq-sdt-openai-model-custom', '');
+            if (tpl.thinkingEffort !== undefined) setVal('rbq-sdt-thinking-effort', tpl.thinkingEffort);
+            if (tpl.thinkingBudget !== undefined) setVal('rbq-sdt-thinking-budget', tpl.thinkingBudget);
             if (tpl.customUrl !== undefined) setVal('rbq-sdt-custom-url', tpl.customUrl);
             if (tpl.customApiKeyHeader !== undefined) setVal('rbq-sdt-custom-key-header', tpl.customApiKeyHeader);
             if (tpl.customApiKey !== undefined) setVal('rbq-sdt-custom-key', tpl.customApiKey);
@@ -10129,6 +10280,8 @@ SCHEMA:
             s.openaiApiKey = tpl.openaiApiKey;
             s.openaiModel = tpl.openaiModel;
             s.openaiModelCustom = tpl.openaiModelCustom || '';
+            s.thinkingEffort = tpl.thinkingEffort || 'default';
+            s.thinkingBudget = tpl.thinkingBudget !== undefined ? tpl.thinkingBudget : 2048;
             if (tpl.openaiModels) s.openaiModels = tpl.openaiModels;
             s.customUrl = tpl.customUrl;
             s.customApiKeyHeader = tpl.customApiKeyHeader;
@@ -10167,6 +10320,8 @@ SCHEMA:
                 openaiApiKey: val('rbq-sdt-openai-key').trim(),
                 openaiModel: val('rbq-sdt-openai-model').trim(),
                 openaiModelCustom: val('rbq-sdt-openai-model-custom').trim(),
+                thinkingEffort: val('rbq-sdt-thinking-effort') || 'default',
+                thinkingBudget: Math.max(0, Number(val('rbq-sdt-thinking-budget')) || 2048),
                 openaiModels: store.openaiModels || [],
                 customUrl: val('rbq-sdt-custom-url').trim(),
                 customApiKeyHeader: val('rbq-sdt-custom-key-header').trim() || 'Authorization',
@@ -10249,6 +10404,8 @@ SCHEMA:
             s.openaiApiKey = val('rbq-sdt-openai-key').trim();
             s.openaiModel = val('rbq-sdt-openai-model').trim();
             s.openaiModelCustom = val('rbq-sdt-openai-model-custom').trim();
+            s.thinkingEffort = val('rbq-sdt-thinking-effort') || 'default';
+            s.thinkingBudget = Math.max(0, Number(val('rbq-sdt-thinking-budget')) || 2048);
             s.geminiJailbreak = checked('rbq-sdt-gemini-jailbreak');
             s.geminiJailbreakPreset = val('rbq-sdt-gemini-jailbreak-preset') || DEFAULT_JAILBREAK_PRESET;
             s.toolCallMode = checked('rbq-sdt-tool-call-mode');
@@ -10735,7 +10892,7 @@ SCHEMA:
                 const response = await callApiWithJsonFallback(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages });
+                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages, ...buildThinkingParams(store) });
                 if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
                 json = await response.json();
             }
@@ -10895,7 +11052,7 @@ SCHEMA:
             const response = await callApiWithJsonFallback(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages });
+            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages, ...buildThinkingParams(store) });
             if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
             json = await response.json();
         }

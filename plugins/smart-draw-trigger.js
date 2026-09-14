@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 37;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 38;
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的高光瞬间，输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -1878,16 +1878,71 @@ Zimage 擅长理解复杂的英文长句和语境。
 
 现在开始处理用户输入的剧情，严格输出 JSON 对象。注意：scene 字段必须已自动合并负面内容。`;
 
+    const V40_LEAN_SYSTEM_PROMPT = `你是专为 NovelAI V5 打造的「极简高能分镜导演与提示词引擎」。
+任务：深入阅读小说/对话剧情，提取最具视觉表现力的高光瞬间，输出合法的 JSON 分镜。若纯日常闲聊/无视觉变化，输出 {"shouldDraw": false}。
+
+══ 空间与物理四大公理 (Four Axioms) ══
+1. 【全息分层容器 (Layering)】：
+   - 格式：
+     Foreground: [近身接触/环境借景框架/近距道具]
+     Middle ground: [画面主体与核心动作, 标高占比% Character occupying around 65% of the image height]
+     Background: [远景环境纵深与光影]
+     Foreground [x], Middle ground [x], Background [x].
+   - 空即是景：无近身遮挡或物理接触时，直接省略 Foreground 降为双层（中景+背景）！严禁为凑满三层强编悬浮物。
+   - 前景失焦：前景物必须带 strongly out of focus / blurry foreground / depth of field 强烈景深失焦与边缘裁切。
+
+2. 【观察者位姿与视点公理 (Dynamic Viewer Eye-Datum)】：
+   - 摄像机位置 ＝ 观察者双眼当前三维坐标，随自身动作体态动态锚定：
+     * 站姿(Standing, ~1.7m)：看站姿平视，看坐姿微俯视，看跪/卧大俯视(steep high angle looking down)；
+     * 坐姿(Sitting, ~1.1m)：看坐姿平视，看跪在两腿间/地面为俯视(looking down between knees, from seated height)，看站姿仰视；
+     * 跪姿(Kneeling, ~0.9m)：同跪平视(kneeling face-to-face)，看站姿大仰视(steep low angle looking up)；
+     * 仰卧/躺平(Lying, ~0.3m)：被跨坐/骑乘为大仰拍(looking up from below)，并排躺为枕边平视(eye level)；
+     * 俯身笼罩(Leaning over)：近距居高临下直视(hovering above her)。
+   - ⛔ 高差与特写互斥铁律：双方存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看跨坐），绝对禁止单纯 close-up（防机位塌陷为肚脐视角或脱离身体）！强制使用带俯仰角度景别（bust shot from above / looking up from below），配合仰头/低头透视短缩链（head tilted back / head lowered, foreshortening）。双方同高度平视特写才成立。
+
+3. 【视锥探入与受力闭环公理 (Frustum Ingress & Contact Anchoring)】：
+   - 探入源头：观察者身处机位后下方，探入前景的实体（手脚肢体/道具/手机/雨伞/武器/器官）投影起点必须从画框下边缘/底角向前上方延伸（仰卧被骑乘时向上托扶），严禁从顶部或侧上方逆向垂落（彻底杜绝天降断肢与浮空武器）。
+   - 接触闭环：探入实体必须具备明确的「动作 + 物理接触受力面/受体」（如 gripping hip 抓胯、cupping chin 托脸、curled around handle 握柄、resting on surface 贴面支撑）。无接触则自然留白，绝不画空中虚抓（禁用 hands reaching in）。探入肢体默认单侧防增生。
+
+4. 【实体解耦与负面防分裂公理 (Entity Decoupling)】：
+   - POV 观察者绝对不出镜、严禁创建为 Character！其所有探入实体 100% 写入 Scene 前景；Scene 负面词底线补 boy, male，彻底阻断模型生成第二具骨骼与侧身肉块。
+   - 仅客观第三人称双人完整出镜同框时，才分别建 Char1 与 Char2 分配坐标（如 B3、D3）。
+   - 冲突下放：不可见部位（景别裁切/朝向背对/遮挡）移入该角色的 Char UC。全场通用违禁词进 Scene UC。
+
+══ 标签、着装与分级底线 ══
+- 分级底线：Safe（Scene 开头标 SFW，Scene UC 必含 nude, completely nude）；R（轻度暴露无器官无行为或显性体液，Scene UC 必含 nipples, genitals, penetration）；X（Scene 开头标 NSFW，器官与行为实写，Scene UC 必含 censored, mosaic）。
+- 服装签名：每件服装必须带颜色与长度词（例: white silk shirt, black pleated mini skirt, white thighhighs），不写无颜色衣物。
+- 坐标网格：|centers: 5×5 网格（单人 C3，双人 B3+D3，局部局部 auto）。
+
+══ JSON 输出契约与标准示例 ══
+严格直接输出合法 JSON，禁止 Markdown 标记或多余解释：
+{
+  "shouldDraw": true,
+  "reason": "1~2句极简推演: 场景主题+分层意图+观察者位姿与机位高差+分级判定",
+  "segments": [
+    {
+      "label": "分镜名称",
+      "anchor": {"text": "逐字原样摘自正文的连续10~40字原文"},
+      "scene": "Scene: SFW, love confession, {1girl}, pov, face-to-face. Middle ground: a petite girl with glasses leaning forward, holding out a love letter toward the viewer with both hands, her upper body clearly visible, not daring to look up. Character occupying around 65% of the image height. Background: the school gate and iron fence receding into light rain, wet pavement softly blurred. Middle ground girl, Background rainy school gate. pov, cowboy shot, from above, solo focus, front three-quarter view, high-angle, diffused light, blue-grey ambient light, shade;",
+      "negative": "nude, completely nude, nipples, pussy, penis, topless, bottomless, boy, male, camera",
+      "characters": [
+        {
+          "name": "Mira (original)",
+          "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, fair skin, black round-frame glasses",
+          "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, wet clothes, white knee socks",
+          "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent umbrella::, 1.4::right hand, holding love letter, white envelope with pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, not daring to look up at him, 2::speech bubble::, text\\\"请和我交往吧\\\"",
+          "center": "C3",
+          "uc": "feet, shoes, full body, large breasts, short hair, black hair, looking at viewer, wide shot"
+        }
+      ]
+    }
+  ]
+}
+
+现在开始处理用户输入，严格输出合法 JSON 对象！`;
+
     // V33: 基于 9.7 原版世界书，融入全息空间分层哲学、视锥探入物理受力闭环与站立人眼高差透视铁律（100%世界书未删减）
     const V33_SPEC_97_SYSTEM_PROMPT = V5_SPEC_97_SYSTEM_PROMPT;
-
-    // V34: 基于 V33 (9.7全息透视强化版)，全面净化示例中的露骨中文解剖与涉幼标签组合，防止被 Gemini 前置审核熔断
-    const V34_SPEC_97_SYSTEM_PROMPT = V33_SPEC_97_SYSTEM_PROMPT
-        .replace('她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头', '她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起')
-        .replace('teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin', 'young_adult, gyaru, long blonde hair, twintails, blue eyes, medium breasts, slender, fair skin')
-        .replace('white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs', 'white collared shirt, unbuttoned, open collar, bottomless, black thighhighs')
-        .replace('imminent penetration, spreading labia', 'cowgirl position, intimate penetration')
-        .replace(', vaginal fluids smearing close to camera', '');
 
     // V35: 基于 9.7 原版世界书，升级观察者体态位姿自适应人眼视点几何与视锥探入法则（100%世界书未删减）
     const V35_SPEC_97_SYSTEM_PROMPT = V33_SPEC_97_SYSTEM_PROMPT.replace(
@@ -1907,57 +1962,35 @@ Zimage 擅长理解复杂的英文长句和语境。
      * 倒地/摔倒（Fallen / On ground）：贴地极低仰视(ground level, looking up from ground)。
    - ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up（特写）！因为单纯 close-up 会诱导模型把摄像机强行拉平到目标面部，导致机位脱离观察者双眼（如站立看跪姿塌陷成肚脐视角、仰卧看骑乘镜头飞到半空）。必须改用带俯仰透视的景别：bust shot from above / cowboy shot from above（俯视高差）或 looking up from below / low-angle shot（仰视高差），需要面部细节时使用 face focus, depth of field。
    - 【高差透视链与视线对齐】：
-     * 高看低（如站看跪、坐看跪）：受体绑定仰头透视链：looking down from [standing/seated] eye-level, head tilted back, top of head visible, foreshortening，锁死自上而下视线；
-     * 低看高（如仰卧看跨坐、跪看站立）：受体与镜头绑定自下而上仰拍链：looking up from below, low angle, head lowered looking down at viewer, foreshortening；
-     * 平视特写（Eye Level Close-Up）的唯一合法场景：双方处于同等高度（同坐、同跪、同躺、同站）。
+     · 高看低（如站看跪、坐看跪）：受体绑定仰头透视链：looking down from [standing/seated] eye-level, head tilted back, top of head visible, foreshortening，锁死自上而下视线；
+     · 低看高（如仰卧看跨坐、跪看站立）：受体与镜头绑定自下而上仰拍链：looking up from below, low angle, head lowered looking down at viewer, foreshortening；
+     · 平视特写（Eye Level Close-Up）的唯一合法场景：双方处于同等高度（同坐、同跪、同躺、同站）。
    - 【自适应探入透视】：入镜实体（肢体/持物/道具/武器/器官）的透视短缩方向随观察者体态同步自适应：
      · 站/坐高位看低位：交代自上而下的前倾透视短缩 extending forward toward her with perspective foreshortening；
-     · 仰卧低位看高位跨坐：探入双手自下边缘向上托扶对方腰胯/大腿 hands extending upward from lower frame, gripping her waist/thighs。`
-    );
-
-    // V36: 基于 V35 (9.7自适应视点强化版)，全面净化示例中的露骨中文解剖与涉幼标签组合，防止被 Gemini 前置审核熔断（最新推荐）
-    const V36_SPEC_97_SYSTEM_PROMPT = V35_SPEC_97_SYSTEM_PROMPT
-        .replace('她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头', '她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起')
-        .replace('teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin', 'young_adult, gyaru, long blonde hair, twintails, blue eyes, medium breasts, slender, fair skin')
-        .replace('white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs', 'white collared shirt, unbuttoned, open collar, bottomless, black thighhighs')
-        .replace('imminent penetration, spreading labia', 'cowgirl position, intimate penetration')
-        .replace(', vaginal fluids smearing close to camera', '');
-
-    // V32: 历史合规版
-    const V32_SPEC_97_SYSTEM_PROMPT = V34_SPEC_97_SYSTEM_PROMPT;
-
-    const V30_SPEC_93_SYSTEM_PROMPT = V5_SPEC_93_SYSTEM_PROMPT
-        .replace('她缓缓地压低了腰身，将自己那两片已经充血肿胀、布满淫水的粉嫩蚌肉，贴上了杨博学的龟头', '她缓缓地压低了腰身，跨坐在我身上紧密贴合在一起')
-        .replace('teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin', 'young_adult, gyaru, long blonde hair, twintails, blue eyes, medium breasts, slender, fair skin')
-        .replace('white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs', 'white collared shirt, unbuttoned, open collar, bottomless, black thighhighs')
-        .replace('imminent penetration, spreading labia', 'cowgirl position, intimate penetration')
-        .replace(', vaginal fluids smearing close to camera', '');
+     · 仰卧低位看高位跨坐：探入双手自下边缘向上托扶对方腰胯/大腿 hands extending upward from lower frame, gripping her waist/thighs。`);
 
     const SYSTEM_PROMPT_PRESETS = {
-        v36_worldbook_97: { label: 'V36-9.7全息自适应视点强化合规版 (最新推荐/位姿自适应/视锥探入)', prompt: V36_SPEC_97_SYSTEM_PROMPT },
-        v35_worldbook_97: { label: 'V35-9.7全息自适应视点强化原版 (100%世界书未删减/位姿自适应/视锥探入)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
-        v34_worldbook_97: { label: 'V34-9.7全息透视强化合规版 (历史/防API拦截/视锥探入强化)', prompt: V34_SPEC_97_SYSTEM_PROMPT },
-        v33_worldbook_97: { label: 'V33-9.7全息透视强化原版 (历史/100%世界书未删减/视锥探入强化)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
-        v32_worldbook_97: { label: 'V32-9.7全息分层合规版 (历史)', prompt: V32_SPEC_97_SYSTEM_PROMPT },
-        v31_worldbook_97: { label: 'V31-9.7全息分层原版 (历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
-        v30_worldbook_93: { label: 'V30-9.3全息分层版 (历史)', prompt: V30_SPEC_93_SYSTEM_PROMPT },
-        v29_worldbook_93: { label: 'V29-9.3全息分层版 (历史原版)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
-        v28_worldbook_91: { label: 'V28-9.1全息分层版 (历史)', prompt: V5_SPEC_91_SYSTEM_PROMPT },
-        v27_5: { label: 'V27.5-全息分层自适应版', prompt: V27_5_SYSTEM_PROMPT },
-        v27_universal: { label: 'V27-全场景通用自适应版 (平铺)', prompt: UNIVERSAL_SYSTEM_PROMPT },
-        v26_hybrid: { label: 'V26-全息空间自适应版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
-        v25_hybrid: { label: 'V25-全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
-        consistent: { label: 'V24-8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
-        v24_3d: { label: 'V24-3D写实电影版', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
-        v23: { label: 'V23-国籍面相版', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
-        v22: { label: 'V22-完整版', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
-        zimage_nl: { label: 'Zimage-自然语言', prompt: ZIMAGE_NL_PROMPT },
-        grok_nl: { label: 'Grok-自然语言', prompt: GROK_NL_PROMPT },
-        storyboarder: { label: 'V21-POV增强版', prompt: STORYBOARDER_SYSTEM_PROMPT },
-        classic: { label: 'V20-经典版', prompt: STORYBOARDER_CLASSIC_PROMPT },
+        v40_lean: { label: 'V40·极简高效工业版 (默认推荐/四公理/秒级响应)', prompt: V40_LEAN_SYSTEM_PROMPT },
+        v35_worldbook_97: { label: 'V35·全息自适应视点详尽版 (9.7完整/自适应位姿机位/视锥探入)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
+        v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
+        v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
+        v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
+        v28_worldbook_91: { label: 'V28·9.1全息分层原版 (历史)', prompt: V5_SPEC_91_SYSTEM_PROMPT },
+        v27_5: { label: 'V27.5·全息分层自适应版 (历史)', prompt: V27_5_SYSTEM_PROMPT },
+        v27_universal: { label: 'V27·全场景通用自适应版 (历史)', prompt: UNIVERSAL_SYSTEM_PROMPT },
+        v26_hybrid: { label: 'V26·全息空间自适应版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        v25_hybrid: { label: 'V25·全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        consistent: { label: 'V24·8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        v24_3d: { label: 'V24·3D写实电影版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
+        v23: { label: 'V23·国籍面相版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
+        v22: { label: 'V22·完整版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
+        zimage_nl: { label: 'Zimage·自然语言', prompt: ZIMAGE_NL_PROMPT },
+        grok_nl: { label: 'Grok·自然语言', prompt: GROK_NL_PROMPT },
+        storyboarder: { label: 'V21·POV增强版 (历史)', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v36_worldbook_97';
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v40_lean';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
             const JAILBREAK_PRESETS = {
@@ -2169,10 +2202,10 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
-            // Auto-upgrade prompt to latest V36 9.7 Worldbook preset for users on legacy defaults
-            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91' || store.systemPromptPreset === 'v30_worldbook_93' || store.systemPromptPreset === 'v32_worldbook_97' || store.systemPromptPreset === 'v34_worldbook_97') {
-                store.systemPrompt = V36_SPEC_97_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'v36_worldbook_97';
+            // Auto-upgrade prompt to latest V40 Lean preset for users on legacy defaults
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91' || store.systemPromptPreset === 'v30_worldbook_93' || store.systemPromptPreset === 'v32_worldbook_97' || store.systemPromptPreset === 'v34_worldbook_97' || store.systemPromptPreset === 'v36_worldbook_97' || store.systemPromptPreset === 'v40_lean') {
+                store.systemPrompt = V40_LEAN_SYSTEM_PROMPT;
+                store.systemPromptPreset = 'v40_lean';
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
         }
@@ -2627,7 +2660,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['v36_worldbook_97', 'v35_worldbook_97', 'v34_worldbook_97', 'v33_worldbook_97', 'v32_worldbook_97', 'v31_worldbook_97', 'v30_worldbook_93', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrappedBase = (['v40_lean', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
@@ -5932,7 +5965,7 @@ SCHEMA:
                     displayBase = weightedName + displayBase.slice(name.length);
                 }
                 const store = getStore();
-                const wrappedBase = (['v36_worldbook_97', 'v35_worldbook_97', 'v34_worldbook_97', 'v33_worldbook_97', 'v32_worldbook_97', 'v31_worldbook_97', 'v30_worldbook_93', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+                const wrappedBase = (['v40_lean', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
                 const caption = [wrappedBase, outfit, action].filter(Boolean).join(', ');
                 return {
                     name,
@@ -7502,6 +7535,7 @@ SCHEMA:
 
     function getEnhancedContextSystemPrompt(ec) {
         const ecPrompts = {
+            v14: "【V14·极简四公理自适应推演 (最新推荐)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）按极简四公理完成推演：\n\n①【主题与分层】：锁定核心视觉瞬间，确立分层（无近身实体接触则自然省略 Foreground 降级为双层，严禁强凑）。\n②【视点位姿与高差】：明确观察者自身体态（站/坐/跪/躺/覆身）与视点坐标；判定与目标高差——垂直落差 ≥ 50cm 绝对禁止单纯 close-up，强制使用俯/仰角度景别配合透视短缩链（head tilted back / foreshortening）；同高度特写才成立。\n③【视锥探入与受力闭环】：探入实体（手脚/道具/武器/器官）一律从画框下边缘向前上方延伸，严禁上方逆向垂落；必须具备物理接触受力面闭环（抓胯/托脸/握柄/按压），无接触则留白。\n④【实体解耦与分级底线】：POV 观察者绝对不出镜、严禁创建为 Character，其探入实体归入 Scene 前景，Scene 负面必补 boy, male 防骨骼分裂；判定 Safe / R / X 并填齐底线负面词。\n⑤【自检输出】：确认字段自洽后直接输出合法 JSON，禁止输出任何多余标记。",
             v13: "【9.7 全息自适应视点与视锥动力学七步思维链推演 (V13)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息自适应视点强化七步推演：\n\n①【画面主题叙事预演】：用一句话叙事预演锁定当前核心要传递的视觉信息，只写看得见的物理画面，过滤掉抽象修辞与无关杂质。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【观察者体态位姿与自适应人眼视点几何】：\n- 【机位锚定：摄像机 ＝ 观察者双眼当前三维坐标】：POV 摄像机严格绑定观察者当前动作与体态下的真实人眼视点：\n  * 站姿(Standing, ~1.7m)：看站姿为平视(eye level)，看坐姿为微俯视，看跪/趴/躺为大俯视(steep high angle from standing height)；\n  * 坐姿(Sitting, ~1.1m~1.2m)：看坐姿为平视，看跪在腿间/地面为俯视(looking down between knees, from seated height)，看站立为仰视(low angle from below)；\n  * 跪姿(Kneeling, ~0.9m~1.0m)：同跪为平视(kneeling face-to-face)，看站立为大仰视(steep low angle looking up)；\n  * 躺卧/仰卧(Lying on back, ~0.2m~0.4m)：看被跨坐/骑乘为大仰视(steep low angle, looking up from below, lying on back looking up at her)，同躺为枕边平视(eye level, lying side by side)；\n  * 俯身/覆身在上(Leaning over / Missionary)：居高临下直视笼罩(leaning over her, looking down close-up)。\n- ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up！强制使用带俯仰透视景别（bust shot from above / looking up from below），配合仰头/低头短缩链（head tilted back / head lowered, foreshortening）；平视特写仅限双方同等高度；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸（仰卧被跨坐时向上托扶），严禁上方逆向垂落；探入必须具备「动作+物理接触受力面/受体」闭环；无接触则自然留白；探入肢体默认单侧防多肢体；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认观察者位姿与机位视角自洽、高差与景别自洽、探入实体受力闭环、服装四要素签名完备、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v12: "【9.7 全息透视与视锥动力学七步思维链推演 (V12)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息透视强化七步推演：\n\n①【画面主题叙事预演】：用一句话叙事预演锁定当前核心要传递的视觉信息，只写看得见的物理画面，过滤掉抽象修辞与无关杂质。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【机位视线几何与视锥探入闭环】：\n- 摄像机必须锚定在【人眼高度(1.7m)】，绝不滑落到腰腹/肚脐！\n- ⛔【高差与特写互斥铁律】：站姿看跪姿/躺姿等高落差场景，绝对禁止使用 close-up！强制使用 bust shot from above 或 cowboy shot from above，配合仰头透视链：steep high angle, looking down from standing eye-level, head tilted back, top of head visible, foreshortening；平视特写仅限双方同高度（同坐/同跪/同躺）；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸，严禁上方逆向垂落（杜绝天降肢体与浮空武器）；探入必须具备「动作+物理接触受力面/受体」闭环（如 gripping hip 抓胯、curled around handle 握柄、resting on surface 贴面、aiming at target 对准）；无接触则自然留白；肢体默认单侧防增生；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认高差与景别自洽、探入实体受力闭环、服装四要素签名完备（带长度/颜色）、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v11: "【9.7 全息空间七步思维链推演 (V11)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息七步推演：\n\n①【画面主题叙事预演】：用一句话叙事预演锁定当前核心要传递的视觉信息，只写看得见的物理画面，过滤掉抽象修辞与无关杂质。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间矩阵】：\n- 前景(Foreground) / 中景(Middle ground) / 背景(Background), 主体落层自由；【前景克制】：日常对话/开门/对视场景天然为双层，严禁强行编造入镜断手(reaching hands/pov hands)，无直接接触道具时直接省略 Foreground 降为双层！\n⑤【镜头组合与情境速查】：\n- 视角：第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）/ 第一人称 POV（视角主人⛔严禁创建为 Character，非直接接触场景严禁生成入镜手，仅保留出镜角色；Scene 负面补 boy/male 防鬼影）；\n- 景别与机位：按情境意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body/远景 wide_shot）与水平机位（正位/前侧3/4/侧位/后侧3/4/背位）、垂直机位（平视/俯视/仰视/顶视/虫视）。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认字段自洽、服装四要素签名完备（带长度/颜色）、左右手动作独立、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
@@ -9501,7 +9535,7 @@ SCHEMA:
                 <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
                 <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
                 <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V13: 9.7 全息自适应视点七步推演（最新推荐）。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v13">V13 · 9.7全息自适应视点推演 (最新推荐)</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
+                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V14: 极简四公理推演（最新推荐）。V13: 9.7 全息自适应视点推演。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v14">V14 · 极简四公理自适应推演 (最新推荐)</option><option value="v13">V13 · 9.7全息自适应视点推演</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
                 <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -9550,7 +9584,13 @@ SCHEMA:
                 <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
                 <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset">${Object.entries(SYSTEM_PROMPT_PRESETS).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}</select></label>
+                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset">
+                    <option value="v40_lean">${SYSTEM_PROMPT_PRESETS['v40_lean']?.label || 'V40·极简高效工业版'}</option>
+                    <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·全息自适应视点详尽版'}</option>
+                    <optgroup label="历史版本归档 (Legacy)">
+                        ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_lean' && key !== 'v35_worldbook_97').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
+                    </optgroup>
+                </select></label>
                 <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
             </div>
             <div class="st-scene-trigger-buttons">

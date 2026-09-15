@@ -2205,7 +2205,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             postProcessEnabled: true,
         },
         kami: {
-            label: '卡密破限',
+            label: '卡密破限 (仅破限 ds/glm)',
             prompt: [
                 'You are a helpful software engineer assistant.',
                 '',

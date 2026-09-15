@@ -4,7 +4,7 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 42;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 43;
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若正文包含显式图组或媒介标记，必须按其实际数量 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -2148,6 +2148,9 @@ Zimage 擅长理解复杂的英文长句和语境。
     const SYSTEM_PROMPT_PRESETS = {
         v40_worldbook_97_opt: { label: 'V40·文生图9.7全功能优化版 (默认推荐/四模块自洽架构/全场景覆盖)', prompt: V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT },
         v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (.53实装版/绝杀肚脐机位/无接触留白)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
+        consistent: { label: 'V24·8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
+        custom: { label: '⚙️ 自定义提示词 (Custom · 展开编辑框)', prompt: '' },
         v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
         v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
         v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
@@ -2156,14 +2159,12 @@ Zimage 擅长理解复杂的英文长句和语境。
         v27_universal: { label: 'V27·全场景通用自适应版 (历史)', prompt: UNIVERSAL_SYSTEM_PROMPT },
         v26_hybrid: { label: 'V26·全息空间自适应版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
         v25_hybrid: { label: 'V25·全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
-        consistent: { label: 'V24·8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
         v24_3d: { label: 'V24·3D写实电影版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
         v23: { label: 'V23·国籍面相版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
         v22: { label: 'V22·完整版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
         zimage_nl: { label: 'Zimage·自然语言', prompt: ZIMAGE_NL_PROMPT },
         grok_nl: { label: 'Grok·自然语言', prompt: GROK_NL_PROMPT },
         storyboarder: { label: 'V21·POV增强版 (历史)', prompt: STORYBOARDER_SYSTEM_PROMPT },
-        classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'v40_worldbook_97_opt';
@@ -2265,6 +2266,11 @@ Zimage 擅长理解复杂的英文长句和语境。
             squashMessages: true,
             geminiJailbreak: true,
             postProcessEnabled: true,
+        },
+        custom: {
+            label: '⚙️ 自定义破限词 (Custom · 展开编辑框)',
+            prompt: '',
+            postProcessPrompt: '',
         },
     };
 
@@ -9857,6 +9863,106 @@ SCHEMA:
             .rbq-sdt-debug-details summary { cursor: pointer; font-size: 11px; opacity: 0.8; user-select: none; transition: opacity .2s; outline: none; }
             .rbq-sdt-debug-details summary:hover { opacity: 1; }
             .rbq-sdt-debug-raw { margin-top: 6px; max-height: 220px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; padding: 8px 10px; background: rgba(0, 0, 0, 0.45); border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); color: #a8d1ff; user-select: text; margin-bottom: 0; }
+            /* Subtabs and Card Groups for Smart Draw Settings */
+            .rbq-sdt-nav-tabs {
+                display: flex;
+                gap: 6px;
+                padding: 6px;
+                background: rgba(0, 0, 0, 0.28);
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.08));
+                border-radius: 10px;
+                margin: 12px 0 16px 0;
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+            .rbq-sdt-nav-tab {
+                flex: 1;
+                min-width: max-content;
+                padding: 8px 12px;
+                font-size: 12.5px;
+                font-weight: 600;
+                color: var(--linear-text-secondary, #9da5b4);
+                background: transparent;
+                border: none;
+                border-radius: 7px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                white-space: nowrap;
+            }
+            .rbq-sdt-nav-tab:hover {
+                color: var(--linear-text-primary, #fff);
+                background: rgba(255, 255, 255, 0.06);
+            }
+            .rbq-sdt-nav-tab.active {
+                color: #fff !important;
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(99, 102, 241, 0.28)) !important;
+                border: 1px solid rgba(56, 189, 248, 0.45) !important;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+            }
+            .rbq-sdt-tab-content {
+                display: none;
+                animation: rbqSdtFadeIn 0.2s ease;
+            }
+            .rbq-sdt-tab-content.active {
+                display: block;
+            }
+            @keyframes rbqSdtFadeIn {
+                from { opacity: 0; transform: translateY(3px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .rbq-sdt-quick-tip {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 14px;
+                margin-bottom: 14px;
+                background: rgba(56, 189, 248, 0.08);
+                border: 1px solid rgba(56, 189, 248, 0.22);
+                border-radius: 8px;
+                font-size: 12px;
+                line-height: 1.5;
+                color: var(--linear-text-primary, #e2e8f0);
+            }
+            .rbq-sdt-card-group {
+                background: var(--linear-surface, rgba(255, 255, 255, 0.025));
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.07));
+                border-radius: 10px;
+                padding: 14px 16px;
+                margin-bottom: 14px;
+            }
+            .rbq-sdt-card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 12px;
+                padding-bottom: 6px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .rbq-sdt-card-title {
+                font-size: 13.5px;
+                font-weight: 600;
+                color: var(--linear-text-primary, #e2e8f0);
+                display: flex;
+                align-items: center;
+                gap: 7px;
+            }
+            .rbq-sdt-status-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border-radius: 6px;
+                font-size: 11.5px;
+                background: rgba(56, 189, 248, 0.12);
+                border: 1px solid rgba(56, 189, 248, 0.3);
+                color: #38bdf8;
+            }
         `;
         document.head.append(style);
     }
@@ -9969,18 +10075,49 @@ SCHEMA:
             element.style.display = group === provider ? '' : 'none';
         });
 
-        const jbPromptField = document.getElementById('rbq-sdt-gemini-jailbreak-prompt-field');
+        // 破限预设与隐私显示控制
+        const isJbOn = Boolean(document.getElementById('rbq-sdt-gemini-jailbreak')?.checked);
         const jbPresetField = document.getElementById('rbq-sdt-gemini-jailbreak-preset-field');
-        if (jbPromptField) {
-            const isJbOn = document.getElementById('rbq-sdt-gemini-jailbreak').checked;
-            jbPromptField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
-            if (jbPresetField) jbPresetField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
+        const jbPromptField = document.getElementById('rbq-sdt-gemini-jailbreak-prompt-field');
+        const jbStatusBadge = document.getElementById('rbq-sdt-jb-status-badge');
+        const jbResetBtn = document.getElementById('rbq-sdt-reset-jailbreak');
+        const jbPreset = val('rbq-sdt-gemini-jailbreak-preset') || DEFAULT_JAILBREAK_PRESET;
+        const isJbCustom = jbPreset === 'custom';
+
+        if (jbPresetField) jbPresetField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
+        if (jbPromptField) jbPromptField.style.display = (provider === 'openai' && isJbOn && isJbCustom) ? '' : 'none';
+        if (jbStatusBadge) {
+            jbStatusBadge.style.display = (provider === 'openai' && isJbOn && !isJbCustom) ? 'inline-flex' : 'none';
+            const jbLabel = JAILBREAK_PRESETS[jbPreset]?.label || jbPreset;
+            jbStatusBadge.innerHTML = `<i class="fa-solid fa-user-secret"></i> <span>已内置封装：<strong>${jbLabel}</strong>（他人不可见）</span>`;
+        }
+        if (jbResetBtn) {
+            jbResetBtn.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
+            jbResetBtn.textContent = isJbCustom ? '重置为推荐预设' : '重置为所选预设';
         }
 
-        const postProcessPromptField = document.getElementById('rbq-sdt-post-process-prompt-field');
-        if (postProcessPromptField) {
-            const isPpOn = document.getElementById('rbq-sdt-post-process-enabled').checked;
-            postProcessPromptField.style.display = (provider === 'openai' && isPpOn) ? '' : 'none';
+        const isPpOn = Boolean(document.getElementById('rbq-sdt-post-process-enabled')?.checked);
+        const ppPromptField = document.getElementById('rbq-sdt-post-process-prompt-field');
+        const ppResetBtn = document.getElementById('rbq-sdt-reset-post-process');
+        if (ppPromptField) ppPromptField.style.display = (provider === 'openai' && isPpOn && isJbCustom) ? '' : 'none';
+        if (ppResetBtn) ppResetBtn.style.display = (provider === 'openai' && isPpOn) ? '' : 'none';
+
+        // 提示词预设与隐私显示控制
+        const sysPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
+        const isSysCustom = sysPreset === 'custom';
+        const sysPromptField = document.getElementById('rbq-sdt-system-prompt-field');
+        const sysStatusBadge = document.getElementById('rbq-sdt-preset-status-badge');
+        const sysResetBtn = document.getElementById('rbq-sdt-reset-system-prompt');
+
+        if (sysPromptField) sysPromptField.style.display = isSysCustom ? '' : 'none';
+        if (sysStatusBadge) {
+            sysStatusBadge.style.display = isSysCustom ? 'none' : 'inline-flex';
+            const sysLabel = SYSTEM_PROMPT_PRESETS[sysPreset]?.label || sysPreset;
+            sysStatusBadge.innerHTML = `<i class="fa-solid fa-shield-halved"></i> <span>已内置封包：<strong>${sysLabel}</strong>（免维护/防窥探）</span>`;
+        }
+        if (sysResetBtn) {
+            sysResetBtn.style.display = '';
+            sysResetBtn.textContent = isSysCustom ? '重置为推荐预设' : '重置为内置 Prompt';
         }
 
         const thinkingBudgetField = document.getElementById('rbq-sdt-thinking-budget-field');
@@ -10069,119 +10206,285 @@ SCHEMA:
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw)</span></div>
             <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。支持 segments[] 多段卡片、anchor.text 精准插入，以及按段落独立自动生图。</div>
             <div class="rbq-sdt-sticky-save"><button id="rbq-sdt-save" class="menu_button rbq-sdt-save-btn" type="button">💾 保存智能触发器设置</button></div>
-            <div class="st-scene-trigger-modal-grid">
-                <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
-                <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
-                <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field" title="选择前情增强分析版本。V13: 9.7 全息自适应视点推演（最新推荐）。V14: 极简四公理自适应推演。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v13">V13 · 9.7全息自适应视点推演 (最新推荐)</option><option value="v14">V14 · 极简四公理自适应推演</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
-                <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
-                <label class="st-scene-trigger-field" title="设置未解析时的生图/Tag卡片在消息中的默认呈现位置"><span>初始生图按钮位置</span><select id="rbq-sdt-card-position"><option value="bottom">消息末尾 (默认)</option><option value="top">消息开头 (置顶封面，免滑屏)</option><option value="message_actions">消息操作栏小图标 (纯净免占位)</option></select></label>
-                <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
-                <div class="st-scene-trigger-field wide">
-                    <span style="font-weight: bold; font-size: 14px; opacity: 0.9;">API 预设/模板管理</span>
-                    <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 16px; width: 100%; margin-top: 4px;">
-                        <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px;">
-                            <span style="font-size: 12px; opacity: 0.8;">载入已有模板</span>
-                            <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
-                                <select id="rbq-sdt-api-template" style="flex: 1; height: 30px; margin: 0;">
-                                    <option value="">-- 选择模板 --</option>
-                                </select>
-                                <button id="rbq-sdt-delete-api-template" class="menu_button" type="button" style="padding: 0 10px; margin: 0; height: 30px; display: flex; align-items: center; justify-content: center;" title="删除选中的模板"><i class="fa-solid fa-trash-can"></i></button>
-                            </div>
+            <!-- 现代化分段导航选项卡 (5大模块) -->
+            <div class="rbq-sdt-nav-tabs">
+                <button type="button" class="rbq-sdt-nav-tab active" data-tab="quick"><i class="fa-solid fa-rocket"></i> 快速入门</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="jailbreak"><i class="fa-solid fa-shield-halved"></i> 破限与防护</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="staging"><i class="fa-solid fa-film"></i> 分镜与生成</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="lorebook"><i class="fa-solid fa-book-bookmark"></i> 记忆与世界书</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="advanced"><i class="fa-solid fa-sliders"></i> 进阶与模板</button>
+            </div>
+
+            <!-- 模块一：🚀 快速入门 (新手专属) -->
+            <div id="rbq-sdt-tab-quick" class="rbq-sdt-tab-content active">
+                <div class="rbq-sdt-quick-tip">
+                    <i class="fa-solid fa-circle-info" style="color: #38bdf8; font-size: 15px; flex-shrink: 0;"></i>
+                    <span><strong>新手快速上手：</strong>只需填写下方 API 地址与 Key，勾选【启用插件】和【分析完自动生图】，正文输出完毕后即可全自动智能分镜生图！内置预设已默认隐藏底层提示词，界面清爽防泄露。</span>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-power-off" style="color:#22c55e;"></i> 核心主控与自动化</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="off">关闭</option><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option></select></label>
+                        <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
+                        <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-network-wired" style="color:#38bdf8;"></i> 大模型 API 接口连接</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
+                        <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password" placeholder="sk-..."></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
+                        <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-scroll" style="color:#eab308;"></i> 提示词风格预设 (Prompt Presets)</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="rbq-sdt-preset-status-badge" class="rbq-sdt-status-badge" style="display:none;"></span>
+                            <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button" style="font-size:11px;padding:3px 10px;">重置为内置 Prompt</button>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 6px; flex: 1.2; min-width: 240px;">
-                            <span style="font-size: 12px; opacity: 0.8;">另存为新模板</span>
-                            <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
-                                <input id="rbq-sdt-new-template-name" type="text" placeholder="模板名称" style="flex: 1; height: 30px; margin: 0;">
-                                <button id="rbq-sdt-save-api-template" class="menu_button" type="button" style="padding: 0 14px; margin: 0; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label class="st-scene-trigger-field wide"><span>提示词预设档位</span><select id="rbq-sdt-system-preset">
+                            <option value="v40_worldbook_97_opt">${SYSTEM_PROMPT_PRESETS['v40_worldbook_97_opt']?.label || 'V40·文生图9.7全功能优化版'}</option>
+                            <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·文生图9.7完整详尽版'}</option>
+                            <option value="custom">⚙️ 自定义提示词 (Custom · 展开编辑框)</option>
+                            <optgroup label="历史版本归档 (Legacy)">
+                                ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97' && key !== 'custom').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
+                            </optgroup>
+                        </select></label>
+                        <label id="rbq-sdt-system-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
+                            <span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span>
+                            <textarea id="rbq-sdt-system-prompt" rows="8" placeholder="在此自定义你的 System Prompt..."></textarea>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 模块二：🛡️ 破限与模型防护 -->
+            <div id="rbq-sdt-tab-jailbreak" class="rbq-sdt-tab-content">
+                <div class="rbq-sdt-quick-tip">
+                    <i class="fa-solid fa-user-shield" style="color: #a855f7; font-size: 15px; flex-shrink: 0;"></i>
+                    <span><strong>隐私保护模式：</strong>选择官方内置破限预设时，敏感破限词已全部深度封装，界面无明文显示；需要魔改时切换为【⚙️ 自定义破限词】即可展开编辑。</span>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-lock-open" style="color:#f43f5e;"></i> 破限与越狱配置</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="rbq-sdt-jb-status-badge" class="rbq-sdt-status-badge" style="display:none;"></span>
+                            <button id="rbq-sdt-reset-jailbreak" class="menu_button" type="button" style="font-size:11px;padding:3px 10px;display:none;">重置为所选预设</button>
+                        </div>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <label id="rbq-sdt-gemini-jailbreak-preset-field" class="st-scene-trigger-field" style="display:none;" title="选择破限预设风格"><span>破限预设档位</span><select id="rbq-sdt-gemini-jailbreak-preset">
+                            ${Object.entries(JAILBREAK_PRESETS).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
+                        </select></label>
+                        <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词</span><textarea id="rbq-sdt-gemini-jailbreak-prompt" rows="6" placeholder="在此输入用于绕过系统审核的破限词... \n如需构造伪造对话记录 (Few-shot)，可使用 <|system|>, <|user|>, <|assistant|> 作为分隔符。"></textarea></label>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-virus" style="color:#06b6d4;"></i> API 通讯加固与免审机制</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="利用大模型 Function Calling / Tool Calling 免审机制，自动将生图契约包装为 generate_draw_spec 工具调用，规避 Gemini 等渠道的流式外审截断、中途断流与道歉说教"><span>🛡️ 工具调用抗外审 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-arrow-right-to-bracket" style="color:#a855f7;"></i> 尾部输出引导 (卡思维链)</span>
+                        <button id="rbq-sdt-reset-post-process" class="menu_button" type="button" style="font-size:11px;padding:3px 10px;display:none;">重置默认</button>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>尾部引导内容</span><textarea id="rbq-sdt-post-process-prompt" rows="5" placeholder="在此输入尾部输出引导... &#10;默认作为 Assistant 预填充，亦可使用 &lt;|assistant|&gt;, &lt;|user|&gt; 或 User:, Assistant: 构造多回合闭环（例如卡密破限：多轮伪造与中断引导）。"></textarea></label>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-brain" style="color:#ec4899;"></i> 思维链与推演强度 (Thinking)</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="设置大模型的思考链/推演深度。兼容 OpenAI o-series/o3-mini (reasoning_effort)、Gemini 2.5/3.7 (thinking_budget)、Claude 3.7 (thinking) 等思考模型。如遇不兼容端点将自动降级重试。"><span>思维链强度 (Thinking)</span><select id="rbq-sdt-thinking-effort">
+                            <option value="default">默认 (不限制 / 由服务端决定)</option>
+                            <option value="off">关闭思考 (0 Token / 极速模式)</option>
+                            <option value="low">低强度 (Low / 1024 Token 快速推演)</option>
+                            <option value="medium">中强度 (Medium / 4096 Token 平衡)</option>
+                            <option value="high">高强度 (High / 8192 Token 深度推演)</option>
+                            <option value="custom">自定义预算 Token 数...</option>
+                        </select></label>
+                        <label id="rbq-sdt-thinking-budget-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" style="display:none;" title="自定义思维链 Token 预算上限 (thinking_budget)。设为 0 即为关闭思考。"><span>思维链 Token 预算</span><input id="rbq-sdt-thinking-budget" type="number" min="0" max="65536" step="256" placeholder="例如: 2048"></label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 模块三：🎨 分镜与生成控制 -->
+            <div id="rbq-sdt-tab-staging" class="rbq-sdt-tab-content">
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-clapperboard" style="color:#38bdf8;"></i> 分镜规则与呈现位置</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
+                        <label class="st-scene-trigger-field" title="设置未解析时的生图/Tag卡片在消息中的默认呈现位置"><span>初始生图按钮位置</span><select id="rbq-sdt-card-position"><option value="bottom">消息末尾 (默认)</option><option value="top">消息开头 (置顶封面，免滑屏)</option><option value="message_actions">消息操作栏小图标 (纯净免占位)</option></select></label>
+                        <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div style="grid-column: 1 / -1; font-size: 11.5px; opacity: 0.75; line-height: 1.4; padding: 4px 0;"><i class="fa-solid fa-lightbulb" style="color:#f59e0b; margin-right:4px;"></i>提示：正文若包含 [图组XX]、[插画X]、[照片] 等连拍标记，插件会自动 1:1 完整输出所有分镜卡片，不受最少生图数限制。</div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-users-viewfinder" style="color:#10b981;"></i> 多角色分镜定位 (Multi-Char)</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-compass" style="color:#6366f1;"></i> 剧情上下文感知与推演</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
+                        <label class="st-scene-trigger-field" title="选择前情增强分析版本。V13: 9.7 全息自适应视点推演（最新推荐）。V14: 极简四公理自适应推演。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v13">V13 · 9.7全息自适应视点推演 (最新推荐)</option><option value="v14">V14 · 极简四公理自适应推演</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
+                        <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 模块四：📚 记忆与世界书 -->
+            <div id="rbq-sdt-tab-lorebook" class="rbq-sdt-tab-content">
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-user-tag" style="color:#ec4899;"></i> 角色外貌记忆</span>
+                    </div>
+                    <div class="st-scene-trigger-subpanel-hint" style="margin-bottom:10px;">正文生图时会自动学习角色外貌并保持一致性。角色深度定制、7维捏人、衣柜差分及多角色空间站位已统一迁移至「角色工坊」工作台。</div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-char-memory-field" class="st-scene-trigger-field switch"><span>启用角色外貌记忆</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-memory" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-inject-char-card-field" class="st-scene-trigger-field switch"><span>参考角色卡信息（未建档时）</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-char-card" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                    <div class="st-scene-trigger-field wide" style="margin-top:10px;">
+                        <span>当前已记忆角色</span>
+                        <div id="rbq-sdt-char-profile-list" class="rbq-sdt-note" style="display:flex; flex-direction:column; gap:6px;">${renderCharacterProfileList()}</div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-book-bookmark" style="color:#eab308;"></i> 世界书兼容与词库</span>
+                    </div>
+                    <div class="st-scene-trigger-subpanel-hint" style="margin-bottom:10px;">导入包含服装、姿势、场景等 Tag 模板的世界书 JSON，AI 会根据剧情上下文自动匹配并注入词条。</div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
+                        <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
+                    </div>
+                    <div class="st-scene-trigger-buttons" style="margin:10px 0;">
+                        <button id="rbq-sdt-import-lorebook" class="menu_button" type="button"><i class="fa-solid fa-file-import"></i> 选择世界书文件</button>
+                        <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
+                    </div>
+                    <div class="st-scene-trigger-field wide">
+                        <span>已挂载世界书</span>
+                        <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-halved" style="color:#06b6d4;"></i> 🛡️ 世界书防审查加固</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-lorebook-base64-field" class="st-scene-trigger-field switch" title="将注入给大模型的世界书与角色卡设定通过 Base64 进行混淆封装，防止 Google 网关层前置输入审核机制误杀。"><span>🛡️ 世界书防输入审核混淆 (Base64)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-base64" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-lorebook-waf-retry-field" class="st-scene-trigger-field switch" title="当触发 Google 或大模型前置敏感词审核熔断时，自动剥离世界书发起纯净正文自愈重试保底（默认关闭，方便检验 Base64 混淆是否奏效）。"><span>🛡️ 审核熔断自愈重试 (剥离世界书保底)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-waf-retry" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 模块五：⚙️ 进阶与模板 -->
+            <div id="rbq-sdt-tab-advanced" class="rbq-sdt-tab-content">
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-floppy-disk" style="color:#38bdf8;"></i> API 预设/模板管理</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div class="st-scene-trigger-field wide">
+                            <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 16px; width: 100%;">
+                                <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px;">
+                                    <span style="font-size: 12px; opacity: 0.8;">载入已有模板</span>
+                                    <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                                        <select id="rbq-sdt-api-template" style="flex: 1; height: 30px; margin: 0;">
+                                            <option value="">-- 选择模板 --</option>
+                                        </select>
+                                        <button id="rbq-sdt-delete-api-template" class="menu_button" type="button" style="padding: 0 10px; margin: 0; height: 30px; display: flex; align-items: center; justify-content: center;" title="删除选中的模板"><i class="fa-solid fa-trash-can"></i></button>
+                                    </div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 6px; flex: 1.2; min-width: 240px;">
+                                    <span style="font-size: 12px; opacity: 0.8;">另存为新模板</span>
+                                    <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                                        <input id="rbq-sdt-new-template-name" type="text" placeholder="模板名称" style="flex: 1; height: 30px; margin: 0;">
+                                        <button id="rbq-sdt-save-api-template" class="menu_button" type="button" style="padding: 0 14px; margin: 0; height: 30px; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
-                <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
-                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password"></label>
-                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
-                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
-                <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="设置大模型的思考链/推演深度。兼容 OpenAI o-series/o3-mini (reasoning_effort)、Gemini 2.5/3.7 (thinking_budget)、Claude 3.7 (thinking) 等思考模型。如遇不兼容端点将自动降级重试。"><span>思维链强度 (Thinking)</span><select id="rbq-sdt-thinking-effort">
-                    <option value="default">默认 (不限制 / 由服务端决定)</option>
-                    <option value="off">关闭思考 (0 Token / 极速模式)</option>
-                    <option value="low">低强度 (Low / 1024 Token 快速推演)</option>
-                    <option value="medium">中强度 (Medium / 4096 Token 平衡)</option>
-                    <option value="high">高强度 (High / 8192 Token 深度推演)</option>
-                    <option value="custom">自定义预算 Token 数...</option>
-                </select></label>
-                <label id="rbq-sdt-thinking-budget-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" style="display:none;" title="自定义思维链 Token 预算上限 (thinking_budget)。设为 0 即为关闭思考。"><span>思维链 Token 预算</span><input id="rbq-sdt-thinking-budget" type="number" min="0" max="65536" step="256" placeholder="例如: 2048"></label>
-                <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-gemini-jailbreak-preset-field" class="st-scene-trigger-field" style="display:none;" title="选择破限预设风格"><span>破限预设档位</span><select id="rbq-sdt-gemini-jailbreak-preset">
-                    ${Object.entries(JAILBREAK_PRESETS).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
-                </select></label>
-                <label id="rbq-sdt-gemini-jailbreak-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>破限词 <button id="rbq-sdt-reset-jailbreak" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置为所选预设</button></span><textarea id="rbq-sdt-gemini-jailbreak-prompt" placeholder="在此输入用于绕过系统审核的破限词... \n如需构造伪造对话记录 (Few-shot)，可使用 <|system|>, <|user|>, <|assistant|> 作为分隔符。"></textarea></label>
-                <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="利用大模型 Function Calling / Tool Calling 免审机制，自动将生图契约包装为 generate_draw_spec 工具调用，规避 Gemini 等渠道的流式外审截断、中途断流与道歉说教"><span>🛡️ 工具调用抗外审 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;"><span>尾部引导内容 <button id="rbq-sdt-reset-post-process" class="menu_button" type="button" style="font-size:11px;padding:2px 8px;margin-left:8px;">重置默认</button></span><textarea id="rbq-sdt-post-process-prompt" placeholder="在此输入尾部输出引导... &#10;默认作为 Assistant 预填充，亦可使用 &lt;|assistant|&gt;, &lt;|user|&gt; 或 User:, Assistant: 构造多回合闭环（例如卡密破限：多轮伪造与中断引导）。"></textarea></label>
-                <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
-                <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
-                <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
-                <label class="st-scene-trigger-field"><span>内置 Prompt 档位</span><select id="rbq-sdt-system-preset">
-                    <option value="v40_worldbook_97_opt">${SYSTEM_PROMPT_PRESETS['v40_worldbook_97_opt']?.label || 'V40·文生图9.7全功能优化版'}</option>
-                    <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·文生图9.7完整详尽版'}</option>
-                    <optgroup label="历史版本归档 (Legacy)">
-                        ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
-                    </optgroup>
-                </select></label>
-                <label class="st-scene-trigger-field wide"><span>System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span><textarea id="rbq-sdt-system-prompt"></textarea></label>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-bug" style="color:#f59e0b;"></i> 故障排查与调试</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示 (Toast)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-arrows-rotate" style="color:#22c55e;"></i> 缓存与楼层扫描</span>
+                    </div>
+                    <div class="st-scene-trigger-buttons" style="margin: 4px 0 8px 0;">
+                        <button id="rbq-sdt-clear-cache" class="menu_button" type="button"><i class="fa-solid fa-broom"></i> 清空触发缓存</button>
+                        <button id="rbq-sdt-scan" class="menu_button" type="button"><i class="fa-solid fa-magnifying-glass"></i> 重新扫描/恢复可见楼层</button>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-tags" style="color:#94a3b8;"></i> 旧版短标记兼容</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers" rows="3"></textarea></label>
+                    </div>
+                </div>
             </div>
-            <div class="st-scene-trigger-buttons">
-                <button id="rbq-sdt-reset-system-prompt" class="menu_button" type="button">重置为所选内置 Prompt</button>
-                <button id="rbq-sdt-clear-cache" class="menu_button" type="button">清空触发缓存</button>
-                <button id="rbq-sdt-scan" class="menu_button" type="button">重新扫描/恢复可见楼层</button>
-            </div>
-            <div class="st-scene-trigger-subpanel-title" style="margin-top:16px;font-size:14px;">
-                <i class="fa-solid fa-book-bookmark"></i>
-                <span>世界书兼容与词库</span>
-            </div>
-            <div class="st-scene-trigger-subpanel-hint">导入包含服装、姿势、场景等 Tag 模板的世界书 JSON，AI 会根据剧情上下文自动匹配并注入词条。</div>
-            <div class="st-scene-trigger-modal-grid">
-                <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-lorebook-base64-field" class="st-scene-trigger-field switch" title="将注入给大模型的世界书与角色卡设定通过 Base64 进行混淆封装，防止 Google 网关层前置输入审核机制误杀。"><span>🛡️ 世界书防输入审核混淆 (Base64)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-base64" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-lorebook-waf-retry-field" class="st-scene-trigger-field switch" title="当触发 Google 或大模型前置敏感词审核熔断时，自动剥离世界书发起纯净正文自愈重试保底（默认关闭，方便检验 Base64 混淆是否奏效）。"><span>🛡️ 审核熔断自愈重试 (剥离世界书保底)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-waf-retry" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
-                <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
-            </div>
-            <div class="st-scene-trigger-buttons">
-                <button id="rbq-sdt-import-lorebook" class="menu_button" type="button">选择世界书文件</button>
-                <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
-            </div>
-            <div class="st-scene-trigger-field wide" style="margin-top:8px;">
-                <span>已挂载世界书</span>
-                <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
-            </div>
-            <div class="st-scene-trigger-subpanel-title" style="margin-top:16px;font-size:14px;">
-                <i class="fa-solid fa-brain"></i>
-                <span>角色外貌记忆</span>
-            </div>
-            <div class="st-scene-trigger-subpanel-hint">正文生图时会自动学习角色外貌并保持一致性。角色深度定制、7维捏人、衣柜差分及多角色空间站位已统一迁移至「角色工坊」工作台。</div>
-            <div class="st-scene-trigger-modal-grid">
-                <div id="rbq-sdt-char-memory-field" class="st-scene-trigger-field switch"><span>启用角色外貌记忆</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-memory" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <div id="rbq-sdt-inject-char-card-field" class="st-scene-trigger-field switch"><span>参考角色卡信息（未建档时）</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-char-card" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-            </div>
-            <div class="st-scene-trigger-field wide" style="margin-top:4px;">
-                <span>当前已记忆角色</span>
-                <div id="rbq-sdt-char-profile-list" class="rbq-sdt-note" style="display:flex; flex-direction:column; gap:6px;">${renderCharacterProfileList()}</div>
-            </div>
+
             <div class="rbq-sdt-note">自动生成策略跟随 RBQ 主设置：RBQ 自动生成开启时会按 segment 独立自动出图；关闭时只显示“生成图片”按钮。建议让 tagger 返回 anchor.text，以便卡片插入到目标原句后方。</div>
         `;
         panel.append(container);
@@ -10263,6 +10566,39 @@ SCHEMA:
         document.getElementById('rbq-sdt-gemini-jailbreak').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-post-process-enabled').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-thinking-effort').addEventListener('change', updateProviderVisibility);
+
+        // 子选项卡导航切换
+        container.querySelectorAll('.rbq-sdt-nav-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabKey = btn.getAttribute('data-tab');
+                container.querySelectorAll('.rbq-sdt-nav-tab').forEach(b => b.classList.toggle('active', b === btn));
+                container.querySelectorAll('.rbq-sdt-tab-content').forEach(c => {
+                    c.classList.toggle('active', c.id === `rbq-sdt-tab-${tabKey}`);
+                });
+            });
+        });
+
+        // 监听自定义编辑：用户在文本框打字时自动将预设下拉切换为 custom
+        document.getElementById('rbq-sdt-system-prompt')?.addEventListener('input', () => {
+            const sysSelect = document.getElementById('rbq-sdt-system-preset');
+            if (sysSelect && sysSelect.value !== 'custom') {
+                sysSelect.value = 'custom';
+                const s = getStore();
+                s.systemPromptPreset = 'custom';
+                save();
+                updateProviderVisibility();
+            }
+        });
+        document.getElementById('rbq-sdt-gemini-jailbreak-prompt')?.addEventListener('input', () => {
+            const jbSelect = document.getElementById('rbq-sdt-gemini-jailbreak-preset');
+            if (jbSelect && jbSelect.value !== 'custom') {
+                jbSelect.value = 'custom';
+                const s = getStore();
+                s.geminiJailbreakPreset = 'custom';
+                save();
+                updateProviderVisibility();
+            }
+        });
         // Set checkbox value BEFORE bindSwitch — sync() reads initial state
         let charMemoryValue = !!store.characterMemoryEnabled;
         try {
@@ -10508,19 +10844,30 @@ SCHEMA:
         document.getElementById('rbq-sdt-system-preset').addEventListener('change', (e) => {
             const preset = e.target.value;
             const s = getStore();
-            const nextPrompt = SYSTEM_PROMPT_PRESETS[preset]?.prompt || DEFAULT_SYSTEM_PROMPT;
             s.systemPromptPreset = preset;
-            s.systemPrompt = nextPrompt;
-            s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+            if (preset !== 'custom') {
+                const nextPrompt = SYSTEM_PROMPT_PRESETS[preset]?.prompt || DEFAULT_SYSTEM_PROMPT;
+                s.systemPrompt = nextPrompt;
+                s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+                document.getElementById('rbq-sdt-system-prompt').value = nextPrompt;
+                document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
+                toastr.info(`已切换为：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
+            } else {
+                document.getElementById('rbq-sdt-system-prompt-version').textContent = '自定义模式 (Custom)';
+                toastr.info('已切换为：⚙️ 自定义提示词（已展开编辑框）', PLUGIN_NAME);
+            }
             save();
-            document.getElementById('rbq-sdt-system-prompt').value = nextPrompt;
-            document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
-            toastr.info(`已切换为：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
+            updateProviderVisibility();
         });
 
         document.getElementById('rbq-sdt-reset-system-prompt').onclick = () => {
             const s = getStore();
-            const preset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
+            let preset = val('rbq-sdt-system-preset');
+            if (!preset || preset === 'custom') {
+                preset = DEFAULT_SYSTEM_PROMPT_PRESET;
+                const sysSelect = document.getElementById('rbq-sdt-system-preset');
+                if (sysSelect) sysSelect.value = preset;
+            }
             const nextPrompt = SYSTEM_PROMPT_PRESETS[preset]?.prompt || DEFAULT_SYSTEM_PROMPT;
             s.systemPromptPreset = preset;
             s.systemPrompt = nextPrompt;
@@ -10528,7 +10875,8 @@ SCHEMA:
             save();
             document.getElementById('rbq-sdt-system-prompt').value = nextPrompt;
             document.getElementById('rbq-sdt-system-prompt-version').textContent = `${SYSTEM_PROMPT_PRESETS[preset]?.label || '内置 Prompt'} · v${DEFAULT_SYSTEM_PROMPT_VERSION}（最新）`;
-            toastr.success(`已重置为所选内置 Prompt：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
+            updateProviderVisibility();
+            toastr.success(`已重置为内置 Prompt：${SYSTEM_PROMPT_PRESETS[preset]?.label || preset}`, PLUGIN_NAME);
         };
         function applyJailbreakPresetSwitches(preset, s) {
             if (!preset) return;
@@ -10557,25 +10905,35 @@ SCHEMA:
 
         document.getElementById('rbq-sdt-gemini-jailbreak-preset').addEventListener('change', (e) => {
             const presetKey = e.target.value;
-            const preset = JAILBREAK_PRESETS[presetKey];
-            const prompt = preset?.prompt || DEFAULT_JAILBREAK_PROMPT;
             const s = getStore();
             s.geminiJailbreakPreset = presetKey;
-            s.geminiJailbreakPrompt = prompt;
-            if (preset?.postProcessPrompt) {
-                s.postProcessPrompt = preset.postProcessPrompt;
-                const ppField = document.getElementById('rbq-sdt-post-process-prompt');
-                if (ppField) ppField.value = preset.postProcessPrompt;
+            if (presetKey !== 'custom') {
+                const preset = JAILBREAK_PRESETS[presetKey];
+                const prompt = preset?.prompt || DEFAULT_JAILBREAK_PROMPT;
+                s.geminiJailbreakPrompt = prompt;
+                if (preset?.postProcessPrompt) {
+                    s.postProcessPrompt = preset.postProcessPrompt;
+                    const ppField = document.getElementById('rbq-sdt-post-process-prompt');
+                    if (ppField) ppField.value = preset.postProcessPrompt;
+                }
+                applyJailbreakPresetSwitches(preset, s);
+                document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = prompt;
+                toastr.info(`破限预设已切换为：${preset?.label || presetKey}`, PLUGIN_NAME);
+            } else {
+                toastr.info('已切换为：⚙️ 自定义破限词（已展开编辑框）', PLUGIN_NAME);
             }
-            applyJailbreakPresetSwitches(preset, s);
             save();
-            document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = prompt;
-            toastr.info(`破限预设已切换为：${preset?.label || presetKey}`, PLUGIN_NAME);
+            updateProviderVisibility();
         });
 
         document.getElementById('rbq-sdt-reset-jailbreak').onclick = () => {
             const s = getStore();
-            const presetKey = val('rbq-sdt-gemini-jailbreak-preset') || DEFAULT_JAILBREAK_PRESET;
+            let presetKey = val('rbq-sdt-gemini-jailbreak-preset');
+            if (!presetKey || presetKey === 'custom') {
+                presetKey = DEFAULT_JAILBREAK_PRESET;
+                const jbSelect = document.getElementById('rbq-sdt-gemini-jailbreak-preset');
+                if (jbSelect) jbSelect.value = presetKey;
+            }
             const preset = JAILBREAK_PRESETS[presetKey];
             const prompt = preset?.prompt || DEFAULT_JAILBREAK_PROMPT;
             s.geminiJailbreakPreset = presetKey;
@@ -10588,6 +10946,7 @@ SCHEMA:
             applyJailbreakPresetSwitches(preset, s);
             save();
             document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = prompt;
+            updateProviderVisibility();
             toastr.success(`破限词及配套尾部引导已重置为：${preset?.label || presetKey}`, PLUGIN_NAME);
         };
         document.getElementById('rbq-sdt-reset-post-process').onclick = () => {

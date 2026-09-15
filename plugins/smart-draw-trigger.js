@@ -10244,44 +10244,24 @@ SCHEMA:
             <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw)</span></div>
             <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。支持 segments[] 多段卡片、anchor.text 精准插入，以及按段落独立自动生图。</div>
             <div class="rbq-sdt-sticky-save"><button id="rbq-sdt-save" class="menu_button rbq-sdt-save-btn" type="button">💾 保存智能触发器设置</button></div>
-            <!-- 现代化分段导航选项卡 (5大模块) -->
+            <!-- 现代化分段导航选项卡 (5大业务模块) -->
             <div class="rbq-sdt-nav-tabs">
-                <button type="button" class="rbq-sdt-nav-tab active" data-tab="quick"><i class="fa-solid fa-rocket"></i> 快速入门</button>
-                <button type="button" class="rbq-sdt-nav-tab" data-tab="jailbreak"><i class="fa-solid fa-shield-halved"></i> 破限与防护</button>
-                <button type="button" class="rbq-sdt-nav-tab" data-tab="staging"><i class="fa-solid fa-film"></i> 分镜与生成</button>
-                <button type="button" class="rbq-sdt-nav-tab" data-tab="lorebook"><i class="fa-solid fa-book-bookmark"></i> 记忆与世界书</button>
-                <button type="button" class="rbq-sdt-nav-tab" data-tab="advanced"><i class="fa-solid fa-sliders"></i> 进阶工具</button>
+                <button type="button" class="rbq-sdt-nav-tab active" data-tab="api"><i class="fa-solid fa-network-wired"></i> 接口连接</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="prompt"><i class="fa-solid fa-masks-theater"></i> 提示词与破限</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="staging"><i class="fa-solid fa-clapperboard"></i> 触发与分镜</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="lorebook"><i class="fa-solid fa-book-bookmark"></i> 设定与世界书</button>
+                <button type="button" class="rbq-sdt-nav-tab" data-tab="tools"><i class="fa-solid fa-screwdriver-wrench"></i> 维护与调试</button>
             </div>
 
-            <!-- 模块一：🚀 快速入门 (新手专属) -->
-            <div id="rbq-sdt-tab-quick" class="rbq-sdt-tab-content active">
-                <div class="rbq-sdt-quick-tip">
-                    <i class="fa-solid fa-circle-info" style="color: #38bdf8; font-size: 15px; flex-shrink: 0;"></i>
-                    <span><strong>新手快速上手：</strong>填写下方 API 地址与 Key，选择模型，勾选【启用插件】与【开启破限】即可。</span>
-                </div>
-
-                <!-- 核心主控与自动化 -->
+            <!-- 模块一：🔌 接口连接 -->
+            <div id="rbq-sdt-tab-api" class="rbq-sdt-tab-content active">
+                <!-- API 模板管理 -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-power-off" style="color:#22c55e;"></i> 核心主控与自动化</span>
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-floppy-disk" style="color:#38bdf8;"></i> API 预设与模板管理</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option><option value="off">关闭</option></select></label>
-                        <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
-                        <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                    </div>
-                </div>
-
-                <!-- 大模型 API 接口连接 (集成 API 模板管理与思维链强度) -->
-                <div class="rbq-sdt-card-group">
-                    <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-network-wired" style="color:#38bdf8;"></i> 大模型 API 接口连接</span>
-                    </div>
-                    <div class="st-scene-trigger-modal-grid">
-                        <!-- API 模板管理 -->
-                        <div class="st-scene-trigger-field wide" style="background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                        <div class="st-scene-trigger-field wide">
                             <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 14px; width: 100%;">
                                 <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 200px;">
                                     <span style="font-size: 11.5px; opacity: 0.85; font-weight: 600;">载入 API 模板</span>
@@ -10301,14 +10281,33 @@ SCHEMA:
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
 
+                <!-- 大模型 API 接口连接 -->
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-network-wired" style="color:#38bdf8;"></i> 大模型 API 接口配置</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
                         <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                         <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password" placeholder="sk-..."></label>
                         <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
-                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
+                        <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>自定义模型名 <small style="opacity:0.6;font-weight:normal;">(若填写则覆盖上方选项)</small></span><input id="rbq-sdt-openai-model-custom" type="text" placeholder="例如: gpt-4o-mini"></label>
 
-                        <!-- 思维链强度 (Thinking) -->
+                        <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
+                    </div>
+                </div>
+
+                <!-- 思维链推演强度 (Thinking) -->
+                <div class="rbq-sdt-card-group" data-rbq-sdt-provider="openai">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-brain" style="color:#ec4899;"></i> 思维链与推演深度 (Thinking)</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="设置大模型的思考链/推演深度。兼容 OpenAI o-series/o3-mini (reasoning_effort)、Gemini 2.5/3.7 (thinking_budget)、Claude 3.7 (thinking) 等思考模型。如遇不兼容端点将自动降级重试。"><span>思维链强度 (Thinking)</span><select id="rbq-sdt-thinking-effort">
                             <option value="default">默认 (不限制 / 由服务端决定)</option>
                             <option value="off">关闭思考 (0 Token / 极速模式)</option>
@@ -10318,13 +10317,12 @@ SCHEMA:
                             <option value="custom">自定义预算 Token 数...</option>
                         </select></label>
                         <label id="rbq-sdt-thinking-budget-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" style="display:none;" title="自定义思维链 Token 预算上限 (thinking_budget)。设为 0 即为关闭思考。"><span>思维链 Token 预算</span><input id="rbq-sdt-thinking-budget" type="number" min="0" max="65536" step="256" placeholder="例如: 2048"></label>
-
-                        <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="custom"><span>自定义 HTTP URL</span><input id="rbq-sdt-custom-url" type="text" placeholder="https://your-server/tagger"></label>
-                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥 Header</span><input id="rbq-sdt-custom-key-header" type="text" placeholder="Authorization"></label>
-                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="custom"><span>自定义密钥</span><input id="rbq-sdt-custom-key" type="password"></label>
                     </div>
                 </div>
+            </div>
 
+            <!-- 模块二：🎭 提示词与破限 -->
+            <div id="rbq-sdt-tab-prompt" class="rbq-sdt-tab-content">
                 <!-- 提示词风格预设 (Prompt Presets) -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
@@ -10345,14 +10343,11 @@ SCHEMA:
                         </label>
                     </div>
                 </div>
-            </div>
 
-            <!-- 模块二：🛡️ 破限与防护 (抗外审与特殊通道) -->
-            <div id="rbq-sdt-tab-jailbreak" class="rbq-sdt-tab-content">
                 <!-- 破限与越狱配置 -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-lock-open" style="color:#f43f5e;"></i> 破限与越狱配置</span>
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-lock-open" style="color:#f43f5e;"></i> 破限与越狱配置 (Jailbreak)</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -10368,9 +10363,10 @@ SCHEMA:
                     </div>
                 </div>
 
+                <!-- 通信加固与防外审机制 -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-virus" style="color:#06b6d4;"></i> API 通讯加固与免审机制</span>
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-virus" style="color:#06b6d4;"></i> 通信加固与免审机制</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="利用大模型 Function Calling / Tool Calling 免审机制，自动将生图契约包装为 generate_draw_spec 工具调用，规避 Gemini 等渠道的流式外审截断、中途断流与道歉说教"><span>🛡️ 工具调用抗外审 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
@@ -10392,8 +10388,24 @@ SCHEMA:
                 </div>
             </div>
 
-            <!-- 模块三：🎨 分镜与生成控制 -->
+            <!-- 模块三：🎬 触发与分镜 -->
             <div id="rbq-sdt-tab-staging" class="rbq-sdt-tab-content">
+                <!-- 核心主控与自动化 -->
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-power-off" style="color:#22c55e;"></i> 核心主控与自动化</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch"><span>启用插件</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <label class="st-scene-trigger-field"><span>触发模式</span><select id="rbq-sdt-mode"><option value="auto">自动扫描所有楼层 (推荐)</option><option value="hybrid">自动扫描 + 短标记兼容</option><option value="marker">仅旧版短标记</option><option value="off">关闭</option></select></label>
+                        <label class="st-scene-trigger-field"><span>监听消息</span><select id="rbq-sdt-target-role"><option value="assistant">仅角色消息</option><option value="user">仅用户消息</option><option value="all">全部消息</option></select></label>
+                        <div id="rbq-sdt-auto-generate-field" class="st-scene-trigger-field switch" title="tagger 分析完成后自动调用生图 API，无需手动点击生成按钮"><span>分析完自动生图</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-auto-generate" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-autorun-field" class="st-scene-trigger-field switch" title="酒馆正文输出完毕后，自动对最新楼层调用 tagger API 解析。不会影响历史楼层，刷新/切卡也不会触发。"><span>自动调用 tagger API</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-autorun" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                    </div>
+                </div>
+
+                <!-- 分镜规则与呈现位置 -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-clapperboard" style="color:#38bdf8;"></i> 分镜规则与呈现位置</span>
@@ -10401,10 +10413,21 @@ SCHEMA:
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
                         <label class="st-scene-trigger-field" title="设置未解析时的生图/Tag卡片在消息中的默认呈现位置"><span>初始生图按钮位置</span><select id="rbq-sdt-card-position"><option value="bottom">消息末尾 (默认)</option><option value="top">消息开头 (置顶封面，免滑屏)</option><option value="message_actions">消息操作栏小图标 (纯净免占位)</option></select></label>
-                        <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
 
+                <!-- 剧情上下文感知与推演 -->
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-compass" style="color:#6366f1;"></i> 剧情上下文感知与推演</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
+                        <label class="st-scene-trigger-field" title="选择前情增强分析版本。V13: 9.7 全息自适应视点推演（最新推荐）。V14: 极简四公理自适应推演。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v13">V13 · 9.7全息自适应视点推演 (最新推荐)</option><option value="v14">V14 · 极简四公理自适应推演</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
+                    </div>
+                </div>
+
+                <!-- 多角色分镜定位 (Multi-Char) -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-users-viewfinder" style="color:#10b981;"></i> 多角色分镜定位 (Multi-Char)</span>
@@ -10413,22 +10436,12 @@ SCHEMA:
                         <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                    </div>
-                </div>
-
-                <div class="rbq-sdt-card-group">
-                    <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-compass" style="color:#6366f1;"></i> 剧情上下文感知与推演</span>
-                    </div>
-                    <div class="st-scene-trigger-modal-grid">
-                        <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="选择前情增强分析版本。V13: 9.7 全息自适应视点推演（最新推荐）。V14: 极简四公理自适应推演。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v13">V13 · 9.7全息自适应视点推演 (最新推荐)</option><option value="v14">V14 · 极简四公理自适应推演</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
                         <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
             </div>
 
-            <!-- 模块四：📚 记忆与世界书 -->
+            <!-- 模块四：📚 设定与世界书 -->
             <div id="rbq-sdt-tab-lorebook" class="rbq-sdt-tab-content">
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
@@ -10477,18 +10490,8 @@ SCHEMA:
                 </div>
             </div>
 
-            <!-- 模块五：⚙️ 进阶工具 -->
-            <div id="rbq-sdt-tab-advanced" class="rbq-sdt-tab-content">
-                <div class="rbq-sdt-card-group">
-                    <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-bug" style="color:#f59e0b;"></i> 故障排查与调试</span>
-                    </div>
-                    <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示 (Toast)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                    </div>
-                </div>
-
+            <!-- 模块五：🛠️ 维护与调试 -->
+            <div id="rbq-sdt-tab-tools" class="rbq-sdt-tab-content">
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-arrows-rotate" style="color:#22c55e;"></i> 缓存与楼层扫描</span>
@@ -10496,6 +10499,16 @@ SCHEMA:
                     <div class="st-scene-trigger-buttons" style="margin: 4px 0 8px 0;">
                         <button id="rbq-sdt-clear-cache" class="menu_button" type="button"><i class="fa-solid fa-broom"></i> 清空触发缓存</button>
                         <button id="rbq-sdt-scan" class="menu_button" type="button"><i class="fa-solid fa-magnifying-glass"></i> 重新扫描/恢复可见楼层</button>
+                    </div>
+                </div>
+
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-bug" style="color:#f59e0b;"></i> 故障排查与调试</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-debug-field" class="st-scene-trigger-field switch"><span>触发调试提示 (Toast)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tagger-debug-field" class="st-scene-trigger-field switch" title="开启后，若 Tagger 判定无需生图，将在卡片上直观显示 LLM 给出的判定原因与原始输出；在画廊底部也会出现 Tagger 调试按钮，便于排查与分析。"><span>🔍 Tagger 判定与输出调试</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tagger-debug" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
 

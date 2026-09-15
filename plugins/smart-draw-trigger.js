@@ -4,16 +4,16 @@
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 41;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 42;
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
-任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为 1~3 个独立分镜填入 segments 数组），输出严谨、高审美、解剖自洽的合法 JSON 对象。
+任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若正文包含显式图组或媒介标记，必须按其实际数量 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。
 
 ══ 总则与铁律 ══
 - 优先级：先画对（该有的都有）→ 再画稳（锚定复用，跨图连续）→ 后画美（剧情未写处，补充适合氛围的上镜细节，让画面更好看）。
 - 多节拍分镜与图组拆分准则（核心）：
-  · 数量指引：单条消息通常提取 1~3 个关键视觉分镜，均匀分布于 segments 数组中。
-  · 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须一对一为每一个图组/照片输出独立的 segment 分镜，绝对严禁漏提或合并！
+  · 数量指引与图组对齐：单条消息按视觉节拍提取分镜。若正文显式包含 [图组XX]、[插画X]、[照片X] 等媒介标记，必须按正文实际图组数量 1:1 完整输出全部图组（正文有 4 个图组就输出 4 个分镜，有 5 个就输出 5 个，绝对不设上限、严禁截断或遗漏！）；若正文无显式图组标记，则按剧情高潮与转折自然提取（通常 1~4 个关键分镜）。
+  · 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须严格一对一为每一个图组/照片输出独立的 segment 分镜，正文有几个就必须出几个，绝对严禁漏提、截断或合并！
   · 优先触发：动作阶段突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/抽打/高潮特写等）。
   · 独立构图：每个 segment 必须有独立的 label、独立的 anchor.text（从正文对应段落一字不差截取 10~40 字原文）、独立的 scene 构图与 characters！
 - 真实性优先：只画物理规律真实成立的画面，严禁将修辞比喻/心理活动/抽象幻觉当作真实实体来画。
@@ -218,7 +218,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
 ══ 字段格式 ══
 - shouldDraw: boolean, 是否生图（无视觉变化输出 false）
 - reason: string, 7 步极简推演
-- segments: 数组，包含 1~3 个独立分镜对象（正文有几个关键视觉时刻/图组，就在 segments 数组中输出几个分镜）：
+- segments: 数组，包含独立分镜对象（正文有几个关键视觉时刻/图组，就在 segments 数组中输出几个分镜；若正文有显式图组，则图组数量即分镜数量，正文有4个图组就必须输出4个分镜，严禁遗漏任何一个）：
   · label: 分镜名称（如 "图组01·午后夏风", "图组02·冰甜小憩"）
   · anchor: {"text": "逐字原样摘自正文该分镜对应段落的10~40字原文"}
   · scene: 分层空间结构与环境总览字符串
@@ -1913,13 +1913,13 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     // V40: 文生图9.7全功能优化版（四模块自洽架构 / 零功能丢失 / 剔除跨章节重复与查表冗余 / 性能与依从率最高）
     const V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
-任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为 1~3 个独立分镜填入 segments 数组），输出严谨、高审美、解剖自洽的合法 JSON 对象。纯日常闲聊/无视觉变化输出 {"shouldDraw": false}。
+任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若包含显式图组标记则 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。纯日常闲聊/无视觉变化输出 {"shouldDraw": false}。
 
 ══ 总则与交互铁律 ══
 1. 核心优先级：先画对（该有的都有）→ 再画稳（锚定复用，跨图连续）→ 后画美（剧情未写处补充氛围上镜细节）。真实性优先，只画物理规律真实成立的画面，严禁将修辞比喻/心理活动画成实体。
 2. 多节拍分镜与图组拆分准则（核心）：
-   - 数量指引：单条消息通常提取 1~3 个关键视觉分镜，均匀分布于 segments 数组中。
-   - 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须一对一为每一个图组/照片输出独立的 segment 分镜，绝对严禁漏提或合并！
+   - 数量指引与图组对齐：单条消息按视觉节拍提取分镜。若正文显式包含 [图组XX]、[插画X]、[照片X] 等媒介标记，必须按正文实际图组数量 1:1 完整输出全部图组（正文有 4 个图组就输出 4 个分镜，有 5 个就输出 5 个，绝对不设上限、严禁截断或遗漏！）；若正文无显式图组标记，则按剧情高潮与转折自然提取（通常 1~4 个关键分镜）。
+   - 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须严格一对一为每一个图组/照片输出独立的 segment 分镜，正文有几个就必须出几个，绝对严禁漏提、截断或合并！
    - 优先触发：动作阶段突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/抽打/高潮特写等）。
    - 独立构图：每个 segment 必须有独立的 label、独立的 anchor.text（从正文对应段落一字不差截取 10~40 字原文）、独立的 scene 构图与 characters！
 3. 标签与自然语言：能用标签表达的优先用标签；微妙语感（空间/质感/特殊动态）用自然语言短句紧密配合；关联度高内容跨分类相邻排列，自然语言紧跟其修饰的标签。禁止质量词（masterpiece等）与画师名（@artist）。
@@ -2040,7 +2040,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 3. 【JSON 字段格式】：
    - shouldDraw: boolean, 是否生图（无视觉变化输出 false）
    - reason: string, 7 步极简推演
-   - segments: 数组，包含 1~3 个独立分镜对象（正文有几个关键视觉时刻/图组，就在 segments 数组中输出几个分镜）：
+   - segments: 数组，包含独立分镜对象（正文有几个关键视觉时刻/图组，就在 segments 数组中输出几个分镜；若正文有显式图组，则图组数量即分镜数量，正文有4个图组就必须输出4个分镜，严禁遗漏任何一个）：
      · label: 分镜名称（如 "图组01·午后夏风", "图组02·冰甜小憩"）
      · anchor: {"text": "逐字原样摘自正文该分镜所在段落的10~40字原文"}
      · scene: 分层空间结构与环境总览字符串
@@ -7882,6 +7882,10 @@ SCHEMA:
         const lorebook = skipLorebook ? [] : collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
 
         const minSeg = Number(store.minSegments) || 0;
+        const rawContent = String(current?.mes || '');
+        const photoGroupMatches = rawContent.match(/\[(?:图组|插画|照片|分镜|连拍)\s*\d*[^\]]*\]/g) || [];
+        const detectedPhotoCount = photoGroupMatches.length;
+        const effectiveMinSeg = Math.max(minSeg, detectedPhotoCount);
 
         const payload = {
             mode: trigger.type,
@@ -7890,11 +7894,16 @@ SCHEMA:
             currentMessage: {
                 role: current?.is_user ? 'user' : 'assistant',
                 name: current?.name || '',
-                content: String(current?.mes || ''),
+                content: rawContent,
             },
             recentMessages,
             contextCount: Number(store.contextCount) || 5,
-            ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。` } : {}),
+            ...(effectiveMinSeg > 0 ? {
+                minSegments: effectiveMinSeg,
+                segmentInstruction: detectedPhotoCount > 0
+                    ? `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！`
+                    : `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。`
+            } : {}),
             ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: {
                 shouldDraw: 'boolean',

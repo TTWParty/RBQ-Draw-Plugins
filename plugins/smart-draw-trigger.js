@@ -531,6 +531,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         manualDrawEnabled: false,
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         lorebookEnabled: false,
+        lorebookCurrentFloorOnly: false,
         lorebookContextDepth: 5,
         lorebookBudget: 8000,
         lorebookSources: [],
@@ -1266,19 +1267,28 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         if (!store.lorebookEnabled) return [];
         const entries = getNormalizedLorebooks();
+        const currentFloorOnly = !!store.lorebookCurrentFloorOnly;
         const globalDepth = Math.max(1, Number(store.lorebookContextDepth) || 5);
         const allContext = [...recentMessages.map(m => m.content), currentMes];
 
         // Phase 1: keyword activation with full ST-compatible logic
         const activated = [];
         for (const entry of entries) {
-            const entryDepth = entry.depth != null ? Math.max(1, entry.depth + 1) : globalDepth + 1;
-            const contextText = allContext.slice(-entryDepth).join('\n');
+            let contextText = '';
+            if (currentFloorOnly) {
+                contextText = String(currentMes || '');
+            } else {
+                const entryDepth = entry.depth != null ? Math.max(1, entry.depth + 1) : Math.max(1, globalDepth);
+                contextText = allContext.slice(-entryDepth).join('\n');
+            }
             const rKey = getLorebookEntryRuntimeKey(entry);
 
             const isMatch = checkEntryKeyMatch(entry, contextText);
 
             if (!isMatch) {
+                // 当开启“仅匹配当前楼层”时，严格跳过未在当前楼层命中的条目，杜绝历史楼层 sticky 粘性记忆带出退场角色
+                if (currentFloorOnly) continue;
+
                 // Sticky: keep active for N messages after last trigger
                 const sticky = lorebookRuntimeState.stickyState.get(rKey);
                 if (sticky && sticky.remaining > 0) {
@@ -3113,7 +3123,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 <div id="rbq-sdt-manual-draw-field" class="st-scene-trigger-field switch" title="在悬浮球菜单中添加‘手动描述生图’按钮，点击后可输入自定义场景描述，由 tagger 生成 tag 并出图"><span>悬浮球手动生图按钮</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-manual-draw" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                 <label id="rbq-sdt-markers-field" class="st-scene-trigger-field wide"><span>短标记（每行一个）<small style="opacity:0.6;font-weight:normal;margin-left:6px;">旧版兼容功能</small></span><textarea id="rbq-sdt-markers"></textarea></label>
                 <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
+                <div id="rbq-sdt-lorebook-current-floor-field" class="st-scene-trigger-field switch" title="仅从当前要生图的楼层中检索世界书关键词，彻底杜绝前文退场角色的幽灵入侵与历史特征污染。"><span>仅匹配当前楼层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-current-floor" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                <label id="rbq-sdt-lorebook-depth-wrap" class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                 <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
                 <div class="st-scene-trigger-field wide">
                     <span style="font-weight: bold; font-size: 14px; opacity: 0.9;">API 预设/模板管理</span>
@@ -3226,6 +3237,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
+        document.getElementById('rbq-sdt-lorebook-current-floor').checked = !!store.lorebookCurrentFloorOnly;
         document.getElementById('rbq-sdt-lorebook-depth').value = store.lorebookContextDepth;
         document.getElementById('rbq-sdt-lorebook-budget').value = store.lorebookBudget || 8000;
         document.getElementById('rbq-sdt-provider').value = store.provider;
@@ -3260,6 +3272,18 @@ Zimage 擅长理解复杂的英文长句和语境。
         bindSwitch('rbq-sdt-auto-generate-field', 'rbq-sdt-auto-generate');
         bindSwitch('rbq-sdt-manual-draw-field', 'rbq-sdt-manual-draw');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
+        bindSwitch('rbq-sdt-lorebook-current-floor-field', 'rbq-sdt-lorebook-current-floor');
+        const updateDepthVisibility = () => {
+            const isCur = !!document.getElementById('rbq-sdt-lorebook-current-floor')?.checked;
+            const wrap = document.getElementById('rbq-sdt-lorebook-depth-wrap');
+            if (wrap) {
+                wrap.style.opacity = isCur ? '0.45' : '1';
+                wrap.style.pointerEvents = isCur ? 'none' : '';
+                wrap.title = isCur ? '已开启“仅匹配当前楼层”，无需回溯历史楼层' : '';
+            }
+        };
+        document.getElementById('rbq-sdt-lorebook-current-floor')?.addEventListener('change', updateDepthVisibility);
+        updateDepthVisibility();
         bindSwitch('rbq-sdt-gemini-jailbreak-field', 'rbq-sdt-gemini-jailbreak');
         bindSwitch('rbq-sdt-inject-char-card-field', 'rbq-sdt-inject-char-card');
         bindSwitch('rbq-sdt-post-process-field', 'rbq-sdt-post-process-enabled');
@@ -3436,6 +3460,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
+            s.lorebookCurrentFloorOnly = checked('rbq-sdt-lorebook-current-floor');
             s.lorebookContextDepth = Math.max(1, Math.min(50, Number(val('rbq-sdt-lorebook-depth')) || 5));
             s.lorebookBudget = Math.max(500, Number(val('rbq-sdt-lorebook-budget')) || 8000);
             s.provider = val('rbq-sdt-provider');

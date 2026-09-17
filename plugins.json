@@ -67,8 +67,8 @@
     "id": "rbq-image-privacy",
     "name": "图片隐私模式 (Image Privacy Mode)",
     "description": "支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "TTWP-09",
-    "main": "plugins/image-privacy-mode.js?v=1.0.0"
+    "main": "plugins/image-privacy-mode.js?v=1.0.1"
   }
 ]

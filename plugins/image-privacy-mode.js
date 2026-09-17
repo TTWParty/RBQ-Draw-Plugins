@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
@@ -261,6 +261,19 @@
         const container = wrapper.querySelector('.st-scene-trigger-inline-result');
         const isCollapsed = container ? container.classList.contains('rbq-privacy-collapsed') : true;
 
+        // 【关键防死循环与幂等保护】：如果状态完全未变，绝不修改 innerHTML，避免触发 DOM 重绘与 MutationObserver
+        if (
+            bar.dataset.mode === mode &&
+            bar.dataset.label === label &&
+            (mode !== 'collapse' || bar.dataset.collapsed === String(isCollapsed))
+        ) {
+            return;
+        }
+
+        bar.dataset.mode = mode;
+        bar.dataset.label = label || '';
+        bar.dataset.collapsed = String(isCollapsed);
+
         if (mode === 'gallery') {
             const viewText = label ? `🖼️ 查看: ${label}` : '🖼️ 查看大图';
             bar.innerHTML = `
@@ -296,7 +309,22 @@
         }
     }
 
-    // ── 5. 应用展示模式到单个卡片 ──
+    // ── 5. 清除卡片隐私状态（恢复原始状态） ──
+    function cleanCardPrivacyState(wrapper, container) {
+        if (!wrapper.dataset.rbqPrivacyAppliedMode) return;
+        delete wrapper.dataset.rbqPrivacyAppliedMode;
+        delete wrapper.dataset.rbqPrivacyAppliedLabel;
+        delete wrapper.dataset.rbqPrivacyAppliedCollapsed;
+        container?.classList.remove('rbq-privacy-hidden-image', 'rbq-privacy-collapsed');
+        wrapper.querySelector('.rbq-privacy-bar')?.remove();
+        const rawBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
+        if (rawBtn instanceof HTMLElement) {
+            rawBtn.classList.remove('rbq-privacy-hidden-btn');
+        }
+        if (container) removeSpoilerMask(container);
+    }
+
+    // ── 6. 应用展示模式到单个卡片 ──
     function applyCardMode(wrapper, mode) {
         if (!(wrapper instanceof HTMLElement)) return;
         const container = wrapper.querySelector('.st-scene-trigger-inline-result');
@@ -305,8 +333,23 @@
         // 仅在已有生成图片时生效
         const img = container.querySelector('img');
         const hasImage = !!(img || container.dataset.rbqHasImage || wrapper.dataset.latestImageUrl);
-        if (!hasImage) return;
+        if (!hasImage) {
+            cleanCardPrivacyState(wrapper, container);
+            return;
+        }
         container.dataset.rbqHasImage = '1';
+
+        const label = getCardSceneLabel(wrapper);
+        const isCollapsed = !wrapper.dataset.rbqManualExpanded;
+
+        // 幂等性守卫：如果卡片已应用过且状态完全一致，绝不重复操作 DOM
+        if (
+            wrapper.dataset.rbqPrivacyAppliedMode === mode &&
+            wrapper.dataset.rbqPrivacyAppliedLabel === label &&
+            (mode !== 'collapse' || wrapper.dataset.rbqPrivacyAppliedCollapsed === String(isCollapsed))
+        ) {
+            return;
+        }
 
         const ui = wrapper.querySelector('.st-scene-trigger-inline-ui');
         const rawBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
@@ -324,7 +367,7 @@
             container.classList.remove('rbq-privacy-hidden-image');
             removeSpoilerMask(container);
 
-            if (!wrapper.dataset.rbqManualExpanded) {
+            if (isCollapsed) {
                 container.classList.add('rbq-privacy-collapsed');
             } else {
                 container.classList.remove('rbq-privacy-collapsed');
@@ -352,6 +395,10 @@
                 rawBtn.classList.remove('rbq-privacy-hidden-btn');
             }
         }
+
+        wrapper.dataset.rbqPrivacyAppliedMode = mode;
+        wrapper.dataset.rbqPrivacyAppliedLabel = label || '';
+        wrapper.dataset.rbqPrivacyAppliedCollapsed = String(isCollapsed);
     }
 
     function ensureSpoilerMask(wrapper, container) {
@@ -400,15 +447,32 @@
         }
     }
 
-    // ── 6. 批量应用到所有聊天卡片 ──
+    // ── 7. 批量应用与防重入调度 ──
+    let isApplying = false;
     function applyModeToAllCards(mode) {
-        const curMode = mode || getStoredMode();
-        document.querySelectorAll('.st-scene-trigger-inline-wrap').forEach((wrapper) => {
-            applyCardMode(wrapper, curMode);
+        if (isApplying) return;
+        isApplying = true;
+        try {
+            const curMode = mode || getStoredMode();
+            const wrappers = document.querySelectorAll('.st-scene-trigger-inline-wrap');
+            for (let i = 0; i < wrappers.length; i++) {
+                applyCardMode(wrappers[i], curMode);
+            }
+        } finally {
+            isApplying = false;
+        }
+    }
+
+    let scheduledRaf = null;
+    function requestApplyMode(mode) {
+        if (scheduledRaf !== null) return;
+        scheduledRaf = requestAnimationFrame(() => {
+            scheduledRaf = null;
+            applyModeToAllCards(mode);
         });
     }
 
-    // ── 7. 全局点击事件委托 ──
+    // ── 8. 全局点击事件委托 ──
     document.addEventListener('click', function(event) {
         const viewBtn = event.target.closest('.rbq-privacy-view-btn');
         const collapseBtn = event.target.closest('.rbq-privacy-collapse-toggle');
@@ -439,13 +503,21 @@
             if (wrapper) {
                 const imgLink = wrapper.querySelector('.st-scene-trigger-inline-image-link');
                 if (imgLink) {
-                    imgLink.click();
+                    imgLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
                 } else {
                     const img = wrapper.querySelector('img');
                     if (img && img.src) {
                         const prompt = wrapper.dataset?.prompt || '';
                         const messageId = Number(wrapper.dataset?.messageId);
-                        RBQ.api?.openImageViewer?.(prompt, img.src, { messageId });
+                        const fakeLink = document.createElement('a');
+                        fakeLink.className = 'st-scene-trigger-inline-image-link';
+                        fakeLink.href = img.src;
+                        fakeLink.dataset.prompt = prompt;
+                        fakeLink.dataset.url = img.src;
+                        fakeLink.dataset.messageId = Number.isFinite(messageId) ? String(messageId) : '';
+                        wrapper.appendChild(fakeLink);
+                        fakeLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                        fakeLink.remove();
                     }
                 }
             }
@@ -464,10 +536,16 @@
                     if (isCollapsed) {
                         container.classList.remove('rbq-privacy-collapsed');
                         wrapper.dataset.rbqManualExpanded = '1';
+                        wrapper.dataset.rbqPrivacyAppliedCollapsed = 'false';
+                        const bar = wrapper.querySelector('.rbq-privacy-bar');
+                        if (bar) bar.dataset.collapsed = 'false';
                         collapseBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${escapeHtml(label ? `收起: ${label}` : '收起')}`;
                     } else {
                         container.classList.add('rbq-privacy-collapsed');
                         delete wrapper.dataset.rbqManualExpanded;
+                        wrapper.dataset.rbqPrivacyAppliedCollapsed = 'true';
+                        const bar = wrapper.querySelector('.rbq-privacy-bar');
+                        if (bar) bar.dataset.collapsed = 'true';
                         collapseBtn.innerHTML = `<i class="fa-solid fa-eye"></i> ${escapeHtml(label ? `展开: ${label}` : '展开图片')}`;
                     }
                 }
@@ -489,42 +567,10 @@
         }
     }, true);
 
-    // ── 8. 注入设置到宿主通用设置面板 ──
+    // ── 9. 注入设置到宿主通用设置面板 ──
     function injectSettingUi() {
         let container = document.getElementById(SETTING_CONTAINER_ID);
-        if (!container) {
-            const target = document.querySelector('.st-scene-trigger-field[data-setting-key="singleGenerationOnly"]')
-                || document.querySelector('.st-scene-trigger-field[data-setting-key="showFloatingButton"]');
-            if (!target || !target.parentNode) return false;
-
-            const currentChoice = getStoredMode();
-            container = document.createElement('label');
-            container.className = 'st-scene-trigger-field';
-            container.id = SETTING_CONTAINER_ID;
-            container.innerHTML = `
-                <span>图片展示模式</span>
-                <select id="rbq-image-privacy-select" title="选择正文中生成图片的展示与隐私隐藏方式">
-                    <option value="normal"${currentChoice === 'normal' ? ' selected' : ''}>🖼️ 标准直出 (默认直接插图)</option>
-                    <option value="gallery"${currentChoice === 'gallery' ? ' selected' : ''}>🕶️ 纯净画廊 (正文不插图，点击看大图)</option>
-                    <option value="collapse"${currentChoice === 'collapse' ? ' selected' : ''}>🙈 折叠模式 (生图后默认收起，点击展开)</option>
-                    <option value="spoiler"${currentChoice === 'spoiler' ? ' selected' : ''}>🌫️ 剧透遮罩 (毛玻璃模糊，点击解密)</option>
-                </select>
-            `;
-
-            target.parentNode.insertBefore(container, target.nextSibling);
-
-            const select = container.querySelector('#rbq-image-privacy-select');
-            if (select) {
-                select.addEventListener('change', function(e) {
-                    const val = e.target.value;
-                    setStoredMode(val);
-                    applyModeToAllCards(val);
-                    if (typeof toastr !== 'undefined' && toastr?.success) {
-                        toastr.success(`已切换为: ${MODE_NAMES[val] || val}`, PLUGIN_NAME);
-                    }
-                });
-            }
-        } else {
+        if (container) {
             const select = container.querySelector('#rbq-image-privacy-select');
             if (select) {
                 const currentChoice = getStoredMode();
@@ -532,21 +578,95 @@
                     select.value = currentChoice;
                 }
             }
+            return true;
+        }
+
+        const target = document.querySelector('.st-scene-trigger-field[data-setting-key="singleGenerationOnly"]')
+            || document.querySelector('.st-scene-trigger-field[data-setting-key="showFloatingButton"]');
+        if (!target || !target.parentNode) return false;
+
+        const currentChoice = getStoredMode();
+        container = document.createElement('label');
+        container.className = 'st-scene-trigger-field';
+        container.id = SETTING_CONTAINER_ID;
+        container.innerHTML = `
+            <span>图片展示模式</span>
+            <select id="rbq-image-privacy-select" title="选择正文中生成图片的展示与隐私隐藏方式">
+                <option value="normal"${currentChoice === 'normal' ? ' selected' : ''}>🖼️ 标准直出 (默认直接插图)</option>
+                <option value="gallery"${currentChoice === 'gallery' ? ' selected' : ''}>🕶️ 纯净画廊 (正文不插图，点击看大图)</option>
+                <option value="collapse"${currentChoice === 'collapse' ? ' selected' : ''}>🙈 折叠模式 (生图后默认收起，点击展开)</option>
+                <option value="spoiler"${currentChoice === 'spoiler' ? ' selected' : ''}>🌫️ 剧透遮罩 (毛玻璃模糊，点击解密)</option>
+            </select>
+        `;
+
+        target.parentNode.insertBefore(container, target.nextSibling);
+
+        const select = container.querySelector('#rbq-image-privacy-select');
+        if (select) {
+            select.addEventListener('change', function(e) {
+                const val = e.target.value;
+                setStoredMode(val);
+                // 切换模式时清空已应用缓存标记，使所有卡片重新计算一次
+                document.querySelectorAll('.st-scene-trigger-inline-wrap').forEach((wrapper) => {
+                    delete wrapper.dataset.rbqPrivacyAppliedMode;
+                    delete wrapper.dataset.rbqPrivacyAppliedLabel;
+                    delete wrapper.dataset.rbqPrivacyAppliedCollapsed;
+                });
+                applyModeToAllCards(val);
+                if (typeof toastr !== 'undefined' && toastr?.success) {
+                    toastr.success(`已切换为: ${MODE_NAMES[val] || val}`, PLUGIN_NAME);
+                }
+            });
         }
         return true;
     }
 
-    // ── 9. DOM 监听与初始化 ──
+    // ── 10. DOM 监听与初始化 ──
     ensureStyles();
 
     // 初始卡片应用
     applyModeToAllCards();
 
-    // 监听聊天区域渲染与卡片注入
-    const observer = new MutationObserver(function() {
-        applyModeToAllCards();
+    // 安全的 DOM 变更监听：使用 RAF 节流调度，并彻底排除插件自身 UI 与无关容器
+    const observer = new MutationObserver(function(mutations) {
+        if (isApplying) return;
+
+        let hasRelevantChange = false;
+        for (let i = 0; i < mutations.length; i++) {
+            const m = mutations[i];
+            const target = m.target;
+            if (target instanceof Element) {
+                // 排除插件内部操作栏、毛玻璃遮罩、Toast 通知、控制台模态窗变动
+                if (target.closest('.rbq-privacy-bar, .rbq-privacy-spoiler-wrap, #toast-container, #st-scene-trigger-modal')) {
+                    continue;
+                }
+            }
+            if (m.addedNodes && m.addedNodes.length > 0) {
+                for (let j = 0; j < m.addedNodes.length; j++) {
+                    const node = m.addedNodes[j];
+                    if (node instanceof Element) {
+                        if (
+                            node.classList.contains('st-scene-trigger-inline-wrap') ||
+                            node.classList.contains('st-scene-trigger-inline-result') ||
+                            node.classList.contains('mes') ||
+                            node.querySelector?.('.st-scene-trigger-inline-wrap, .st-scene-trigger-inline-result, img')
+                        ) {
+                            hasRelevantChange = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (hasRelevantChange) break;
+        }
+
+        if (hasRelevantChange) {
+            requestApplyMode();
+        }
     });
-    observer.observe(document.body, {
+
+    const chatContainer = document.getElementById('chat') || document.body;
+    observer.observe(chatContainer, {
         childList: true,
         subtree: true,
     });
@@ -557,6 +677,7 @@
         RBQ.api.renderInlineGeneratedImage = function(wrapper, result) {
             const res = origRender.apply(this, arguments);
             setTimeout(() => {
+                delete wrapper?.dataset?.rbqPrivacyAppliedMode;
                 applyCardMode(wrapper, getStoredMode());
             }, 0);
             return res;
@@ -571,12 +692,12 @@
         setTimeout(function() { clearInterval(timer); }, 30000);
     }
 
-    // 页面交互时确保设置已就位
+    // 页面点击交互时保证设置面板就位
     document.addEventListener('click', function() {
         setTimeout(injectSettingUi, 50);
     });
 
-    console.info(`[RBQ Plugin] ${PLUGIN_NAME} v1.0.0 loaded.`);
+    console.info(`[RBQ Plugin] ${PLUGIN_NAME} v1.0.1 loaded.`);
 })(
     (typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)),
     (typeof jQuery !== 'undefined' ? jQuery : window.$),

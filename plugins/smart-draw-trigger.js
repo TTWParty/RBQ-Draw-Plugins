@@ -2363,6 +2363,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         lorebookEnabled: false,
         lorebookBase64: true,
         lorebookWafRetry: false,
+        lorebookCurrentFloorOnly: false,
         lorebookContextDepth: 5,
         lorebookBudget: 8000,
         lorebookSources: [],
@@ -5491,19 +5492,28 @@ Zimage 擅长理解复杂的英文长句和语境。
         const store = getStore();
         if (!store.lorebookEnabled) return [];
         const entries = getNormalizedLorebooks();
+        const currentFloorOnly = !!store.lorebookCurrentFloorOnly;
         const globalDepth = Math.max(1, Number(store.lorebookContextDepth) || 5);
         const allContext = [...recentMessages.map(m => m.content), currentMes];
 
         // Phase 1: keyword activation with full ST-compatible logic
         const activated = [];
         for (const entry of entries) {
-            const entryDepth = entry.depth != null ? Math.max(1, entry.depth + 1) : globalDepth + 1;
-            const contextText = allContext.slice(-entryDepth).join('\n');
+            let contextText = '';
+            if (currentFloorOnly) {
+                contextText = String(currentMes || '');
+            } else {
+                const entryDepth = entry.depth != null ? Math.max(1, entry.depth + 1) : Math.max(1, globalDepth);
+                contextText = allContext.slice(-entryDepth).join('\n');
+            }
             const rKey = getLorebookEntryRuntimeKey(entry);
 
             const isMatch = checkEntryKeyMatch(entry, contextText);
 
             if (!isMatch) {
+                // 当开启“仅匹配当前楼层”时，严格跳过未在当前楼层命中的条目，杜绝历史楼层 sticky 粘性记忆带出退场角色
+                if (currentFloorOnly) continue;
+
                 // Sticky: keep active for N messages after last trigger
                 const sticky = lorebookRuntimeState.stickyState.get(rKey);
                 if (sticky && sticky.remaining > 0) {
@@ -10473,8 +10483,9 @@ SCHEMA:
                     <div class="st-scene-trigger-subpanel-hint" style="margin-bottom:10px;">导入包含服装、姿势、场景等 Tag 模板的世界书 JSON，AI 会根据剧情上下文自动匹配并注入词条。</div>
                     <div class="st-scene-trigger-modal-grid">
                         <div id="rbq-sdt-lorebook-field" class="st-scene-trigger-field switch"><span>启用世界书兼容层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-lorebook-current-floor-field" class="st-scene-trigger-field switch" title="仅从当前要生图的楼层中检索世界书关键词，彻底杜绝前文退场角色的幽灵入侵与历史特征污染。"><span>仅匹配当前楼层</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-current-floor" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-lorebook-badge-field" class="st-scene-trigger-field switch" title="在聊天消息中的生图卡片下方，显示本次触发命中的世界书词条徽章（如：📚 命中世界书: 校服-小学生）"><span>显示世界书命中徽章</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <label class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
+                        <label id="rbq-sdt-lorebook-depth-wrap" class="st-scene-trigger-field"><span>世界书扫描深度</span><input id="rbq-sdt-lorebook-depth" type="number" min="1" max="50" step="1"></label>
                         <label class="st-scene-trigger-field"><span>世界书注入预算（字符）</span><input id="rbq-sdt-lorebook-budget" type="number" min="500" step="500"></label>
                     </div>
                     <div class="st-scene-trigger-buttons" style="margin:10px 0;">
@@ -10553,6 +10564,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
+        document.getElementById('rbq-sdt-lorebook-current-floor').checked = !!store.lorebookCurrentFloorOnly;
         document.getElementById('rbq-sdt-lorebook-badge').checked = !!store.showLorebookHitBadge;
         document.getElementById('rbq-sdt-lorebook-base64').checked = store.lorebookBase64 !== false;
         document.getElementById('rbq-sdt-lorebook-waf-retry').checked = !!store.lorebookWafRetry;
@@ -10598,7 +10610,19 @@ SCHEMA:
         bindSwitch('rbq-sdt-auto-generate-field', 'rbq-sdt-auto-generate');
         bindSwitch('rbq-sdt-manual-draw-field', 'rbq-sdt-manual-draw');
         bindSwitch('rbq-sdt-lorebook-field', 'rbq-sdt-lorebook-enabled');
+        bindSwitch('rbq-sdt-lorebook-current-floor-field', 'rbq-sdt-lorebook-current-floor');
         bindSwitch('rbq-sdt-lorebook-badge-field', 'rbq-sdt-lorebook-badge');
+        const updateDepthVisibility = () => {
+            const isCur = !!document.getElementById('rbq-sdt-lorebook-current-floor')?.checked;
+            const wrap = document.getElementById('rbq-sdt-lorebook-depth-wrap');
+            if (wrap) {
+                wrap.style.opacity = isCur ? '0.45' : '1';
+                wrap.style.pointerEvents = isCur ? 'none' : '';
+                wrap.title = isCur ? '已开启“仅匹配当前楼层”，无需回溯历史楼层' : '';
+            }
+        };
+        document.getElementById('rbq-sdt-lorebook-current-floor')?.addEventListener('change', updateDepthVisibility);
+        updateDepthVisibility();
         bindSwitch('rbq-sdt-lorebook-base64-field', 'rbq-sdt-lorebook-base64');
         bindSwitch('rbq-sdt-lorebook-waf-retry-field', 'rbq-sdt-lorebook-waf-retry');
         bindSwitch('rbq-sdt-char-coord-badge-field', 'rbq-sdt-char-coord-badge');
@@ -10831,6 +10855,7 @@ SCHEMA:
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
+            s.lorebookCurrentFloorOnly = checked('rbq-sdt-lorebook-current-floor');
             s.showLorebookHitBadge = checked('rbq-sdt-lorebook-badge');
             s.lorebookBase64 = checked('rbq-sdt-lorebook-base64');
             s.lorebookWafRetry = checked('rbq-sdt-lorebook-waf-retry');

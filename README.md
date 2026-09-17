@@ -96,59 +96,198 @@ runner(window.RBQ, $, toastr);
 
 ---
 
-## 宿主 API
+## 宿主 API 规范 (RBQ API Reference)
 
-### 生命周期 Hook
+宿主环境通过全局对象 `window.RBQ` 向所有子插件暴露生命周期拦截器、核心设置、酒馆上下文、卡片与生图管线、画廊查看器、NAI氛围以及IndexedDB缓存等全套接口。
 
-插件可通过 `RBQ.on(event, callback)` 拦截生图流程中的 payload。
+---
+
+### 1. 生命周期 Hook 与事件总线 (`RBQ.on` / `RBQ.emit`)
+
+插件可通过 `RBQ.on(event, callback)` 监听并拦截生图流程、配置切换或自定义跨插件事件，也可通过 `RBQ.emit(event, payload)` 触发广播。
 
 ```javascript
+// 核心版本号
+console.log('RBQ Version:', RBQ.version);
+
+// 拦截 NovelAI V4 / V4.5 请求 Payload
 RBQ.on('buildNaiV4Payload', (payload) => {
   payload.input += ', masterpiece, best quality';
   return payload;
 });
+
+// 监听用户切换全局配置预设
+RBQ.on('profile:switched', ({ profileId, profile }) => {
+  console.log('Active profile changed to:', profile.name);
+});
 ```
 
-可用事件：
+#### 内置生命周期 Hook 事件：
+| 事件名称 | 描述 | 回调参数 | 期望返回值 |
+|---|---|---|---|
+| `buildNaiV4Payload` | 拦截与修改 NAI V4/V4.5 请求 Payload | `payload: Object` | 修改后的 `payload` 对象 |
+| `buildGeneratePayload` | 拦截与修改传统中转、OpenAI-兼容、Free 模式 Payload | `payload: Object` | 修改后的 `payload` 对象 |
+| `buildComfyUiWorkflow` | 拦截与修改 ComfyUI workflow JSON 提词结构 | `payload: Object` | 修改后的 `payload` 对象 |
+| `profile:switched` | 当用户在控制台切换全局配置预设时触发 | `{ profileId: string, profile: Object }` | 无需返回 |
 
-- `buildNaiV4Payload`：拦截 NovelAI V4 请求 payload。
-- `buildGeneratePayload`：拦截传统中转 / Free 模式 payload。
-- `buildComfyUiWorkflow`：拦截 ComfyUI workflow JSON。
+*注：回调函数必须返回修改后的 `payload`，否则请返回原对象。*
 
-回调必须返回 payload，除非你明确不想修改。
+---
 
-### 设置读写
+### 2. 设置读写与全局预设 API (`Global Profiles & Settings`)
 
 ```javascript
+// 1. 读取与防抖保存基础设置
 const settings = RBQ.api.getSettings();
 settings._myPlugin = settings._myPlugin || {};
+settings._myPlugin.enabled = true;
 RBQ.api.saveSettings();
+
+// 2. 全局预设 (Global Profiles) 管理
+const gp = RBQ.api.getGlobalProfiles(); // { activeProfileId, profiles: [...] }
+const active = RBQ.api.getActiveGlobalProfile(); // 当前生效预设对象 { id, name, data, ... }
+
+// 切换到指定预设（自动应用数据并重绘界面）
+RBQ.api.switchGlobalProfile(targetProfileId);
+
+// 保存当前面板配置到当前活动预设
+RBQ.api.saveCurrentGlobalProfile(true); // true 代表弹出 toastr 成功提示
+
+// 新建一个全局预设
+RBQ.api.createNewGlobalProfile('小说沉浸绘图预设');
 ```
 
-- `RBQ.api.getSettings()`：读取 RBQ 宿主设置对象。
-- `RBQ.api.saveSettings()`：触发宿主保存设置。
+- `RBQ.api.getSettings()`：读取宿主设置对象（直接引用）。建议插件数据存放在 `_pluginKey` 下以防命名污染。
+- `RBQ.api.saveSettings()`：触发宿主防抖存储（`saveSettingsDebounced`）。
+- `RBQ.api.getGlobalProfiles()`：获取所有已保存预设列表及当前活动的预设 ID。
+- `RBQ.api.getActiveGlobalProfile()`：返回当前生效的活动预设元数据及快照。
+- `RBQ.api.switchGlobalProfile(id)`：切换至目标预设，自动重载配置并广播 `profile:switched` 事件。
+- `RBQ.api.saveCurrentGlobalProfile(notify = true)`：将当前配置项快照存入活动预设。
+- `RBQ.api.createNewGlobalProfile(name)`：以当前配置为底稿创建新预设。
 
-建议插件把自己的状态放在 `_pluginName` 或 `_pluginId` 字段中，避免污染宿主顶层配置。
+---
 
-### 动态设置面板注册 (Setting Panel API)
+### 3. NAI 氛围与参考图控制 API (`NAI Vibe & Reference`)
 
-宿主 `0.3.20+` 支持插件动态在控制面板注册独立的 Tab 页，避免插件强行操作 DOM。
+用于与 NovelAI V4 的 Director Tools（Vibe Transfer 氛围参考图）深度联动，支持提示词预设、角色立绘或差分插件动态注入参考图。
+
+```javascript
+// 读取当前已挂载的 Vibe 列表副本
+const vibes = RBQ.api.getNaiVibes();
+// 每个 vibe 项格式: { id, name, tensor, b64, information_extracted, strength }
+
+// 动态写入新的氛围参考图（支持最多 6 个）
+RBQ.api.setNaiVibes([
+  {
+    id: 'vibe-1',
+    name: '水彩画风',
+    b64: 'data:image/png;base64,...',
+    information_extracted: 1.0,
+    strength: 0.7
+  }
+], { source: 'my-plugin' });
+
+// 刷新控制台中的 Vibe 网格与卡片展示
+RBQ.api.refreshNaiVibeUi();
+```
+
+- `RBQ.api.getNaiVibes()`：返回当前启用的 NAI Vibe 氛围图克隆数组。
+- `RBQ.api.setNaiVibes(items, options)`：写入新的 Vibe 列表（自动校验规范化、自动清除旧 Precise Refs、自动保存并重绘 UI）。
+- `RBQ.api.refreshNaiVibeUi()`：重新渲染控制面板 NAI 高级设置中的甲板卡片。
+
+---
+
+### 4. 画廊与全屏大图查看器 API (`Viewer & Gallery`)
+
+宿主内置了全功能大图查看器（支持全屏查看、双栏分镜对比、缩略图切换与无损下载）。
+
+```javascript
+// 获取查看器当前运行状态
+const viewerState = RBQ.api.getViewerState();
+// { open: boolean, index: number, items: Array, prompt: string }
+
+// 确保历史条目具备可展示的 Display URL（支持自动从 IndexedDB 提取缓存或 Blob）
+const displayUrl = await RBQ.api.ensureHistoryItemDisplayUrl(historyItem);
+
+// 动态热更新查看器中当前激活的图像（用于微调重绘或二次修改）
+RBQ.api.updateViewerCurrentItem({
+  url: 'https://...',
+  displayUrl: 'blob:...',
+  thumbnailUrl: 'blob:...'
+}, 'updated new prompt tags');
+```
+
+- `RBQ.api.getViewerState()`：获取查看器全局状态对象。
+- `RBQ.api.ensureHistoryItemDisplayUrl(item)`：异步解析图片真实地址，自动处理 IndexedDB 缓存还原。
+- `RBQ.api.updateViewerCurrentItem(imageResult, updatedPrompt)`：在画廊开启时动态刷新当前展示内容。
+
+---
+
+### 5. 本地缓存与图片导出 API (`Cache & Storage`)
+
+RBQ 默认将所有生图结果缓存在本地 IndexedDB（`st-scene-trigger-image-cache`），支持跨会话秒级还原与脱机访问。
+
+```javascript
+// 1. 读取当前本地图片缓存占用
+const { totalBytes, count } = await RBQ.api.getImageCacheUsage();
+console.log(`当前共缓存 ${count} 张图片，占用 ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+
+// 2. 清空全部本地图像缓存
+await RBQ.api.clearImageCache();
+
+// 3. 清理指定天数之前的过期本地图片缓存
+await RBQ.api.clearCacheOlderThanDays(7);
+
+// 4. 将当前聊天的全部历史生成图片打包为 ZIP 导出下载
+await RBQ.api.exportChatImagesZip();
+
+// 5. 重新统计并更新控制台界面的缓存占用文字
+RBQ.api.updateCacheUsageUi();
+```
+
+---
+
+### 6. 酒馆原生事件总线桥接 (`EventBus Bridge`)
+
+插件无需从全局作用域或复杂 DOM 中摸索 SillyTavern 事件，宿主直接桥接导出官方事件接口。
+
+```javascript
+const { eventSource, event_types } = RBQ.api;
+
+// 监听酒馆消息接收
+eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
+  console.log('New message received:', messageId);
+});
+
+// 监听当前聊天会话切换
+eventSource.on(event_types.CHAT_CHANGED, () => {
+  console.log('Chat session changed');
+});
+```
+
+---
+
+### 7. 动态设置面板注册 (`RBQ.ui.addSettingPanel`)
+
+宿主 `0.3.20+` 支持插件在控制面板中动态注册专属 Tab 页，杜绝暴力篡改 DOM。
 
 ```javascript
 RBQ.ui.addSettingPanel(id, title, renderHtmlFn);
 ```
 
-- `id`：面板的唯一标识符（例如 `'inspector'`），会自动作为 `data-kite-tab` 和 `data-kite-panel` 属性。
-- `title`：标签按钮上显示的文本，支持直接传入包含 FontAwesome 图标的 HTML，例如 `'<i class="fa-solid fa-file-invoice"></i><span>图片解析</span>'`。
-- `renderHtmlFn`：面板渲染函数，可返回 HTML 字符串或一个已绑定事件的 DOM 元素（`HTMLElement`）。如果是 DOM 元素，宿主会直接将其挂载在面板中。
+- `id`：面板唯一 ID（如 `'inspector'`），将作为 `data-kite-tab` 和 `data-kite-panel` 属性。
+- `title`：导航按钮文字，支持带图标的 HTML，例如 `'<i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图</span>'`。
+- `renderHtmlFn`：面板渲染函数，返回 HTML 字符串或已绑定事件的 `HTMLElement`。宿主在面板开启或初次加载时会自动挂载。
 
-### 自定义生图模式注册
+---
+
+### 8. 自定义生图模式注册 (`RBQ.api.registerMode`)
 
 ```javascript
 RBQ.api.registerMode('my-mode', {
   title: 'My Mode',
   accent: 'custom',
-  // 可选：自定义设置字段，声明后将在宿主设置面板动态渲染表单控件，并自动隐藏默认常规参数
+  // 可选：声明后，宿主设置面板将自动隐藏默认常规参数，并动态渲染该数组中定义的控件
   settingsFields: [
     {
       id: 'st-scene-trigger-my-select',
@@ -194,78 +333,52 @@ RBQ.api.registerMode('my-mode', {
 });
 ```
 
-- `id`：模式 ID。
-- `meta`：模式元数据定义。
-  - `title`：模式显示名称。
-  - `subtitle`：模式子标题（可选）。
-  - `endpointLabel`：接口地址输入框的提示文本（可选）。
-  - `keyLabel`：API Key 输入框的提示文本（可选）。
-  - `modelLabel`：模型选择下拉框的提示文本（可选）。
-  - `accent`：模式主题高亮色（可选）。
-  - `settingsFields`：自定义设置字段数组（可选）。声明后，宿主设置面板中默认的常规参数（如宽高、步数、CFG、种子等）将自动隐藏，避免 UI 冲突，并动态渲染该数组中定义的控件：
-    - `id`：DOM 元素的 ID，应全局唯一，建议以 `st-scene-trigger-` 作为前缀。
-    - `key`：配置项对应的 Settings Key，用户修改后会保存在宿主配置中，并在 `generateFn` 传入的 `settings` 里直接读取。
-    - `label`：控件前显示的标签文本。
-    - `type`：控件类型，可选 `'select' | 'number' | 'checkbox' | 'text'`。
-    - `default`：字段默认值。
-    - `options`：（仅当 `type` 为 `'select'` 时有效）下拉项数组，每个项为 `{ value, text }`。
-    - `placeholder`：（仅当 `type` 为 `'text'` 时有效）文本占位符。
-    - `min` / `max` / `step`：（仅当 `type` 为 `'number'` 时有效）数值输入限制。
-- `generateFn`：生成回调函数，接收参数对象 `{ prompt, settings, connection, image, onProgress }`：
-  - `prompt`：经处理的生图提示词。
-  - `settings`：全局配置对象，可读取到自定义的 `settingsFields` 字段值。
-  - `connection`：当前连接信息（包含 `url`、`apiKey`、`model` 等）。
-  - `image`：若为图生图或包含背景图的情况，代表源图片信息。
-  - `onProgress`：进度通知回调，可传入 string 以在页面上显示生成进度。
-  - 返回值应为 `{ url: '...' }` 或 `{ blob: BlobObject }`。
+- `id`：模式唯一标识。
+- `meta`：模式元数据（`title`, `accent`, `settingsFields` 等）。
+- `generateFn`：异步生成实现，接收 `{ prompt, settings, connection, image, onProgress }`，返回 `{ url }` 或 `{ blob }`。
 
-### 消息读取与 UI 渲染 API
+---
 
-宿主 `0.3.5+` 开始提供以下 API，用于开发不污染正文的智能生图类插件。
+### 9. 消息读取与正文卡片 API
+
+专为非侵入式智能分镜、提词卡片、自动化工作流设计：
 
 ```javascript
+// 1. 读取楼层消息与容器
 const ctx = RBQ.api.getContext();
 const message = RBQ.api.getMessage(messageId);
-const recent = RBQ.api.getRecentMessages(messageId, 5);
+const recent = RBQ.api.getRecentMessages(messageId, 5); // 返回 { id, is_user, name, mes }[]
 const messageElement = RBQ.api.getMessageElement(messageId);
 const textContainer = RBQ.api.getMessageTextContainer(messageId);
-```
 
-- `RBQ.api.getContext()`：返回 SillyTavern 当前上下文对象。
-- `RBQ.api.getMessage(messageId)`：读取指定楼层消息。
-- `RBQ.api.getRecentMessages(messageId, count)`：读取最近消息，返回 `{ id, is_user, name, mes }[]`。
-- `RBQ.api.getMessageElement(messageId)`：返回消息根节点。
-- `RBQ.api.getMessageTextContainer(messageId)`：返回消息正文容器。
-
-```javascript
+// 2. 创建 RBQ 原生内联生图卡片
 const wrapper = RBQ.api.createPromptCard({
   messageId,
   prompt: '1girl, cinematic lighting, rain',
-  raw: '[draw]',
-  id: 'my-plugin:unique-key',
-  label: 'my-plugin'
+  raw: '[draw: 雨中女孩]',
+  id: 'sdt-seg:12345',
+  label: '窗边回眸'
 });
 
+// 将卡片挂载到正文中
 RBQ.api.getMessageTextContainer(messageId)?.append(wrapper);
-```
 
-- `RBQ.api.createPromptCard(options)`：创建 RBQ 原生生图卡片。
-- `prompt` 是实际出图 prompt。
-- `raw` 是隐藏/回退文本。
-- `id` 应保持稳定，用于去重。
-
-```javascript
+// 3. 判断并执行自动生图或手动渲染
 if (RBQ.api.shouldAutoGenerate()) {
   const result = await RBQ.api.generateImage(prompt, 'my-plugin', { messageId }, (status) => {
-    console.log(status);
+    console.log('Progress:', status);
   });
   RBQ.api.renderInlineGeneratedImage(wrapper, result);
 }
 ```
 
-- `RBQ.api.shouldAutoGenerate()`：读取 RBQ 主设置中的自动生成开关。
-- `RBQ.api.generateImage(prompt, reason, meta, onProgress)`：复用宿主当前模式出图。
-- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：把结果图渲染到卡片内。
+- `RBQ.api.getContext()`：返回酒馆上下文。
+- `RBQ.api.getMessage(messageId)`：读取指定楼层消息。
+- `RBQ.api.getRecentMessages(messageId, count)`：读取指定消息前后的上下文楼层。
+- `RBQ.api.createPromptCard(options)`：创建符合宿主规范的 `.st-scene-trigger-inline-wrap` 节点。
+- `RBQ.api.shouldAutoGenerate()`：获取宿主“自动生图”开关状态。
+- `RBQ.api.generateImage(prompt, reason, meta, onProgress)`：调用宿主当前激活的生图渠道发起出图。
+- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：将生图结果插入卡片（自动兼容隐私展示模式与全屏画廊查看）。
 
 ---
 

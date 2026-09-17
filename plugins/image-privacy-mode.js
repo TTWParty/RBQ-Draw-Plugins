@@ -1,0 +1,584 @@
+/**
+ * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
+ * Version: 1.0.0
+ * Author: TTWP-09
+ * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
+ */
+(function(RBQ, $, toastr) {
+    'use strict';
+    if (!RBQ) return console.error('[Image Privacy Mode] RBQ Core API missing');
+
+    const PLUGIN_ID = 'rbq-image-privacy';
+    const PLUGIN_NAME = '图片隐私模式';
+    const STORAGE_KEY = 'rbq_image_privacy_mode';
+    const STYLE_ID = 'rbq-image-privacy-styles';
+    const SETTING_CONTAINER_ID = 'rbq-image-privacy-setting';
+
+    const MODE_NAMES = {
+        normal: '🖼️ 标准直出',
+        gallery: '🕶️ 纯净画廊',
+        collapse: '🙈 折叠模式',
+        spoiler: '🌫️ 剧透遮罩',
+    };
+
+    // ── 1. 设置存取 ──
+    function getStoredMode() {
+        try {
+            const s = RBQ.api?.getSettings?.();
+            if (s && s._imagePrivacyMode) return s._imagePrivacyMode;
+        } catch (_e) {}
+        try {
+            return localStorage.getItem(STORAGE_KEY) || 'normal';
+        } catch (_e) {
+            return 'normal';
+        }
+    }
+
+    function setStoredMode(val) {
+        try {
+            const s = RBQ.api?.getSettings?.();
+            if (s) {
+                s._imagePrivacyMode = val;
+                RBQ.api?.saveSettings?.();
+            }
+        } catch (_e) {}
+        try {
+            localStorage.setItem(STORAGE_KEY, val);
+        } catch (_e) {}
+    }
+
+    // ── 2. 注入动态样式 ──
+    function ensureStyles() {
+        if (document.getElementById(STYLE_ID)) return;
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = `
+            /* 隐私模式通用与操作栏 */
+            .rbq-privacy-hidden-btn {
+                display: none !important;
+            }
+            .rbq-privacy-hidden-image {
+                display: none !important;
+            }
+            .rbq-privacy-bar {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                vertical-align: middle;
+            }
+            .rbq-privacy-bar .st-scene-trigger-inline-button {
+                min-height: 34px;
+                padding: 6px 14px;
+            }
+            .rbq-privacy-regen-btn {
+                min-width: 34px !important;
+                width: 34px !important;
+                height: 34px !important;
+                padding: 0 !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                border-radius: 10px !important;
+                background: var(--linear-bg-subtle, rgba(255, 255, 255, 0.08)) !important;
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.15)) !important;
+                color: var(--linear-text-secondary, rgba(255, 255, 255, 0.75)) !important;
+                cursor: pointer !important;
+                transition: all 0.2s ease !important;
+            }
+            .rbq-privacy-regen-btn:hover {
+                background: var(--linear-bg-card-hover, rgba(255, 255, 255, 0.16)) !important;
+                color: var(--linear-text-primary, #ffffff) !important;
+                border-color: var(--linear-border-strong, rgba(255, 255, 255, 0.3)) !important;
+            }
+            .rbq-privacy-regen-btn:hover i {
+                transform: rotate(90deg);
+                transition: transform 0.3s ease;
+            }
+            .st-scene-trigger-inline-wrap.is-generating .rbq-privacy-bar {
+                display: none !important;
+            }
+            .st-scene-trigger-inline-ui:has(.st-scene-trigger-inline-loader:not([style*="display: none"])) .rbq-privacy-bar {
+                display: none !important;
+            }
+
+            /* 折叠动画 */
+            .st-scene-trigger-inline-result {
+                overflow: hidden;
+                max-height: 2400px;
+                opacity: 1;
+                transition: max-height 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease, margin 0.35s ease;
+            }
+            .st-scene-trigger-inline-result.rbq-privacy-collapsed {
+                max-height: 0 !important;
+                opacity: 0 !important;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+                pointer-events: none !important;
+            }
+
+            /* 剧透毛玻璃遮罩 */
+            .rbq-privacy-spoiler-wrap {
+                position: relative;
+                display: block;
+                width: 100%;
+                border-radius: 14px;
+                overflow: hidden;
+            }
+            .rbq-privacy-spoiler-mask {
+                position: absolute;
+                inset: 0;
+                z-index: 15;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                backdrop-filter: blur(24px) saturate(150%);
+                -webkit-backdrop-filter: blur(24px) saturate(150%);
+                background: rgba(10, 14, 24, 0.72);
+                cursor: pointer;
+                transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 0.32s ease;
+                user-select: none;
+            }
+            .rbq-privacy-spoiler-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 18px;
+                background: rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(255, 255, 255, 0.22);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.38);
+                border-radius: 9999px;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                transition: transform 0.2s ease, background 0.2s ease;
+            }
+            .rbq-privacy-spoiler-mask:hover .rbq-privacy-spoiler-badge {
+                transform: scale(1.04);
+                background: rgba(255, 255, 255, 0.18);
+                border-color: rgba(255, 255, 255, 0.35);
+            }
+            .rbq-privacy-spoiler-wrap.is-revealed .rbq-privacy-spoiler-mask {
+                opacity: 0;
+                pointer-events: none;
+            }
+            .rbq-privacy-spoiler-rehide-btn {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                z-index: 20;
+                display: none;
+                align-items: center;
+                gap: 6px;
+                padding: 5px 12px;
+                font-size: 11px;
+                font-weight: 600;
+                border-radius: 8px;
+                background: rgba(15, 18, 26, 0.78);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: rgba(255, 255, 255, 0.9);
+                cursor: pointer;
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                transition: all 0.2s ease;
+            }
+            .rbq-privacy-spoiler-rehide-btn:hover {
+                background: rgba(15, 18, 26, 0.95);
+                color: #ffffff;
+                border-color: rgba(255, 255, 255, 0.4);
+                transform: translateY(-1px);
+            }
+            .rbq-privacy-spoiler-wrap.is-revealed .rbq-privacy-spoiler-rehide-btn {
+                display: inline-flex;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // ── 3. 提取分镜/卡片剧情描述 ──
+    function getCardSceneLabel(wrapper) {
+        if (!wrapper) return '';
+        let label = wrapper.dataset?.rbqSdtOrigLabel;
+        if (!label && wrapper.dataset?.label && wrapper.dataset.label !== 'external') {
+            label = wrapper.dataset.label;
+        }
+        if (!label) {
+            const btn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
+            if (btn) {
+                const rawText = btn.textContent || '';
+                const clean = rawText.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\s]+/gu, '').trim();
+                const blacklist = ['生成图片', '重新生成', '生成中...', '自动生成中...', '等待自动生图...', '查看大图', '展开图片', '收起图片', '收起'];
+                if (clean && !blacklist.includes(clean)) {
+                    const subMatch = clean.match(/^(?:查看|展开|收起)[:：]\s*(.+)$/);
+                    if (subMatch) {
+                        label = subMatch[1].trim();
+                    } else {
+                        label = clean;
+                    }
+                }
+            }
+        }
+        if (label) {
+            label = label.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\s]+/gu, '').trim();
+            const subMatch = label.match(/^(?:查看|展开|收起)[:：]\s*(.+)$/);
+            if (subMatch) label = subMatch[1].trim();
+            if (['生成图片', '重新生成', '大图', '图片'].includes(label)) {
+                label = '';
+            }
+        }
+        return label || '';
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // ── 4. 渲染双段隐私操作栏 ──
+    function renderPrivacyBar(wrapper, mode) {
+        if (!(wrapper instanceof HTMLElement)) return;
+        const ui = wrapper.querySelector('.st-scene-trigger-inline-ui');
+        if (!(ui instanceof HTMLElement)) return;
+
+        let bar = ui.querySelector('.rbq-privacy-bar');
+        if (!bar) {
+            bar = document.createElement('span');
+            bar.className = 'rbq-privacy-bar';
+            const loader = ui.querySelector('.st-scene-trigger-inline-loader');
+            if (loader) ui.insertBefore(bar, loader);
+            else ui.appendChild(bar);
+        }
+
+        const label = getCardSceneLabel(wrapper);
+        const container = wrapper.querySelector('.st-scene-trigger-inline-result');
+        const isCollapsed = container ? container.classList.contains('rbq-privacy-collapsed') : true;
+
+        if (mode === 'gallery') {
+            const viewText = label ? `🖼️ 查看: ${label}` : '🖼️ 查看大图';
+            bar.innerHTML = `
+              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-view-btn" title="点击查看全屏大图">
+                ${escapeHtml(viewText)}
+              </button>
+              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-regen-btn" title="重新生成该图片">
+                <i class="fa-solid fa-arrows-rotate"></i>
+              </button>
+            `;
+        } else if (mode === 'collapse') {
+            const toggleText = isCollapsed
+                ? (label ? `👁️ 展开: ${label}` : '👁️ 展开图片')
+                : (label ? `🙈 收起: ${label}` : '🙈 收起');
+            bar.innerHTML = `
+              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-collapse-toggle" title="${isCollapsed ? '展开图片' : '收起图片'}">
+                ${escapeHtml(toggleText)}
+              </button>
+              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-regen-btn" title="重新生成该图片">
+                <i class="fa-solid fa-arrows-rotate"></i>
+              </button>
+            `;
+        }
+
+        // 继承宿主卡片的色调风格
+        const rawBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
+        const primaryBtn = bar.querySelector('.rbq-privacy-view-btn') || bar.querySelector('.rbq-privacy-collapse-toggle');
+        if (primaryBtn instanceof HTMLElement && rawBtn instanceof HTMLElement) {
+            if (rawBtn.style.background) primaryBtn.style.background = rawBtn.style.background;
+            if (rawBtn.style.backgroundImage) primaryBtn.style.backgroundImage = rawBtn.style.backgroundImage;
+            if (rawBtn.style.color) primaryBtn.style.color = rawBtn.style.color;
+            if (rawBtn.style.boxShadow) primaryBtn.style.boxShadow = rawBtn.style.boxShadow;
+        }
+    }
+
+    // ── 5. 应用展示模式到单个卡片 ──
+    function applyCardMode(wrapper, mode) {
+        if (!(wrapper instanceof HTMLElement)) return;
+        const container = wrapper.querySelector('.st-scene-trigger-inline-result');
+        if (!(container instanceof HTMLElement)) return;
+
+        // 仅在已有生成图片时生效
+        const img = container.querySelector('img');
+        const hasImage = !!(img || container.dataset.rbqHasImage || wrapper.dataset.latestImageUrl);
+        if (!hasImage) return;
+        container.dataset.rbqHasImage = '1';
+
+        const ui = wrapper.querySelector('.st-scene-trigger-inline-ui');
+        const rawBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
+
+        if (mode === 'gallery') {
+            container.classList.add('rbq-privacy-hidden-image');
+            container.classList.remove('rbq-privacy-collapsed');
+            removeSpoilerMask(container);
+
+            if (rawBtn instanceof HTMLElement) {
+                rawBtn.classList.add('rbq-privacy-hidden-btn');
+            }
+            renderPrivacyBar(wrapper, 'gallery');
+        } else if (mode === 'collapse') {
+            container.classList.remove('rbq-privacy-hidden-image');
+            removeSpoilerMask(container);
+
+            if (!wrapper.dataset.rbqManualExpanded) {
+                container.classList.add('rbq-privacy-collapsed');
+            } else {
+                container.classList.remove('rbq-privacy-collapsed');
+            }
+
+            if (rawBtn instanceof HTMLElement) {
+                rawBtn.classList.add('rbq-privacy-hidden-btn');
+            }
+            renderPrivacyBar(wrapper, 'collapse');
+        } else if (mode === 'spoiler') {
+            container.classList.remove('rbq-privacy-hidden-image', 'rbq-privacy-collapsed');
+            ui?.querySelector('.rbq-privacy-bar')?.remove();
+
+            if (rawBtn instanceof HTMLElement) {
+                rawBtn.classList.remove('rbq-privacy-hidden-btn');
+            }
+            ensureSpoilerMask(wrapper, container);
+        } else {
+            // normal
+            container.classList.remove('rbq-privacy-hidden-image', 'rbq-privacy-collapsed');
+            ui?.querySelector('.rbq-privacy-bar')?.remove();
+            removeSpoilerMask(container);
+
+            if (rawBtn instanceof HTMLElement) {
+                rawBtn.classList.remove('rbq-privacy-hidden-btn');
+            }
+        }
+    }
+
+    function ensureSpoilerMask(wrapper, container) {
+        let spoilerWrap = container.querySelector('.rbq-privacy-spoiler-wrap');
+        if (!spoilerWrap) {
+            const link = container.querySelector('.st-scene-trigger-inline-image-link') || container.querySelector('img');
+            if (!link) return;
+            spoilerWrap = document.createElement('div');
+            spoilerWrap.className = 'rbq-privacy-spoiler-wrap';
+            link.parentNode.insertBefore(spoilerWrap, link);
+            spoilerWrap.appendChild(link);
+        }
+
+        let mask = spoilerWrap.querySelector('.rbq-privacy-spoiler-mask');
+        if (!mask) {
+            const label = getCardSceneLabel(wrapper);
+            const badgeText = label ? `剧透遮罩: ${label} (点击解密)` : '剧透遮罩 (点击解密)';
+
+            mask = document.createElement('div');
+            mask.className = 'rbq-privacy-spoiler-mask';
+            mask.innerHTML = `
+                <div class="rbq-privacy-spoiler-badge">
+                    <i class="fa-solid fa-eye-slash"></i>
+                    <span>${escapeHtml(badgeText)}</span>
+                </div>
+            `;
+            spoilerWrap.appendChild(mask);
+
+            const rehideBtn = document.createElement('button');
+            rehideBtn.type = 'button';
+            rehideBtn.className = 'rbq-privacy-spoiler-rehide-btn';
+            rehideBtn.title = '重新模糊遮罩';
+            rehideBtn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> 重新隐藏';
+            spoilerWrap.appendChild(rehideBtn);
+        }
+    }
+
+    function removeSpoilerMask(container) {
+        const spoilerWrap = container.querySelector('.rbq-privacy-spoiler-wrap');
+        if (spoilerWrap) {
+            const link = spoilerWrap.querySelector('.st-scene-trigger-inline-image-link') || spoilerWrap.querySelector('img');
+            if (link) {
+                container.insertBefore(link, spoilerWrap);
+            }
+            spoilerWrap.remove();
+        }
+    }
+
+    // ── 6. 批量应用到所有聊天卡片 ──
+    function applyModeToAllCards(mode) {
+        const curMode = mode || getStoredMode();
+        document.querySelectorAll('.st-scene-trigger-inline-wrap').forEach((wrapper) => {
+            applyCardMode(wrapper, curMode);
+        });
+    }
+
+    // ── 7. 全局点击事件委托 ──
+    document.addEventListener('click', function(event) {
+        const viewBtn = event.target.closest('.rbq-privacy-view-btn');
+        const collapseBtn = event.target.closest('.rbq-privacy-collapse-toggle');
+        const regenBtn = event.target.closest('.rbq-privacy-regen-btn');
+        const spoilerMask = event.target.closest('.rbq-privacy-spoiler-mask');
+        const rehideBtn = event.target.closest('.rbq-privacy-spoiler-rehide-btn');
+
+        if (rehideBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            const spoilerWrap = rehideBtn.closest('.rbq-privacy-spoiler-wrap');
+            if (spoilerWrap) spoilerWrap.classList.remove('is-revealed');
+            return;
+        }
+
+        if (spoilerMask) {
+            event.preventDefault();
+            event.stopPropagation();
+            const spoilerWrap = spoilerMask.closest('.rbq-privacy-spoiler-wrap');
+            if (spoilerWrap) spoilerWrap.classList.add('is-revealed');
+            return;
+        }
+
+        if (viewBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrapper = viewBtn.closest('.st-scene-trigger-inline-wrap');
+            if (wrapper) {
+                const imgLink = wrapper.querySelector('.st-scene-trigger-inline-image-link');
+                if (imgLink) {
+                    imgLink.click();
+                } else {
+                    const img = wrapper.querySelector('img');
+                    if (img && img.src) {
+                        const prompt = wrapper.dataset?.prompt || '';
+                        const messageId = Number(wrapper.dataset?.messageId);
+                        RBQ.api?.openImageViewer?.(prompt, img.src, { messageId });
+                    }
+                }
+            }
+            return;
+        }
+
+        if (collapseBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrapper = collapseBtn.closest('.st-scene-trigger-inline-wrap');
+            if (wrapper) {
+                const container = wrapper.querySelector('.st-scene-trigger-inline-result');
+                if (container) {
+                    const isCollapsed = container.classList.contains('rbq-privacy-collapsed');
+                    const label = getCardSceneLabel(wrapper);
+                    if (isCollapsed) {
+                        container.classList.remove('rbq-privacy-collapsed');
+                        wrapper.dataset.rbqManualExpanded = '1';
+                        collapseBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${escapeHtml(label ? `收起: ${label}` : '收起')}`;
+                    } else {
+                        container.classList.add('rbq-privacy-collapsed');
+                        delete wrapper.dataset.rbqManualExpanded;
+                        collapseBtn.innerHTML = `<i class="fa-solid fa-eye"></i> ${escapeHtml(label ? `展开: ${label}` : '展开图片')}`;
+                    }
+                }
+            }
+            return;
+        }
+
+        if (regenBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrapper = regenBtn.closest('.st-scene-trigger-inline-wrap');
+            if (wrapper) {
+                const targetBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
+                if (targetBtn && targetBtn !== regenBtn) {
+                    targetBtn.click();
+                }
+            }
+            return;
+        }
+    }, true);
+
+    // ── 8. 注入设置到宿主通用设置面板 ──
+    function injectSettingUi() {
+        let container = document.getElementById(SETTING_CONTAINER_ID);
+        if (!container) {
+            const target = document.querySelector('.st-scene-trigger-field[data-setting-key="singleGenerationOnly"]')
+                || document.querySelector('.st-scene-trigger-field[data-setting-key="showFloatingButton"]');
+            if (!target || !target.parentNode) return false;
+
+            const currentChoice = getStoredMode();
+            container = document.createElement('label');
+            container.className = 'st-scene-trigger-field';
+            container.id = SETTING_CONTAINER_ID;
+            container.innerHTML = `
+                <span>图片展示模式</span>
+                <select id="rbq-image-privacy-select" title="选择正文中生成图片的展示与隐私隐藏方式">
+                    <option value="normal"${currentChoice === 'normal' ? ' selected' : ''}>🖼️ 标准直出 (默认直接插图)</option>
+                    <option value="gallery"${currentChoice === 'gallery' ? ' selected' : ''}>🕶️ 纯净画廊 (正文不插图，点击看大图)</option>
+                    <option value="collapse"${currentChoice === 'collapse' ? ' selected' : ''}>🙈 折叠模式 (生图后默认收起，点击展开)</option>
+                    <option value="spoiler"${currentChoice === 'spoiler' ? ' selected' : ''}>🌫️ 剧透遮罩 (毛玻璃模糊，点击解密)</option>
+                </select>
+            `;
+
+            target.parentNode.insertBefore(container, target.nextSibling);
+
+            const select = container.querySelector('#rbq-image-privacy-select');
+            if (select) {
+                select.addEventListener('change', function(e) {
+                    const val = e.target.value;
+                    setStoredMode(val);
+                    applyModeToAllCards(val);
+                    if (typeof toastr !== 'undefined' && toastr?.success) {
+                        toastr.success(`已切换为: ${MODE_NAMES[val] || val}`, PLUGIN_NAME);
+                    }
+                });
+            }
+        } else {
+            const select = container.querySelector('#rbq-image-privacy-select');
+            if (select) {
+                const currentChoice = getStoredMode();
+                if (select.value !== currentChoice) {
+                    select.value = currentChoice;
+                }
+            }
+        }
+        return true;
+    }
+
+    // ── 9. DOM 监听与初始化 ──
+    ensureStyles();
+
+    // 初始卡片应用
+    applyModeToAllCards();
+
+    // 监听聊天区域渲染与卡片注入
+    const observer = new MutationObserver(function() {
+        applyModeToAllCards();
+    });
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
+
+    // 拦截 RBQ 生图渲染接口
+    if (RBQ.api && typeof RBQ.api.renderInlineGeneratedImage === 'function') {
+        const origRender = RBQ.api.renderInlineGeneratedImage;
+        RBQ.api.renderInlineGeneratedImage = function(wrapper, result) {
+            const res = origRender.apply(this, arguments);
+            setTimeout(() => {
+                applyCardMode(wrapper, getStoredMode());
+            }, 0);
+            return res;
+        };
+    }
+
+    // 设置面板注入守护
+    if (!injectSettingUi()) {
+        const timer = setInterval(function() {
+            if (injectSettingUi()) clearInterval(timer);
+        }, 500);
+        setTimeout(function() { clearInterval(timer); }, 30000);
+    }
+
+    // 页面交互时确保设置已就位
+    document.addEventListener('click', function() {
+        setTimeout(injectSettingUi, 50);
+    });
+
+    console.info(`[RBQ Plugin] ${PLUGIN_NAME} v1.0.0 loaded.`);
+})(
+    (typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)),
+    (typeof jQuery !== 'undefined' ? jQuery : window.$),
+    (typeof toastr !== 'undefined' ? toastr : console)
+);

@@ -39,6 +39,8 @@ RBQ-Draw-Plugins/
 | `rbq-multi-char` | NAI 多角色模式 | [`plugins/multi-char-composer.js`](plugins/multi-char-composer.js) | [`docs/plugins/rbq-multi-char.md`](docs/plugins/rbq-multi-char.md) |
 | `rbq-custom-floating-icon` | 摸鱼悬浮球 | [`plugins/custom-floating-icon.js`](plugins/custom-floating-icon.js) | [`docs/plugins/rbq-custom-floating-icon.md`](docs/plugins/rbq-custom-floating-icon.md) |
 | `rbq-grok-draw` | Grok 生图插件 | [`plugins/grok-draw.js`](plugins/grok-draw.js) | [`docs/plugins/rbq-grok-draw.md`](docs/plugins/rbq-grok-draw.md) |
+| `rbq-character-workshop` | 角色工坊 | [`plugins/character-workshop.js`](plugins/character-workshop.js) | [`docs/plugins/rbq-character-workshop.md`](docs/plugins/rbq-character-workshop.md) |
+| `rbq-image-privacy` | 图片隐私模式 | [`plugins/image-privacy-mode.js`](plugins/image-privacy-mode.js) | [`docs/plugins/rbq-image-privacy-mode.md`](docs/plugins/rbq-image-privacy-mode.md) |
 
 ---
 

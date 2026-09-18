@@ -2562,6 +2562,43 @@ Zimage 擅长理解复杂的英文长句和语境。
             }
         } catch (_e) { /* noop */ }
 
+        // Auto-sanitize legacy bloated cache entries once to shrink settings.json
+        if (!store._cacheSanitizedV6 && store.cache && typeof store.cache === 'object') {
+            let bloatedCount = 0;
+            const keys = Object.keys(store.cache);
+            for (const key of keys) {
+                const item = store.cache[key];
+                if (item && typeof item === 'object') {
+                    if (item.rawOutput) {
+                        delete item.rawOutput;
+                        bloatedCount++;
+                    }
+                    if (item.thinkContent && item.thinkContent.length > 1000) {
+                        item.thinkContent = item.thinkContent.slice(0, 1000) + '... (已截断)';
+                        bloatedCount++;
+                    }
+                    if (item.recentMessages && item.recentMessages.length > 5) {
+                        item.recentMessages = item.recentMessages.slice(-5);
+                        bloatedCount++;
+                    }
+                }
+            }
+            if (keys.length > 100) {
+                Object.entries(store.cache)
+                    .sort((a, b) => Number(a[1]?.createdAt || 0) - Number(b[1]?.createdAt || 0))
+                    .slice(0, keys.length - 100)
+                    .forEach(([k]) => delete store.cache[k]);
+                bloatedCount++;
+            }
+            store._cacheSanitizedV6 = true;
+            if (bloatedCount > 0) {
+                console.info(`[${PLUGIN_NAME}] 🧹 自动清理存量历史缓存 (瘦身/裁剪 ${bloatedCount} 项)，大幅缩减 settings.json 存盘体积`);
+                setTimeout(() => {
+                    try { save(); } catch (_e) {}
+                }, 1000);
+            }
+        }
+
         return store;
     }
 

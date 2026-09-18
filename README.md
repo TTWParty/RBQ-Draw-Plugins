@@ -382,6 +382,33 @@ if (RBQ.api.shouldAutoGenerate()) {
 
 ---
 
+### 10. 聊天文件背包持久化 API (`Chat-Level Persistence`)
+
+宿主 `0.3.51+` 支持直接读写当前消息的背包拓展字段（`message.extra`）并提供防抖存盘。存储在 `message.extra` 中的数据随酒馆服务端 `.jsonl` 聊天记录自动保存与跨端流转，换浏览器或换设备永久不丢，且不会膨胀浏览器全局 `localStorage` 设置。
+
+```javascript
+// 1. 将插件私有数据写入指定消息背包并自动防抖存盘
+RBQ.api.setMessageExtra(messageId, 'rbq_my_plugin', {
+  status: 'completed',
+  tags: '1girl, smile',
+  timestamp: Date.now()
+});
+
+// 2. 读取指定消息背包中的私有数据（不存在时返回 null）
+const data = RBQ.api.getMessageExtra(messageId, 'rbq_my_plugin');
+
+// 3. 手动触发酒馆当前聊天记录的防抖存盘或立即存盘
+RBQ.api.saveChatDebounced();
+RBQ.api.saveChat();
+```
+
+- `RBQ.api.setMessageExtra(messageId, key, data)`：将数据存入 `message.extra[key]` 并自动触发 `saveChatDebounced`。
+- `RBQ.api.getMessageExtra(messageId, key)`：安全读取 `message.extra[key]`。若未提供 key，则返回整个 `message.extra` 对象。
+- `RBQ.api.saveChatDebounced()`：触发 SillyTavern 官方聊天文件的防抖存盘。
+- `RBQ.api.saveChat()`：立即将聊天数据刷盘。
+
+---
+
 ## 插件开发规范
 
 ### 命名

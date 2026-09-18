@@ -410,6 +410,80 @@ RBQ.api.saveChat();
 
 ---
 
+### 11. 插件生命周期与热插拔守卫规范 (`Lifecycle & Hot Reload Cleanup`)
+
+宿主 `0.3.52+` 支持完整的插件卸载与热更新自清理机制。当用户在插件中心点击「更新」或「卸载」时，宿主会在无需刷新整个页面的前提下，精确调用子插件注册的清理钩子，杜绝 `MutationObserver` 掉帧泄露、多重 `setInterval` 定时器叠加以及事件监听器重复触发：
+
+#### 宿主生命周期 API
+
+- `RBQ.registerCleanup(pluginId, cleanupFn)`：子插件向宿主注册卸载/重载时的清理函数。
+- `RBQ.cleanupPlugin(pluginId)`：手动触发指定插件的清理流程。
+- `RBQ.off(event, callback)`：解绑通过 `RBQ.on` 注册的事件总线监听器。
+- `RBQ.ui.removeSettingPanel(panelId)`：安全注销并移除动态设置标签页与面板 DOM。
+- `RBQ.api.unregisterMode(modeId)`：安全注销并移除自定义生图模式。
+
+#### 子插件标准热插拔模板范式 (Best Practice)
+
+```javascript
+(function(RBQ, $, toastr) {
+  if (!RBQ) return console.error('[My Plugin] RBQ Core API missing');
+
+  const PLUGIN_ID = 'rbq-my-plugin';
+
+  // 1. 顶部防热更新重复加载守卫：清理上一实例
+  if (typeof window.__rbqMyPluginCleanup === 'function') {
+    try { window.__rbqMyPluginCleanup(); } catch (e) { console.warn(e); }
+  }
+
+  // 2. 声明生命周期引用变量
+  let pollTimer = null;
+  let domObserver = null;
+  let clickListener = null;
+  let origRender = null;
+
+  // 3. 启动定时器与 Observer
+  pollTimer = setInterval(() => { /* ... */ }, 1000);
+  domObserver = new MutationObserver(() => { /* ... */ });
+  domObserver.observe(document.body, { childList: true, subtree: true });
+
+  // 4. 函数拦截保护（还原闭包，防止多次叠加导致栈溢出）
+  if (RBQ.api && typeof RBQ.api.renderInlineGeneratedImage === 'function') {
+    origRender = RBQ.api.renderInlineGeneratedImage.__origRender || RBQ.api.renderInlineGeneratedImage;
+    const patchedRender = function(wrapper, result) {
+      const res = origRender.apply(this, arguments);
+      // 自定义增强逻辑...
+      return res;
+    };
+    patchedRender.__origRender = origRender;
+    RBQ.api.renderInlineGeneratedImage = patchedRender;
+  }
+
+  // 5. 编写完整清理函数
+  function cleanupInstance() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (domObserver) { domObserver.disconnect(); domObserver = null; }
+    if (clickListener) { document.removeEventListener('click', clickListener); clickListener = null; }
+    if (origRender && RBQ.api) {
+      RBQ.api.renderInlineGeneratedImage = origRender;
+      origRender = null;
+    }
+    // 移除自身注入的 DOM / 模态框 / 样式表
+    document.querySelectorAll('[id^="rbq-my-plugin-"]').forEach(el => el.remove());
+    if (typeof RBQ?.ui?.removeSettingPanel === 'function') {
+      RBQ.ui.removeSettingPanel('my-plugin-tab');
+    }
+  }
+
+  // 6. 双重注册：全局热重载守卫 + 宿主插件中心卸载钩子
+  window.__rbqMyPluginCleanup = cleanupInstance;
+  if (RBQ.registerCleanup) {
+    RBQ.registerCleanup(PLUGIN_ID, cleanupInstance);
+  }
+})(window.RBQ, window.$, window.toastr);
+```
+
+---
+
 ## 插件开发规范
 
 ### 命名
@@ -435,6 +509,13 @@ RBQ.api.saveChat();
 - 对消息扫描类插件，必须用 `messageId + messageHash + mode` 做去重。
 - 避免刷新、滑动、消息更新时重复请求 API 或重复生图。
 - 缓存建议限制数量，避免无限增长。
+
+### 生命周期与清理守卫
+
+- 绝不允许留下孤儿定时器（`setInterval` / `setTimeout`）与无限制的全局 `MutationObserver`。
+- 如果插件挂载了 `document.body` 级监听或定时器，必须提供 `cleanupInstance` 并调用 `RBQ.registerCleanup(PLUGIN_ID, cleanup)`。
+- 文件顶部建议实现 `window.__rbq<PluginName>Cleanup()` 自清理，保证热更新时旧实例被完整销毁。
+- 若对宿主核心函数进行了猴子补丁（Monkey Patch），必须在清理时精准还原原始函数指针。
 
 ### 发布
 

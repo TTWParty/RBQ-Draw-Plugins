@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
@@ -9,6 +9,14 @@
     if (!RBQ) return console.error('[Image Privacy Mode] RBQ Core API missing');
 
     const PLUGIN_ID = 'rbq-image-privacy';
+    if (typeof window.__rbqPrivacyCleanup === 'function') {
+        try {
+            window.__rbqPrivacyCleanup();
+        } catch (e) {
+            console.warn('[Image Privacy Mode] Previous cleanup error:', e);
+        }
+    }
+
     const PLUGIN_NAME = '图片隐私模式';
     const STORAGE_KEY = 'rbq_image_privacy_mode';
     const STYLE_ID = 'rbq-image-privacy-styles';
@@ -627,6 +635,11 @@
     // 初始卡片应用
     applyModeToAllCards();
 
+    let privacyObserver = null;
+    let origRender = null;
+    let injectSettingTimer = null;
+    let clickListener = null;
+
     // 安全的 DOM 变更监听：使用 RAF 节流调度，并彻底排除插件自身 UI 与无关容器
     const observer = new MutationObserver(function(mutations) {
         if (isApplying) return;
@@ -670,11 +683,12 @@
         childList: true,
         subtree: true,
     });
+    privacyObserver = observer;
 
-    // 拦截 RBQ 生图渲染接口
+    // 拦截 RBQ 生图渲染接口（安全解构防多重闭包嵌套）
     if (RBQ.api && typeof RBQ.api.renderInlineGeneratedImage === 'function') {
-        const origRender = RBQ.api.renderInlineGeneratedImage;
-        RBQ.api.renderInlineGeneratedImage = function(wrapper, result) {
+        origRender = RBQ.api.renderInlineGeneratedImage.__origRender || RBQ.api.renderInlineGeneratedImage;
+        const patchedRender = function(wrapper, result) {
             const res = origRender.apply(this, arguments);
             setTimeout(() => {
                 delete wrapper?.dataset?.rbqPrivacyAppliedMode;
@@ -682,22 +696,69 @@
             }, 0);
             return res;
         };
+        patchedRender.__origRender = origRender;
+        RBQ.api.renderInlineGeneratedImage = patchedRender;
     }
 
     // 设置面板注入守护
     if (!injectSettingUi()) {
-        const timer = setInterval(function() {
-            if (injectSettingUi()) clearInterval(timer);
+        injectSettingTimer = setInterval(function() {
+            if (injectSettingUi()) {
+                clearInterval(injectSettingTimer);
+                injectSettingTimer = null;
+            }
         }, 500);
-        setTimeout(function() { clearInterval(timer); }, 30000);
+        setTimeout(function() {
+            if (injectSettingTimer) {
+                clearInterval(injectSettingTimer);
+                injectSettingTimer = null;
+            }
+        }, 30000);
     }
 
     // 页面点击交互时保证设置面板就位
-    document.addEventListener('click', function() {
+    clickListener = function() {
         setTimeout(injectSettingUi, 50);
-    });
+    };
+    document.addEventListener('click', clickListener);
 
-    console.info(`[RBQ Plugin] ${PLUGIN_NAME} v1.0.1 loaded.`);
+    function cleanupInstance() {
+        console.info(`[${PLUGIN_NAME}] 正在执行实例清理...`);
+        if (privacyObserver) {
+            try { privacyObserver.disconnect(); } catch (_e) {}
+            privacyObserver = null;
+        }
+        if (injectSettingTimer) {
+            clearInterval(injectSettingTimer);
+            injectSettingTimer = null;
+        }
+        if (clickListener) {
+            document.removeEventListener('click', clickListener);
+            clickListener = null;
+        }
+        if (origRender && RBQ?.api) {
+            RBQ.api.renderInlineGeneratedImage = origRender;
+            origRender = null;
+        }
+        document.getElementById(STYLE_ID)?.remove();
+        document.getElementById(SETTING_CONTAINER_ID)?.remove();
+        document.querySelectorAll('.rbq-privacy-bar').forEach(el => el.remove());
+        document.querySelectorAll('.st-scene-trigger-inline-wrap').forEach((wrapper) => {
+            delete wrapper.dataset.rbqPrivacyAppliedMode;
+            delete wrapper.dataset.rbqPrivacyAppliedLabel;
+            delete wrapper.dataset.rbqPrivacyAppliedCollapsed;
+        });
+        try {
+            applyModeToAllCards('normal');
+        } catch (_e) {}
+    }
+
+    window.__rbqPrivacyCleanup = cleanupInstance;
+    if (RBQ?.registerCleanup) {
+        RBQ.registerCleanup(PLUGIN_ID, cleanupInstance);
+    }
+
+    console.info(`[RBQ Plugin] ${PLUGIN_NAME} v1.0.2 loaded.`);
 })(
     (typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)),
     (typeof jQuery !== 'undefined' ? jQuery : window.$),

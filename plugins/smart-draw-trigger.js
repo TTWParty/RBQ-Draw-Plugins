@@ -1,6 +1,15 @@
 (function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[Smart Draw Trigger] RBQ Core API missing');
 
+    const PLUGIN_ID = 'rbq-smart-draw-trigger';
+    if (typeof window.__rbqSdtCleanup === 'function') {
+        try {
+            window.__rbqSdtCleanup();
+        } catch (e) {
+            console.warn('[Smart Draw Trigger] Previous cleanup error:', e);
+        }
+    }
+
     const PLUGIN_NAME = '智能生图触发器';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2412,10 +2421,17 @@ Zimage 擅长理解复杂的英文长句和语境。
         return false;
     }
 
-    // Streaming state watcher: fires triggerAutoRunForLatest() when output ends.
+    // Lifecycle references for singleton cleanup
     let wasStreaming = false;
+    let streamingWatcherTimer = null;
+    let settingsPanelPollTimer = null;
+    let bodyObserver = null;
+    let floatingObserver = null;
+    let handleMessageRender = null;
+    let handleChatChanged = null;
     function startStreamingWatcher() {
-        setInterval(() => {
+        if (streamingWatcherTimer) clearInterval(streamingWatcherTimer);
+        streamingWatcherTimer = setInterval(() => {
             const streaming = isHostStreaming();
             if (wasStreaming && !streaming) {
                 console.info(`[${PLUGIN_NAME}] ✅ streaming ended, scheduling auto-run for latest message`);
@@ -11196,6 +11212,10 @@ SCHEMA:
     }
 
     function observeMessages() {
+        if (bodyObserver) {
+            try { bodyObserver.disconnect(); } catch (_e) {}
+            bodyObserver = null;
+        }
         const observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 if (mutation.type === 'characterData') {
@@ -11233,12 +11253,13 @@ SCHEMA:
             }
         });
         observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+        bodyObserver = observer;
 
         // 订阅 SillyTavern 官方生命周期事件（完美解决 Swipe 切换分身及楼层恢复）
         if (RBQ?.api?.eventSource && RBQ?.api?.event_types) {
             const es = RBQ.api.eventSource;
             const et = RBQ.api.event_types;
-            const handleMessageRender = (id) => {
+            handleMessageRender = (id) => {
                 const mesId = Number(id);
                 if (Number.isFinite(mesId)) {
                     for (const pk of processedKeys) {
@@ -11247,15 +11268,16 @@ SCHEMA:
                     scheduleProcess(mesId, { force: true, allowHistorical: true });
                 }
             };
+            handleChatChanged = () => {
+                processedKeys.clear();
+                document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
+                setTimeout(scanAllVisible, 200);
+            };
             try {
                 if (et.CHARACTER_MESSAGE_RENDERED) es.on(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
                 if (et.MESSAGE_UPDATED) es.on(et.MESSAGE_UPDATED, handleMessageRender);
                 if (et.USER_MESSAGE_RENDERED) es.on(et.USER_MESSAGE_RENDERED, handleMessageRender);
-                if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => {
-                    processedKeys.clear();
-                    document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
-                    setTimeout(scanAllVisible, 200);
-                });
+                if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, handleChatChanged);
             } catch (e) {
                 console.warn(`[${PLUGIN_NAME}] 订阅宿主事件失败:`, e);
             }
@@ -11505,6 +11527,10 @@ SCHEMA:
 
     // Watch for floating ball appearance and inject button
     function watchForFloatingBall() {
+        if (floatingObserver) {
+            try { floatingObserver.disconnect(); } catch (_e) {}
+            floatingObserver = null;
+        }
         injectFloatingManualButton();
         const observer = new MutationObserver(() => {
             const s = getStore();
@@ -11512,6 +11538,7 @@ SCHEMA:
             else removeFloatingManualButton();
         });
         observer.observe(document.body, { childList: true, subtree: true });
+        floatingObserver = observer;
     }
 
     RBQ.api.generateWithTagger = async (description, onProgress) => {
@@ -11650,10 +11677,65 @@ SCHEMA:
         return parseLorebookRawJson(raw, name);
     };
 
+    function cleanupInstance() {
+        console.info(`[${PLUGIN_NAME}] 正在执行实例清理...`);
+        if (streamingWatcherTimer) {
+            clearInterval(streamingWatcherTimer);
+            streamingWatcherTimer = null;
+        }
+        if (settingsPanelPollTimer) {
+            clearInterval(settingsPanelPollTimer);
+            settingsPanelPollTimer = null;
+        }
+        if (bodyObserver) {
+            try { bodyObserver.disconnect(); } catch (_e) {}
+            bodyObserver = null;
+        }
+        if (floatingObserver) {
+            try { floatingObserver.disconnect(); } catch (_e) {}
+            floatingObserver = null;
+        }
+        if (RBQ?.api?.eventSource && RBQ?.api?.event_types) {
+            const es = RBQ.api.eventSource;
+            const et = RBQ.api.event_types;
+            const unbind = (event, fn) => {
+                if (!es || !event || !fn) return;
+                try {
+                    if (typeof es.removeListener === 'function') es.removeListener(event, fn);
+                    else if (typeof es.off === 'function') es.off(event, fn);
+                } catch (_e) {}
+            };
+            if (handleMessageRender) {
+                if (et.CHARACTER_MESSAGE_RENDERED) unbind(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
+                if (et.MESSAGE_UPDATED) unbind(et.MESSAGE_UPDATED, handleMessageRender);
+                if (et.USER_MESSAGE_RENDERED) unbind(et.USER_MESSAGE_RENDERED, handleMessageRender);
+            }
+            if (handleChatChanged && et.CHAT_CHANGED) {
+                unbind(et.CHAT_CHANGED, handleChatChanged);
+            }
+        }
+        removeFloatingManualButton();
+        document.querySelectorAll('[id^="rbq-sdt-"]').forEach(el => {
+            try { el.remove(); } catch (_e) {}
+        });
+        document.querySelector('[data-kite-tab="smart-draw"]')?.remove();
+        document.querySelector('[data-kite-panel="smart-draw"]')?.remove();
+        if (typeof RBQ?.ui?.removeSettingPanel === 'function') {
+            RBQ.ui.removeSettingPanel('smart-draw');
+        }
+    }
+
     waitForPanel();
-    setInterval(ensureSettingsPanel, 1000);
+    if (settingsPanelPollTimer) clearInterval(settingsPanelPollTimer);
+    settingsPanelPollTimer = setInterval(ensureSettingsPanel, 1000);
     observeMessages();
     watchForFloatingBall();
+
+    window.__rbqSdtCleanup = cleanupInstance;
+    if (RBQ?.registerCleanup) {
+        RBQ.registerCleanup(PLUGIN_ID, cleanupInstance);
+    }
+
     // Startup diagnostic: verify persistent data loaded
     try {
         const bootStore = getStore();

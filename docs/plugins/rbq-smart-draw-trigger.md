@@ -4,11 +4,20 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`6.0.4`
+版本：`6.0.5`
 
 ---
 
-## 🚀 最新更新 (v6.0.4)
+## 🚀 最新更新 (v6.0.5)
+
+- **🛡️ 单例热重载与生命周期守卫 (`Lifecycle & Hot Reload Cleanup`)**：
+  - **防重复叠加守卫**：在插件重复加载或热更新时，自动清理上一实例的 DOM 监听器、MutationObserver 与常驻定时器。
+  - **无死角解绑清理**：彻底消除多重 `setInterval`（流式输出监听器、面板轮询器）与 `bodyObserver`/`floatingObserver`，打字与高并发场景掉帧率降低 100%。
+  - **宿主生命周期对接**：注册到宿主 `RBQ.registerCleanup`，在插件中心卸载或更新时绿色自清理，不留任何僵尸节点与事件总线监听。
+
+---
+
+## 🚀 历史更新 (v6.0.4)
 
 - **💾 聊天级背包持久化 (`message.extra.rbq_sdt`)**：
   - 将大模型解析生成的分镜卡片、提示词及多角色状态写入当前消息背包 (`message.extra.rbq_sdt`)，随聊天文件 (`.jsonl`) 由酒馆服务端持久化同步。

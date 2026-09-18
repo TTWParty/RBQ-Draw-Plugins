@@ -70,5 +70,13 @@
     "version": "1.0.1",
     "author": "TTWP-09",
     "main": "plugins/image-privacy-mode.js?v=1.0.1"
+  },
+  {
+    "id": "rbq-save-downloads-fix",
+    "name": "安卓保存修复 (Save Downloads Fix)",
+    "description": "修复安卓版 TauriTavern 保存图片时报「saveFileToDownloads Java exception was raised during method invocation」导致无法保存到下载目录的问题。自动修正非法文件名、失败自动改用 ASCII 文件名重试、再降级到系统「另存为」选择器兜底，并输出每一步诊断日志。桌面端与网页端完全静默。",
+    "version": "1.0.0",
+    "author": "TTWP-09",
+    "main": "plugins/save-downloads-fix.js?v=1.0.0"
   }
 ]

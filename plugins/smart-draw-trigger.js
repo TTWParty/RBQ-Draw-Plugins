@@ -7829,6 +7829,10 @@ SCHEMA:
     });
 
     function materializeResultCards(messageId, trigger, result, key) {
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return [];
+        const store = getStore();
+
         const rendered = [];
         const segments = Array.isArray(result?.segments) ? result.segments : [];
 
@@ -7843,43 +7847,105 @@ SCHEMA:
             });
 
             const resultMap = new Map(); // index → { wrapper, key, segment }
+            const unanchoredCards = [];
+
             for (const { seg, index } of insertionOrder) {
                 const segmentKey = `${key}-seg-${index}`;
-                // Pass the individual segment (not top-level result) so charData/label are per-segment
+                const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(segmentKey)}"]`);
+                if (existing instanceof HTMLElement) {
+                    resultMap.set(index, { wrapper: existing, key: segmentKey, segment: seg });
+                    continue;
+                }
+
+                // Pass the individual segment so charData/label are per-segment
                 const segResult = {
                     ...seg,
                     reason: result.reason || '',
                     matchedLorebooks: result.matchedLorebooks || [],
                 };
-                const wrapper = insertCard(messageId, trigger, segResult, segmentKey);
-                if (wrapper) {
-                    wrapper.dataset.messageId = String(messageId);
-                    wrapper.dataset.prompt = getFinalPrompt(seg);
-                    wrapper.dataset.rbqSdtBaseKey = key;
-                    wrapper.dataset.rbqSdtSegmentKey = segmentKey;
-                    wrapper.dataset.rbqSdtSegmentIndex = String(index + 1);
-                    wrapper.dataset.rbqSdtIsResult = '1';
-                    renderCardBadges(wrapper, segResult);
+
+                const wrapper = createConfiguredCard({
+                    messageId,
+                    trigger,
+                    result: segResult,
+                    key: segmentKey,
+                    baseKey: key,
+                    segmentIndex: index + 1,
+                    isResult: true,
+                });
+                if (!wrapper) continue;
+
+                // Pre-configure segment-specific button states while detached in memory
+                const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
+                if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
+                const btnLabel = store.autoRunGenerate ? '等待自动生图...' : getSegmentLabel(seg);
+                setGenerateButtonState(wrapper, true, btnLabel, false);
+                setWrapperStage(wrapper, 'ready-generate');
+                bindWrapperManualRun(wrapper, trigger, messageId, key, segmentKey);
+
+                // Try to mount into anchor position
+                const mounted = tryMountAnchoredCard(container, messageId, trigger, segResult, wrapper);
+                if (mounted) {
                     resultMap.set(index, { wrapper, key: segmentKey, segment: seg });
+                } else {
+                    unanchoredCards.push({ wrapper, key: segmentKey, segment: seg, index });
                 }
             }
+
+            // Batch mount unanchored cards using DocumentFragment
+            if (unanchoredCards.length > 0) {
+                unanchoredCards.sort((a, b) => a.index - b.index);
+                const fragment = document.createDocumentFragment();
+                for (const item of unanchoredCards) {
+                    fragment.append(item.wrapper);
+                    resultMap.set(item.index, { wrapper: item.wrapper, key: item.key, segment: item.segment });
+                }
+                mountFallbackFragment(container, fragment, store);
+            }
+
             // Restore original segment order for downstream consumers (auto-gen, event binding)
             for (let i = 0; i < segments.length; i++) {
                 const item = resultMap.get(i);
                 if (item) rendered.push(item);
             }
         } else {
-            const wrapper = insertCard(messageId, trigger, result, key);
-            if (wrapper) {
-                wrapper.dataset.messageId = String(messageId);
-                wrapper.dataset.prompt = getFinalPrompt(result);
-                wrapper.dataset.rbqSdtBaseKey = key;
-                wrapper.dataset.rbqSdtSegmentKey = key;
-                wrapper.dataset.rbqSdtIsResult = '1';
-                renderCardBadges(wrapper, result);
-                rendered.push({ wrapper, key, segment: result });
+            const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
+            if (existing instanceof HTMLElement) {
+                rendered.push({ wrapper: existing, key, segment: result });
+            } else {
+                const wrapper = createConfiguredCard({
+                    messageId,
+                    trigger,
+                    result,
+                    key,
+                    baseKey: key,
+                    segmentIndex: null,
+                    isResult: true,
+                });
+                if (wrapper) {
+                    const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
+                    if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
+                    const btnLabel = store.autoRunGenerate ? '等待自动生图...' : getSegmentLabel(result);
+                    setGenerateButtonState(wrapper, true, btnLabel, false);
+                    setWrapperStage(wrapper, 'ready-generate');
+                    bindWrapperManualRun(wrapper, trigger, messageId, key);
+
+                    const mounted = tryMountAnchoredCard(container, messageId, trigger, result, wrapper);
+                    if (!mounted) {
+                        const fragment = document.createDocumentFragment();
+                        fragment.append(wrapper);
+                        mountFallbackFragment(container, fragment, store);
+                    }
+                    rendered.push({ wrapper, key, segment: result });
+                }
             }
         }
+
+        // Only inject message action button once per message batch
+        if (rendered.length > 0 && rendered[0]?.wrapper) {
+            injectMessageActionButton(messageId, rendered[0].wrapper, trigger, key);
+        }
+
         return rendered;
     }
 
@@ -9405,60 +9471,105 @@ SCHEMA:
         } catch (_e) { /* noop */ }
     }
 
-    function insertCard(messageId, trigger, result, key) {
-        const container = RBQ.api.getMessageTextContainer(messageId);
-        if (!(container instanceof HTMLElement)) return null;
-        const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
-        if (existing instanceof HTMLElement) return existing;
-
+    function createConfiguredCard({
+        messageId,
+        trigger,
+        result,
+        key,
+        baseKey = null,
+        segmentIndex = null,
+        isResult = true,
+    }) {
         const finalPrompt = getFinalPrompt(result);
 
         const wrapper = RBQ.api.createPromptCard({
             messageId,
-            prompt: finalPrompt || trigger.marker || '[Smart Draw]',
-            raw: trigger.marker || '[Smart Draw]',
+            prompt: finalPrompt || trigger?.marker || '[Smart Draw]',
+            raw: trigger?.marker || '[Smart Draw]',
             id: `smart-draw:${key}`,
             label: 'smart-draw',
         });
         if (!(wrapper instanceof HTMLElement)) return null;
         wrapper.classList.add(CARD_CLASS);
+
         // Hide host extension's default "生成图片" button — we use our own
         const hostButton = wrapper.querySelector('.st-scene-trigger-generate:not(.rbq-sdt-run-image)');
         if (hostButton) hostButton.style.display = 'none';
+
+        wrapper.dataset.messageId = String(messageId);
+        wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger || {});
         wrapper.dataset.rbqSdtKey = key;
-        wrapper.dataset.rbqSdtTriggerType = trigger.type;
+        wrapper.dataset.rbqSdtBaseKey = baseKey || key;
+        wrapper.dataset.rbqSdtSegmentKey = key;
+        if (segmentIndex != null) wrapper.dataset.rbqSdtSegmentIndex = String(segmentIndex);
+        wrapper.dataset.rbqSdtIsResult = isResult ? '1' : '0';
+        wrapper.dataset.rbqSdtTriggerType = trigger?.type || 'auto';
         wrapper.dataset.rbqSdtReason = result.reason || '';
         wrapper.dataset.rbqSdtFinalPrompt = finalPrompt;
+
         // Store structured char data for NAI V4 direct injection on manual generate
         if (Array.isArray(result?.characters) && result.characters.length > 0) {
             try { wrapper.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch (_e) { /* noop */ }
         }
 
-        // 短标记按标记位置替换；自动定位根据 cardPosition 设置决定插入开头或结尾
-        let inserted = false;
-        if (trigger.type === 'marker' && trigger.marker) {
-            inserted = insertAtMarker(container, trigger.marker, wrapper);
+        renderCardBadges(wrapper, result);
+        return wrapper;
+    }
+
+    function tryMountAnchoredCard(container, messageId, trigger, result, wrapper) {
+        if (trigger?.type === 'marker' && trigger.marker) {
+            return insertAtMarker(container, trigger.marker, wrapper);
         } else if (result?.anchor?.text || (Number.isFinite(Number(result?.anchor?.index)) && Number(result?.anchor?.index) > 0)) {
-            inserted = insertBySentenceMap(messageId, result.anchor, wrapper);
+            return insertBySentenceMap(messageId, result.anchor, wrapper);
         }
-        if (!inserted) {
-            const store = getStore();
-            if (store.cardPosition === 'top') {
-                const reasoningEl = container.querySelector('.mes_reasoning, details, .thinking-block, .thought');
-                if (reasoningEl && reasoningEl.nextSibling) {
-                    container.insertBefore(wrapper, reasoningEl.nextSibling);
-                } else {
-                    container.prepend(wrapper);
-                }
+        return false;
+    }
+
+    function mountFallbackFragment(container, fragment, store = null) {
+        if (!container || !fragment || !fragment.hasChildNodes()) return;
+        const currentStore = store || getStore();
+        if (currentStore.cardPosition === 'top') {
+            const reasoningEl = container.querySelector('.mes_reasoning, details, .thinking-block, .thought');
+            if (reasoningEl && reasoningEl.nextSibling) {
+                container.insertBefore(fragment, reasoningEl.nextSibling);
             } else {
-                container.append(wrapper);
+                container.prepend(fragment);
             }
+        } else {
+            container.append(fragment);
+        }
+    }
+
+    function insertCard(messageId, trigger, result, key, baseKey = null, configureWrapper = null) {
+        const container = RBQ.api.getMessageTextContainer(messageId);
+        if (!(container instanceof HTMLElement)) return null;
+        const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
+        if (existing instanceof HTMLElement) return existing;
+
+        const store = getStore();
+        const wrapper = createConfiguredCard({
+            messageId,
+            trigger,
+            result,
+            key,
+            baseKey: baseKey || key,
+            isResult: false,
+        });
+        if (!(wrapper instanceof HTMLElement)) return null;
+
+        if (typeof configureWrapper === 'function') {
+            configureWrapper(wrapper);
         }
 
-        // 无论何种位置模式，均在消息右上角操作栏注入一键直达的相机图标
-        injectMessageActionButton(messageId, wrapper, trigger, key);
+        const mounted = tryMountAnchoredCard(container, messageId, trigger, result, wrapper);
+        if (!mounted) {
+            const fragment = document.createDocumentFragment();
+            fragment.append(wrapper);
+            mountFallbackFragment(container, fragment, store);
+        }
 
-        debugInfo(`insertCard => #${messageId} (${key}) [${trigger.type}]`);
+        injectMessageActionButton(messageId, wrapper, trigger, key);
+        debugInfo(`insertCard => #${messageId} (${key}) [${trigger?.type || 'auto'}]`);
         return wrapper;
     }
 
@@ -9766,11 +9877,6 @@ SCHEMA:
             }
             for (const item of rendered) {
                 const renderedWrapper = item.wrapper;
-                // Hide tagger button on segment cards — re-parse is on the bottom placeholder
-                const taggerBtn = renderedWrapper.querySelector('.st-scene-trigger-generate');
-                if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
-                const btnLabel = store.autoRunGenerate ? '等待自动生图...' : getSegmentLabel(item.segment);
-                setGenerateButtonState(renderedWrapper, true, btnLabel, false);
                 const segmentState = getSegmentState(store, cacheKey, item.key, messageId);
                 if (segmentState.imageResult) {
                     const restoredResult2 = { ...segmentState.imageResult };
@@ -9786,7 +9892,6 @@ SCHEMA:
                 } else if (store.autoRunGenerate) {
                     await maybeAutoGenerate(renderedWrapper, item.segment, messageId, cacheKey, item.key);
                 }
-                bindWrapperManualRun(renderedWrapper, trigger, messageId, cacheKey, item.key);
             }
             processedKeys.add(cacheKey);
         } catch (error) {
@@ -9892,12 +9997,7 @@ SCHEMA:
                 scene: '',
                 characters: [],
             };
-            const wrapper = insertCard(messageId, trigger, noDrawPlaceholder, key);
-            if (wrapper instanceof HTMLElement) {
-                wrapper.dataset.messageId = String(messageId);
-                wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
-                wrapper.dataset.rbqSdtKey = key;
-                wrapper.dataset.rbqSdtBaseKey = key;
+            insertCard(messageId, trigger, noDrawPlaceholder, key, key, (wrapper) => {
                 ensureTaggerButtonState(wrapper, '⚠️ tagger 判定无需生图（点击重新解析）');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'done-no-draw');
@@ -9905,7 +10005,7 @@ SCHEMA:
                 renderTaggerDebugInfo(wrapper, noDrawPlaceholder);
                 const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
                 if (loader instanceof HTMLElement) loader.style.display = 'none';
-            }
+            });
             processedKeys.add(key);
             return;
         }
@@ -9913,11 +10013,6 @@ SCHEMA:
             const rendered = materializeResultCards(messageId, trigger, cached, key);
             for (const item of rendered) {
                 const wrapper = item.wrapper;
-                // Hide tagger button on segment cards
-                const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
-                if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
-                const btnLabel2 = store.autoRunGenerate ? '等待自动生图...' : getSegmentLabel(item.segment);
-                setGenerateButtonState(wrapper, true, btnLabel2, false);
                 const segmentState = getSegmentState(store, key, item.key, messageId);
                 if (segmentState.imageResult) {
                     // Restore valid display URL from IndexedDB via cacheId (blob URLs expire on refresh)
@@ -9939,13 +10034,9 @@ SCHEMA:
                     RBQ.api.renderInlineGeneratedImage(wrapper, restoredResult);
                     setGenerateButtonState(wrapper, true, getRegenLabel(wrapper), false);
                     setWrapperStage(wrapper, 'generated');
-                } else {
-                    setWrapperStage(wrapper, 'ready-generate');
-                    if (store.autoRunGenerate) {
-                        await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
-                    }
+                } else if (store.autoRunGenerate) {
+                    await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
                 }
-                bindWrapperManualRun(wrapper, trigger, messageId, key, item.key);
             }
             // Insert a bottom re-parse card if segments were rendered
             if (rendered.length > 0) {
@@ -9955,14 +10046,12 @@ SCHEMA:
                     anchor: { type: 'bottom' }, reason: '', multiChar: false,
                     scene: '', characters: [],
                 };
-                const reparseWrapper = insertCard(messageId, trigger, reparsePlaceholder, reparseKey);
-                if (reparseWrapper instanceof HTMLElement) {
-                    reparseWrapper.dataset.rbqSdtBaseKey = key;
+                insertCard(messageId, trigger, reparsePlaceholder, reparseKey, key, (reparseWrapper) => {
                     ensureTaggerButtonState(reparseWrapper, '🔄 重新解析/刷新 tag');
                     setGenerateButtonState(reparseWrapper, false);
                     setWrapperStage(reparseWrapper, 'ready-generate');
                     bindWrapperManualRun(reparseWrapper, trigger, messageId, key);
-                }
+                });
             }
             processedKeys.add(key);
             return;
@@ -9985,18 +10074,14 @@ SCHEMA:
             scene: '',
             characters: [],
         };
-        const wrapper = insertCard(messageId, trigger, initialPlaceholder, key);
-        if (!(wrapper instanceof HTMLElement)) return;
-        wrapper.dataset.messageId = String(messageId);
-        wrapper.dataset.rbqSdtTrigger = JSON.stringify(trigger);
-        wrapper.dataset.rbqSdtKey = key;
-        wrapper.dataset.rbqSdtBaseKey = key;
-        ensureTaggerButtonState(wrapper, '📷 开始解析/生成 tag');
-        setGenerateButtonState(wrapper, false);
-        setWrapperStage(wrapper, 'idle');
-        bindWrapperManualRun(wrapper, trigger, messageId, key);
-        const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
-        if (loader instanceof HTMLElement) loader.style.display = 'none';
+        insertCard(messageId, trigger, initialPlaceholder, key, key, (wrapper) => {
+            ensureTaggerButtonState(wrapper, '📷 开始解析/生成 tag');
+            setGenerateButtonState(wrapper, false);
+            setWrapperStage(wrapper, 'idle');
+            bindWrapperManualRun(wrapper, trigger, messageId, key);
+            const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
+            if (loader instanceof HTMLElement) loader.style.display = 'none';
+        });
         // Auto-run is driven by the streaming watcher (triggerAutoRunForLatest),
         // NOT here. processMessage only creates/restores cards.
     }

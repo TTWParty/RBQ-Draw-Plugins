@@ -4,11 +4,21 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`6.0.5`
+版本：`6.0.6`
 
 ---
 
-## 🚀 最新更新 (v6.0.5)
+## 🚀 最新更新 (v6.0.6)
+
+- **⚡ 多段分镜与图组批量离线装配渲染优化 (`Detached Batch Assembly & Reflow Optimization`)**：
+  - **内存离线预装配 (Detached Assembly)**：卡片 DOM 创建、数据集写入 (`dataset`)、徽章渲染 (`renderCardBadges`)、按钮文案与事件监听绑定全面前置于内存中完成，杜绝在活体 DOM (Live DOM) 上反复修改属性导致的连续重排 (Reflow) 与样式重绘。
+  - **DocumentFragment 批量挂载**：未锚定的多段分镜卡片统一装入内存文档片段 (`DocumentFragment`) 一次性插入目标容器，将 DOM 插入引起的布局触发收敛至 1 次，大幅减轻长消息或 4~6 分镜图组恢复时的突发掉帧。
+  - **精准切分插入与单次操作栏挂载**：仅精准锚定的分镜按原位插入正文，单条消息操作栏生图按钮注入收敛为 1 次，消除多卡片并发挂载下的 DOM 争用。
+  - **重析卡片原子化挂载**：底部重新解析占位卡片采用离线组装后一次性挂载，彻底消除卡片闪烁与下游重复设置。
+
+---
+
+## 🚀 历史更新 (v6.0.5)
 
 - **🛡️ 单例热重载与生命周期守卫 (`Lifecycle & Hot Reload Cleanup`)**：
   - **防重复叠加守卫**：在插件重复加载或热更新时，自动清理上一实例的 DOM 监听器、MutationObserver 与常驻定时器。

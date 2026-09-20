@@ -5595,21 +5595,22 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function renderLorebookSourceList() {
         const sources = ensureLorebookStore();
-        if (!sources.length) return '暂无已导入世界书';
+        if (!sources.length) return '<span style="opacity:0.65;font-size:12px;padding:8px 0;display:block;">暂无已导入或绑定的世界书</span>';
         return sources.map((source) => {
             const state = source.enabled !== false ? '●' : '○';
+            const stateColor = source.enabled !== false ? '#22c55e' : '#71717a';
             const actionText = source.enabled !== false ? '禁用' : '启用';
-            const stTag = source.isNativeST ? '<span style="opacity:0.75;font-size:10px;margin-left:4px;color:#38bdf8;">🏛️ 酒馆</span>' : '';
+            const stTag = source.isNativeST ? '<span style="opacity:0.85;font-size:10.5px;margin-left:5px;color:#38bdf8;font-weight:normal;">🏛️ 酒馆</span>' : '';
             return `
                 <div class="rbq-sdt-lorebook-item" data-id="${source.id}">
                     <div class="rbq-sdt-lorebook-meta">
-                        <strong>${state} ${source.name}${stTag}</strong>
-                        <small>${source.type} · ${source.entryCount || 0} entries</small>
+                        <strong><span style="color:${stateColor};margin-right:4px;">${state}</span>${escapeHtml(source.name)}${stTag}</strong>
+                        <small>${escapeHtml(source.type || 'custom')} · ${source.entryCount || 0} entries</small>
                     </div>
                     <div class="rbq-sdt-lorebook-actions">
-                        <button class="menu_button" type="button" data-action="browse-lorebook" data-id="${source.id}" style="padding: 3px 8px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important;"><i class="fa-solid fa-magnifying-glass"></i> 浏览</button>
+                        <button class="menu_button" type="button" data-action="browse-lorebook" data-id="${source.id}"><i class="fa-solid fa-magnifying-glass"></i> 浏览</button>
                         <button class="menu_button" type="button" data-action="toggle-lorebook" data-id="${source.id}">${actionText}</button>
-                        <button class="menu_button" type="button" data-action="remove-lorebook" data-id="${source.id}" title="从智能生图触发器解绑（不会删除酒馆原生文件）">解绑</button>
+                        <button class="menu_button redWarning" type="button" data-action="remove-lorebook" data-id="${source.id}" title="从智能生图触发器解绑（不会删除酒馆原生文件）">解绑</button>
                     </div>
                 </div>
             `;
@@ -10501,11 +10502,89 @@ SCHEMA:
                 opacity:.62;
                 letter-spacing:.02em;
             }
-            #rbq-sdt-lorebook-list { display:flex; flex-direction:column; gap:8px; }
-            .rbq-sdt-lorebook-item { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 12px; border-radius:10px; background:var(--linear-surface, rgba(255,255,255,.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,.05)); }
-            .rbq-sdt-lorebook-meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
-            .rbq-sdt-lorebook-meta strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--linear-text-primary, #f7f8f8); }
-            .rbq-sdt-lorebook-meta small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--linear-text-muted, #8a8f98); }
+            #rbq-sdt-lorebook-list { display:flex; flex-direction:column; gap:8px; width:100%; margin-top:6px; }
+            .rbq-sdt-lorebook-item {
+                display:flex !important;
+                flex-direction:row !important;
+                justify-content:space-between !important;
+                align-items:center !important;
+                gap:12px !important;
+                padding:8px 14px !important;
+                border-radius:10px !important;
+                background:var(--linear-surface, rgba(255,255,255,.04)) !important;
+                border:1px solid var(--linear-border-standard, rgba(255,255,255,.08)) !important;
+                box-sizing:border-box !important;
+                min-height:46px !important;
+                transition:all .18s ease;
+            }
+            .rbq-sdt-lorebook-item:hover {
+                background:var(--linear-surface-hover, rgba(255,255,255,.07)) !important;
+                border-color:rgba(255,255,255,.14) !important;
+            }
+            .rbq-sdt-lorebook-meta {
+                display:flex !important;
+                flex-direction:column !important;
+                gap:3px !important;
+                min-width:0 !important;
+                flex:1 1 auto !important;
+                overflow:hidden !important;
+            }
+            .rbq-sdt-lorebook-meta strong {
+                font-size:13px !important;
+                font-weight:600 !important;
+                overflow:hidden !important;
+                text-overflow:ellipsis !important;
+                white-space:nowrap !important;
+                color:var(--linear-text-primary, #f7f8f8) !important;
+                display:flex !important;
+                align-items:center !important;
+                line-height:1.4 !important;
+            }
+            .rbq-sdt-lorebook-meta small {
+                font-size:11px !important;
+                opacity:.72 !important;
+                overflow:hidden !important;
+                text-overflow:ellipsis !important;
+                white-space:nowrap !important;
+                color:var(--linear-text-muted, #8a8f98) !important;
+                line-height:1.3 !important;
+            }
+            .rbq-sdt-lorebook-actions {
+                display:flex !important;
+                flex-direction:row !important;
+                align-items:center !important;
+                justify-content:flex-end !important;
+                gap:6px !important;
+                flex-shrink:0 !important;
+                white-space:nowrap !important;
+            }
+            .rbq-sdt-lorebook-actions .menu_button {
+                display:inline-flex !important;
+                flex-direction:row !important;
+                align-items:center !important;
+                justify-content:center !important;
+                gap:4px !important;
+                height:28px !important;
+                line-height:28px !important;
+                padding:0 10px !important;
+                font-size:12px !important;
+                font-weight:500 !important;
+                white-space:nowrap !important;
+                border-radius:6px !important;
+                flex-shrink:0 !important;
+                cursor:pointer !important;
+                margin:0 !important;
+                box-sizing:border-box !important;
+                width:auto !important;
+                min-width:unset !important;
+            }
+            .rbq-sdt-lorebook-actions .menu_button.redWarning {
+                color:rgba(248,113,113,0.95) !important;
+            }
+            .rbq-sdt-lorebook-actions .menu_button.redWarning:hover {
+                background:rgba(239,68,68,0.15) !important;
+                border-color:rgba(239,68,68,0.4) !important;
+            }
             .rbq-sdt-sticky-save { position:sticky; top:0; z-index:10; padding:10px 0; background:var(--linear-bg-subtle, #181920); backdrop-filter:blur(8px); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
             .rbq-sdt-master-toggle { margin:0!important; padding:0 16px!important; height:42px!important; display:flex!important; align-items:center!important; gap:12px!important; background:var(--linear-surface, rgba(255,255,255,0.04))!important; border:1px solid var(--linear-border-standard, rgba(255,255,255,0.12))!important; border-radius:10px!important; cursor:pointer; flex-shrink:0; box-sizing:border-box; transition:all .2s ease; }
             .rbq-sdt-master-toggle:hover { border-color:rgba(34,197,94,0.5)!important; background:rgba(34,197,94,0.08)!important; }
@@ -11697,9 +11776,9 @@ SCHEMA:
                         </select>
                         <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
                     </div>
-                    <div class="st-scene-trigger-field wide">
-                        <span>已挂载世界书</span>
-                        <div id="rbq-sdt-lorebook-list" class="rbq-sdt-note">${renderLorebookSourceList()}</div>
+                    <div class="st-scene-trigger-field wide" style="margin-top:6px;">
+                        <span style="font-weight:600; font-size:13px; display:flex; align-items:center; gap:6px; color:var(--linear-text-primary, #f7f8f8);"><i class="fa-solid fa-list-check" style="color:#eab308;font-size:12.5px;"></i> 已挂载世界书</span>
+                        <div id="rbq-sdt-lorebook-list">${renderLorebookSourceList()}</div>
                     </div>
                 </div>
 

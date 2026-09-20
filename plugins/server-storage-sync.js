@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.2';
+    const PLUGIN_VERSION = '1.1.3';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -400,9 +400,60 @@
                 }
             }
 
+            // 同步穿透到 SDT 扩展的分镜状态中 (保证跨设备多端在正文卡片中秒开)
+            if (msg.extra.rbq_sdt?.segmentStates && typeof msg.extra.rbq_sdt.segmentStates === 'object') {
+                for (const segKey of Object.keys(msg.extra.rbq_sdt.segmentStates)) {
+                    const st = msg.extra.rbq_sdt.segmentStates[segKey];
+                    if (st?.imageResult) {
+                        if ((item.cacheId && st.imageResult.cacheId === item.cacheId) ||
+                            (!item.cacheId && item.prompt && st.imageResult.prompt === item.prompt)) {
+                            st.imageResult.serverUrl = path;
+                            if (isOriginal) {
+                                st.imageResult.serverOriginalUrl = path;
+                                st.imageResult.url = path;
+                            } else {
+                                st.imageResult.serverPreviewUrl = path;
+                                if (!st.imageResult.url || st.imageResult.url.startsWith('blob:')) {
+                                    st.imageResult.url = path;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 立即存盘聊天数据至服务端（确保其他设备秒级可见）
             if (typeof RBQ?.api?.saveChat === 'function') RBQ.api.saveChat();
             else if (typeof RBQ?.api?.saveChatDebounced === 'function') RBQ.api.saveChatDebounced();
+
+            // 实时将已同步图片渲染到当前页面正文卡片中（防止正文卡片留在“未出图/等待生图”状态）
+            try {
+                const inlines = document.querySelectorAll(`.st-scene-trigger-inline-wrap[data-message-id="${targetMsgId}"]`);
+                inlines.forEach(inline => {
+                    if (inline instanceof HTMLElement && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
+                        RBQ.api.renderInlineGeneratedImage(inline, {
+                            ...item,
+                            url: path,
+                            serverUrl: path,
+                            serverOriginalUrl: isOriginal ? path : item.serverOriginalUrl,
+                            serverPreviewUrl: isOriginal ? item.serverPreviewUrl : path
+                        });
+                    }
+                });
+                const sdtCards = document.querySelectorAll(`.rbq-sdt-card[data-message-id="${targetMsgId}"]`);
+                sdtCards.forEach(sCard => {
+                    if (sCard instanceof HTMLElement && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
+                        RBQ.api.renderInlineGeneratedImage(sCard, {
+                            ...item,
+                            url: path,
+                            serverUrl: path,
+                            serverOriginalUrl: isOriginal ? path : item.serverOriginalUrl,
+                            serverPreviewUrl: isOriginal ? item.serverPreviewUrl : path
+                        });
+                        sCard.dataset.rbqSdtStage = 'generated';
+                    }
+                });
+            } catch (_) {}
         }
 
         // 2. 同步到全局 settings.history

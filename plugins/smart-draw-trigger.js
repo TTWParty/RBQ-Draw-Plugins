@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.24';
+    const PLUGIN_VERSION = '6.0.25';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2592,100 +2592,12 @@ Zimage 擅长理解复杂的英文长句和语境。
             }
         }
 
-        // Restore critical settings from localStorage backup (in case saveSettingsDebounced didn't complete)
-        try {
-            const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
-            if (backup.characterMemoryEnabled !== undefined && store.characterMemoryEnabled === false && backup.characterMemoryEnabled === true) {
-                store.characterMemoryEnabled = true;
-            }
-            if (backup.characterProfiles && Object.keys(store.characterProfiles).length === 0 && Object.keys(backup.characterProfiles).length > 0) {
-                store.characterProfiles = backup.characterProfiles;
-            }
-        } catch (_e) { /* noop */ }
-
-        // Auto-sanitize legacy bloated cache entries once to shrink settings.json
-        if (!store._cacheSanitizedV6 && store.cache && typeof store.cache === 'object') {
-            let bloatedCount = 0;
-            const keys = Object.keys(store.cache);
-            for (const key of keys) {
-                const item = store.cache[key];
-                if (item && typeof item === 'object') {
-                    if (item.rawOutput) {
-                        delete item.rawOutput;
-                        bloatedCount++;
-                    }
-                    if (item.thinkContent && item.thinkContent.length > 1000) {
-                        item.thinkContent = item.thinkContent.slice(0, 1000) + '... (已截断)';
-                        bloatedCount++;
-                    }
-                    if (item.recentMessages && item.recentMessages.length > 5) {
-                        item.recentMessages = item.recentMessages.slice(-5);
-                        bloatedCount++;
-                    }
-                }
-            }
-            if (keys.length > 100) {
-                Object.entries(store.cache)
-                    .sort((a, b) => Number(a[1]?.createdAt || 0) - Number(b[1]?.createdAt || 0))
-                    .slice(0, keys.length - 100)
-                    .forEach(([k]) => delete store.cache[k]);
-                bloatedCount++;
-            }
-            store._cacheSanitizedV6 = true;
-            if (bloatedCount > 0) {
-                console.info(`[${PLUGIN_NAME}] 🧹 自动清理存量历史缓存 (瘦身/裁剪 ${bloatedCount} 项)，大幅缩减 settings.json 存盘体积`);
-                setTimeout(() => {
-                    try { save(); } catch (_e) {}
-                }, 1000);
-            }
-        }
-
-        // Auto-migrate & sanitize legacy lorebook sources containing rawJson to shrink settings.json by ~2.8MB
-        if (Array.isArray(store.lorebookSources) && store.lorebookSources.some(s => s && s.rawJson)) {
-            let migratedCount = 0;
-            for (const source of store.lorebookSources) {
-                if (source && source.rawJson) {
-                    try {
-                        const parsed = parseLorebookData(source.rawJson, source.name, source);
-                        lorebookMemoryCache.set(source.id, parsed.entries);
-                        saveLorebookToIDB(source.id, parsed.entries);
-                        source.entryCount = parsed.entries.length;
-                        source.isNativeST = true;
-                        // Trigger async background sync to SillyTavern worlds/ folder
-                        saveWorldInfoToST(source.name, parsed.rawObj).catch(() => {});
-                    } catch (e) {
-                        console.warn(`[${PLUGIN_NAME}] 迁移世界书 ${source.name} 失败:`, e);
-                    }
-                    delete source.rawJson;
-                    migratedCount++;
-                }
-            }
-            if (migratedCount > 0) {
-                console.info(`[${PLUGIN_NAME}] 🧹 自动脱脂世界书存储：已彻底剥离 ${migratedCount} 本世界书的 rawJson，settings.json 成功瘦身约 2.8 MB！`);
-                setTimeout(() => {
-                    try {
-                        save();
-                        if (typeof toastr !== 'undefined') {
-                            toastr.success(`已自动脱脂 ${migratedCount} 本世界书，settings.json 瘦身约 2.8 MB！`, PLUGIN_NAME);
-                        }
-                    } catch (_e) {}
-                }, 1000);
-            }
-        }
-
         return store;
     }
 
     function save() {
         const store = getStore();
         debugInfo(`💾 save(): characterMemoryEnabled=${store.characterMemoryEnabled}, profiles=${JSON.stringify(Object.keys(store.characterProfiles || {}))}`);
-        // Immediate localStorage backup for critical settings (survives refresh even if debounced save hasn't fired)
-        try {
-            localStorage.setItem('rbq-sdt-backup', JSON.stringify({
-                characterMemoryEnabled: store.characterMemoryEnabled,
-                characterProfiles: store.characterProfiles,
-            }));
-        } catch (_e) { /* noop - quota exceeded etc */ }
         RBQ.api.saveSettings();
     }
 
@@ -7930,7 +7842,6 @@ SCHEMA:
         }
     }
 
-    setInterval(scanAndInjectViewer, 300);
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
         const detail = event?.detail;
@@ -12022,19 +11933,14 @@ SCHEMA:
         });
         // Set checkbox value BEFORE bindSwitch — sync() reads initial state
         let charMemoryValue = !!store.characterMemoryEnabled;
-        try {
-            const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
-            if (backup.characterMemoryEnabled === true) charMemoryValue = true;
-        } catch (_e) { /* noop */ }
         document.getElementById('rbq-sdt-char-memory').checked = charMemoryValue;
-        store.characterMemoryEnabled = charMemoryValue;
         bindSwitch('rbq-sdt-char-memory-field', 'rbq-sdt-char-memory');
         // Auto-save when char memory toggle changes
         document.getElementById('rbq-sdt-char-memory').addEventListener('change', (e) => {
             const s = getStore();
             s.characterMemoryEnabled = e.target.checked;
             save();
-            console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}并自动保存到 localStorage`);
+            console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}`);
         });
 
         // API templates selection/change
@@ -14194,20 +14100,29 @@ SCHEMA:
         const s = getStore();
         if (s.manualDrawEnabled) injectFloatingManualButton();
         if (s.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
-        let floatingTimer = null;
-        const observer = new MutationObserver(() => {
-            if (floatingTimer) return;
-            floatingTimer = setTimeout(() => {
-                floatingTimer = null;
-                const curStore = getStore();
-                if (curStore.manualDrawEnabled) injectFloatingManualButton();
-                else removeFloatingManualButton();
-                if (curStore.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
-                else removeFloatingComicDrawerButton();
-            }, 250);
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        floatingObserver = observer;
+        // 仅监听主扩展生命周期事件精准注入，不再暴力监听整个 body 树
+        const reinjectFloating = () => {
+            const curStore = getStore();
+            if (curStore.manualDrawEnabled) injectFloatingManualButton();
+            else removeFloatingManualButton();
+            if (curStore.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
+            else removeFloatingComicDrawerButton();
+        };
+        window.addEventListener('st-scene-trigger:image-generated', reinjectFloating);
+        document.addEventListener('rbq-tab-switched', reinjectFloating);
+        if (RBQ?.api?.eventSource && RBQ?.api?.event_types?.CHAT_CHANGED) {
+            RBQ.api.eventSource.on(RBQ.api.event_types.CHAT_CHANGED, reinjectFloating);
+        }
+        // 延迟重试兜底：主扩展悬浮球在插件之后挂载
+        setTimeout(reinjectFloating, 2000);
+        setTimeout(reinjectFloating, 5000);
+        // 提供 disconnect() 接口以兼容 cleanupInstance
+        floatingObserver = {
+            disconnect() {
+                window.removeEventListener('st-scene-trigger:image-generated', reinjectFloating);
+                document.removeEventListener('rbq-tab-switched', reinjectFloating);
+            }
+        };
     }
 
     RBQ.api.generateWithTagger = async (description, onProgress) => {
@@ -14407,7 +14322,12 @@ SCHEMA:
 
     waitForPanel();
     if (settingsPanelPollTimer) clearInterval(settingsPanelPollTimer);
-    settingsPanelPollTimer = setInterval(ensureSettingsPanel, 1000);
+    settingsPanelPollTimer = setInterval(() => {
+        if (ensureSettingsPanel()) {
+            clearInterval(settingsPanelPollTimer);
+            settingsPanelPollTimer = null;
+        }
+    }, 1000);
     observeMessages();
     watchForFloatingBall();
 

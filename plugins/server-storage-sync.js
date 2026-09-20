@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.8';
+    const PLUGIN_VERSION = '1.1.9';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -900,19 +900,6 @@
         }
     });
 
-    // 额外兜底监听：画廊或查看器内点击收藏按钮
-    document.addEventListener('click', (e) => {
-        const favBtn = e.target.closest?.('.st-scene-trigger-viewer-favorite, [data-action="toggle-fav"], [data-role="toggle-fav"]');
-        if (favBtn && currentViewerItem) {
-            setTimeout(() => {
-                const isFav = Boolean(currentViewerItem.favorite ?? currentViewerItem.isFavorite);
-                if (isFav) {
-                    syncFavoriteOriginal(currentViewerItem);
-                }
-            }, 120);
-        }
-    });
-
     // 跨端切回感知：窗口焦点/可见性/会话切换自动检测待补传的原图
     window.addEventListener('focus', () => setTimeout(syncPendingOriginalUploads, 350));
     document.addEventListener('visibilitychange', () => {
@@ -922,7 +909,6 @@
         const es = RBQ.api.eventSource;
         const et = RBQ.api.event_types;
         if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => setTimeout(syncPendingOriginalUploads, 600));
-        if (et.MESSAGE_UPDATED) es.on(et.MESSAGE_UPDATED, () => setTimeout(syncPendingOriginalUploads, 600));
     }
     window.addEventListener('st-scene-trigger:history-rendered', () => setTimeout(syncPendingOriginalUploads, 400));
     setTimeout(syncPendingOriginalUploads, 2500);

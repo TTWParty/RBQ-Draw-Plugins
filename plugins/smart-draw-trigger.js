@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器';
-    const PLUGIN_VERSION = '6.0.15';
+    const PLUGIN_VERSION = '6.0.17';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 44;
@@ -2422,48 +2422,22 @@ Zimage 擅长理解复杂的英文长句和语境。
     let pendingNaiCharData = null;
 
     function isHostStreaming() {
-        if (typeof RBQ?.api?.isStreamingActive === 'function' && RBQ.api.isStreamingActive()) return true;
+        if (typeof RBQ?.api?.isStreamingActive === 'function') {
+            return RBQ.api.isStreamingActive();
+        }
         const stopBtn = document.getElementById('stop_generating');
         if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) return true;
         const mesoWait = document.getElementById('mesozo_wait');
         if (mesoWait && mesoWait.offsetParent !== null && window.getComputedStyle(mesoWait).display !== 'none') return true;
-        const sendBtn = document.getElementById('send_but');
-        if (sendBtn && (sendBtn.style.display === 'none' || window.getComputedStyle(sendBtn).display === 'none')) return true;
-        // 增加对活跃思考块与流式消息的全局检测
-        const activeReasoning = document.querySelector('.mes_reasoning:not([data-done]), .thinking-block:not(.done), .mes.streaming');
-        if (activeReasoning) return true;
         return false;
     }
 
     function isMessageCurrentlyStreaming(messageId) {
+        if (!isHostStreaming()) return false;
         const id = Number(messageId);
         if (!Number.isFinite(id)) return false;
-
-        // 1. 宿主正在流式输出且为最新消息
-        if (isHostStreaming()) {
-            const latest = getLatestMessageId();
-            if (latest != null && id === Number(latest)) return true;
-        }
-
-        // 2. 深入 DOM 检查特定楼层的真实流式/思考态
-        const mesEl = document.querySelector(`.mes[mesid="${id}"]`);
-        if (mesEl instanceof HTMLElement) {
-            if (mesEl.classList.contains('streaming')) return true;
-
-            // 检查是否存在活跃的「思考中......」块
-            const reasoning = mesEl.querySelector('.mes_reasoning, .thinking-block, .thought, [data-role="message-reasoning"]');
-            if (reasoning) {
-                const text = String(reasoning.textContent || '').trim();
-                if (!reasoning.hasAttribute('data-done') && (text.includes('思考中') || text.toLowerCase().includes('thinking'))) {
-                    return true;
-                }
-            }
-
-            // 检查打字光标与等待动效
-            if (mesEl.querySelector('.typing, .cursor, .streaming-cursor, .fa-spin, .spinner')) return true;
-        }
-
-        return false;
+        const latest = getLatestMessageId();
+        return latest != null && id === Number(latest);
     }
 
     // Lifecycle references for singleton cleanup
@@ -2509,7 +2483,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             return;
         }
         const domText = getDomMessageText(latest);
-        if (!domText || domText.length < 10) {
+        const msgSnapshot = getMessageSnapshot(latest);
+        const effectiveText = String(msgSnapshot?.mes || domText || '').trim();
+        if (!effectiveText || effectiveText.length < 3) {
             console.info(`[${PLUGIN_NAME}] ⏳ latest message #${latest} text too short or empty, skipping auto-run`);
             return;
         }
@@ -5692,9 +5668,7 @@ Zimage 擅长理解复杂的英文长句和语境。
     function getMessageSnapshot(messageId) {
         const source = RBQ.api.getMessage(messageId) || {};
         const domText = getDomMessageText(messageId);
-        // 如果当前楼层正处于思考/流式状态且正文尚未吐字，则当前正文应判定为未就绪（空），严禁使用已失效的历史旧文
-        const isStreaming = isMessageCurrentlyStreaming(messageId);
-        const mes = (isStreaming && !domText) ? '' : String(source.mes || domText || '').trim();
+        const mes = String(source.mes || domText || '').trim();
         return {
             ...source,
             mes,

@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.1';
+    const PLUGIN_VERSION = '1.1.2';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -323,40 +323,171 @@
         };
     }
 
-    // ── 5. Background Auto-Sync on Image Generated ──
-    window.addEventListener('st-scene-trigger:image-generated', async (event) => {
+    // ── 5. Universal Sync Application to All Records ──
+    async function applySyncedPathToAllRecords(item, path, isOriginal = false) {
+        if (!item || !path) return;
+
+        item.serverUrl = path;
+        if (isOriginal) {
+            item.serverOriginalUrl = path;
+            item.url = path;
+        } else {
+            item.serverPreviewUrl = path;
+            if (!item.url || item.url.startsWith('blob:')) {
+                item.url = path;
+            }
+        }
+
+        // 1. 同步到会话消息 extra (跨设备多端秒级同步的核心路径)
+        const ctx = RBQ?.api?.getContext?.();
+        let targetMsgId = (item.messageId != null && Number.isFinite(Number(item.messageId))) ? Number(item.messageId) : null;
+        if (targetMsgId == null && Array.isArray(ctx?.chat)) {
+            // 自动智能回填 messageId：从后向前查找
+            for (let i = ctx.chat.length - 1; i >= 0; i--) {
+                const m = ctx.chat[i];
+                if (!m) continue;
+                if (m.extra?.rbq_image?.cacheId === item.cacheId ||
+                    (Array.isArray(m.extra?.rbq_images) && m.extra.rbq_images.some(img => img?.cacheId === item.cacheId))) {
+                    targetMsgId = i;
+                    break;
+                }
+                if (item.prompt && m.mes && m.mes.includes(item.prompt)) {
+                    targetMsgId = i;
+                    break;
+                }
+            }
+            if (targetMsgId == null) {
+                for (let i = ctx.chat.length - 1; i >= 0; i--) {
+                    if (!ctx.chat[i]?.is_user) {
+                        targetMsgId = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (targetMsgId != null && ctx?.chat?.[targetMsgId]) {
+            const msg = ctx.chat[targetMsgId];
+            if (!msg.extra) msg.extra = {};
+            if (!msg.extra.rbq_image) {
+                msg.extra.rbq_image = { prompt: item.prompt || '', cacheId: item.cacheId || '' };
+            }
+            msg.extra.rbq_image.serverUrl = path;
+            if (isOriginal) {
+                msg.extra.rbq_image.serverOriginalUrl = path;
+                msg.extra.rbq_image.url = path;
+            } else {
+                msg.extra.rbq_image.serverPreviewUrl = path;
+                if (!msg.extra.rbq_image.url || msg.extra.rbq_image.url.startsWith('blob:')) {
+                    msg.extra.rbq_image.url = path;
+                }
+            }
+
+            if (Array.isArray(msg.extra.rbq_images)) {
+                for (const img of msg.extra.rbq_images) {
+                    if (!img) continue;
+                    if ((item.cacheId && img.cacheId === item.cacheId) ||
+                        (!item.cacheId && item.prompt && img.prompt === item.prompt)) {
+                        img.serverUrl = path;
+                        if (isOriginal) {
+                            img.serverOriginalUrl = path;
+                            img.url = path;
+                        } else {
+                            img.serverPreviewUrl = path;
+                            if (!img.url || img.url.startsWith('blob:')) img.url = path;
+                        }
+                    }
+                }
+            }
+
+            // 立即存盘聊天数据至服务端（确保其他设备秒级可见）
+            if (typeof RBQ?.api?.saveChat === 'function') RBQ.api.saveChat();
+            else if (typeof RBQ?.api?.saveChatDebounced === 'function') RBQ.api.saveChatDebounced();
+        }
+
+        // 2. 同步到全局 settings.history
+        const settings = RBQ?.api?.getSettings?.();
+        if (Array.isArray(settings?.history)) {
+            const matched = settings.history.find(h =>
+                (item.cacheId && h.cacheId === item.cacheId) ||
+                (item.url && h.url === item.url) ||
+                (item.prompt && h.prompt === item.prompt && Math.abs((h.createdAt || 0) - (item.createdAt || 0)) < 15000)
+            );
+            if (matched) {
+                matched.serverUrl = path;
+                if (isOriginal) {
+                    matched.serverOriginalUrl = path;
+                    matched.url = path;
+                } else {
+                    matched.serverPreviewUrl = path;
+                    if (!matched.url || matched.url.startsWith('blob:')) matched.url = path;
+                }
+                RBQ.api.saveSettings?.();
+            }
+        }
+
+        // 3. 实时刷新正在打开的大图查看器与微型状态指示点
+        if (currentViewerItem && (currentViewerItem === item || (item.cacheId && currentViewerItem.cacheId === item.cacheId))) {
+            currentViewerItem.serverUrl = path;
+            if (isOriginal) {
+                currentViewerItem.serverOriginalUrl = path;
+                currentViewerItem.url = path;
+            } else {
+                currentViewerItem.serverPreviewUrl = path;
+            }
+            const modal = document.getElementById('st-scene-trigger-image-viewer');
+            if (modal) {
+                await updateViewerBadge({ modal, current: currentViewerItem });
+            }
+        }
+    }
+
+    // ── 6. Background Auto-Sync Engine ──
+    async function triggerAutoSync(item) {
         const store = getStore();
         if (!store.enabled || store.syncMode === 'local') return;
-
-        const item = event?.detail?.item;
         if (!item) return;
 
         // 避免重复同步
-        if (item.serverPreviewUrl || item.serverUrl) return;
+        if (item.serverOriginalUrl) return;
+        if (store.syncMode === 'stream_only' && item.serverPreviewUrl) return;
+        if (store.syncMode === 'full' && item.serverUrl && !item.serverUrl.includes('_preview.webp')) return;
 
-        // 蜂窝数据省流保护
-        if (store.saveDataAware && isCellularOrSaveData() && store.syncMode === 'full') {
-            console.info(`[${PLUGIN_NAME}] 移动数据网络已激活，自动降级为仅同步轻量预览图`);
-        }
+        if (item._isSyncing) return;
+        item._isSyncing = true;
 
-        // 空闲时段异步上传，绝不争抢主线程
-        const scheduleUpload = window.requestIdleCallback || ((cb) => setTimeout(cb, 1000));
-        scheduleUpload(async () => {
+        // 120ms 防抖，确保 IndexedDB 缓存和 DOM 渲染完毕
+        setTimeout(async () => {
             try {
+                // 检索图片原始 Blob（带重试机制，确保异步缓存入库）
                 let originalBlob = null;
-                if (item.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
-                    const rec = await RBQ.api.getCachedImageRecord(item.cacheId);
-                    if (rec?.blob instanceof Blob) originalBlob = rec.blob;
+                for (let attempt = 0; attempt < 6; attempt++) {
+                    if (item.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
+                        const rec = await RBQ.api.getCachedImageRecord(item.cacheId);
+                        if (rec?.blob instanceof Blob) {
+                            originalBlob = rec.blob;
+                            break;
+                        }
+                    }
+                    if (item.displayUrl && !item.displayUrl.startsWith('data:')) {
+                        try {
+                            const res = await fetch(item.displayUrl);
+                            if (res.ok) { originalBlob = await res.blob(); break; }
+                        } catch (_) {}
+                    }
+                    if (item.url && !item.url.startsWith('data:')) {
+                        try {
+                            const res = await fetch(item.url);
+                            if (res.ok) { originalBlob = await res.blob(); break; }
+                        } catch (_) {}
+                    }
+                    await new Promise((r) => setTimeout(r, 400));
                 }
 
-                if (!originalBlob && item.url) {
-                    try {
-                        const res = await fetch(item.url);
-                        if (res.ok) originalBlob = await res.blob();
-                    } catch (_e) {}
+                if (!originalBlob) {
+                    console.warn(`[${PLUGIN_NAME}] 自动同步未能获取到图片二进制数据，跳过自动上传`);
+                    return;
                 }
-
-                if (!originalBlob) return;
 
                 const now = Date.now();
                 const mode = item.mode || 'rbq';
@@ -370,70 +501,49 @@
                     const filename = `rbq_${mode}_${now}.${ext}`;
                     const uploadedPath = await uploadBlobToServer(originalBlob, filename);
                     if (uploadedPath) {
-                        item.serverUrl = uploadedPath;
-                        item.serverOriginalUrl = uploadedPath;
-                        console.info(`[${PLUGIN_NAME}] ✅ 原画已同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
-
-                        if (item.messageId != null) {
-                            const ctx = RBQ.api.getContext?.();
-                            const msg = ctx?.chat?.[item.messageId];
-                            if (msg) {
-                                if (!msg.extra) msg.extra = {};
-                                if (msg.extra.rbq_image) msg.extra.rbq_image.serverUrl = uploadedPath;
-                                if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
-                                    msg.extra.rbq_images[0].serverUrl = uploadedPath;
-                                }
-                                RBQ.api.saveChatDebounced?.();
-                            }
-                        }
-
+                        await applySyncedPathToAllRecords(item, uploadedPath, true);
+                        console.info(`[${PLUGIN_NAME}] ✅ 原画已自动同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
                         if (store.enableSyncToast) {
                             toastr.info(`生图原画已同步至酒馆云端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
                         }
                     }
-                    return;
-                }
+                } else {
+                    // 默认 stream_only: 压制 50~80KB 极轻预览图
+                    const previewFilename = `rbq_${mode}_${now}_preview.webp`;
+                    const previewBlob = await createOptimizedWebpBlob(
+                        originalBlob,
+                        store.previewMaxDimension || 768,
+                        store.previewQuality || 0.8
+                    );
 
-                // 默认 stream_only: 压制 50~80KB 预览图
-                const previewFilename = `rbq_${mode}_${now}_preview.webp`;
-                const previewBlob = await createOptimizedWebpBlob(
-                    originalBlob,
-                    store.previewMaxDimension || 768,
-                    store.previewQuality || 0.8
-                );
-
-                if (!previewBlob) return;
-
-                const uploadedPath = await uploadBlobToServer(previewBlob, previewFilename);
-                if (uploadedPath) {
-                    item.serverPreviewUrl = uploadedPath;
-                    console.info(`[${PLUGIN_NAME}] ✅ 轻量预览图已同步至服务端: ${uploadedPath} (${formatBytes(previewBlob.size)})`);
-
-                    // 同步到会话消息 extra
-                    if (item.messageId != null) {
-                        const ctx = RBQ.api.getContext?.();
-                        const msg = ctx?.chat?.[item.messageId];
-                        if (msg) {
-                            if (!msg.extra) msg.extra = {};
-                            if (msg.extra.rbq_image) msg.extra.rbq_image.serverPreviewUrl = uploadedPath;
-                            if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
-                                msg.extra.rbq_images[0].serverPreviewUrl = uploadedPath;
+                    if (previewBlob) {
+                        const uploadedPath = await uploadBlobToServer(previewBlob, previewFilename);
+                        if (uploadedPath) {
+                            await applySyncedPathToAllRecords(item, uploadedPath, false);
+                            console.info(`[${PLUGIN_NAME}] ✅ 轻量预览图已自动同步至服务端: ${uploadedPath} (${formatBytes(previewBlob.size)})`);
+                            if (store.enableSyncToast) {
+                                toastr.info(`生图已同步至酒馆云端 (${formatBytes(previewBlob.size)})`, PLUGIN_NAME);
                             }
-                            RBQ.api.saveChatDebounced?.();
                         }
-                    }
-
-                    if (store.enableSyncToast) {
-                        toastr.info(`生图已同步至酒馆云端 (${formatBytes(previewBlob.size)})`, PLUGIN_NAME);
                     }
                 }
             } catch (err) {
-                console.warn(`[${PLUGIN_NAME}] 自动上传轻量图失败:`, err);
+                console.warn(`[${PLUGIN_NAME}] 自动同步处理异常:`, err);
+            } finally {
+                delete item._isSyncing;
             }
-        });
+        }, 120);
+    }
+
+    // 监听生图事件 (即时生图 / 异步缓存完成)
+    window.addEventListener('st-scene-trigger:image-generated', (event) => {
+        triggerAutoSync(event?.detail?.item);
+    });
+    window.addEventListener('st-scene-trigger:image-cached', (event) => {
+        triggerAutoSync(event?.detail?.item);
     });
 
-    // ── 6. Favorite Auto-Upload Original Handler ──
+    // ── 7. Favorite Auto-Upload Original Handler ──
     async function syncFavoriteOriginal(item) {
         const store = getStore();
         if (!store.enabled || !store.syncFavoritesOriginal) return;
@@ -448,6 +558,13 @@
             if (item.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
                 const rec = await RBQ.api.getCachedImageRecord(item.cacheId);
                 if (rec?.blob instanceof Blob) originalBlob = rec.blob;
+            }
+
+            if (!originalBlob && item.displayUrl) {
+                try {
+                    const res = await fetch(item.displayUrl);
+                    if (res.ok) originalBlob = await res.blob();
+                } catch (_e) {}
             }
 
             if (!originalBlob && item.url) {
@@ -474,34 +591,8 @@
             const uploadedPath = await uploadBlobToServer(originalBlob, filename);
 
             if (uploadedPath) {
-                item.serverOriginalUrl = uploadedPath;
-                item.serverUrl = uploadedPath;
+                await applySyncedPathToAllRecords(item, uploadedPath, true);
                 console.info(`[${PLUGIN_NAME}] ⭐ 收藏原画已成功同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
-
-                // 同步消息 extra
-                if (item.messageId != null) {
-                    const ctx = RBQ.api.getContext?.();
-                    const msg = ctx?.chat?.[item.messageId];
-                    if (msg) {
-                        if (!msg.extra) msg.extra = {};
-                        if (msg.extra.rbq_image) {
-                            msg.extra.rbq_image.serverOriginalUrl = uploadedPath;
-                            msg.extra.rbq_image.serverUrl = uploadedPath;
-                        }
-                        if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
-                            msg.extra.rbq_images[0].serverOriginalUrl = uploadedPath;
-                            msg.extra.rbq_images[0].serverUrl = uploadedPath;
-                        }
-                        RBQ.api.saveChatDebounced?.();
-                    }
-                }
-
-                // 如果当前查看器正打开此图，刷新指示点状态
-                if (currentViewerItem && (currentViewerItem === item || currentViewerItem.id === item.id)) {
-                    const modal = document.getElementById('st-scene-trigger-image-viewer');
-                    updateViewerBadge({ modal, current: item });
-                }
-
                 toastr.success(`⭐ 收藏原画已持久化至酒馆服务端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
             }
         } catch (err) {
@@ -853,30 +944,10 @@
                 const filename = `rbq_${mode}_manual_${now}.${ext}`;
                 const path = await uploadBlobToServer(blobToSync, filename);
 
-                current.serverUrl = path;
-                current.serverOriginalUrl = path;
-
-                // 同步消息 extra
-                if (current.messageId != null) {
-                    const ctx = RBQ.api.getContext?.();
-                    const msg = ctx?.chat?.[current.messageId];
-                    if (msg) {
-                        if (!msg.extra) msg.extra = {};
-                        if (msg.extra.rbq_image) {
-                            msg.extra.rbq_image.serverUrl = path;
-                            msg.extra.rbq_image.serverOriginalUrl = path;
-                        }
-                        if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
-                            msg.extra.rbq_images[0].serverUrl = path;
-                            msg.extra.rbq_images[0].serverOriginalUrl = path;
-                        }
-                        RBQ.api.saveChatDebounced?.();
-                    }
-                }
+                await applySyncedPathToAllRecords(current, path, true);
 
                 toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
                 popover.classList.remove('open');
-                await updateViewerBadge(detail);
             } catch (syncErr) {
                 toastr.error(`同步失败: ${syncErr.message || syncErr}`, PLUGIN_NAME);
                 syncBtn.disabled = false;

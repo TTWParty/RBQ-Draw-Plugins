@@ -11,9 +11,10 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器';
+    const PLUGIN_VERSION = '6.0.15';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 43;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 44;
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若正文包含显式图组或媒介标记，必须按其实际数量 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -25,6 +26,11 @@
   · 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须严格一对一为每一个图组/照片输出独立的 segment 分镜，正文有几个就必须出几个，绝对严禁漏提、截断或合并！
   · 优先触发：动作阶段突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/抽打/高潮特写等）。
   · 独立构图：每个 segment 必须有独立的 label、独立的 anchor.text（从正文对应段落一字不差截取 10~40 字原文）、独立的 scene 构图与 characters！
+- 跨楼层绝对隔离与防串话铁律（最高红线）：
+  · 绝对严禁从 recentMessages（历史上下文楼层）中提取任何分镜、场景、动作或图组！
+  · segments 数组中的每一个分镜，其画面内容和 anchor.text 必须 100% 完全且逐字取自 currentMessage 的正文！
+  · recentMessages 仅用于理解角色固有外貌特征 (L0) 与剧情连贯性，绝非当前楼层的画面来源！
+  · 若 currentMessage 自身无显式图组且无重大视觉变化，请直接输出 {"shouldDraw": false}，绝对严禁翻找上一楼层的图组来强行生成！
 - 真实性优先：只画物理规律真实成立的画面，严禁将修辞比喻/心理活动/抽象幻觉当作真实实体来画。
 - 标签与自然语言：能用标签准确描述的优先用标签；标签无法表达的微妙语感（角色归属/复杂构图/特殊动作/动态过程/空间关系/材质质感/环境氛围），用自然语言短句紧密配合；谁描述更准确、Token 更少就用谁；相邻排列（最高优先级）：关联度高的内容跨分类紧邻排列，自然语言短句紧跟其修饰的标签。
 - 严禁质量词与画师名：禁止质量词（masterpiece, best quality 等）与画师名（@artist），NAI V5 无需质量词堆叠。
@@ -2423,15 +2429,41 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (mesoWait && mesoWait.offsetParent !== null && window.getComputedStyle(mesoWait).display !== 'none') return true;
         const sendBtn = document.getElementById('send_but');
         if (sendBtn && (sendBtn.style.display === 'none' || window.getComputedStyle(sendBtn).display === 'none')) return true;
+        // 增加对活跃思考块与流式消息的全局检测
+        const activeReasoning = document.querySelector('.mes_reasoning:not([data-done]), .thinking-block:not(.done), .mes.streaming');
+        if (activeReasoning) return true;
         return false;
     }
 
     function isMessageCurrentlyStreaming(messageId) {
-        if (!isHostStreaming()) return false;
         const id = Number(messageId);
         if (!Number.isFinite(id)) return false;
-        const latest = getLatestMessageId();
-        return latest != null && id === Number(latest);
+
+        // 1. 宿主正在流式输出且为最新消息
+        if (isHostStreaming()) {
+            const latest = getLatestMessageId();
+            if (latest != null && id === Number(latest)) return true;
+        }
+
+        // 2. 深入 DOM 检查特定楼层的真实流式/思考态
+        const mesEl = document.querySelector(`.mes[mesid="${id}"]`);
+        if (mesEl instanceof HTMLElement) {
+            if (mesEl.classList.contains('streaming')) return true;
+
+            // 检查是否存在活跃的「思考中......」块
+            const reasoning = mesEl.querySelector('.mes_reasoning, .thinking-block, .thought, [data-role="message-reasoning"]');
+            if (reasoning) {
+                const text = String(reasoning.textContent || '').trim();
+                if (!reasoning.hasAttribute('data-done') && (text.includes('思考中') || text.toLowerCase().includes('thinking'))) {
+                    return true;
+                }
+            }
+
+            // 检查打字光标与等待动效
+            if (mesEl.querySelector('.typing, .cursor, .streaming-cursor, .fa-spin, .spinner')) return true;
+        }
+
+        return false;
     }
 
     // Lifecycle references for singleton cleanup
@@ -2472,6 +2504,15 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         const latest = getLatestMessageId();
         if (latest == null) return;
+        if (isMessageCurrentlyStreaming(latest)) {
+            console.info(`[${PLUGIN_NAME}] ⏳ latest message #${latest} is streaming/thinking, skipping auto-run`);
+            return;
+        }
+        const domText = getDomMessageText(latest);
+        if (!domText || domText.length < 10) {
+            console.info(`[${PLUGIN_NAME}] ⏳ latest message #${latest} text too short or empty, skipping auto-run`);
+            return;
+        }
         let container = RBQ.api.getMessageTextContainer(latest);
         if (!(container instanceof HTMLElement)) return;
         let wrapper = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
@@ -5627,11 +5668,12 @@ Zimage 擅长理解复杂的英文长句和语境。
             .filter(Boolean);
     }
 
-    function shouldHandleMessage(message) {
+    function shouldHandleMessage(message, messageId = null) {
         const store = getStore();
         if (!store.enabled || store.mode === 'off' || !message) return false;
+        if (messageId != null && isMessageCurrentlyStreaming(messageId)) return false;
         const text = String(message.mes || '').trim();
-        if (!text || text.length < 3) return false;
+        if (!text || text.length < 5) return false;
         if (store.targetRole === 'assistant') return !message.is_user;
         if (store.targetRole === 'user') return !!message.is_user;
         return true;
@@ -5648,7 +5690,10 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function getMessageSnapshot(messageId) {
         const source = RBQ.api.getMessage(messageId) || {};
-        const mes = String(source.mes || getDomMessageText(messageId) || '').trim();
+        const domText = getDomMessageText(messageId);
+        // 如果当前楼层正处于思考/流式状态且正文尚未吐字，则当前正文应判定为未就绪（空），严禁使用已失效的历史旧文
+        const isStreaming = isMessageCurrentlyStreaming(messageId);
+        const mes = (isStreaming && !domText) ? '' : String(source.mes || domText || '').trim();
         return {
             ...source,
             mes,
@@ -8074,7 +8119,33 @@ SCHEMA:
         const store = getStore();
 
         const rendered = [];
-        const segments = Array.isArray(result?.segments) ? result.segments : [];
+        const currentMes = getMessageSnapshot(messageId);
+        const currentMesText = String(currentMes?.mes || '').trim();
+        const rawSegments = Array.isArray(result?.segments) ? result.segments : [];
+
+        // 🛡️ 跨楼层幻觉拦截器：过滤从上一楼层历史中非法提取的旧分镜
+        let recentHistoricalTexts = null;
+        const segments = rawSegments.filter((seg) => {
+            const anchorText = String(seg?.anchor?.text || '').trim();
+            if (!anchorText || anchorText.length < 5) return true;
+            // 检查在当前楼层正文中是否能找到
+            const matchesCurrent = currentMesText ? anchorsMatchSentence(anchorText, currentMesText) : false;
+            if (matchesCurrent) return true;
+
+            // 若当前楼层完全找不到，检查是否是从近期历史楼层中提取的
+            if (!recentHistoricalTexts) {
+                recentHistoricalTexts = (RBQ.api.getRecentMessages ? RBQ.api.getRecentMessages(messageId, 4) : [])
+                    .filter(m => Number(m.id) !== Number(messageId))
+                    .map(m => String(m.mes || '').trim())
+                    .filter(Boolean);
+            }
+            const matchesRecent = recentHistoricalTexts.some(histText => anchorsMatchSentence(anchorText, histText));
+            if (matchesRecent) {
+                console.warn(`[${PLUGIN_NAME}] 🛡️ 拦截跨楼层串话分镜: 「${seg.label || ''}」锚点来自上一轮历史对话，已自动剔除！`, { anchorText });
+                return false;
+            }
+            return true;
+        });
 
         if (segments.length > 0) {
             // Build indexed list, then insert in REVERSE anchor order (bottom-to-top)
@@ -8403,6 +8474,9 @@ SCHEMA:
 
         const minSeg = Number(store.minSegments) || 0;
         const rawContent = String(current?.mes || '');
+        if (rawContent.trim().length < 5) {
+            throw new Error(`消息 #${messageId} 正文内容为空或尚未生成，无法提取分镜`);
+        }
         const photoGroupMatches = rawContent.match(/\[(?:图组|插画|照片|分镜|连拍)\s*\d*[^\]]*\]/g) || [];
         const detectedPhotoCount = photoGroupMatches.length;
         const effectiveMinSeg = Math.max(minSeg, detectedPhotoCount);
@@ -8421,9 +8495,11 @@ SCHEMA:
             ...(effectiveMinSeg > 0 ? {
                 minSegments: effectiveMinSeg,
                 segmentInstruction: detectedPhotoCount > 0
-                    ? `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！`
-                    : `本次请求要求至少生成 ${minSeg} 个 segment 分镜。即使文本变化较少，也请从不同视觉角度、镜头构图或情绪节拍中拆分出至少 ${minSeg} 张画面。`
-            } : {}),
+                    ? `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！【最高警告：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对禁止提取历史楼层（recentMessages）中的图组或场景！】`
+                    : `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
+            } : {
+                segmentInstruction: `【核心铁律】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！若当前消息无显著视觉场景变化，请直接输出 {"shouldDraw": false}。`
+            }),
             ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: {
                 shouldDraw: 'boolean',
@@ -9775,6 +9851,10 @@ SCHEMA:
             const reasoningEl = container.querySelector('.mes_reasoning, details, .thinking-block, .thought');
             if (reasoningEl && reasoningEl.nextSibling) {
                 container.insertBefore(fragment, reasoningEl.nextSibling);
+            } else if (reasoningEl) {
+                // 有思考块但暂无后续正文节点时，插入到思考块之后，绝不挂载到思考中上方
+                reasoningEl.insertAdjacentElement('afterend', fragment.firstElementChild);
+                if (fragment.hasChildNodes()) container.append(fragment);
             } else {
                 container.prepend(fragment);
             }
@@ -10192,8 +10272,9 @@ SCHEMA:
         const { allowHistorical = false, force = false } = options;
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
-        if (!force && isMessageCurrentlyStreaming(id)) {
-            debugInfo(`⏳ skipping processMessage for #${id} — streaming is active`);
+        // 关键流式守卫：无论是否 force，只要该楼层正在流式输出或处于「思考中......」，严禁介入！
+        if (isMessageCurrentlyStreaming(id)) {
+            debugInfo(`⏳ skipping processMessage for #${id} — streaming / thinking is active`);
             return;
         }
         const store = getStore();
@@ -10209,7 +10290,7 @@ SCHEMA:
         }
 
         const message = getMessageSnapshot(id);
-        if (!shouldHandleMessage(message)) return;
+        if (!shouldHandleMessage(message, id)) return;
         const trigger = getTrigger(message);
         if (!trigger) return;
         const key = makeKey(id, message, trigger.type, trigger.marker || 'auto');
@@ -10357,7 +10438,7 @@ SCHEMA:
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
         // 如果当前消息正在流式生成或在思考中，严禁提前介入渲染与解析，静待流式结束后由 startStreamingWatcher 统一调度
-        if (!options.force && isMessageCurrentlyStreaming(id)) return;
+        if (isMessageCurrentlyStreaming(id)) return;
         clearTimeout(pendingTimers.get(id));
 
         // 优化切换分身/滑动时的生图还原体验：如果该版本文本已有缓存结果，则直接以 16ms 超低延迟立刻渲染，实现无感秒出。
@@ -11375,7 +11456,7 @@ SCHEMA:
         container.className = 'st-scene-trigger-subpanel';
         container.id = 'rbq-smart-draw-panel';
         container.innerHTML = `
-            <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw)</span></div>
+            <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-wand-magic-sparkles"></i><span>智能生图触发器 (Smart Draw) <small style="font-size:12px;opacity:0.75;font-weight:normal;">v${PLUGIN_VERSION}</small></span></div>
             <div class="st-scene-trigger-subpanel-hint">无需让正文输出长 tag：插件调用 tagger API 生成 prompt，并在消息内插入 RBQ 生图卡片。支持 segments[] 多段卡片、anchor.text 精准插入，以及按段落独立自动生图。</div>
             <div class="rbq-sdt-sticky-save">
                 <div id="rbq-sdt-enabled-field" class="st-scene-trigger-field switch rbq-sdt-master-toggle" title="智能生图触发器全局总开关。开启后才会监听消息并触发 tagger 分析与生图卡片。">
@@ -14156,7 +14237,7 @@ SCHEMA:
         const bootStore = getStore();
         const chatKey = getChatKey();
         const profileKeys = bootStore.characterProfiles?.[chatKey] ? Object.keys(bootStore.characterProfiles[chatKey]) : [];
-        console.info(`🪄 ${PLUGIN_NAME} loaded. characterMemoryEnabled=${bootStore.characterMemoryEnabled}, chatKey="${chatKey}", profiles=[${profileKeys.join(',')}], allChatKeys=[${Object.keys(bootStore.characterProfiles || {}).join(',')}]`);
+        console.info(`🪄 [${PLUGIN_NAME} v${PLUGIN_VERSION}] loaded successfully. characterMemoryEnabled=${bootStore.characterMemoryEnabled}, chatKey="${chatKey}", profiles=[${profileKeys.join(',')}], allChatKeys=[${Object.keys(bootStore.characterProfiles || {}).join(',')}]`);
         if (bootStore.lorebookEnabled) {
             warmLorebookMemoryCache().catch(() => {});
         }

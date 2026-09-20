@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.4';
+    const PLUGIN_VERSION = '1.1.5';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -770,6 +770,11 @@
                 transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24) !important;
                 flex-shrink: 0 !important;
+                touch-action: manipulation !important;
+                -webkit-tap-highlight-color: transparent !important;
+                pointer-events: auto !important;
+                user-select: none !important;
+                -webkit-user-select: none !important;
             }
             .rbq-storage-badge-btn:hover {
                 background: rgba(30, 34, 48, 0.9) !important;
@@ -798,7 +803,7 @@
                 border-radius: 14px;
                 padding: 14px 16px;
                 box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
-                z-index: 1000000;
+                z-index: 1000050 !important;
                 display: none;
                 flex-direction: column;
                 gap: 10px;
@@ -807,7 +812,7 @@
                 box-sizing: border-box;
                 animation: rbqPopoverIn 0.2s ease-out;
             }
-            @media (max-width: 768px) {
+            @media (max-width: 900px) {
                 .rbq-storage-popover {
                     position: fixed !important;
                     top: auto !important;
@@ -816,7 +821,8 @@
                     right: 12px !important;
                     width: auto !important;
                     max-width: calc(100vw - 24px) !important;
-                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+                    z-index: 1000050 !important;
+                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
                 }
             }
             @keyframes rbqPopoverIn {
@@ -950,20 +956,32 @@
                 actions.prepend(wrap);
             }
 
-            // 绑定点击事件
+            // 绑定点击与触控事件，杜绝移动端 300ms 延迟与手势穿透丢失
             const badgeBtn = wrap.querySelector('#rbq-storage-badge-btn');
             const popover = wrap.querySelector('#rbq-storage-popover');
-            badgeBtn?.addEventListener('click', (e) => {
-                e.stopPropagation();
+
+            const togglePopover = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
                 popover.classList.toggle('open');
+            };
+
+            badgeBtn?.addEventListener('click', togglePopover);
+            badgeBtn?.addEventListener('touchend', togglePopover);
+            badgeBtn?.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
             });
 
-            // 点击外部关闭弹窗
-            document.addEventListener('click', (e) => {
-                if (!wrap.contains(e.target)) {
+            // 点击外部或触控外部关闭弹窗
+            const handleOutsideTap = (e) => {
+                if (popover.classList.contains('open') && !wrap.contains(e.target)) {
                     popover.classList.remove('open');
                 }
-            });
+            };
+            document.addEventListener('click', handleOutsideTap);
+            document.addEventListener('touchend', handleOutsideTap);
         }
 
         const badgeBtn = wrap.querySelector('#rbq-storage-badge-btn');
@@ -1023,10 +1041,16 @@
         `;
 
         // 绑定关闭按钮
-        popover.querySelector('#rbq-popover-close-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
+        const closeBtn = popover.querySelector('#rbq-popover-close-btn');
+        const closePopover = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             popover.classList.remove('open');
-        });
+        };
+        closeBtn?.addEventListener('click', closePopover);
+        closeBtn?.addEventListener('touchend', closePopover);
 
         // 绑定弹窗内操作按钮
         popover.querySelector('#rbq-action-manual-sync')?.addEventListener('click', async (e) => {

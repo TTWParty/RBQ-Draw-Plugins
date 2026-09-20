@@ -4,11 +4,22 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`6.0.6`
+版本：`6.0.7`
 
 ---
 
-## 🚀 最新更新 (v6.0.6)
+## 🚀 最新更新 (v6.0.7)
+
+- **📚 世界书存储脱脂与酒馆原生世界书联动 (`Lorebook De-bloat & Native ST Integration`)**：
+  - **彻底拔除 2.82 MB 存储膨胀**：`store.lorebookSources` 绝不再保存未裁剪的原始巨型 JSON 字符串 (`rawJson`)，仅保留数十字节的引用指针元数据 (`id`, `name`, `enabled`, `type`, `entryCount`)，彻底根治全局 `settings.json` 膨胀卡顿。
+  - **导入自动同步至酒馆世界书**：导入世界书 `.json` 文件时，自动调用酒馆后端原生 API (`POST /api/worldinfo/post`) 保存为独立世界书文件（存入酒馆 `worlds/` 目录），在酒馆原生世界书列表中可直接查看与编辑，打破数据孤岛。
+  - **酒馆已有世界书下拉一键绑定**：在设置面板新增「从酒馆绑定已有世界书」下拉选择框，酒馆中现存的世界书直接一键挂载，无需重复找文件上传。
+  - **启动自动脱脂自愈迁移 (Auto-Migration)**：启动时自动扫描历史旧世界书条目，自动将存在 `rawJson` 的旧数据同步至酒馆与内存缓存，并立即剔除 `rawJson` 触发脱脂存盘，已膨胀的 `settings.json` 瞬间脱脂 2.82 MB。
+  - **多级高速缓存与角色工坊兼容**：构建内存高速缓存 (`lorebookMemoryCache`) + 酒馆原生文件 + IndexedDB 本地保底的三层架构，匹配时零序列化开销；导出 `RBQ.api.getLorebookEntries` 并向下无缝兼容 `character-workshop.js`。
+
+---
+
+## 🚀 历史更新 (v6.0.6)
 
 - **⚡ 多段分镜与图组批量离线装配渲染优化 (`Detached Batch Assembly & Reflow Optimization`)**：
   - **内存离线预装配 (Detached Assembly)**：卡片 DOM 创建、数据集写入 (`dataset`)、徽章渲染 (`renderCardBadges`)、按钮文案与事件监听绑定全面前置于内存中完成，杜绝在活体 DOM (Live DOM) 上反复修改属性导致的连续重排 (Reflow) 与样式重绘。

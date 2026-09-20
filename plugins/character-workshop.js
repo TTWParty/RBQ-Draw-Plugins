@@ -295,21 +295,28 @@
     }
 
     function extractDoujinProfilesFromLorebook(lorebookSource) {
-        if (!lorebookSource || !lorebookSource.rawJson) return {};
-        let parsed;
-        try {
-            if (typeof RBQ?.api?.parseLorebookRawJson === 'function') {
-                parsed = RBQ.api.parseLorebookRawJson(lorebookSource.rawJson, lorebookSource.name);
-            } else {
-                parsed = JSON.parse(lorebookSource.rawJson);
-            }
-        } catch (_e) {
-            return {};
+        if (!lorebookSource) return {};
+        let entries = [];
+        if (typeof RBQ?.api?.getLorebookEntries === 'function') {
+            entries = RBQ.api.getLorebookEntries(lorebookSource) || [];
         }
-        const rawEntries = parsed?.entries;
-        const entries = Array.isArray(rawEntries)
-            ? rawEntries
-            : (rawEntries && typeof rawEntries === 'object' ? Object.values(rawEntries) : []);
+        if ((!entries || entries.length === 0) && lorebookSource.rawJson) {
+            try {
+                let parsed;
+                if (typeof RBQ?.api?.parseLorebookRawJson === 'function') {
+                    parsed = RBQ.api.parseLorebookRawJson(lorebookSource.rawJson, lorebookSource.name);
+                } else {
+                    parsed = JSON.parse(lorebookSource.rawJson);
+                }
+                const rawEntries = parsed?.entries;
+                entries = Array.isArray(rawEntries)
+                    ? rawEntries
+                    : (rawEntries && typeof rawEntries === 'object' ? Object.values(rawEntries) : []);
+            } catch (_e) {
+                entries = [];
+            }
+        }
+        if (!Array.isArray(entries) || entries.length === 0) return {};
         const profiles = {};
         const pendingVariantEntries = [];
 

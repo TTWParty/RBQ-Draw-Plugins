@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.0';
+    const PLUGIN_VERSION = '1.1.1';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -123,53 +123,90 @@
     async function uploadBlobToServer(blob, filename = 'rbq_preview.webp') {
         if (!(blob instanceof Blob) || !blob.size) throw new Error('无效的图片 Blob');
 
-        // 尝试 1: POST /api/files/upload (FormData 模式)
+        let safeName = String(filename || 'rbq_preview.webp')
+            .replace(/[^a-zA-Z0-9_\-.]/g, '_')
+            .replace(/^\.+/, 'img_');
+        if (!safeName.includes('.')) safeName += '.webp';
+
+        const rawBase64 = await blobToBase64(blob);
+        if (!rawBase64) throw new Error('无法将图片转换为 Base64 编码');
+
+        const payload = JSON.stringify({ name: safeName, data: rawBase64 });
+        let lastError = null;
+
+        // 尝试 1: 通过 jQuery.ajax 发送 (SillyTavern 全局预置 $.ajaxPrefilter 会自动注入 X-CSRF-Token)
+        const jq = $ || window.jQuery || window.$;
+        if (jq && typeof jq.ajax === 'function') {
+            try {
+                const path = await new Promise((resolve, reject) => {
+                    jq.ajax({
+                        url: '/api/files/upload',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: payload,
+                        dataType: 'json',
+                        success: (resp) => {
+                            let resPath = resp?.path || resp?.url || resp?.filepath;
+                            if (resPath) {
+                                if (!resPath.startsWith('/') && !resPath.startsWith('http://') && !resPath.startsWith('https://')) {
+                                    resPath = '/' + resPath;
+                                }
+                                resolve(resPath);
+                            } else {
+                                reject(new Error('服务端上传接口未返回有效文件路径: ' + JSON.stringify(resp)));
+                            }
+                        },
+                        error: (xhr, status, error) => {
+                            reject(new Error(`jQuery上传接口失败 (${xhr.status}): ${xhr.responseText || error || status}`));
+                        }
+                    });
+                });
+                if (path) return path;
+            } catch (err) {
+                lastError = err;
+                console.warn(`[${PLUGIN_NAME}] jQuery ajax 上传未成功，尝试 Fetch 兜底:`, err);
+            }
+        }
+
+        // 尝试 2: 通过 fetch 发送 (注入 RBQ.api.getStRequestHeaders / getRequestHeaders CSRF 鉴权头)
         try {
-            const formData = new FormData();
-            formData.append('avatar', blob, filename);
-            formData.append('file', blob, filename);
+            let headers = { 'Content-Type': 'application/json' };
+            const getHeaders = RBQ?.api?.getStRequestHeaders || RBQ?.api?.getRequestHeaders;
+            if (typeof getHeaders === 'function') {
+                try {
+                    const stHeaders = getHeaders();
+                    if (stHeaders && typeof stHeaders === 'object') {
+                        headers = { ...headers, ...stHeaders };
+                    }
+                } catch (_e) {}
+            }
+
             const res = await fetch('/api/files/upload', {
                 method: 'POST',
-                body: formData,
+                headers,
+                body: payload,
             });
-            if (res.ok) {
-                const data = await res.json();
-                const path = data.path || data.url || data.filepath;
-                if (path) return path;
-            }
-        } catch (_e1) {}
 
-        // 尝试 2: POST /api/files/upload (JSON base64 模式)
-        try {
-            const b64 = await blobToBase64(blob);
-            const res = await fetch('/api/files/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: filename, content: b64 }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const path = data.path || data.url || data.filepath;
-                if (path) return path;
+            if (!res.ok) {
+                const errText = await res.text().catch(() => '');
+                throw new Error(`Fetch上传失败 (${res.status}): ${errText || res.statusText}`);
             }
-        } catch (_e2) {}
 
-        // 尝试 3: POST /api/images/upload
-        try {
-            const formData = new FormData();
-            formData.append('avatar', blob, filename);
-            const res = await fetch('/api/images/upload', {
-                method: 'POST',
-                body: formData,
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const path = data.path || data.url || data.filepath;
-                if (path) return path;
+            const data = await res.json();
+            let resPath = data?.path || data?.url || data?.filepath;
+            if (resPath) {
+                if (!resPath.startsWith('/') && !resPath.startsWith('http://') && !resPath.startsWith('https://')) {
+                    resPath = '/' + resPath;
+                }
+                return resPath;
             }
-        } catch (_e3) {}
+            throw new Error('Fetch上传返回缺少文件路径: ' + JSON.stringify(data));
+        } catch (fetchErr) {
+            lastError = fetchErr;
+            console.warn(`[${PLUGIN_NAME}] Fetch 上传失败:`, fetchErr);
+        }
 
-        throw new Error('未找到可用的酒馆服务端图片上传接口 (/api/files/upload)');
+        throw new Error(lastError ? lastError.message : '未找到可用的酒馆服务端图片上传接口 (/api/files/upload)');
     }
 
     // ── 4. Image Storage Inspector ──
@@ -1018,4 +1055,4 @@
 
     console.info(`☁️ [${PLUGIN_NAME} v${PLUGIN_VERSION}] loaded successfully. syncMode="${getStore().syncMode}"`);
 
-})(window.RBQ, window.jQuery, window.toastr);
+})(window.RBQ, window.jQuery || window.$, window.toastr);

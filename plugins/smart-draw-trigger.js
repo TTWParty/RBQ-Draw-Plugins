@@ -2416,11 +2416,22 @@ Zimage 擅长理解复杂的英文长句和语境。
     let pendingNaiCharData = null;
 
     function isHostStreaming() {
+        if (typeof RBQ?.api?.isStreamingActive === 'function' && RBQ.api.isStreamingActive()) return true;
         const stopBtn = document.getElementById('stop_generating');
         if (stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled) return true;
+        const mesoWait = document.getElementById('mesozo_wait');
+        if (mesoWait && mesoWait.offsetParent !== null && window.getComputedStyle(mesoWait).display !== 'none') return true;
         const sendBtn = document.getElementById('send_but');
         if (sendBtn && (sendBtn.style.display === 'none' || window.getComputedStyle(sendBtn).display === 'none')) return true;
         return false;
+    }
+
+    function isMessageCurrentlyStreaming(messageId) {
+        if (!isHostStreaming()) return false;
+        const id = Number(messageId);
+        if (!Number.isFinite(id)) return false;
+        const latest = getLatestMessageId();
+        return latest != null && id === Number(latest);
     }
 
     // Lifecycle references for singleton cleanup
@@ -5619,6 +5630,8 @@ Zimage 擅长理解复杂的英文长句和语境。
     function shouldHandleMessage(message) {
         const store = getStore();
         if (!store.enabled || store.mode === 'off' || !message) return false;
+        const text = String(message.mes || '').trim();
+        if (!text || text.length < 3) return false;
         if (store.targetRole === 'assistant') return !message.is_user;
         if (store.targetRole === 'user') return !!message.is_user;
         return true;
@@ -8044,6 +8057,20 @@ SCHEMA:
     function materializeResultCards(messageId, trigger, result, key) {
         const container = RBQ.api.getMessageTextContainer(messageId);
         if (!(container instanceof HTMLElement)) return [];
+
+        // 防跨楼层错位校验：确认目标容器真实属于当前 messageId
+        const containerMes = container.closest('.mes[mesid]');
+        if (containerMes && Number(containerMes.getAttribute('mesid')) !== Number(messageId)) {
+            console.warn(`[${PLUGIN_NAME}] ❌ 拦截跨楼层错位渲染: target mesId #${messageId} vs container #${containerMes.getAttribute('mesid')}`);
+            return [];
+        }
+
+        // 清理当前容器中未出图的残留/过期分镜卡片，杜绝堆积与多重副本
+        container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-is-result="1"]`).forEach((el) => {
+            const hasImg = !!el.querySelector?.('.st-scene-trigger-inline-result img') || el.dataset?.rbqSdtStage === 'generated';
+            if (!hasImg) el.remove();
+        });
+
         const store = getStore();
 
         const rendered = [];
@@ -9759,6 +9786,12 @@ SCHEMA:
     function insertCard(messageId, trigger, result, key, baseKey = null, configureWrapper = null) {
         const container = RBQ.api.getMessageTextContainer(messageId);
         if (!(container instanceof HTMLElement)) return null;
+        // 防跨楼层错位校验：确认目标容器真实属于当前 messageId
+        const containerMes = container.closest('.mes[mesid]');
+        if (containerMes && Number(containerMes.getAttribute('mesid')) !== Number(messageId)) {
+            console.warn(`[${PLUGIN_NAME}] ❌ 拦截跨楼层错位插入: target mesId #${messageId} vs container #${containerMes.getAttribute('mesid')}`);
+            return null;
+        }
         const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
         if (existing instanceof HTMLElement) return existing;
 
@@ -9825,8 +9858,9 @@ SCHEMA:
                 }
             }
 
-            // 同一会话内，严禁删除已有生图结果或已生成图片的卡片，杜绝因文本微变或时序误删
-            if (card.dataset?.rbqSdtIsResult === '1' || card.dataset?.rbqSdtStage === 'generated' || card.querySelector?.('.st-scene-trigger-inline-result img')) continue;
+            // 保留已实际生成出图的卡片（防止误删历史已有图）；对于未出图的过期结果卡片，必须彻底销毁，杜绝堆叠
+            const hasImage = !!card.querySelector?.('.st-scene-trigger-inline-result img') || card.dataset?.rbqSdtStage === 'generated';
+            if (hasImage) continue;
             card.remove();
             removed += 1;
         }
@@ -10044,12 +10078,15 @@ SCHEMA:
             const result = await callTagger(messageId, trigger, { signal: abortController.signal });
             const cacheKey = wrapper.dataset.rbqSdtBaseKey || key;
             const sanitized = sanitizeSdtResult(result);
+            const currentMes = getMessageSnapshot(messageId);
+            const currentMesHash = hashText(currentMes?.mes || '');
             const cacheEntry = {
                 ...sanitized,
                 checked: true,
                 createdAt: Date.now(),
                 triggerType: trigger.type,
                 marker: trigger.marker || '',
+                mesHash: currentMesHash,
                 segmentStates: {},  // Fresh states — re-parse means new tags, old images don't apply
                 key: cacheKey,
             };
@@ -10153,6 +10190,12 @@ SCHEMA:
 
     async function processMessage(messageId, options = {}) {
         const { allowHistorical = false, force = false } = options;
+        const id = Number(messageId);
+        if (!Number.isFinite(id)) return;
+        if (!force && isMessageCurrentlyStreaming(id)) {
+            debugInfo(`⏳ skipping processMessage for #${id} — streaming is active`);
+            return;
+        }
         const store = getStore();
 
         // Auto-refresh profile UI & purge lingering cards when chat context becomes available or changes
@@ -10165,29 +10208,30 @@ SCHEMA:
             refreshCharacterProfileListUi();
         }
 
-        const message = getMessageSnapshot(messageId);
+        const message = getMessageSnapshot(id);
         if (!shouldHandleMessage(message)) return;
         const trigger = getTrigger(message);
         if (!trigger) return;
-        const key = makeKey(messageId, message, trigger.type, trigger.marker || 'auto');
+        const key = makeKey(id, message, trigger.type, trigger.marker || 'auto');
+        const currentMesHash = hashText(message?.mes || '');
         if (force) processedKeys.delete(key);
-        const container = RBQ.api.getMessageTextContainer(messageId);
+        const container = RBQ.api.getMessageTextContainer(id);
         if (container instanceof HTMLElement) {
             const removedStaleCards = removeStaleCards(container, key);
             if (removedStaleCards > 0) {
-                debugInfo(`🧹 removed ${removedStaleCards} stale card(s) for message ${messageId}`, { key });
+                debugInfo(`🧹 removed ${removedStaleCards} stale card(s) for message ${id}`, { key });
             }
             // If any card in this message is currently being parsed, don't create new cards
             const activeParsingCard = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-stage="parsing"]`);
             if (activeParsingCard) {
-                debugInfo(`⏳ skipping processMessage for #${messageId} — tagger is active`);
+                debugInfo(`⏳ skipping processMessage for #${id} — tagger is active`);
                 return;
             }
             const hasCurrentCards = hasCardsForBaseKey(container, key);
             if (processedKeys.has(key) && !force) {
                 if (hasCurrentCards) return;
                 processedKeys.delete(key);
-                debugInfo(`♻️ cards missing for processed key, restoring from cache`, { messageId, key });
+                debugInfo(`♻️ cards missing for processed key, restoring from cache`, { messageId: id, key });
             }
             if (hasCurrentCards && !force) {
                 processedKeys.add(key);
@@ -10197,8 +10241,15 @@ SCHEMA:
         if (processedKeys.has(key)) return;
         if (inFlight.has(key)) return;
 
-        const extraSdt = getMsgExtraSdt(messageId);
-        const cached = extraSdt || store.cache[key];
+        const extraSdt = getMsgExtraSdt(id);
+        // 关键防护：只有当 extraSdt 中的文本 hash 或 key 与当前消息正文完全一致时，才认定为有效缓存
+        // 若用户点击了重新生成 (Regenerate / Swipe)，正文已变更，旧楼层/旧版本的 extraSdt 绝不可错挂到新生成中！
+        const isExtraValid = !!(extraSdt && (
+            extraSdt.key === key ||
+            (extraSdt.mesHash && extraSdt.mesHash === currentMesHash) ||
+            (typeof extraSdt.key === 'string' && extraSdt.key.includes(`:${currentMesHash}:`))
+        ));
+        const cached = (isExtraValid ? extraSdt : null) || store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
             // 如果缓存中判定为“无需生图”，依然渲染一个可重新解析的卡片，防止按钮凭空消失导致用户无法手动生图
             const noDrawPlaceholder = {
@@ -10305,6 +10356,8 @@ SCHEMA:
     function scheduleProcess(messageId, options = {}) {
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
+        // 如果当前消息正在流式生成或在思考中，严禁提前介入渲染与解析，静待流式结束后由 startStreamingWatcher 统一调度
+        if (!options.force && isMessageCurrentlyStreaming(id)) return;
         clearTimeout(pendingTimers.get(id));
 
         // 优化切换分身/滑动时的生图还原体验：如果该版本文本已有缓存结果，则直接以 16ms 超低延迟立刻渲染，实现无感秒出。
@@ -10315,7 +10368,14 @@ SCHEMA:
         let delay = options.force ? 16 : 400;
         if (trigger) {
             const key = makeKey(id, message, trigger.type, trigger.marker || 'auto');
-            if (getMsgExtraSdt(id) || store.cache[key]) {
+            const currentMesHash = hashText(message?.mes || '');
+            const extraSdt = getMsgExtraSdt(id);
+            const isExtraValid = !!(extraSdt && (
+                extraSdt.key === key ||
+                (extraSdt.mesHash && extraSdt.mesHash === currentMesHash) ||
+                (typeof extraSdt.key === 'string' && extraSdt.key.includes(`:${currentMesHash}:`))
+            ));
+            if (isExtraValid || store.cache[key]) {
                 delay = 16;
             }
         }
@@ -12262,7 +12322,10 @@ SCHEMA:
                 if (mutation.type === 'characterData') {
                     const parent = mutation.target?.parentElement;
                     const message = parent?.closest?.('.mes[mesid]');
-                    if (message) scheduleProcess(Number(message.getAttribute('mesid')));
+                    if (message) {
+                        const mesId = Number(message.getAttribute('mesid'));
+                        if (!isMessageCurrentlyStreaming(mesId)) scheduleProcess(mesId);
+                    }
                     continue;
                 }
                 if (mutation.type === 'childList') {
@@ -12274,10 +12337,10 @@ SCHEMA:
                             (mutation.target.matches?.('.mes[mesid]') || mutation.target.classList?.contains('mes_text') || !!mutation.target.closest?.('.mes_text'));
                         if (isTextOrRoot) {
                             for (const pk of processedKeys) {
-                                if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
+                                if (pk.includes(`:${mesId}:`)) processedKeys.delete(pk);
                             }
                         }
-                        scheduleProcess(mesId);
+                        if (!isMessageCurrentlyStreaming(mesId)) scheduleProcess(mesId);
                     }
                 }
                 for (const node of mutation.addedNodes) {
@@ -12286,9 +12349,9 @@ SCHEMA:
                     if (message) {
                         const mesId = Number(message.getAttribute('mesid'));
                         for (const pk of processedKeys) {
-                            if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
+                            if (pk.includes(`:${mesId}:`)) processedKeys.delete(pk);
                         }
-                        scheduleProcess(mesId, { allowHistorical: true });
+                        if (!isMessageCurrentlyStreaming(mesId)) scheduleProcess(mesId, { allowHistorical: true });
                     }
                 }
             }
@@ -12304,9 +12367,11 @@ SCHEMA:
                 const mesId = Number(id);
                 if (Number.isFinite(mesId)) {
                     for (const pk of processedKeys) {
-                        if (pk.startsWith(`${mesId}:`)) processedKeys.delete(pk);
+                        if (pk.includes(`:${mesId}:`)) processedKeys.delete(pk);
                     }
-                    scheduleProcess(mesId, { force: true, allowHistorical: true });
+                    if (!isMessageCurrentlyStreaming(mesId)) {
+                        scheduleProcess(mesId, { force: true, allowHistorical: true });
+                    }
                 }
             };
             handleChatChanged = () => {

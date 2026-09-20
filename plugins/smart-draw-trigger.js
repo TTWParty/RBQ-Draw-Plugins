@@ -12594,16 +12594,60 @@ SCHEMA:
             .replace(/[\s\-_,，。\[\]【】\(\)（）]/g, '');
     }
 
-    function extractNarrativeContext(msgText, rawPrompt) {
+    function extractNarrativeContext(msgText, rawPrompt, promptText) {
         if (!msgText) return '';
-        let preceding = msgText;
+
+        // Locate prompt position using multiple strategies
+        let promptPos = -1;
+
+        // Strategy 1: exact rawPrompt match
         if (rawPrompt && msgText.includes(rawPrompt)) {
-            preceding = msgText.slice(0, msgText.indexOf(rawPrompt));
+            promptPos = msgText.indexOf(rawPrompt);
         }
+
+        // Strategy 2: bracket variants of promptText
+        if (promptPos < 0 && promptText) {
+            const variants = [`[${promptText}]`, `【${promptText}】`];
+            for (const v of variants) {
+                const idx = msgText.indexOf(v);
+                if (idx >= 0) { promptPos = idx; break; }
+            }
+        }
+
+        // Strategy 3: bare promptText (case-sensitive)
+        if (promptPos < 0 && promptText) {
+            const idx = msgText.indexOf(promptText);
+            if (idx >= 0) promptPos = idx;
+        }
+
+        // Strategy 4: case-insensitive
+        if (promptPos < 0 && promptText) {
+            const idx = msgText.toLowerCase().indexOf(promptText.toLowerCase());
+            if (idx >= 0) promptPos = idx;
+        }
+
+        // If prompt is at position 0 or not found, try to get the text AFTER the prompt
+        // as a fallback (the next paragraph before the next bracket prompt)
+        let preceding;
+        if (promptPos > 0) {
+            preceding = msgText.slice(0, promptPos);
+        } else if (promptPos === 0) {
+            // Prompt is at the very start — grab the paragraph right after it
+            const skipLen = rawPrompt ? rawPrompt.length : (promptText ? promptText.length + 2 : 0);
+            const afterText = msgText.slice(skipLen);
+            const nextBracket = afterText.search(/(?:\[|【)[\s\S]{2,}?(?:\]|】)/);
+            preceding = nextBracket > 0 ? afterText.slice(0, nextBracket) : afterText.slice(0, 300);
+        } else {
+            // Could not locate prompt — return empty rather than polluting with unrelated text
+            return '';
+        }
+
+        // Clean think tags, code blocks, and bracket prompts
         preceding = preceding.replace(/<think[\s\S]*?<\/think>/gi, '').replace(/<think[\s\S]*$/gi, '');
         preceding = preceding.replace(/```[\s\S]*?```/g, '');
         preceding = preceding.replace(/\[\/?(?:scene|img|draw|画图|分镜|图组)[^\]]*\]/gi, '');
-        preceding = preceding.replace(/(?:\[|【)[^\]】]*?(?:\]|】)/g, ''); // strip other prompt brackets
+        preceding = preceding.replace(/(?:\[|【)[^\]】]*?(?:\]|】)/g, '');
+
         const lines = preceding.split(/\r?\n+/).map(l => l.trim()).filter(Boolean);
         for (let i = lines.length - 1; i >= 0; i--) {
             const line = lines[i];
@@ -12614,7 +12658,7 @@ SCHEMA:
         if (lines.length > 0) {
             return cleanDialogueForComic(lines[lines.length - 1], 120);
         }
-        return cleanDialogueForComic(msgText, 100);
+        return '';
     }
 
     function extractHostPromptsFromMessage(msgText, mesId) {
@@ -12857,7 +12901,7 @@ SCHEMA:
                     }
                 }
 
-                const dialogueExcerpt = extractNarrativeContext(msgText, hp.raw);
+                const dialogueExcerpt = extractNarrativeContext(msgText, hp.raw, hp.prompt);
                 if (matchedImg && (matchedImg.url || matchedImg.displayUrl || matchedImg.cacheId)) {
                     const imgKey = matchedImg.cacheId || matchedImg.url || matchedImg.displayUrl;
                     if (imgKey && seenIdentifiers.has(imgKey)) continue;

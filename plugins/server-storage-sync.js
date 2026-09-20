@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.9';
+    const PLUGIN_VERSION = '1.1.10';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -977,19 +977,6 @@
                 box-shadow: 0 0 8px currentColor;
                 pointer-events: none;
                 transition: background-color 0.25s ease;
-            }
-            .rbq-storage-backdrop {
-                display: none;
-                position: fixed;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.45);
-                backdrop-filter: blur(2px);
-                -webkit-backdrop-filter: blur(2px);
-                z-index: 1000045 !important;
-            }
-            .rbq-storage-backdrop.open {
-                display: block !important;
-            }
             .rbq-storage-popover {
                 position: fixed !important;
                 z-index: 1000050 !important;
@@ -1006,7 +993,7 @@
                 border-radius: 14px;
                 padding: 14px 16px;
                 box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
-                animation: rbqPopoverIn 0.2s ease-out;
+                animation: rbqPopoverIn 0.15s ease-out;
             }
             @media (min-width: 901px) {
                 .rbq-storage-popover {
@@ -1015,18 +1002,19 @@
             }
             @media (max-width: 900px) {
                 .rbq-storage-popover {
-                    top: auto !important;
-                    bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
-                    left: 12px !important;
-                    right: 12px !important;
-                    width: auto !important;
-                    max-width: calc(100vw - 24px) !important;
+                    top: 50% !important;
+                    left: 50% !important;
+                    right: auto !important;
+                    bottom: auto !important;
+                    transform: translate(-50%, -50%) !important;
+                    width: calc(100vw - 32px) !important;
+                    max-width: 340px !important;
                     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
                 }
             }
             @keyframes rbqPopoverIn {
-                from { opacity: 0; transform: translateY(-6px); }
-                to { opacity: 1; transform: translateY(0); }
+                from { opacity: 0; }
+                to { opacity: 1; }
             }
             .rbq-storage-popover.open {
                 display: flex !important;
@@ -1155,15 +1143,7 @@
             }
         }
 
-        // 弹窗与独立全屏遮罩直接挂载至 viewer 根节点，避免任何嵌套盒模型与 stacking context 影响
-        let backdrop = modal.querySelector('#rbq-storage-backdrop');
-        if (!backdrop) {
-            backdrop = document.createElement('div');
-            backdrop.id = 'rbq-storage-backdrop';
-            backdrop.className = 'rbq-storage-backdrop';
-            modal.appendChild(backdrop);
-        }
-
+        // 弹窗直接挂载至 viewer 根节点，由全局点击外部事件负责关闭（无需阻断事件的 backdrop 遮罩）
         let popover = modal.querySelector('#rbq-storage-popover');
         if (!popover) {
             popover = document.createElement('div');
@@ -1182,64 +1162,53 @@
                 popover.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
                 popover.style.left = 'auto';
                 popover.style.bottom = 'auto';
+                popover.style.transform = 'none';
             } else {
                 popover.style.top = '';
                 popover.style.right = '';
                 popover.style.left = '';
                 popover.style.bottom = '';
+                popover.style.transform = '';
             }
         };
 
         const closePopover = (e) => {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            backdrop.classList.remove('open');
+            if (e) e.stopPropagation();
             popover.classList.remove('open');
         };
 
         const openPopover = () => {
             positionPopover();
-            backdrop.classList.add('open');
             popover.classList.add('open');
         };
 
-        let lastToggleTime = 0;
         const togglePopover = (e) => {
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
             }
-            const now = Date.now();
-            if (now - lastToggleTime < 500) return;
-            lastToggleTime = now;
-
             if (popover.classList.contains('open')) {
-                closePopover();
+                closePopover(e);
             } else {
                 openPopover();
             }
         };
 
         if (badgeBtn) {
-            // 清除旧的事件绑定（防止 updateViewerBadge 重入时重复绑定）
-            if (badgeBtn._rbqToggle) {
-                badgeBtn.removeEventListener('click', badgeBtn._rbqToggle);
-                badgeBtn.removeEventListener('touchend', badgeBtn._rbqToggle);
-            }
-            badgeBtn._rbqToggle = togglePopover;
-            badgeBtn.addEventListener('click', togglePopover);
-            badgeBtn.addEventListener('touchend', togglePopover);
+            badgeBtn.onclick = togglePopover;
         }
-        if (backdrop) {
-            if (backdrop._rbqClose) {
-                backdrop.removeEventListener('click', backdrop._rbqClose);
-                backdrop.removeEventListener('touchend', backdrop._rbqClose);
-            }
-            backdrop._rbqClose = closePopover;
-            backdrop.addEventListener('click', closePopover);
-            backdrop.addEventListener('touchend', closePopover);
+
+        // 全局单次监听点击外部区域关闭弹窗
+        if (!window.__rbqStorageOutsideClickBound) {
+            window.__rbqStorageOutsideClickBound = true;
+            document.addEventListener('click', (e) => {
+                const pop = document.getElementById('rbq-storage-popover');
+                const btn = document.getElementById('rbq-storage-badge-btn');
+                if (pop && pop.classList.contains('open')) {
+                    if (pop.contains(e.target) || btn?.contains(e.target)) return;
+                    pop.classList.remove('open');
+                }
+            });
         }
 
         // 检测存储物理归属
@@ -1390,7 +1359,6 @@
     });
 
     window.addEventListener('st-scene-trigger:viewer-closed', () => {
-        document.getElementById('rbq-storage-backdrop')?.classList.remove('open');
         document.getElementById('rbq-storage-popover')?.classList.remove('open');
     });
 

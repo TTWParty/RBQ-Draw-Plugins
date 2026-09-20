@@ -3,21 +3,23 @@
  * 插件 ID: rbq-gallery-sync
  * 功能：
  * 1. 双轨省流云同步：生成图片后客户端后台静默生成 ~60KB WebP 预览图并上传至酒馆服务端，实现多端秒开且 98% 省流；
- * 2. 大图查看器存储状态胶囊 (Storage Badge)：直观标注图片存储归属（本地浏览器/酒馆服务端/绘图后端/省流预览）；
- * 3. 存储详情与一键操作浮窗：查看真实物理路径、尺寸与大小，支持「一键同步到服务端」、「拉取全画质原图」、「复制路径」；
- * 4. 网络自适应保护：检测到移动蜂窝数据 (Save-Data) 时自动阻断高清原图加载，杜绝流量偷跑。
+ * 2. 收藏自动原画上传：点击「⭐ 收藏」时自动提取无损原画上传至服务端持久化保存；
+ * 3. 大图查看器存储状态指示点 (Storage Dot Badge)：微型圆点标注图片存储归属（本地浏览器/酒馆服务端/绘图后端/省流预览），点击弹出响应式详情卡片；
+ * 4. 存储详情与一键操作浮窗：查看真实物理路径、尺寸与大小，支持「上传原图到服务端」、「复制路径」；
+ * 5. 网络自适应保护：检测到移动蜂窝数据 (Save-Data) 时自动阻断高清原图加载，杜绝流量偷跑。
  */
 (function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[Gallery Sync] RBQ Core API missing');
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.0.0';
+    const PLUGIN_VERSION = '1.1.0';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
         enabled: true,
         syncMode: 'stream_only', // 'local' | 'stream_only' | 'full'
+        syncFavoritesOriginal: true, // ⭐ 收藏时自动上传高清原画至服务端
         previewQuality: 0.8,
         previewMaxDimension: 768,
         saveDataAware: true,
@@ -172,10 +174,11 @@
 
     // ── 4. Image Storage Inspector ──
     async function inspectImageStorage(item) {
-        if (!item) return { type: 'unknown', text: '❓ 未知', color: '#94a3b8', details: {} };
+        if (!item) return { type: 'unknown', text: '未知', title: '未知存储位置', color: '#94a3b8', details: {} };
 
         const url = String(item.displayUrl || item.url || '');
         const serverUrl = String(item.serverUrl || item.serverPreviewUrl || '');
+        const serverOriginalUrl = String(item.serverOriginalUrl || '');
         const cacheId = item.cacheId || '';
 
         let inIndexedDb = false;
@@ -194,10 +197,10 @@
         }
 
         // 判定 1: 绘图后端直连 (ComfyUI / SD WebUI)
-        if (url.includes('/view?filename=') || url.includes(':8188') || url.includes(':7860') || item.mode === 'comfyui' && !serverUrl) {
+        if (url.includes('/view?filename=') || url.includes(':8188') || url.includes(':7860') || (item.mode === 'comfyui' && !serverUrl && !serverOriginalUrl)) {
             return {
                 type: 'backend',
-                text: '🎨 绘图后端',
+                text: '绘图后端',
                 title: '绘图工具输出目录 (ComfyUI / SD)',
                 color: '#c084fc', // purple
                 inIndexedDb,
@@ -205,42 +208,46 @@
                 blobType,
                 path: url,
                 canSync: inIndexedDb || !!url,
+                canSyncOriginal: true,
                 serverUrl,
                 cacheId,
             };
         }
 
-        // 判定 2: 酒馆服务端图库 (已同步到云端/服务端磁盘)
-        if (serverUrl || url.startsWith('/user/images/') || url.startsWith('/public/') || url.startsWith('/uploads/')) {
-            const effectivePath = serverUrl || url;
+        // 判定 2: 酒馆服务端高清原画
+        if (serverOriginalUrl || (serverUrl && !serverUrl.includes('_preview.webp'))) {
+            const effectivePath = serverOriginalUrl || serverUrl;
             return {
                 type: 'server',
-                text: '☁️ 酒馆服务端',
-                title: '酒馆服务器持久化图库 (多端已同步)',
+                text: '酒馆服务端 (原图)',
+                title: '酒馆服务器持久化高清原画 (已同步云端)',
                 color: '#38bdf8', // sky blue
                 inIndexedDb,
                 blobSize,
                 blobType,
                 path: effectivePath,
                 canSync: false,
+                canSyncOriginal: false,
                 serverUrl: effectivePath,
                 cacheId,
             };
         }
 
-        // 判定 3: 省流轻量预览图
-        if (item.isPreviewOnly || url.includes('_preview.webp') || (blobSize > 0 && blobSize < 120000 && blobType.includes('webp'))) {
+        // 判定 3: 酒馆服务端轻量预览图
+        if (serverUrl || item.serverPreviewUrl || url.includes('_preview.webp')) {
+            const effectivePath = serverUrl || item.serverPreviewUrl || url;
             return {
                 type: 'preview',
-                text: '📱 省流预览',
-                title: '轻量 WebP 预览图 (省流中)',
+                text: '酒馆服务端 (预览)',
+                title: '酒馆轻量 WebP 预览图 (~60KB 省流中)',
                 color: '#facc15', // amber
                 inIndexedDb,
                 blobSize,
                 blobType,
-                path: url,
-                canSync: false,
-                serverUrl,
+                path: effectivePath,
+                canSync: inIndexedDb || !!item.url,
+                canSyncOriginal: true, // 可补传无损原画
+                serverUrl: effectivePath,
                 cacheId,
             };
         }
@@ -249,7 +256,7 @@
         if (inIndexedDb || url.startsWith('blob:')) {
             return {
                 type: 'local',
-                text: '💻 本地浏览器',
+                text: '本地浏览器',
                 title: '仅保存在当前设备浏览器中 (IndexedDB)',
                 color: '#4ade80', // green
                 inIndexedDb: true,
@@ -257,6 +264,7 @@
                 blobType,
                 path: `IndexedDB: ${cacheId || 'blob'}`,
                 canSync: true,
+                canSyncOriginal: true,
                 serverUrl,
                 cacheId,
             };
@@ -264,7 +272,7 @@
 
         return {
             type: 'external',
-            text: '🌐 外部链接',
+            text: '外部链接',
             title: '外部网络资源',
             color: '#a855f7',
             inIndexedDb,
@@ -272,6 +280,7 @@
             blobType,
             path: url,
             canSync: true,
+            canSyncOriginal: true,
             serverUrl,
             cacheId,
         };
@@ -314,9 +323,42 @@
 
                 const now = Date.now();
                 const mode = item.mode || 'rbq';
-                const previewFilename = `rbq_${mode}_${now}_preview.webp`;
 
-                // 压制 50~80KB 预览图
+                if (store.syncMode === 'full') {
+                    // 全量原图上传
+                    let ext = 'png';
+                    if (originalBlob.type === 'image/jpeg' || originalBlob.type === 'image/jpg') ext = 'jpg';
+                    else if (originalBlob.type === 'image/webp') ext = 'webp';
+
+                    const filename = `rbq_${mode}_${now}.${ext}`;
+                    const uploadedPath = await uploadBlobToServer(originalBlob, filename);
+                    if (uploadedPath) {
+                        item.serverUrl = uploadedPath;
+                        item.serverOriginalUrl = uploadedPath;
+                        console.info(`[${PLUGIN_NAME}] ✅ 原画已同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
+
+                        if (item.messageId != null) {
+                            const ctx = RBQ.api.getContext?.();
+                            const msg = ctx?.chat?.[item.messageId];
+                            if (msg) {
+                                if (!msg.extra) msg.extra = {};
+                                if (msg.extra.rbq_image) msg.extra.rbq_image.serverUrl = uploadedPath;
+                                if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
+                                    msg.extra.rbq_images[0].serverUrl = uploadedPath;
+                                }
+                                RBQ.api.saveChatDebounced?.();
+                            }
+                        }
+
+                        if (store.enableSyncToast) {
+                            toastr.info(`生图原画已同步至酒馆云端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
+                        }
+                    }
+                    return;
+                }
+
+                // 默认 stream_only: 压制 50~80KB 预览图
+                const previewFilename = `rbq_${mode}_${now}_preview.webp`;
                 const previewBlob = await createOptimizedWebpBlob(
                     originalBlob,
                     store.previewMaxDimension || 768,
@@ -340,7 +382,7 @@
                             if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
                                 msg.extra.rbq_images[0].serverPreviewUrl = uploadedPath;
                             }
-                            RBQ.api.saveChatDebounced();
+                            RBQ.api.saveChatDebounced?.();
                         }
                     }
 
@@ -354,7 +396,104 @@
         });
     });
 
-    // ── 6. Storage Badge & Popover in Image Viewer ──
+    // ── 6. Favorite Auto-Upload Original Handler ──
+    async function syncFavoriteOriginal(item) {
+        const store = getStore();
+        if (!store.enabled || !store.syncFavoritesOriginal) return;
+        if (!item) return;
+
+        // 如果已经是服务端原图，无需重复上传
+        if (item.serverOriginalUrl) return;
+        if (item.serverUrl && !item.serverUrl.includes('_preview.webp')) return;
+
+        try {
+            let originalBlob = null;
+            if (item.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
+                const rec = await RBQ.api.getCachedImageRecord(item.cacheId);
+                if (rec?.blob instanceof Blob) originalBlob = rec.blob;
+            }
+
+            if (!originalBlob && item.url) {
+                try {
+                    const res = await fetch(item.url);
+                    if (res.ok) originalBlob = await res.blob();
+                } catch (_e) {}
+            }
+
+            if (!originalBlob) {
+                console.warn(`[${PLUGIN_NAME}] 收藏图片上传原图失败: 未能获取到原始图片二进制数据`);
+                return;
+            }
+
+            toastr.info('正在将收藏的高清原画同步至酒馆服务端...', PLUGIN_NAME);
+
+            const mode = item.mode || 'rbq';
+            const now = Date.now();
+            let ext = 'png';
+            if (originalBlob.type === 'image/jpeg' || originalBlob.type === 'image/jpg') ext = 'jpg';
+            else if (originalBlob.type === 'image/webp') ext = 'webp';
+
+            const filename = `rbq_${mode}_fav_${now}.${ext}`;
+            const uploadedPath = await uploadBlobToServer(originalBlob, filename);
+
+            if (uploadedPath) {
+                item.serverOriginalUrl = uploadedPath;
+                item.serverUrl = uploadedPath;
+                console.info(`[${PLUGIN_NAME}] ⭐ 收藏原画已成功同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
+
+                // 同步消息 extra
+                if (item.messageId != null) {
+                    const ctx = RBQ.api.getContext?.();
+                    const msg = ctx?.chat?.[item.messageId];
+                    if (msg) {
+                        if (!msg.extra) msg.extra = {};
+                        if (msg.extra.rbq_image) {
+                            msg.extra.rbq_image.serverOriginalUrl = uploadedPath;
+                            msg.extra.rbq_image.serverUrl = uploadedPath;
+                        }
+                        if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
+                            msg.extra.rbq_images[0].serverOriginalUrl = uploadedPath;
+                            msg.extra.rbq_images[0].serverUrl = uploadedPath;
+                        }
+                        RBQ.api.saveChatDebounced?.();
+                    }
+                }
+
+                // 如果当前查看器正打开此图，刷新指示点状态
+                if (currentViewerItem && (currentViewerItem === item || currentViewerItem.id === item.id)) {
+                    const modal = document.getElementById('st-scene-trigger-image-viewer');
+                    updateViewerBadge({ modal, current: item });
+                }
+
+                toastr.success(`⭐ 收藏原画已持久化至酒馆服务端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
+            }
+        } catch (err) {
+            console.error(`[${PLUGIN_NAME}] 收藏原画同步失败:`, err);
+            toastr.error(`收藏原画同步失败: ${err.message || err}`, PLUGIN_NAME);
+        }
+    }
+
+    // 监听收藏事件 (st-scene-trigger 主扩展分发)
+    window.addEventListener('st-scene-trigger:favorite-toggled', (event) => {
+        const { item, isFavorite } = event.detail || {};
+        if (item && isFavorite) {
+            syncFavoriteOriginal(item);
+        }
+    });
+
+    // 额外兜底监听：画廊或查看器内点击收藏按钮
+    document.addEventListener('click', (e) => {
+        const favBtn = e.target.closest?.('.st-scene-trigger-viewer-favorite, [data-action="toggle-fav"]');
+        if (favBtn && currentViewerItem) {
+            setTimeout(() => {
+                if (currentViewerItem.isFavorite) {
+                    syncFavoriteOriginal(currentViewerItem);
+                }
+            }, 100);
+        }
+    });
+
+    // ── 7. Storage Badge & Popover in Image Viewer ──
     let currentViewerItem = null;
 
     function injectStyles() {
@@ -367,24 +506,25 @@
                 align-items: center;
                 position: relative;
                 margin-right: 4px;
+                flex-shrink: 0;
             }
             .rbq-storage-badge-btn {
                 display: inline-flex !important;
                 align-items: center !important;
-                gap: 6px !important;
-                padding: 4px 10px !important;
+                justify-content: center !important;
+                width: 32px !important;
                 height: 32px !important;
-                border-radius: 999px !important;
+                padding: 0 !important;
+                border-radius: 50% !important;
                 background: rgba(18, 20, 30, 0.72) !important;
                 backdrop-filter: blur(12px) !important;
                 -webkit-backdrop-filter: blur(12px) !important;
                 border: 1px solid rgba(255, 255, 255, 0.12) !important;
                 color: #f1f5f9 !important;
-                font-size: 11px !important;
-                font-weight: 500 !important;
                 cursor: pointer !important;
                 transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24) !important;
+                flex-shrink: 0 !important;
             }
             .rbq-storage-badge-btn:hover {
                 background: rgba(30, 34, 48, 0.9) !important;
@@ -392,12 +532,14 @@
                 transform: translateY(-1px);
             }
             .rbq-storage-dot {
-                width: 7px;
-                height: 7px;
+                width: 8px;
+                height: 8px;
                 border-radius: 50%;
                 display: inline-block;
                 flex-shrink: 0;
                 box-shadow: 0 0 8px currentColor;
+                pointer-events: none;
+                transition: background-color 0.25s ease;
             }
             .rbq-storage-popover {
                 position: absolute;
@@ -420,6 +562,18 @@
                 box-sizing: border-box;
                 animation: rbqPopoverIn 0.2s ease-out;
             }
+            @media (max-width: 768px) {
+                .rbq-storage-popover {
+                    position: fixed !important;
+                    top: auto !important;
+                    bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+                    left: 12px !important;
+                    right: 12px !important;
+                    width: auto !important;
+                    max-width: calc(100vw - 24px) !important;
+                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+                }
+            }
             @keyframes rbqPopoverIn {
                 from { opacity: 0; transform: translateY(-6px); }
                 to { opacity: 1; transform: translateY(0); }
@@ -430,7 +584,7 @@
             .rbq-storage-popover-title {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                justify-content: space-between;
                 font-size: 13px;
                 font-weight: 600;
                 color: #f8fafc;
@@ -539,7 +693,6 @@
             wrap.innerHTML = `
                 <button id="rbq-storage-badge-btn" class="rbq-storage-badge-btn menu_button" type="button" title="点击查阅存储归属与云端同步详情">
                     <span id="rbq-storage-dot" class="rbq-storage-dot" style="background:#94a3b8;"></span>
-                    <span id="rbq-storage-text">检测中...</span>
                 </button>
                 <div id="rbq-storage-popover" class="rbq-storage-popover"></div>
             `;
@@ -568,23 +721,28 @@
             });
         }
 
+        const badgeBtn = wrap.querySelector('#rbq-storage-badge-btn');
         const dot = wrap.querySelector('#rbq-storage-dot');
-        const text = wrap.querySelector('#rbq-storage-text');
         const popover = wrap.querySelector('#rbq-storage-popover');
 
         // 检测存储物理归属
         const info = await inspectImageStorage(current);
 
         if (dot) dot.style.background = info.color;
-        if (text) text.textContent = info.text;
+        if (badgeBtn) badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
 
         const sizeStr = info.blobSize ? formatBytes(info.blobSize) : (current.url ? '云端流媒体' : '未知');
         const dimStr = (current.width && current.height) ? `${current.width} × ${current.height}` : '自适应';
 
         popover.innerHTML = `
             <div class="rbq-storage-popover-title">
-                <i class="fa-solid fa-hard-drive"></i>
-                <span>图片存储详情</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="rbq-storage-dot" style="background:${info.color};"></span>
+                    <span style="font-weight:600;color:#f8fafc;">${info.text}</span>
+                </div>
+                <button id="rbq-popover-close-btn" type="button" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:15px;padding:2px 6px;line-height:1;" title="关闭">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
             <div class="rbq-storage-info-list">
                 <div class="rbq-storage-info-row">
@@ -597,7 +755,7 @@
                 </div>
                 <div class="rbq-storage-info-row">
                     <span class="rbq-storage-info-label">多端状态：</span>
-                    <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 多端已同步' : '⚠️ 仅当前设备可用'}</span>
+                    <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用')}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;">
                     <span class="rbq-storage-info-label">物理路径 / URL：</span>
@@ -607,7 +765,7 @@
             <div class="rbq-storage-actions">
                 ${info.canSync ? `
                     <button id="rbq-action-manual-sync" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" type="button">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> 一键同步至酒馆服务端
+                        <i class="fa-solid fa-cloud-arrow-up"></i> ${info.type === 'preview' ? '上传高清原画至酒馆' : '一键同步至酒馆服务端'}
                     </button>
                 ` : ''}
                 <button id="rbq-action-copy-path" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
@@ -619,7 +777,13 @@
             </div>
         `;
 
-        // 绑定弹窗内按钮
+        // 绑定关闭按钮
+        popover.querySelector('#rbq-popover-close-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popover.classList.remove('open');
+        });
+
+        // 绑定弹窗内操作按钮
         popover.querySelector('#rbq-action-manual-sync')?.addEventListener('click', async (e) => {
             e.stopPropagation();
             const syncBtn = e.currentTarget;
@@ -636,15 +800,44 @@
                     const res = await fetch(current.displayUrl);
                     if (res.ok) blobToSync = await res.blob();
                 }
+                if (!blobToSync && current.url) {
+                    const res = await fetch(current.url);
+                    if (res.ok) blobToSync = await res.blob();
+                }
 
                 if (!blobToSync) throw new Error('无法读取图片原始数据');
 
-                const optimized = await createOptimizedWebpBlob(blobToSync, 768, 0.82);
-                const path = await uploadBlobToServer(optimized || blobToSync, `rbq_manual_${Date.now()}.webp`);
+                const mode = current.mode || 'rbq';
+                const now = Date.now();
+                let ext = 'png';
+                if (blobToSync.type === 'image/jpeg' || blobToSync.type === 'image/jpg') ext = 'jpg';
+                else if (blobToSync.type === 'image/webp') ext = 'webp';
+
+                const filename = `rbq_${mode}_manual_${now}.${ext}`;
+                const path = await uploadBlobToServer(blobToSync, filename);
 
                 current.serverUrl = path;
-                current.serverPreviewUrl = path;
-                toastr.success(`已成功同步到酒馆服务端: ${path}`, PLUGIN_NAME);
+                current.serverOriginalUrl = path;
+
+                // 同步消息 extra
+                if (current.messageId != null) {
+                    const ctx = RBQ.api.getContext?.();
+                    const msg = ctx?.chat?.[current.messageId];
+                    if (msg) {
+                        if (!msg.extra) msg.extra = {};
+                        if (msg.extra.rbq_image) {
+                            msg.extra.rbq_image.serverUrl = path;
+                            msg.extra.rbq_image.serverOriginalUrl = path;
+                        }
+                        if (Array.isArray(msg.extra.rbq_images) && msg.extra.rbq_images[0]) {
+                            msg.extra.rbq_images[0].serverUrl = path;
+                            msg.extra.rbq_images[0].serverOriginalUrl = path;
+                        }
+                        RBQ.api.saveChatDebounced?.();
+                    }
+                }
+
+                toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
                 popover.classList.remove('open');
                 await updateViewerBadge(detail);
             } catch (syncErr) {
@@ -685,7 +878,7 @@
         updateViewerBadge(event?.detail);
     });
 
-    // ── 7. Setting Panel Registration ──
+    // ── 8. Setting Panel Registration ──
     function renderSettings() {
         const store = getStore();
         return `
@@ -738,11 +931,19 @@
 
                 <div class="st-scene-trigger-section" style="background:var(--linear-bg-subtle); padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
                     <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--linear-text-primary);">
-                        <i class="fa-solid fa-shield-halved"></i> 流量保护与视觉特性
+                        <i class="fa-solid fa-shield-halved"></i> 存储策略与智能上传
                     </div>
 
                     <div style="display:flex; flex-direction:column; gap:10px;">
                         <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+                            <span style="font-size:12px;">⭐ 收藏时自动上传高清原画至服务端 (推荐)</span>
+                            <input id="rbq-sync-fav-original" type="checkbox" ${store.syncFavoritesOriginal ? 'checked' : ''}>
+                        </label>
+                        <div style="font-size:11px; color:var(--linear-text-muted); margin-top:-6px;">
+                            当在画廊或大图查看器中点击「⭐ 收藏」时，自动提取最高画质原图上传至酒馆服务端永久留存，兼顾日常省流与原图备份。
+                        </div>
+
+                        <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin-top:6px;">
                             <span style="font-size:12px;">📱 移动蜂窝网络流量保护 (Save-Data 感知)</span>
                             <input id="rbq-sync-savedata" type="checkbox" ${store.saveDataAware ? 'checked' : ''}>
                         </label>
@@ -751,11 +952,11 @@
                         </div>
 
                         <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin-top:6px;">
-                            <span style="font-size:12px;">🏷️ 大图查看器显示「存储归属胶囊」</span>
+                            <span style="font-size:12px;">🏷️ 大图查看器显示「存储归属指示点」</span>
                             <input id="rbq-sync-badge-enable" type="checkbox" ${store.enableViewerBadge ? 'checked' : ''}>
                         </label>
                         <div style="font-size:11px; color:var(--linear-text-muted); margin-top:-6px;">
-                            在大图查看器右上角显示 🟢 本地 / 🔵 服务端 / 🟣 绘图后端 标识，并支持一键补传与复制路径。
+                            在大图查看器顶栏显示存储状态呼吸圆点（🟢本地 / 🔵云端原图 / 🟡省流预览 / 🟣绘图后端），点击展开详情卡片。
                         </div>
                     </div>
                 </div>
@@ -780,6 +981,7 @@
             const store = getStore();
             const selectedMode = root.querySelector('input[name="rbq-sync-mode"]:checked')?.value || 'stream_only';
             store.syncMode = selectedMode;
+            store.syncFavoritesOriginal = !!root.querySelector('#rbq-sync-fav-original')?.checked;
             store.saveDataAware = !!root.querySelector('#rbq-sync-savedata')?.checked;
             store.enableViewerBadge = !!root.querySelector('#rbq-sync-badge-enable')?.checked;
 
@@ -810,6 +1012,7 @@
         inspectImageStorage,
         createOptimizedWebpBlob,
         uploadBlobToServer,
+        syncFavoriteOriginal,
         getStore,
     };
 

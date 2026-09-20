@@ -12576,16 +12576,149 @@ SCHEMA:
         if (!text) return '';
         let str = String(text);
         // 1. Strip think / thinking tags from deep reasoning models
-        str = str.replace(/<think[\s\S]*?<\/think>/gi, '').replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
+        str = str.replace(/<think(?:_nya~?)?[\s\S]*?<\/think(?:_nya~?)?>/gi, '');
+        str = str.replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
         str = str.replace(/<think[\s\S]*$/gi, ''); // in case of unclosed streaming think tags
-        // 2. Strip markdown code blocks
+        // 2. Strip XML wrapper tags like <content>, <thought>, <os>, etc.
+        str = str.replace(/<\/?(?:content|thought|thinking|think|message|response|os|system|assistant|user|prompt)[^>]*>/gi, '');
+        str = str.replace(/<[^>]+>/g, '');
+        // 3. Strip markdown code blocks
         str = str.replace(/```[\s\S]*?```/g, '');
-        // 3. Strip trigger / prompt brackets
-        str = str.replace(/\[\/?(?:scene|img|draw|画图|分镜|图组)[^\]]*\]/gi, '');
-        // 4. Clean line breaks and excess spaces
+        // 4. Strip trigger / prompt brackets and SDT cards
+        str = str.replace(/Smart Draw\s*#\d+/gi, '');
+        str = str.replace(/\[\/?(?:scene|img|draw|画图|分镜|图组|展开)[^\]]*\]/gi, '');
+        // 5. Clean leading/trailing markdown asterisks
+        str = str.replace(/^\*+|\*+$/g, '');
+        // 6. Clean line breaks and excess spaces
         str = str.replace(/\s+/g, ' ').trim();
         if (!str) return '';
         return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
+    }
+
+    function cleanRawMsgText(text) {
+        if (!text) return '';
+        let str = String(text);
+        str = str.replace(/<think(?:_nya~?)?[\s\S]*?<\/think(?:_nya~?)?>/gi, '');
+        str = str.replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
+        str = str.replace(/<think[\s\S]*$/gi, '');
+        str = str.replace(/<\/?(?:content|thought|thinking|think|message|response|os|system|assistant|user|prompt)[^>]*>/gi, '');
+        str = str.replace(/```[\s\S]*?```/g, '');
+        return str.trim();
+    }
+
+    function parseMessageStorySections(msgText) {
+        const cleanText = cleanRawMsgText(msgText);
+        if (!cleanText) return [];
+
+        // Check for Section Markers like:
+        // 第一张：【天台上的“课间操”】 / 第一张: 天台上的课间操
+        // 第二张：【体育器材室的闷热】
+        // or 分镜 1: xxx / [分镜1] / 【分镜1】
+        // or 插画 1 / Scene 1 / 图组 1
+        const sectionHeaderRegex = /(?:^|\n+)(?:第\s*[一二三四五六七八九十0-9]+\s*[张幅个幕节折景]|分镜\s*[#0-9一二三四五]+|Scene\s*[0-9]+|插画\s*[#0-9一二三四五]+|图组\s*[#0-9一二三四五]+)[：:\s]*(?:【([^】\n\r]+)】|\[([^\]\n\r]+)\]|([^\n\r]+))?/gi;
+
+        const sections = [];
+        const matches = [];
+        let match;
+        while ((match = sectionHeaderRegex.exec(cleanText)) !== null) {
+            matches.push({
+                index: match.index,
+                length: match[0].length,
+                title: String(match[1] || match[2] || match[3] || '').trim(),
+                rawHeader: match[0].trim(),
+            });
+        }
+
+        if (matches.length > 0) {
+            for (let i = 0; i < matches.length; i++) {
+                const cur = matches[i];
+                const contentStart = cur.index + cur.length;
+                const contentEnd = (i + 1 < matches.length) ? matches[i + 1].index : cleanText.length;
+                let sectionBody = cleanText.slice(contentStart, contentEnd).trim();
+
+                // Strip trailing outro greetings (e.g. "主人对这几张满意不？...") from the last section
+                if (i === matches.length - 1) {
+                    const outroMatch = sectionBody.search(/\n+(?:主人|大家|你|您)对这(?:几张|些|个)|(?:\n+|^)(?:如果|要是)想(?:要|看|继续|随时)/);
+                    if (outroMatch > 0) {
+                        sectionBody = sectionBody.slice(0, outroMatch).trim();
+                    }
+                }
+
+                // Remove internal trigger cards / prompt brackets like [展开: ...]
+                sectionBody = sectionBody.replace(/Smart Draw\s*#\d+/gi, '')
+                                         .replace(/\[\/?(?:scene|img|draw|画图|分镜|图组|展开)[^\]]*\]/gi, '')
+                                         .replace(/(?:\[|【)[^\]】]*?(?:\]|】)/g, '')
+                                         .replace(/\s+/g, ' ')
+                                         .trim();
+
+                sections.push({
+                    index: i,
+                    title: cur.title || `分镜 #${i + 1}`,
+                    rawHeader: cur.rawHeader,
+                    body: sectionBody,
+                    summary: cleanDialogueForComic(sectionBody, 140),
+                });
+            }
+            return sections;
+        }
+
+        // Fallback: Check for Bracket prompts like [树下静静阅读的芙莉莲]
+        const bracketRegex = /(?:^|\n+)(?:\[|【)([^\[\]【】\n\r]{2,60})(?:\]|】)/g;
+        const bracketMatches = [];
+        while ((match = bracketRegex.exec(cleanText)) !== null) {
+            const inner = String(match[1] || '').trim();
+            if (!inner || inner.startsWith('http') || inner.startsWith('/') || /^(?:img|scene|draw|画图|分镜|图组|展开)/i.test(inner)) continue;
+            bracketMatches.push({
+                index: match.index,
+                length: match[0].length,
+                title: inner,
+            });
+        }
+
+        if (bracketMatches.length > 0) {
+            let prevEnd = 0;
+            for (let i = 0; i < bracketMatches.length; i++) {
+                const cur = bracketMatches[i];
+                let body = cleanText.slice(prevEnd, cur.index).trim();
+                const paragraphs = body.split(/\n+/).map(p => p.trim()).filter(Boolean);
+                const narrative = paragraphs.slice(-2).join(' ')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/(?:\[|【)[^\]】]*?(?:\]|】)/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                sections.push({
+                    index: i,
+                    title: cur.title,
+                    rawHeader: `[${cur.title}]`,
+                    body: narrative,
+                    summary: cleanDialogueForComic(narrative, 140),
+                });
+                prevEnd = cur.index + cur.length;
+            }
+            return sections;
+        }
+
+        // Fallback: Split by double newlines into narrative paragraphs
+        const rawParas = cleanText.split(/\n\s*\n+/).map(p => p.trim()).filter(p => p.length > 20);
+        for (let i = 0; i < rawParas.length; i++) {
+            const para = rawParas[i]
+                .replace(/<[^>]+>/g, '')
+                .replace(/(?:\[|【)[^\]】]*?(?:\]|】)/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (para.length > 15) {
+                sections.push({
+                    index: i,
+                    title: `分镜 #${i + 1}`,
+                    rawHeader: '',
+                    body: para,
+                    summary: cleanDialogueForComic(para, 140),
+                });
+            }
+        }
+
+        return sections;
     }
 
     function normalizePromptKey(str) {
@@ -12763,6 +12896,13 @@ SCHEMA:
             const sendDate = msg.send_date || '';
             const msgText = String(msg.mes || '').trim();
             const seenPromptsInMessage = new Set();
+            const parsedSections = parseMessageStorySections(msgText);
+
+            // Pre-collect hostExtras for matching
+            const hostExtras = [];
+            if (Array.isArray(msg.extra?.rbq_images)) hostExtras.push(...msg.extra.rbq_images);
+            if (msg.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
+            const consumedHostExtras = new Set();
 
             // 1. Core SDT backpack: message.extra.rbq_sdt
             const sdt = msg.extra?.rbq_sdt;
@@ -12780,10 +12920,48 @@ SCHEMA:
                             state = store.cache[baseKey].segmentStates[segKey];
                         }
 
-                        const imgRes = state?.imageResult;
-                        const hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
+                        let imgRes = state?.imageResult;
+                        let hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
                         const promptText = String(imgRes?.prompt || seg.prompt || sdt.prompt || '').trim();
-                        const anchorText = cleanDialogueForComic(seg.anchor?.text || seg.anchorText || sdt.anchor?.text || '');
+
+                        // Fallback: If sdt.segmentStates didn't record imageResult, match with hostExtras
+                        if (!hasImg && hostExtras.length > 0) {
+                            const normP = normalizePromptKey(promptText || seg.scene || seg.label);
+                            for (const hImg of hostExtras) {
+                                if (!hImg || consumedHostExtras.has(hImg)) continue;
+                                if (!hImg.url && !hImg.displayUrl && !hImg.cacheId) continue;
+                                const normH = normalizePromptKey(hImg.prompt);
+                                if (normP && (normH === normP || normH.includes(normP) || normP.includes(normH))) {
+                                    imgRes = hImg;
+                                    hasImg = true;
+                                    consumedHostExtras.add(hImg);
+                                    break;
+                                }
+                            }
+                            if (!hasImg) {
+                                const chronoHost = hostExtras.slice().reverse().filter(h => !consumedHostExtras.has(h) && (h.url || h.displayUrl || h.cacheId));
+                                if (chronoHost[segIdx]) {
+                                    imgRes = chronoHost[segIdx];
+                                    hasImg = true;
+                                    consumedHostExtras.add(chronoHost[segIdx]);
+                                }
+                            }
+                        }
+
+                        // Resolve authentic narrative context from parsed section
+                        const sec = parsedSections[segIdx];
+                        let anchorText = '';
+                        if (sec && sec.summary) {
+                            anchorText = sec.summary;
+                        } else if (seg.anchor?.text) {
+                            const rawAnchor = cleanDialogueForComic(seg.anchor.text);
+                            if (!rawAnchor.includes('满意不') && !rawAnchor.includes('跟我说一句就行')) {
+                                anchorText = rawAnchor;
+                            }
+                        }
+                        if (!anchorText && sec?.body) anchorText = cleanDialogueForComic(sec.body, 140);
+                        if (!anchorText && seg.scene) anchorText = cleanDialogueForComic(seg.scene, 140);
+
                         const sceneText = cleanDialogueForComic(seg.scene || sdt.scene || '', 100);
 
                         // If neither image nor storyboard content, skip
@@ -12798,6 +12976,8 @@ SCHEMA:
                             if (norm) seenPromptsInMessage.add(norm);
                         }
 
+                        const labelText = String(seg.label || sec?.title || `分镜 #${segIdx + 1}`).trim();
+
                         items.push({
                             id: `sdt-${mesId}-${segIdx}`,
                             messageId: mesId,
@@ -12807,7 +12987,7 @@ SCHEMA:
                             panelIndex: 0,
                             anchorText,
                             sceneText,
-                            label: String(seg.label || `分镜 #${segIdx + 1}`).trim(),
+                            label: labelText,
                             characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
                             prompt: promptText,
                             negative: String(seg.negative || sdt.negative || '').trim(),
@@ -12828,10 +13008,24 @@ SCHEMA:
                     if (!state && store.cache?.[baseKey]?.segmentStates) {
                         state = store.cache[baseKey].segmentStates[baseKey] || Object.values(store.cache[baseKey].segmentStates)[0];
                     }
-                    const imgRes = state?.imageResult || sdt.imageResult;
-                    const hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
+                    let imgRes = state?.imageResult || sdt.imageResult;
+                    let hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
                     const promptText = String(imgRes?.prompt || sdt.prompt || '').trim();
-                    const anchorText = cleanDialogueForComic(sdt.anchor?.text || sdt.anchorText || '');
+
+                    if (!hasImg && hostExtras.length > 0) {
+                        const hImg = hostExtras.find(h => !consumedHostExtras.has(h) && (h.url || h.displayUrl || h.cacheId));
+                        if (hImg) {
+                            imgRes = hImg;
+                            hasImg = true;
+                            consumedHostExtras.add(hImg);
+                        }
+                    }
+
+                    const sec = parsedSections[0];
+                    let anchorText = sec?.summary || cleanDialogueForComic(sdt.anchor?.text || sdt.anchorText || '');
+                    if (anchorText.includes('满意不') || anchorText.includes('跟我说一句就行')) {
+                        anchorText = sec?.summary || '';
+                    }
                     const sceneText = cleanDialogueForComic(sdt.scene || sdt.reason || '', 100);
 
                     if (hasImg || promptText || sceneText || anchorText) {
@@ -12851,7 +13045,7 @@ SCHEMA:
                                 panelIndex: 0,
                                 anchorText,
                                 sceneText,
-                                label: '剧情分镜',
+                                label: sec?.title || '剧情分镜',
                                 characters: Array.isArray(sdt.characters) ? sdt.characters : [],
                                 prompt: promptText,
                                 negative: String(sdt.negative || '').trim(),
@@ -12872,12 +13066,7 @@ SCHEMA:
             }
 
             // 2. Host direct images & host prompt cards (from regex / DOM / extractPrompts)
-            const hostExtras = [];
-            if (Array.isArray(msg.extra?.rbq_images)) hostExtras.push(...msg.extra.rbq_images);
-            if (msg.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
-
             const hostPrompts = extractHostPromptsFromMessage(msgText, mesId);
-            const consumedHostExtras = new Set();
 
             // 2a: Match host prompts with generated host images or DOM results
             for (let hpIdx = 0; hpIdx < hostPrompts.length; hpIdx++) {
@@ -12901,7 +13090,10 @@ SCHEMA:
                     }
                 }
 
-                const dialogueExcerpt = extractNarrativeContext(msgText, hp.raw, hp.prompt);
+                const sec = parsedSections[hpIdx];
+                const dialogueExcerpt = sec?.summary || extractNarrativeContext(msgText, hp.raw, hp.prompt);
+                const sectionLabel = sec?.title || hp.label || '分镜插画';
+
                 if (matchedImg && (matchedImg.url || matchedImg.displayUrl || matchedImg.cacheId)) {
                     const imgKey = matchedImg.cacheId || matchedImg.url || matchedImg.displayUrl;
                     if (imgKey && seenIdentifiers.has(imgKey)) continue;
@@ -12916,7 +13108,7 @@ SCHEMA:
                         panelIndex: 0,
                         anchorText: dialogueExcerpt,
                         sceneText: '',
-                        label: hp.label || '分镜插画',
+                        label: sectionLabel,
                         characters: [senderName],
                         prompt: hp.prompt,
                         negative: '',
@@ -12942,7 +13134,7 @@ SCHEMA:
                         panelIndex: 0,
                         anchorText: dialogueExcerpt,
                         sceneText: '',
-                        label: hp.label || '待生分镜',
+                        label: sectionLabel,
                         characters: [senderName],
                         prompt: hp.prompt,
                         negative: '',
@@ -12958,10 +13150,9 @@ SCHEMA:
             }
 
             // 2b: Any unconsumed images in hostExtras
-            for (let hIdx = 0; hIdx < hostExtras.length; hIdx++) {
-                const hImg = hostExtras[hIdx];
-                if (!hImg || (!hImg.url && !hImg.displayUrl && !hImg.cacheId)) continue;
-                if (consumedHostExtras.has(hImg)) continue;
+            const remainingHostImages = hostExtras.filter(h => !consumedHostExtras.has(h) && (h.url || h.displayUrl || h.cacheId));
+            for (let hIdx = 0; hIdx < remainingHostImages.length; hIdx++) {
+                const hImg = remainingHostImages[hIdx];
                 const imgKey = hImg.cacheId || hImg.url || hImg.displayUrl;
                 if (imgKey && seenIdentifiers.has(imgKey)) continue;
                 if (imgKey) seenIdentifiers.add(imgKey);
@@ -12969,7 +13160,21 @@ SCHEMA:
                 const normH = normalizePromptKey(hImg.prompt);
                 if (normH && seenPromptsInMessage.has(normH)) continue;
 
-                const dialogueExcerpt = cleanDialogueForComic(msgText, 100);
+                // Match with parsed section by title keywords or order index
+                let sec = null;
+                if (normH) {
+                    sec = parsedSections.find(s => {
+                        const normT = normalizePromptKey(s.title);
+                        return normT && (normH.includes(normT) || normT.includes(normH));
+                    });
+                }
+                if (!sec) {
+                    sec = parsedSections[hIdx] || parsedSections[parsedSections.length - 1];
+                }
+
+                const dialogueExcerpt = sec?.summary || (sec?.body ? cleanDialogueForComic(sec.body, 140) : '');
+                const sectionLabel = sec?.title || '插画生成';
+
                 items.push({
                     id: `host-img-${mesId}-${hIdx}`,
                     messageId: mesId,
@@ -12979,7 +13184,7 @@ SCHEMA:
                     panelIndex: 0,
                     anchorText: dialogueExcerpt,
                     sceneText: '',
-                    label: '插画生成',
+                    label: sectionLabel,
                     characters: [senderName],
                     prompt: String(hImg.prompt || '').trim(),
                     negative: '',

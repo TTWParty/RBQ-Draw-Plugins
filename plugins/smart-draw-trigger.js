@@ -10482,6 +10482,535 @@ SCHEMA:
                 border: 1px solid rgba(56, 189, 248, 0.3);
                 color: #38bdf8;
             }
+
+            /* ── 剧情漫画时间轴 / 画廊侧边抽屉 ── */
+            .rbq-sdt-comic-drawer-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 99990;
+                background: rgba(0, 0, 0, 0.62);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .rbq-sdt-comic-drawer-overlay.open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            .rbq-sdt-comic-drawer {
+                position: fixed;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: min(620px, 94vw);
+                background: rgba(18, 20, 30, 0.95);
+                backdrop-filter: blur(24px);
+                -webkit-backdrop-filter: blur(24px);
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+                box-shadow: -14px 0 45px rgba(0, 0, 0, 0.75);
+                display: flex;
+                flex-direction: column;
+                transform: translateX(100%);
+                transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+                z-index: 99991;
+                color: #f1f5f9;
+                font-family: inherit;
+            }
+            .rbq-sdt-comic-drawer-overlay.open .rbq-sdt-comic-drawer {
+                transform: translateX(0);
+            }
+            .rbq-drawer-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 14px 18px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(25, 28, 42, 0.88);
+                backdrop-filter: blur(12px);
+                flex-shrink: 0;
+                gap: 12px;
+            }
+            .rbq-drawer-title-area {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-width: 0;
+            }
+            .rbq-drawer-icon {
+                font-size: 18px;
+                color: #38bdf8;
+                display: flex;
+                align-items: center;
+            }
+            .rbq-drawer-title-text {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .rbq-drawer-title {
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+                color: #f8fafc;
+            }
+            .rbq-drawer-count-badge {
+                font-size: 11px;
+                font-weight: 600;
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: rgba(56, 189, 248, 0.15);
+                border: 1px solid rgba(56, 189, 248, 0.35);
+                color: #38bdf8;
+            }
+            .rbq-drawer-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-shrink: 0;
+            }
+            .rbq-drawer-btn {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #cbd5e1;
+                border-radius: 8px;
+                padding: 6px 10px;
+                font-size: 12px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                transition: all 0.2s ease;
+                white-space: nowrap;
+            }
+            .rbq-drawer-btn:hover {
+                background: rgba(255, 255, 255, 0.12);
+                border-color: rgba(255, 255, 255, 0.2);
+                color: #fff;
+            }
+            .rbq-drawer-btn.active {
+                background: rgba(56, 189, 248, 0.2);
+                border-color: rgba(56, 189, 248, 0.4);
+                color: #38bdf8;
+            }
+            .rbq-drawer-close {
+                padding: 6px 9px;
+                color: #94a3b8;
+            }
+            .rbq-drawer-close:hover {
+                background: rgba(239, 68, 68, 0.15);
+                border-color: rgba(239, 68, 68, 0.3);
+                color: #f87171;
+            }
+            .rbq-drawer-body {
+                flex: 1;
+                overflow-y: auto;
+                padding: 16px 18px;
+                scroll-behavior: smooth;
+            }
+            /* Comic Timeline View */
+            .rbq-comic-timeline-wrap {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .rbq-comic-item {
+                position: relative;
+                display: flex;
+                gap: 14px;
+            }
+            .rbq-comic-timeline-node {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                flex-shrink: 0;
+                width: 32px;
+            }
+            .rbq-comic-badge {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #0284c7, #6366f1);
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+                color: #fff;
+                font-size: 11px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 2;
+                flex-shrink: 0;
+            }
+            .rbq-comic-line {
+                position: absolute;
+                top: 28px;
+                bottom: -24px;
+                width: 2px;
+                background: linear-gradient(to bottom, rgba(56, 189, 248, 0.4), rgba(99, 102, 241, 0.2));
+            }
+            .rbq-comic-item:last-child .rbq-comic-line {
+                display: none;
+            }
+            .rbq-comic-card {
+                flex: 1;
+                background: rgba(25, 28, 42, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 12px;
+                padding: 12px 14px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                min-width: 0;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+                transition: border-color 0.2s, transform 0.2s;
+            }
+            .rbq-comic-card:hover {
+                border-color: rgba(56, 189, 248, 0.35);
+                transform: translateY(-1px);
+            }
+            .rbq-comic-meta {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                font-size: 12px;
+            }
+            .rbq-comic-speaker {
+                font-weight: 600;
+                padding: 2px 8px;
+                border-radius: 6px;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+            }
+            .rbq-comic-speaker.is-char {
+                background: rgba(168, 85, 247, 0.15);
+                border: 1px solid rgba(168, 85, 247, 0.3);
+                color: #c084fc;
+            }
+            .rbq-comic-speaker.is-user {
+                background: rgba(59, 130, 246, 0.15);
+                border: 1px solid rgba(59, 130, 246, 0.3);
+                color: #60a5fa;
+            }
+            .rbq-comic-floor-jump {
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                color: #94a3b8;
+                font-size: 11px;
+                padding: 2px 7px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                transition: all 0.2s;
+            }
+            .rbq-comic-floor-jump:hover {
+                background: rgba(56, 189, 248, 0.18);
+                border-color: rgba(56, 189, 248, 0.4);
+                color: #38bdf8;
+            }
+            .rbq-comic-action-label {
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 5px;
+                background: rgba(34, 197, 94, 0.12);
+                border: 1px solid rgba(34, 197, 94, 0.25);
+                color: #4ade80;
+            }
+            .rbq-comic-time {
+                font-size: 11px;
+                color: #64748b;
+                margin-left: auto;
+            }
+            /* Comic Dialogue Bubble */
+            .rbq-comic-bubble {
+                position: relative;
+                background: rgba(40, 44, 66, 0.85);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 10px;
+                padding: 10px 14px 10px 32px;
+                font-size: 13px;
+                line-height: 1.55;
+                color: #f1f5f9;
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            }
+            .rbq-comic-bubble-quote {
+                position: absolute;
+                left: 10px;
+                top: 9px;
+                color: #38bdf8;
+                font-size: 13px;
+                opacity: 0.8;
+            }
+            .rbq-comic-scene {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                font-size: 12px;
+                line-height: 1.5;
+                background: rgba(0, 0, 0, 0.25);
+                border-left: 3px solid #f59e0b;
+                padding: 6px 10px;
+                border-radius: 0 6px 6px 0;
+                color: #cbd5e1;
+            }
+            .rbq-comic-scene-tag {
+                font-weight: 600;
+                color: #fbbf24;
+                font-size: 11px;
+                flex-shrink: 0;
+            }
+            /* Panel Image & Hover Toolbar */
+            .rbq-comic-image-frame {
+                position: relative;
+                border-radius: 10px;
+                overflow: hidden;
+                background: rgba(0, 0, 0, 0.4);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                display: flex;
+                flex-direction: column;
+            }
+            .rbq-comic-img {
+                width: 100%;
+                height: auto;
+                max-height: 480px;
+                object-fit: contain;
+                display: block;
+                border-radius: 10px;
+                cursor: pointer;
+                transition: transform 0.25s ease;
+            }
+            .rbq-comic-img:hover {
+                transform: scale(1.01);
+            }
+            .rbq-comic-img-toolbar {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                padding: 8px 12px;
+                background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 70%, transparent 100%);
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 6px;
+                opacity: 0;
+                transition: opacity 0.2s ease;
+            }
+            .rbq-comic-image-frame:hover .rbq-comic-img-toolbar {
+                opacity: 1;
+            }
+            .rbq-comic-tool-btn {
+                background: rgba(30, 33, 48, 0.85);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                color: #e2e8f0;
+                border-radius: 6px;
+                padding: 5px 9px;
+                font-size: 11.5px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                backdrop-filter: blur(8px);
+                transition: all 0.18s;
+            }
+            .rbq-comic-tool-btn:hover {
+                background: rgba(56, 189, 248, 0.3);
+                border-color: rgba(56, 189, 248, 0.5);
+                color: #fff;
+            }
+            /* Grid Mode */
+            .rbq-comic-grid-container {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+                gap: 12px;
+            }
+            .rbq-comic-grid-card {
+                background: rgba(25, 28, 42, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+                overflow: hidden;
+                cursor: pointer;
+                display: flex;
+                flex-direction: column;
+                transition: transform 0.2s, border-color 0.2s;
+            }
+            .rbq-comic-grid-card:hover {
+                transform: translateY(-2px);
+                border-color: rgba(56, 189, 248, 0.4);
+            }
+            .rbq-comic-grid-thumb {
+                position: relative;
+                aspect-ratio: 2/3;
+                background: rgba(0, 0, 0, 0.35);
+                overflow: hidden;
+            }
+            .rbq-comic-grid-thumb img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+            .rbq-comic-grid-badge {
+                position: absolute;
+                top: 6px;
+                left: 6px;
+                background: rgba(15, 23, 42, 0.85);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: #38bdf8;
+                font-size: 10.5px;
+                font-weight: 700;
+                padding: 1px 6px;
+                border-radius: 4px;
+            }
+            .rbq-comic-grid-floor {
+                position: absolute;
+                bottom: 6px;
+                right: 6px;
+                background: rgba(15, 23, 42, 0.85);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                color: #e2e8f0;
+                font-size: 10px;
+                padding: 1px 6px;
+                border-radius: 4px;
+            }
+            .rbq-comic-grid-info {
+                padding: 8px 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .rbq-comic-grid-speaker {
+                font-size: 11.5px;
+                font-weight: 600;
+                color: #c084fc;
+            }
+            .rbq-comic-grid-desc {
+                font-size: 11px;
+                color: #94a3b8;
+                line-height: 1.4;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }
+            /* Empty State */
+            .rbq-drawer-empty {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                padding: 60px 20px;
+                gap: 14px;
+                color: #94a3b8;
+            }
+            .rbq-drawer-empty-icon {
+                font-size: 54px;
+                color: #475569;
+                margin-bottom: 6px;
+            }
+            .rbq-drawer-empty-title {
+                font-size: 16px;
+                font-weight: 600;
+                color: #e2e8f0;
+            }
+            .rbq-drawer-empty-desc {
+                font-size: 13px;
+                line-height: 1.6;
+                max-width: 360px;
+            }
+            /* Message Jump Glow Flash */
+            @keyframes rbqSdtHighlightGlow {
+                0% {
+                    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.8), 0 0 25px rgba(56, 189, 248, 0.6);
+                    background-color: rgba(56, 189, 248, 0.18) !important;
+                }
+                50% {
+                    box-shadow: 0 0 0 6px rgba(56, 189, 248, 0.5), 0 0 30px rgba(56, 189, 248, 0.4);
+                    background-color: rgba(56, 189, 248, 0.1) !important;
+                }
+                100% {
+                    box-shadow: none;
+                    background-color: transparent !important;
+                }
+            }
+            .rbq-sdt-highlight-flash {
+                animation: rbqSdtHighlightGlow 2.6s ease-out forwards !important;
+                border-radius: 8px;
+            }
+            /* Lightbox Overlay */
+            .rbq-sdt-lightbox-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 99999;
+                background: rgba(0, 0, 0, 0.85);
+                backdrop-filter: blur(16px);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.25s ease;
+            }
+            .rbq-sdt-lightbox-overlay.open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            .rbq-sdt-lightbox-box {
+                position: relative;
+                max-width: 92vw;
+                max-height: 92vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+            .rbq-sdt-lightbox-img {
+                max-width: 100%;
+                max-height: 82vh;
+                object-fit: contain;
+                border-radius: 12px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+            }
+            .rbq-sdt-lightbox-caption {
+                color: #cbd5e1;
+                font-size: 13px;
+                text-align: center;
+                max-width: 700px;
+                background: rgba(0, 0, 0, 0.6);
+                padding: 8px 16px;
+                border-radius: 20px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            .rbq-sdt-lightbox-close {
+                position: absolute;
+                top: -16px;
+                right: -16px;
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                background: rgba(30, 33, 48, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: #fff;
+                font-size: 16px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+            }
+            .rbq-sdt-lightbox-close:hover {
+                background: rgba(239, 68, 68, 0.8);
+            }
         `;
         document.head.append(style);
     }
@@ -10710,6 +11239,7 @@ SCHEMA:
                     <span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span>
                 </div>
                 <button id="rbq-sdt-save" class="menu_button rbq-sdt-save-btn" type="button">💾 保存智能触发器设置</button>
+                <button id="rbq-sdt-open-comic-drawer-panel-btn" class="menu_button" style="margin:0!important; height:42px!important; padding:0 14px!important; background:rgba(168,85,247,.2)!important; border:1px solid rgba(168,85,247,.4)!important; border-radius:10px!important; display:flex; align-items:center; gap:6px; color:#f3e8ff; font-weight:600; cursor:pointer;" type="button" title="展开当前会话的剧情漫画时间轴侧边抽屉"><i class="fa-solid fa-film" style="color:#c084fc;"></i> 剧情画廊</button>
             </div>
             <!-- 现代化分段导航选项卡 (5大业务模块) -->
             <div class="rbq-sdt-nav-tabs">
@@ -11285,6 +11815,9 @@ SCHEMA:
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-mode').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
+        document.getElementById('rbq-sdt-open-comic-drawer-panel-btn')?.addEventListener('click', () => {
+            openStoryboardDrawer();
+        });
 
         document.getElementById('rbq-sdt-save').onclick = () => {
             const s = getStore();
@@ -11937,6 +12470,618 @@ SCHEMA:
         }
     }
 
+    /* ── 🗂️ 剧情漫画时间轴 / 生图侧边抽屉 (Storyboard Comic Strip Drawer) ── */
+    let currentComicItems = [];
+    let comicDrawerSort = localStorage.getItem('rbq-sdt-comic-sort') || 'asc'; // 'asc' | 'desc'
+    let comicDrawerViewMode = localStorage.getItem('rbq-sdt-comic-mode') || 'stream'; // 'stream' | 'grid'
+    let drawerKeyHandler = null;
+
+    async function collectChatStoryboardTimeline() {
+        const ctx = (window.RBQ?.api?.getContext?.()) || (window.SillyTavern?.getContext?.());
+        const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+        const store = getStore();
+        const items = [];
+        const seenIdentifiers = new Set();
+
+        for (let mesId = 0; mesId < chat.length; mesId++) {
+            const msg = chat[mesId];
+            if (!msg) continue;
+            const isUser = !!msg.is_user;
+            const senderName = String(msg.name || (isUser ? 'User' : 'Assistant')).trim();
+            const sendDate = msg.send_date || '';
+            const msgText = String(msg.mes || '').trim();
+
+            // 1. Core SDT backpack: message.extra.rbq_sdt
+            const sdt = msg.extra?.rbq_sdt;
+            if (sdt && typeof sdt === 'object') {
+                const segments = Array.isArray(sdt.segments) ? sdt.segments : [];
+                const segmentStates = sdt.segmentStates || {};
+                const baseKey = sdt.key || `msg-${mesId}`;
+
+                if (segments.length > 0) {
+                    for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+                        const seg = segments[segIdx] || {};
+                        const segKey = `${baseKey}-seg-${segIdx}`;
+                        let state = segmentStates[segKey] || segmentStates[String(segIdx)] || segmentStates[`seg-${segIdx}`];
+                        if (!state && store.cache?.[baseKey]?.segmentStates?.[segKey]) {
+                            state = store.cache[baseKey].segmentStates[segKey];
+                        }
+
+                        const imgRes = state?.imageResult;
+                        if (imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId)) {
+                            const imgKey = imgRes.cacheId || imgRes.url || imgRes.displayUrl;
+                            if (imgKey && seenIdentifiers.has(imgKey)) continue;
+                            if (imgKey) seenIdentifiers.add(imgKey);
+
+                            items.push({
+                                id: `sdt-${mesId}-${segIdx}`,
+                                messageId: mesId,
+                                senderName,
+                                isUser,
+                                timeText: sendDate,
+                                panelIndex: 0,
+                                anchorText: String(seg.anchor?.text || seg.anchorText || sdt.anchor?.text || '').trim(),
+                                sceneText: String(seg.scene || sdt.scene || '').trim(),
+                                label: String(seg.label || `分镜 #${segIdx + 1}`).trim(),
+                                characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
+                                prompt: String(imgRes.prompt || seg.prompt || sdt.prompt || '').trim(),
+                                negative: String(seg.negative || sdt.negative || '').trim(),
+                                url: imgRes.url || imgRes.displayUrl || '',
+                                displayUrl: imgRes.displayUrl || imgRes.url || '',
+                                cacheId: imgRes.cacheId || '',
+                                imageResult: imgRes,
+                                source: 'sdt-segment',
+                            });
+                        }
+                    }
+                } else {
+                    let state = segmentStates[baseKey] || segmentStates['default'] || Object.values(segmentStates)[0];
+                    if (!state && store.cache?.[baseKey]?.segmentStates) {
+                        state = store.cache[baseKey].segmentStates[baseKey] || Object.values(store.cache[baseKey].segmentStates)[0];
+                    }
+                    const imgRes = state?.imageResult || sdt.imageResult;
+                    if (imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId)) {
+                        const imgKey = imgRes.cacheId || imgRes.url || imgRes.displayUrl;
+                        if (!imgKey || !seenIdentifiers.has(imgKey)) {
+                            if (imgKey) seenIdentifiers.add(imgKey);
+                            items.push({
+                                id: `sdt-${mesId}-0`,
+                                messageId: mesId,
+                                senderName,
+                                isUser,
+                                timeText: sendDate,
+                                panelIndex: 0,
+                                anchorText: String(sdt.anchor?.text || sdt.anchorText || '').trim(),
+                                sceneText: String(sdt.scene || sdt.reason || '').trim(),
+                                label: '剧情分镜',
+                                characters: Array.isArray(sdt.characters) ? sdt.characters : [],
+                                prompt: String(imgRes.prompt || sdt.prompt || '').trim(),
+                                negative: String(sdt.negative || '').trim(),
+                                url: imgRes.url || imgRes.displayUrl || '',
+                                displayUrl: imgRes.displayUrl || imgRes.url || '',
+                                cacheId: imgRes.cacheId || '',
+                                imageResult: imgRes,
+                                source: 'sdt-single',
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 2. Host direct images: msg.extra.rbq_images / msg.extra.rbq_image
+            const hostExtras = [];
+            if (Array.isArray(msg.extra?.rbq_images)) hostExtras.push(...msg.extra.rbq_images);
+            if (msg.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
+
+            for (let hIdx = 0; hIdx < hostExtras.length; hIdx++) {
+                const hImg = hostExtras[hIdx];
+                if (!hImg || (!hImg.url && !hImg.displayUrl && !hImg.cacheId)) continue;
+                const imgKey = hImg.cacheId || hImg.url || hImg.displayUrl;
+                if (imgKey && seenIdentifiers.has(imgKey)) continue;
+                if (imgKey) seenIdentifiers.add(imgKey);
+
+                const dialogueExcerpt = msgText ? (msgText.length > 80 ? msgText.slice(0, 80) + '...' : msgText) : '';
+                items.push({
+                    id: `host-${mesId}-${hIdx}`,
+                    messageId: mesId,
+                    senderName,
+                    isUser,
+                    timeText: sendDate,
+                    panelIndex: 0,
+                    anchorText: dialogueExcerpt,
+                    sceneText: '',
+                    label: '插画生成',
+                    characters: [senderName],
+                    prompt: String(hImg.prompt || '').trim(),
+                    negative: '',
+                    url: hImg.url || hImg.displayUrl || '',
+                    displayUrl: hImg.displayUrl || hImg.url || '',
+                    cacheId: hImg.cacheId || '',
+                    imageResult: hImg,
+                    source: 'host-image',
+                });
+            }
+        }
+
+        // Restore URLs from IndexedDB asynchronously for expired blob URLs
+        if (typeof RBQ?.api?.ensureHistoryItemDisplayUrl === 'function') {
+            await Promise.all(items.map(async (item) => {
+                if (item.cacheId && (!item.displayUrl || item.displayUrl.startsWith('blob:'))) {
+                    try {
+                        const freshUrl = await RBQ.api.ensureHistoryItemDisplayUrl(item.imageResult || { cacheId: item.cacheId, url: item.url });
+                        if (freshUrl) {
+                            item.url = freshUrl;
+                            item.displayUrl = freshUrl;
+                        }
+                    } catch (_e) {}
+                }
+            }));
+        }
+
+        // Assign chronological panelIndex (1..N)
+        items.forEach((item, i) => {
+            item.panelIndex = i + 1;
+        });
+
+        return items;
+    }
+
+    async function openStoryboardDrawer() {
+        let overlay = document.getElementById('rbq-sdt-comic-drawer-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'rbq-sdt-comic-drawer-overlay';
+            overlay.className = 'rbq-sdt-comic-drawer-overlay';
+            overlay.innerHTML = `
+                <div id="rbq-sdt-comic-drawer" class="rbq-sdt-comic-drawer">
+                    <div class="rbq-drawer-header">
+                        <div class="rbq-drawer-title-area">
+                            <span class="rbq-drawer-icon"><i class="fa-solid fa-film"></i></span>
+                            <div class="rbq-drawer-title-text">
+                                <span class="rbq-drawer-title">剧情漫画时间轴</span>
+                                <span id="rbq-drawer-count-badge" class="rbq-drawer-count-badge">扫描中...</span>
+                            </div>
+                        </div>
+                        <div class="rbq-drawer-actions">
+                            <button id="rbq-drawer-sort-btn" class="rbq-drawer-btn" title="切换正序/倒序" type="button">
+                                <i class="fa-solid fa-arrow-down-short-wide"></i> <span id="rbq-drawer-sort-text">剧情正序</span>
+                            </button>
+                            <button id="rbq-drawer-layout-btn" class="rbq-drawer-btn" title="切换条漫/网格模式" type="button">
+                                <i class="fa-solid fa-table-cells"></i> <span id="rbq-drawer-layout-text">条漫模式</span>
+                            </button>
+                            <button id="rbq-drawer-zip-btn" class="rbq-drawer-btn" title="一键打包下载全部剧情图 (ZIP)" type="button">
+                                <i class="fa-solid fa-file-zipper"></i> 打包
+                            </button>
+                            <button id="rbq-drawer-refresh-btn" class="rbq-drawer-btn" title="重新扫描剧情分镜" type="button">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                            </button>
+                            <button id="rbq-drawer-close-btn" class="rbq-drawer-btn rbq-drawer-close" title="关闭 (ESC)" type="button">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="rbq-drawer-body" class="rbq-drawer-body">
+                        <div style="display:flex;align-items:center;justify-content:center;height:240px;color:#94a3b8;gap:10px;">
+                            <i class="fa-solid fa-spinner fa-spin" style="font-size:20px;color:#38bdf8;"></i> 正在解析当前会话全量剧情分镜...
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // Bind Overlay Click
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) closeStoryboardDrawer();
+            });
+
+            // Bind Controls
+            document.getElementById('rbq-drawer-close-btn')?.addEventListener('click', closeStoryboardDrawer);
+            document.getElementById('rbq-drawer-refresh-btn')?.addEventListener('click', async () => {
+                await refreshStoryboardDrawer();
+            });
+            document.getElementById('rbq-drawer-sort-btn')?.addEventListener('click', () => {
+                comicDrawerSort = comicDrawerSort === 'asc' ? 'desc' : 'asc';
+                localStorage.setItem('rbq-sdt-comic-sort', comicDrawerSort);
+                updateDrawerToolbarUi();
+                renderStoryboardDrawerContent();
+            });
+            document.getElementById('rbq-drawer-layout-btn')?.addEventListener('click', () => {
+                comicDrawerViewMode = comicDrawerViewMode === 'stream' ? 'grid' : 'stream';
+                localStorage.setItem('rbq-sdt-comic-mode', comicDrawerViewMode);
+                updateDrawerToolbarUi();
+                renderStoryboardDrawerContent();
+            });
+            document.getElementById('rbq-drawer-zip-btn')?.addEventListener('click', () => {
+                exportComicStripZip(currentComicItems);
+            });
+        }
+
+        // Global ESC key listener
+        if (!drawerKeyHandler) {
+            drawerKeyHandler = (e) => {
+                if (e.key === 'Escape') {
+                    if (document.getElementById('rbq-sdt-lightbox-overlay')?.classList.contains('open')) {
+                        closeDrawerLightbox();
+                    } else if (overlay.classList.contains('open')) {
+                        closeStoryboardDrawer();
+                    }
+                }
+            };
+            window.addEventListener('keydown', drawerKeyHandler);
+        }
+
+        // Open with smooth slide animation
+        requestAnimationFrame(() => {
+            overlay.classList.add('open');
+        });
+
+        updateDrawerToolbarUi();
+        await refreshStoryboardDrawer();
+    }
+
+    function closeStoryboardDrawer() {
+        const overlay = document.getElementById('rbq-sdt-comic-drawer-overlay');
+        if (overlay) {
+            overlay.classList.remove('open');
+            setTimeout(() => {
+                overlay.remove();
+            }, 300);
+        }
+        if (drawerKeyHandler) {
+            window.removeEventListener('keydown', drawerKeyHandler);
+            drawerKeyHandler = null;
+        }
+        closeDrawerLightbox();
+    }
+
+    function updateDrawerToolbarUi() {
+        const sortText = document.getElementById('rbq-drawer-sort-text');
+        const sortBtn = document.getElementById('rbq-drawer-sort-btn');
+        if (sortText && sortBtn) {
+            const isAsc = comicDrawerSort === 'asc';
+            sortText.textContent = isAsc ? '剧情正序' : '最新在前';
+            const icon = sortBtn.querySelector('i');
+            if (icon) icon.className = `fa-solid ${isAsc ? 'fa-arrow-down-short-wide' : 'fa-arrow-up-wide-short'}`;
+        }
+        const layoutText = document.getElementById('rbq-drawer-layout-text');
+        const layoutBtn = document.getElementById('rbq-drawer-layout-btn');
+        if (layoutText && layoutBtn) {
+            const isStream = comicDrawerViewMode === 'stream';
+            layoutText.textContent = isStream ? '条漫模式' : '网格模式';
+            const icon = layoutBtn.querySelector('i');
+            if (icon) icon.className = `fa-solid ${isStream ? 'fa-table-cells' : 'fa-film'}`;
+        }
+    }
+
+    async function refreshStoryboardDrawer() {
+        const countBadge = document.getElementById('rbq-drawer-count-badge');
+        if (countBadge) countBadge.textContent = '扫描中...';
+        currentComicItems = await collectChatStoryboardTimeline();
+        if (countBadge) countBadge.textContent = `共 ${currentComicItems.length} 格分镜`;
+        renderStoryboardDrawerContent();
+    }
+
+    function renderStoryboardDrawerContent() {
+        const body = document.getElementById('rbq-drawer-body');
+        if (!body) return;
+
+        if (!currentComicItems || currentComicItems.length === 0) {
+            body.innerHTML = `
+                <div class="rbq-drawer-empty">
+                    <div class="rbq-drawer-empty-icon"><i class="fa-solid fa-film"></i></div>
+                    <div class="rbq-drawer-empty-title">当前会话暂无剧情分镜</div>
+                    <div class="rbq-drawer-empty-desc">长篇剧情中生成的每个分镜大图与关键台词都会自动收录到这里。开启 SDT 自动生图或手动描述生图即可生成你的第一格剧情漫画！</div>
+                    <button id="rbq-drawer-empty-draw-btn" class="menu_button" style="margin-top: 14px; background: rgba(56,189,248,0.18); border: 1px solid rgba(56,189,248,0.4); border-radius: 8px; padding: 8px 18px; color: #38bdf8; font-weight: 600; cursor: pointer;">
+                        <i class="fa-solid fa-pen-fancy"></i> 立即手动生图
+                    </button>
+                </div>
+            `;
+            document.getElementById('rbq-drawer-empty-draw-btn')?.addEventListener('click', () => {
+                closeStoryboardDrawer();
+                openManualDrawDialog();
+            });
+            return;
+        }
+
+        const itemsToRender = [...currentComicItems];
+        if (comicDrawerSort === 'desc') {
+            itemsToRender.reverse();
+        }
+
+        if (comicDrawerViewMode === 'stream') {
+            // Stream / Comic strip mode
+            let html = '<div class="rbq-comic-timeline-wrap">';
+            for (const item of itemsToRender) {
+                const bubbleHtml = item.anchorText ? `
+                    <div class="rbq-comic-bubble">
+                        <div class="rbq-comic-bubble-quote"><i class="fa-solid fa-quote-left"></i></div>
+                        <div class="rbq-comic-bubble-text">${escapeHtml(item.anchorText)}</div>
+                    </div>
+                ` : '';
+
+                const sceneHtml = item.sceneText ? `
+                    <div class="rbq-comic-scene">
+                        <span class="rbq-comic-scene-tag"><i class="fa-solid fa-clapperboard"></i> 场景</span>
+                        <span class="rbq-comic-scene-text">${escapeHtml(item.sceneText)}</span>
+                    </div>
+                ` : '';
+
+                html += `
+                    <div class="rbq-comic-item" data-panel-id="${escapeHtml(item.id)}" data-message-id="${item.messageId}">
+                        <div class="rbq-comic-timeline-node">
+                            <div class="rbq-comic-badge">${String(item.panelIndex).padStart(2, '0')}</div>
+                            <div class="rbq-comic-line"></div>
+                        </div>
+                        <div class="rbq-comic-card">
+                            <div class="rbq-comic-meta">
+                                <div class="rbq-comic-speaker ${item.isUser ? 'is-user' : 'is-char'}">
+                                    <i class="fa-solid ${item.isUser ? 'fa-user' : 'fa-masks-theater'}"></i>
+                                    <span>${escapeHtml(item.senderName)}</span>
+                                </div>
+                                <button class="rbq-comic-floor-jump" data-message-id="${item.messageId}" title="点击平滑定位至原消息楼层" type="button">
+                                    <i class="fa-solid fa-location-crosshairs"></i> #${item.messageId + 1} 楼
+                                </button>
+                                ${item.label ? `<span class="rbq-comic-action-label">${escapeHtml(item.label)}</span>` : ''}
+                                <span class="rbq-comic-time">${escapeHtml(item.timeText)}</span>
+                            </div>
+                            ${bubbleHtml}
+                            ${sceneHtml}
+                            <div class="rbq-comic-image-frame">
+                                <img class="rbq-comic-img" src="${escapeHtml(item.displayUrl || item.url)}" alt="Panel ${item.panelIndex}" loading="lazy" data-cache-id="${escapeHtml(item.cacheId || '')}">
+                                <div class="rbq-comic-img-toolbar">
+                                    <button class="rbq-comic-tool-btn" data-action="preview" data-panel-id="${escapeHtml(item.id)}" title="全屏大图预览" type="button"><i class="fa-solid fa-expand"></i> 预览</button>
+                                    <button class="rbq-comic-tool-btn" data-action="copy-prompt" data-panel-id="${escapeHtml(item.id)}" title="复制生成提示词" type="button"><i class="fa-solid fa-copy"></i> 提示词</button>
+                                    <button class="rbq-comic-tool-btn" data-action="download" data-panel-id="${escapeHtml(item.id)}" title="下载当前分镜原图" type="button"><i class="fa-solid fa-download"></i> 保存</button>
+                                    <button class="rbq-comic-tool-btn" data-action="jump" data-message-id="${item.messageId}" title="平滑定位至聊天窗口对应楼层" type="button"><i class="fa-solid fa-arrow-up-right-from-square"></i> 跳转</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            body.innerHTML = html;
+        } else {
+            // Grid mode
+            let html = '<div class="rbq-comic-grid-container">';
+            for (const item of itemsToRender) {
+                const descSnippet = item.anchorText || item.sceneText || item.prompt;
+                html += `
+                    <div class="rbq-comic-grid-card" data-panel-id="${escapeHtml(item.id)}" data-message-id="${item.messageId}">
+                        <div class="rbq-comic-grid-thumb">
+                            <img src="${escapeHtml(item.displayUrl || item.url)}" alt="Panel ${item.panelIndex}" loading="lazy">
+                            <div class="rbq-comic-grid-badge">${String(item.panelIndex).padStart(2, '0')}</div>
+                            <div class="rbq-comic-grid-floor">#${item.messageId + 1} 楼</div>
+                        </div>
+                        <div class="rbq-comic-grid-info">
+                            <div class="rbq-comic-grid-speaker">${escapeHtml(item.senderName)}</div>
+                            <div class="rbq-comic-grid-desc">${escapeHtml(descSnippet.slice(0, 50))}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            body.innerHTML = html;
+        }
+
+        bindDrawerInteractiveEvents(body);
+    }
+
+    function bindDrawerInteractiveEvents(container) {
+        // Image click -> preview
+        container.querySelectorAll('.rbq-comic-img, .rbq-comic-grid-thumb').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const card = el.closest('[data-panel-id]');
+                const pId = card?.dataset?.panelId;
+                const targetItem = currentComicItems.find(it => it.id === pId);
+                if (targetItem) previewStoryboardImage(targetItem);
+            });
+        });
+
+        // Floor jump click
+        container.querySelectorAll('[data-action="jump"], .rbq-comic-floor-jump').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mId = Number(btn.dataset.messageId);
+                if (Number.isFinite(mId)) jumpToMessage(mId);
+            });
+        });
+
+        // Grid card click -> jump or preview
+        container.querySelectorAll('.rbq-comic-grid-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const pId = card.dataset.panelId;
+                const targetItem = currentComicItems.find(it => it.id === pId);
+                if (targetItem) previewStoryboardImage(targetItem);
+            });
+        });
+
+        // Tool buttons
+        container.querySelectorAll('.rbq-comic-tool-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.dataset.action;
+                const pId = btn.dataset.panelId;
+                const targetItem = currentComicItems.find(it => it.id === pId);
+                if (!targetItem) return;
+
+                if (action === 'preview') {
+                    previewStoryboardImage(targetItem);
+                } else if (action === 'copy-prompt') {
+                    const promptToCopy = targetItem.prompt;
+                    if (promptToCopy) {
+                        navigator.clipboard.writeText(promptToCopy).then(() => {
+                            toastr.success('分镜提示词已复制到剪贴板！', PLUGIN_NAME);
+                        }).catch(() => {
+                            toastr.warning('复制失败，请手动选择复制', PLUGIN_NAME);
+                        });
+                    } else {
+                        toastr.info('该分镜无记录提示词', PLUGIN_NAME);
+                    }
+                } else if (action === 'download') {
+                    const downloadUrl = targetItem.displayUrl || targetItem.url;
+                    if (downloadUrl) {
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = `storyboard_${String(targetItem.panelIndex).padStart(2, '0')}_msg${targetItem.messageId + 1}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        toastr.success(`正在下载第 ${targetItem.panelIndex} 格分镜图片`, PLUGIN_NAME);
+                    }
+                }
+            });
+        });
+
+        // Image error fallback resurrection
+        container.querySelectorAll('img[data-cache-id]').forEach(img => {
+            img.onerror = async () => {
+                const cId = img.dataset.cacheId;
+                if (cId && typeof RBQ?.api?.ensureHistoryItemDisplayUrl === 'function') {
+                    try {
+                        const resurrected = await RBQ.api.ensureHistoryItemDisplayUrl({ cacheId: cId });
+                        if (resurrected && resurrected !== img.src) {
+                            img.src = resurrected;
+                        }
+                    } catch (_e) {}
+                }
+            };
+        });
+    }
+
+    function jumpToMessage(messageId) {
+        const id = Number(messageId);
+        if (!Number.isFinite(id)) return;
+        const msgEl = document.querySelector(`.mes[mesid="${id}"]`);
+        if (msgEl instanceof HTMLElement) {
+            msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            msgEl.classList.remove('rbq-sdt-highlight-flash');
+            void msgEl.offsetWidth; // trigger reflow
+            msgEl.classList.add('rbq-sdt-highlight-flash');
+            setTimeout(() => msgEl.classList.remove('rbq-sdt-highlight-flash'), 2600);
+            toastr.info(`已定位至第 ${id + 1} 楼`, PLUGIN_NAME);
+        } else {
+            const chatEl = document.getElementById('chat');
+            const totalInContext = (RBQ?.api?.getContext?.()?.chat?.length) || 100;
+            if (chatEl) {
+                const ratio = Math.max(0, Math.min(1, id / totalInContext));
+                chatEl.scrollTo({ top: ratio * chatEl.scrollHeight, behavior: 'smooth' });
+                setTimeout(() => {
+                    const retryEl = document.querySelector(`.mes[mesid="${id}"]`);
+                    if (retryEl instanceof HTMLElement) {
+                        retryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        retryEl.classList.add('rbq-sdt-highlight-flash');
+                        setTimeout(() => retryEl.classList.remove('rbq-sdt-highlight-flash'), 2600);
+                    }
+                }, 350);
+            }
+            toastr.info(`正在跳转定位至第 ${id + 1} 楼...`, PLUGIN_NAME);
+        }
+    }
+
+    function previewStoryboardImage(item) {
+        if (typeof RBQ?.api?.openImageViewer === 'function') {
+            RBQ.api.openImageViewer(item.prompt, item.displayUrl || item.url, {
+                messageId: item.messageId,
+                cacheId: item.cacheId,
+            });
+        } else {
+            openDrawerLightbox(item);
+        }
+    }
+
+    function openDrawerLightbox(item) {
+        let lightbox = document.getElementById('rbq-sdt-lightbox-overlay');
+        if (!lightbox) {
+            lightbox = document.createElement('div');
+            lightbox.id = 'rbq-sdt-lightbox-overlay';
+            lightbox.className = 'rbq-sdt-lightbox-overlay';
+            lightbox.innerHTML = `
+                <div class="rbq-sdt-lightbox-box">
+                    <button class="rbq-sdt-lightbox-close" type="button"><i class="fa-solid fa-xmark"></i></button>
+                    <img id="rbq-sdt-lightbox-img" class="rbq-sdt-lightbox-img" src="" alt="preview">
+                    <div id="rbq-sdt-lightbox-caption" class="rbq-sdt-lightbox-caption"></div>
+                </div>
+            `;
+            document.body.appendChild(lightbox);
+
+            lightbox.addEventListener('click', (e) => {
+                if (e.target === lightbox || e.target.closest('.rbq-sdt-lightbox-close')) {
+                    closeDrawerLightbox();
+                }
+            });
+        }
+
+        const img = document.getElementById('rbq-sdt-lightbox-img');
+        const caption = document.getElementById('rbq-sdt-lightbox-caption');
+        if (img) img.src = item.displayUrl || item.url;
+        if (caption) {
+            caption.textContent = item.anchorText || item.sceneText || item.prompt || `第 ${item.panelIndex} 格分镜 · #${item.messageId + 1} 楼`;
+        }
+        requestAnimationFrame(() => lightbox.classList.add('open'));
+    }
+
+    function closeDrawerLightbox() {
+        const lightbox = document.getElementById('rbq-sdt-lightbox-overlay');
+        if (lightbox) {
+            lightbox.classList.remove('open');
+            setTimeout(() => lightbox.remove(), 260);
+        }
+    }
+
+    async function exportComicStripZip(items) {
+        if (!items || items.length === 0) {
+            toastr.info('当前没有可打包的分镜图片', PLUGIN_NAME);
+            return;
+        }
+        if (typeof RBQ?.api?.exportChatImagesZip === 'function') {
+            try {
+                toastr.info('正在调用打包引擎生成图片 ZIP...', PLUGIN_NAME);
+                await RBQ.api.exportChatImagesZip();
+                return;
+            } catch (e) {
+                console.warn('[SDT Comic Drawer] exportChatImagesZip failed, falling back to direct download', e);
+            }
+        }
+        toastr.info(`正在依次下载当前画廊 ${items.length} 张图片...`, PLUGIN_NAME);
+        for (const item of items) {
+            const url = item.displayUrl || item.url;
+            if (!url) continue;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `storyboard_panel_${String(item.panelIndex).padStart(2, '0')}_msg${item.messageId + 1}.png`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            await new Promise(r => setTimeout(r, 220));
+        }
+    }
+
+    /* ── 悬浮球注入与生命周期 ── */
+    function injectFloatingComicDrawerButton() {
+        const menu = document.getElementById('st-scene-trigger-floating-menu');
+        if (!menu || menu.querySelector('[data-action="sdt-comic-drawer"]')) return;
+        const divider = menu.querySelector('.st-scene-trigger-floating-divider');
+        const btn = document.createElement('button');
+        btn.className = 'st-scene-trigger-floating-item';
+        btn.dataset.action = 'sdt-comic-drawer';
+        btn.innerHTML = '<i class="fa-solid fa-film"></i><span>剧情画廊抽屉</span>';
+        if (divider) {
+            menu.insertBefore(btn, divider);
+        } else {
+            menu.appendChild(btn);
+        }
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openStoryboardDrawer();
+        });
+    }
+
+    function removeFloatingComicDrawerButton() {
+        document.querySelector('[data-action="sdt-comic-drawer"]')?.remove();
+    }
+
     // Watch for floating ball appearance and inject button
     function watchForFloatingBall() {
         if (floatingObserver) {
@@ -11944,10 +13089,12 @@ SCHEMA:
             floatingObserver = null;
         }
         injectFloatingManualButton();
+        injectFloatingComicDrawerButton();
         const observer = new MutationObserver(() => {
             const s = getStore();
             if (s.manualDrawEnabled) injectFloatingManualButton();
             else removeFloatingManualButton();
+            injectFloatingComicDrawerButton();
         });
         observer.observe(document.body, { childList: true, subtree: true });
         floatingObserver = observer;
@@ -12136,6 +13283,8 @@ SCHEMA:
             }
         }
         removeFloatingManualButton();
+        removeFloatingComicDrawerButton();
+        closeStoryboardDrawer();
         document.querySelectorAll('[id^="rbq-sdt-"]').forEach(el => {
             try { el.remove(); } catch (_e) {}
         });
@@ -12151,6 +13300,10 @@ SCHEMA:
     settingsPanelPollTimer = setInterval(ensureSettingsPanel, 1000);
     observeMessages();
     watchForFloatingBall();
+
+    RBQ.api.openStoryboardDrawer = openStoryboardDrawer;
+    RBQ.api.closeStoryboardDrawer = closeStoryboardDrawer;
+    window.openStoryboardDrawer = openStoryboardDrawer;
 
     window.__rbqSdtCleanup = cleanupInstance;
     if (RBQ?.registerCleanup) {

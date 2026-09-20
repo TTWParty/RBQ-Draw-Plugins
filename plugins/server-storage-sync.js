@@ -1223,12 +1223,23 @@
         };
 
         if (badgeBtn) {
-            badgeBtn.onclick = togglePopover;
-            badgeBtn.ontouchend = null;
+            // 清除旧的事件绑定（防止 updateViewerBadge 重入时重复绑定）
+            if (badgeBtn._rbqToggle) {
+                badgeBtn.removeEventListener('click', badgeBtn._rbqToggle);
+                badgeBtn.removeEventListener('touchend', badgeBtn._rbqToggle);
+            }
+            badgeBtn._rbqToggle = togglePopover;
+            badgeBtn.addEventListener('click', togglePopover);
+            badgeBtn.addEventListener('touchend', togglePopover);
         }
         if (backdrop) {
-            backdrop.onclick = closePopover;
-            backdrop.ontouchend = null;
+            if (backdrop._rbqClose) {
+                backdrop.removeEventListener('click', backdrop._rbqClose);
+                backdrop.removeEventListener('touchend', backdrop._rbqClose);
+            }
+            backdrop._rbqClose = closePopover;
+            backdrop.addEventListener('click', closePopover);
+            backdrop.addEventListener('touchend', closePopover);
         }
 
         // 检测存储物理归属

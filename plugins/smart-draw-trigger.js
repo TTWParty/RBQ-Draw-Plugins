@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器';
-    const PLUGIN_VERSION = '6.0.18';
+    const PLUGIN_VERSION = '6.0.19';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 44;

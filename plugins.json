@@ -78,5 +78,13 @@
     "version": "1.0.0",
     "author": "TTWP-09",
     "main": "plugins/save-downloads-fix.js?v=1.0.0"
+  },
+  {
+    "id": "rbq-gallery-sync",
+    "name": "图库云同步与存储管理 (Gallery Sync & Storage)",
+    "description": "双轨省流云同步与存储状态感知：后台自动压缩上传 50KB WebP 预览图至酒馆服务端，实现多端无缝秒开且极度省流；大图查看器注入存储位置胶囊（本地/服务端/ComfyUI/省流预览），支持一键上传与详情查阅。",
+    "version": "1.0.0",
+    "author": "TTWP-09",
+    "main": "plugins/server-storage-sync.js?v=1.0.0"
   }
 ]

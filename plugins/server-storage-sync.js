@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.7';
+    const PLUGIN_VERSION = '1.1.8';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -943,6 +943,7 @@
                 flex-shrink: 0;
             }
             .rbq-storage-badge-btn {
+                position: relative !important;
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
@@ -964,6 +965,17 @@
                 pointer-events: auto !important;
                 user-select: none !important;
                 -webkit-user-select: none !important;
+            }
+            /* 移动端 44px 隐式触控热区，极大降低手指误触难度 */
+            .rbq-storage-badge-btn::before {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 44px;
+                height: 44px;
+                transform: translate(-50%, -50%);
+                pointer-events: auto;
             }
             .rbq-storage-badge-btn:hover {
                 background: rgba(30, 34, 48, 0.9) !important;
@@ -1214,7 +1226,7 @@
                 e.stopPropagation();
             }
             const now = Date.now();
-            if (now - lastToggleTime < 350) return;
+            if (now - lastToggleTime < 500) return;
             lastToggleTime = now;
 
             if (popover.classList.contains('open')) {
@@ -1226,11 +1238,11 @@
 
         if (badgeBtn) {
             badgeBtn.onclick = togglePopover;
-            badgeBtn.ontouchend = togglePopover;
+            badgeBtn.ontouchend = null;
         }
         if (backdrop) {
             backdrop.onclick = closePopover;
-            backdrop.ontouchend = closePopover;
+            backdrop.ontouchend = null;
         }
 
         // 检测存储物理归属
@@ -1289,7 +1301,7 @@
         const closeBtn = popover.querySelector('#rbq-popover-close-btn');
         if (closeBtn) {
             closeBtn.onclick = closePopover;
-            closeBtn.ontouchend = closePopover;
+            closeBtn.ontouchend = null;
         }
 
         // 绑定弹窗内操作按钮
@@ -1385,6 +1397,74 @@
         document.getElementById('rbq-storage-popover')?.classList.remove('open');
     });
 
+    async function batchSyncAllFavorites() {
+        const history = RBQ?.api?.getSettings?.()?.history;
+        if (!Array.isArray(history) || history.length === 0) {
+            return toastr.warning('历史记录为空，没有可同步的收藏图片', PLUGIN_NAME);
+        }
+
+        const favItems = history.filter(item => item && (item.favorite === true || item.isFavorite === true));
+        if (favItems.length === 0) {
+            return toastr.info('暂无收藏的生图记录', PLUGIN_NAME);
+        }
+
+        const toSync = favItems.filter(item => !item.serverOriginalUrl);
+        if (toSync.length === 0) {
+            return toastr.success(`全部 ${favItems.length} 张收藏图片的高清原画已在服务端存档！`, PLUGIN_NAME);
+        }
+
+        toastr.info(`发现 ${toSync.length} 张未上云的高清收藏图片，开始自动批量补传...`, PLUGIN_NAME);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < toSync.length; i++) {
+            const item = toSync[i];
+            try {
+                let blobToSync = null;
+                if (item.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
+                    const rec = await RBQ.api.getCachedImageRecord(item.cacheId);
+                    if (rec?.blob instanceof Blob) blobToSync = rec.blob;
+                }
+                if (!blobToSync && item.displayUrl && !item.displayUrl.includes('_preview.webp')) {
+                    const res = await fetch(item.displayUrl);
+                    if (res.ok) blobToSync = await res.blob();
+                }
+                if (!blobToSync && item.url && !item.url.includes('_preview.webp')) {
+                    const res = await fetch(item.url);
+                    if (res.ok) blobToSync = await res.blob();
+                }
+
+                if (blobToSync) {
+                    const mode = item.mode || 'rbq';
+                    const now = Date.now();
+                    const cleanExt = blobToSync.type.includes('webp') ? 'webp' : (blobToSync.type.includes('jpeg') || blobToSync.type.includes('jpg') ? 'jpg' : 'png');
+                    const filename = `st_draw_fav_sync_${mode}_${now}_${i}.${cleanExt}`;
+                    const path = await uploadImageToServer(blobToSync, filename);
+                    if (path) {
+                        item.serverOriginalUrl = path;
+                        item.serverUrl = path;
+                        item.pendingOriginalUpload = false;
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } else {
+                    failCount++;
+                }
+            } catch (e) {
+                console.warn(`[${PLUGIN_NAME}] 批量同步收藏图片失败:`, e);
+                failCount++;
+            }
+        }
+
+        RBQ.api.saveSettings();
+        if (successCount > 0) {
+            toastr.success(`批量补传完成！已成功上传 ${successCount} 张高清原画${failCount > 0 ? ` (${failCount} 张本地缓存已释放)` : ''}`, PLUGIN_NAME);
+        } else {
+            toastr.warning('未成功补传原画，本地缓存可能已被浏览器清理', PLUGIN_NAME);
+        }
+    }
+
     // ── 8. Setting Panel Registration ──
     function renderSettings() {
         const store = getStore();
@@ -1468,6 +1548,18 @@
                     </div>
                 </div>
 
+                <div class="st-scene-trigger-section" style="background:var(--linear-bg-subtle); padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
+                    <div style="font-size:13px; font-weight:600; margin-bottom:6px; color:var(--linear-text-primary);">
+                        <i class="fa-solid fa-cloud-arrow-up" style="color:#38bdf8;"></i> 存量收藏原画补传
+                    </div>
+                    <div style="font-size:12px; color:var(--linear-text-secondary); line-height:1.45; margin-bottom:12px;">
+                        自动扫描本地历史记录中所有带 ⭐ 收藏标记的图片，若尚未上传高清原画至云端酒馆，一键批量补传，实现跨设备永久留存。
+                    </div>
+                    <button id="rbq-sync-batch-fav-btn" class="menu_button" type="button" style="padding:6px 16px; display:inline-flex; align-items:center; gap:6px; color:#38bdf8 !important;">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> 一键补传所有已收藏原画至服务端
+                    </button>
+                </div>
+
                 <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
                     <button id="rbq-sync-save-btn" class="menu_button st-scene-trigger-icon-button st-scene-trigger-btn-primary" type="button" style="padding:6px 16px;">
                         <i class="fa-solid fa-check"></i> 保存同步配置
@@ -1482,19 +1574,34 @@
         if (!root) return;
 
         const saveBtn = root.querySelector('#rbq-sync-save-btn');
-        if (!saveBtn) return;
+        if (saveBtn) {
+            saveBtn.onclick = () => {
+                const store = getStore();
+                const selectedMode = root.querySelector('input[name="rbq-sync-mode"]:checked')?.value || 'stream_only';
+                store.syncMode = selectedMode;
+                store.syncFavoritesOriginal = !!root.querySelector('#rbq-sync-fav-original')?.checked;
+                store.saveDataAware = !!root.querySelector('#rbq-sync-savedata')?.checked;
+                store.enableViewerBadge = !!root.querySelector('#rbq-sync-badge-enable')?.checked;
 
-        saveBtn.onclick = () => {
-            const store = getStore();
-            const selectedMode = root.querySelector('input[name="rbq-sync-mode"]:checked')?.value || 'stream_only';
-            store.syncMode = selectedMode;
-            store.syncFavoritesOriginal = !!root.querySelector('#rbq-sync-fav-original')?.checked;
-            store.saveDataAware = !!root.querySelector('#rbq-sync-savedata')?.checked;
-            store.enableViewerBadge = !!root.querySelector('#rbq-sync-badge-enable')?.checked;
+                save();
+                toastr.success('图库同步配置已保存', PLUGIN_NAME);
+            };
+        }
 
-            save();
-            toastr.success('图库同步配置已保存', PLUGIN_NAME);
-        };
+        const batchFavBtn = root.querySelector('#rbq-sync-batch-fav-btn');
+        if (batchFavBtn) {
+            batchFavBtn.onclick = async () => {
+                batchFavBtn.disabled = true;
+                const oldHtml = batchFavBtn.innerHTML;
+                batchFavBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在批量补传中...';
+                try {
+                    await batchSyncAllFavorites();
+                } finally {
+                    batchFavBtn.disabled = false;
+                    batchFavBtn.innerHTML = oldHtml;
+                }
+            };
+        }
     }
 
     // 注册到 RBQ 主控制台侧边栏

@@ -27,9 +27,9 @@
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "无需让正文输出长 tag。支持短标记和自动定位两种模式，调用 OpenAI 兼容或自定义 HTTP tagger API 生成 prompt，并在正文中插入 RBQ 生图卡片。内置「剧情漫画时间轴 / 生图侧边抽屉」，像连载条漫一样纵览全局分镜大图与台词气泡，支持一键定位原楼层与打包导出。",
-    "version": "6.0.23",
+    "version": "6.0.24",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=6.0.23"
+    "main": "plugins/smart-draw-trigger.js?v=6.0.24"
   },
   {
     "id": "rbq-multi-char",
@@ -83,8 +83,8 @@
     "id": "rbq-gallery-sync",
     "name": "图库云同步与存储管理 (Gallery Sync & Storage)",
     "description": "双轨省流云同步与存储状态感知：后台自动压缩上传 50KB WebP 预览图至酒馆服务端；收藏时自动提取并持久化高清原画；大图查看器微型状态圆点指示（本地/服务端/ComfyUI/省流预览），手机端自适应详情浮窗与一键补传。",
-    "version": "1.1.7",
+    "version": "1.1.8",
     "author": "TTWP-09",
-    "main": "plugins/server-storage-sync.js?v=1.1.7"
+    "main": "plugins/server-storage-sync.js?v=1.1.8"
   }
 ]

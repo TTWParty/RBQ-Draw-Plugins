@@ -11,8 +11,9 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.23';
-    const STORAGE_KEY = '_smartDrawTriggerSettings';
+    const PLUGIN_VERSION = '6.0.24';
+    const STORAGE_KEY = '_smartDrawTrigger';
+    const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 45;
 
@@ -2528,8 +2529,55 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function getStore() {
         const settings = RBQ.api.getSettings();
-        if (!settings[STORAGE_KEY]) settings[STORAGE_KEY] = {};
-        const store = settings[STORAGE_KEY];
+
+        // ── 双向安全容灾机制：兼容旧版 _smartDrawTrigger 与过渡版 _smartDrawTriggerSettings ──
+        let primary = settings[STORAGE_KEY];
+        let secondary = settings[ALT_STORAGE_KEY];
+
+        const hasSubstantialData = (obj) => {
+            if (!obj || typeof obj !== 'object') return false;
+            if (Array.isArray(obj.lorebookSources) && obj.lorebookSources.length > 0) return true;
+            if (obj.characterProfiles && Object.keys(obj.characterProfiles).length > 0) return true;
+            if (obj.openAiKey || obj.openAiBaseUrl || obj.taggerUrl || obj.taggerKey) return true;
+            if (obj.systemPrompt && obj.systemPrompt !== V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT && obj.systemPrompt !== V5_SPEC_97_SYSTEM_PROMPT) return true;
+            return false;
+        };
+
+        if (!primary && !secondary) {
+            // 首次安装或配置尚未挂载，先检查 localStorage 全量冷备份
+            try {
+                const fullBackupStr = localStorage.getItem('rbq-sdt-full-backup');
+                if (fullBackupStr) {
+                    const parsed = JSON.parse(fullBackupStr);
+                    if (hasSubstantialData(parsed)) {
+                        console.info(`[${PLUGIN_NAME}] 🛡️ 成功从 localStorage 全量冷备份中恢复 SDT 配置与世界书！`);
+                        primary = parsed;
+                    }
+                }
+            } catch (_e) {}
+            if (!primary) primary = {};
+        } else if (!primary && secondary) {
+            primary = secondary;
+        } else if (primary && secondary) {
+            // 两者均存在时，若 primary (旧键) 中有数据而 secondary (过渡键) 为默认空，或反之，进行深度融合
+            if ((!Array.isArray(primary.lorebookSources) || primary.lorebookSources.length === 0) &&
+                (Array.isArray(secondary.lorebookSources) && secondary.lorebookSources.length > 0)) {
+                primary.lorebookSources = secondary.lorebookSources;
+            }
+            if ((!primary.characterProfiles || Object.keys(primary.characterProfiles).length === 0) &&
+                (secondary.characterProfiles && Object.keys(secondary.characterProfiles).length > 0)) {
+                primary.characterProfiles = secondary.characterProfiles;
+            }
+            for (const k of ['openAiKey', 'openAiBaseUrl', 'openAiModel', 'taggerKey', 'taggerUrl', 'customPrompt', 'negativePrompt']) {
+                if (!primary[k] && secondary[k]) primary[k] = secondary[k];
+            }
+        }
+
+        // 双向镜像映射：使两个键完全等价并指向同一份真实配置
+        settings[STORAGE_KEY] = primary;
+        settings[ALT_STORAGE_KEY] = primary;
+        const store = primary;
+
         for (const [key, value] of Object.entries(DEFAULTS)) {
             if (store[key] === undefined) store[key] = value;
         }
@@ -2581,8 +2629,13 @@ Zimage 擅长理解复杂的英文长句和语境。
             }
         }
 
-        // Restore critical settings from localStorage backup (in case saveSettingsDebounced didn't complete)
+        // Restore critical settings & lorebooks from localStorage backup (in case saveSettingsDebounced didn't complete)
         try {
+            const fullBackup = JSON.parse(localStorage.getItem('rbq-sdt-full-backup') || '{}');
+            if ((!Array.isArray(store.lorebookSources) || store.lorebookSources.length === 0) && Array.isArray(fullBackup.lorebookSources) && fullBackup.lorebookSources.length > 0) {
+                store.lorebookSources = fullBackup.lorebookSources;
+                console.info(`[${PLUGIN_NAME}] 🛡️ 自动从全量冷备份中找回 ${store.lorebookSources.length} 本世界书绑定！`);
+            }
             const backup = JSON.parse(localStorage.getItem('rbq-sdt-backup') || '{}');
             if (backup.characterMemoryEnabled !== undefined && store.characterMemoryEnabled === false && backup.characterMemoryEnabled === true) {
                 store.characterMemoryEnabled = true;
@@ -2674,6 +2727,10 @@ Zimage 擅长理解复杂的英文长句和语境。
                 characterMemoryEnabled: store.characterMemoryEnabled,
                 characterProfiles: store.characterProfiles,
             }));
+            // 全量配置快照备份 (剥离超大图文缓存，保留核心设置、全部世界书挂载元数据与角色库)
+            const fullSnapshot = { ...store };
+            if (fullSnapshot.cache) fullSnapshot.cache = {}; // 避免超出 localStorage 5MB 配额
+            localStorage.setItem('rbq-sdt-full-backup', JSON.stringify(fullSnapshot));
         } catch (_e) { /* noop - quota exceeded etc */ }
         RBQ.api.saveSettings();
     }
@@ -4385,6 +4442,86 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (promises.length > 0) {
             await Promise.allSettled(promises);
         }
+    }
+
+    async function scanAndRestoreLorebooks(interactive = true) {
+        const store = getStore();
+        if (!Array.isArray(store.lorebookSources)) store.lorebookSources = [];
+        const existingNames = new Set(store.lorebookSources.map(s => String(s.name || '').replace(/\.json$/i, '').trim().toLowerCase()));
+        let restoredCount = 0;
+
+        // 1. 从 IndexedDB (rbq_sdt_storage) 检索此前已持久化的世界书
+        try {
+            const db = await getSdtIdb();
+            if (db) {
+                const allIdbEntries = await new Promise((resolve) => {
+                    const tx = db.transaction(SDT_IDB_STORE, 'readonly');
+                    const req = tx.objectStore(SDT_IDB_STORE).getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = () => resolve([]);
+                });
+                for (const item of allIdbEntries) {
+                    if (item?.id && item?.entries && Array.isArray(item.entries) && item.entries.length > 0) {
+                        const firstEntry = item.entries[0];
+                        const sourceName = firstEntry?.sourceName || item.id;
+                        const cleanName = String(sourceName).replace(/\.json$/i, '').trim().toLowerCase();
+                        if (!existingNames.has(cleanName)) {
+                            store.lorebookSources.push({
+                                id: item.id,
+                                name: firstEntry?.sourceName || item.id,
+                                enabled: true,
+                                type: firstEntry?.sourceType || inferLorebookType(sourceName),
+                                sourcePath: '',
+                                importedAt: Date.now(),
+                                entryCount: item.entries.length,
+                                isNativeST: true,
+                            });
+                            existingNames.add(cleanName);
+                            lorebookMemoryCache.set(item.id, item.entries);
+                            restoredCount++;
+                        }
+                    }
+                }
+            }
+        } catch (_e) {}
+
+        // 2. 从酒馆原生世界书列表中比对绘图相关世界书
+        const stWorldNames = getSTWorldNames();
+        for (const wName of stWorldNames) {
+            const cleanName = String(wName).replace(/\.json$/i, '').trim();
+            if (!existingNames.has(cleanName.toLowerCase())) {
+                const isDrawRelated = /文生图|主体|9\.7|nai|v5|sd|draw|tags|词条|提示词|lora|style|动作|服饰/i.test(cleanName);
+                if (isDrawRelated) {
+                    try {
+                        const data = await loadWorldInfoFromST(cleanName);
+                        if (data) {
+                            const parsed = parseLorebookData(data, cleanName);
+                            if (parsed.entries.length > 0) {
+                                const newSource = normalizeLorebookSource(parsed.rawObj, cleanName);
+                                newSource.isNativeST = true;
+                                newSource.entryCount = parsed.entries.length;
+                                store.lorebookSources.push(newSource);
+                                existingNames.add(cleanName.toLowerCase());
+                                lorebookMemoryCache.set(newSource.id, parsed.entries);
+                                await saveLorebookToIDB(newSource.id, parsed.entries);
+                                restoredCount++;
+                            }
+                        }
+                    } catch (_e) {}
+                }
+            }
+        }
+
+        if (restoredCount > 0) {
+            save();
+            refreshLorebookListUi();
+            if (interactive) {
+                toastr.success(`已成功自动扫描并找回挂载 ${restoredCount} 本世界书！`, PLUGIN_NAME);
+            }
+        } else if (interactive) {
+            toastr.info('未发现未挂载的绘图世界书。若需添加新世界书，请点击下拉菜单选择酒馆已有世界书直接绑定。', PLUGIN_NAME);
+        }
+        return restoredCount;
     }
 
     function getNormalizedLorebooks() {
@@ -11810,6 +11947,7 @@ SCHEMA:
                             <option value="">-- 从酒馆绑定已有世界书 --</option>
                         </select>
                         <button id="rbq-sdt-search-lorebook" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-magnifying-glass"></i> 搜索全部世界书词条</button>
+                        <button id="rbq-sdt-restore-lorebooks" class="menu_button" type="button" style="background: rgba(52,211,153,0.15) !important; color:#34d399 !important; border-color: rgba(52,211,153,0.3) !important;" title="自动检测并重新挂载酒馆原生世界书与本地数据库"><i class="fa-solid fa-wrench"></i> 🔍 自动扫描恢复世界书</button>
                     </div>
                     <div class="st-scene-trigger-field wide" style="margin-top:6px;">
                         <span style="font-weight:600; font-size:13px; display:flex; align-items:center; gap:6px; color:var(--linear-text-primary, #f7f8f8);"><i class="fa-solid fa-list-check" style="color:#eab308;font-size:12.5px;"></i> 已挂载世界书</span>
@@ -11830,6 +11968,17 @@ SCHEMA:
 
             <!-- 模块五：🛠️ 维护与调试 -->
             <div id="rbq-sdt-tab-tools" class="rbq-sdt-tab-content">
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-floppy-disk" style="color:#38bdf8;"></i> 配置备份、导出与恢复</span>
+                    </div>
+                    <div class="st-scene-trigger-buttons" style="margin: 4px 0 8px 0; display:flex; flex-wrap:wrap; gap:8px;">
+                        <button id="rbq-sdt-export-config" class="menu_button" type="button"><i class="fa-solid fa-file-export"></i> 导出完整配置 (JSON)</button>
+                        <button id="rbq-sdt-import-config" class="menu_button" type="button"><i class="fa-solid fa-file-import"></i> 导入配置</button>
+                        <button id="rbq-sdt-restore-backup" class="menu_button" type="button" style="color:#34d399 !important;"><i class="fa-solid fa-clock-rotate-left"></i> 从本地冷备份恢复</button>
+                    </div>
+                </div>
+
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-arrows-rotate" style="color:#22c55e;"></i> 缓存与楼层扫描</span>
@@ -12463,6 +12612,82 @@ SCHEMA:
                 populateSTWorldSelect();
             }
         });
+        document.getElementById('rbq-sdt-restore-lorebooks')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            const oldHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在深度扫描...';
+            try {
+                await scanAndRestoreLorebooks(true);
+                populateSTWorldSelect();
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = oldHtml;
+            }
+        });
+
+        document.getElementById('rbq-sdt-export-config')?.addEventListener('click', () => {
+            const store = getStore();
+            const exportData = { ...store };
+            if (exportData.cache) exportData.cache = {};
+            const jsonStr = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `smart-draw-trigger-config-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toastr.success('已成功导出智能生图全量配置快照', PLUGIN_NAME);
+        });
+
+        document.getElementById('rbq-sdt-import-config')?.addEventListener('click', () => {
+            let input = document.getElementById('rbq-sdt-config-file-input');
+            if (!(input instanceof HTMLInputElement)) {
+                input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.id = 'rbq-sdt-config-file-input';
+                input.style.display = 'none';
+                document.body.append(input);
+                input.addEventListener('change', async () => {
+                    const file = input.files?.[0];
+                    input.value = '';
+                    if (!file) return;
+                    try {
+                        const text = await file.text();
+                        const parsed = JSON.parse(text);
+                        if (!parsed || typeof parsed !== 'object') throw new Error('无效的 JSON 格式');
+                        const store = getStore();
+                        Object.assign(store, parsed);
+                        save();
+                        toastr.success('配置导入成功！已更新并存盘。', PLUGIN_NAME);
+                        refreshLorebookListUi();
+                        populateSTWorldSelect();
+                    } catch (e) {
+                        toastr.error(`导入失败: ${e.message || String(e)}`, PLUGIN_NAME);
+                    }
+                });
+            }
+            input.click();
+        });
+
+        document.getElementById('rbq-sdt-restore-backup')?.addEventListener('click', () => {
+            try {
+                const fullBackupStr = localStorage.getItem('rbq-sdt-full-backup');
+                if (!fullBackupStr) return toastr.warning('未检测到本地冷备份数据', PLUGIN_NAME);
+                const parsed = JSON.parse(fullBackupStr);
+                const store = getStore();
+                Object.assign(store, parsed);
+                save();
+                toastr.success('已成功从本地冷备份恢复配置与绑定的世界书！', PLUGIN_NAME);
+                refreshLorebookListUi();
+                populateSTWorldSelect();
+            } catch (e) {
+                toastr.error(`恢复冷备份失败: ${e.message || String(e)}`, PLUGIN_NAME);
+            }
+        });
+
         document.getElementById('rbq-sdt-clear-cache').onclick = () => {
             getStore().cache = {};
             save();
@@ -14358,7 +14583,9 @@ SCHEMA:
         const chatKey = getChatKey();
         const profileKeys = bootStore.characterProfiles?.[chatKey] ? Object.keys(bootStore.characterProfiles[chatKey]) : [];
         console.info(`🪄 [${PLUGIN_NAME} v${PLUGIN_VERSION}] loaded successfully. characterMemoryEnabled=${bootStore.characterMemoryEnabled}, chatKey="${chatKey}", profiles=[${profileKeys.join(',')}], allChatKeys=[${Object.keys(bootStore.characterProfiles || {}).join(',')}]`);
-        if (bootStore.lorebookEnabled) {
+        if (!Array.isArray(bootStore.lorebookSources) || bootStore.lorebookSources.length === 0) {
+            scanAndRestoreLorebooks(false).catch(() => {});
+        } else if (bootStore.lorebookEnabled) {
             warmLorebookMemoryCache().catch(() => {});
         }
     } catch (e) {

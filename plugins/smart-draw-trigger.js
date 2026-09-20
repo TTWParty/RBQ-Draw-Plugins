@@ -10,9 +10,9 @@
         }
     }
 
-    const PLUGIN_NAME = '智能生图触发器';
-    const PLUGIN_VERSION = '6.0.21';
-    const STORAGE_KEY = '_smartDrawTrigger';
+    const PLUGIN_NAME = '智能分镜生图触发器';
+    const PLUGIN_VERSION = '6.0.22';
+    const STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 45;
 
@@ -8095,6 +8095,11 @@ SCHEMA:
             const hasImg = !!el.querySelector?.('.st-scene-trigger-inline-result img') || el.dataset?.rbqSdtStage === 'generated';
             if (!hasImg) el.remove();
         });
+        // 确保重新解析卡片保持纯净，清除非法注入的图片残留
+        container.querySelectorAll(`.${CARD_CLASS}.rbq-sdt-reparse, .${CARD_CLASS}[data-rbq-sdt-is-result="0"]`).forEach((el) => {
+            const resEl = el.querySelector?.('.st-scene-trigger-inline-result');
+            if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
+        });
 
         const store = getStore();
 
@@ -10190,6 +10195,10 @@ SCHEMA:
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
             // Repurpose the initial placeholder card as the sole "re-parse" button at bottom
             if (rendered.length > 0 && rendered.every(item => item.wrapper !== wrapper)) {
+                wrapper.classList.add('rbq-sdt-reparse');
+                wrapper.dataset.rbqSdtIsResult = '0';
+                const resEl = wrapper.querySelector('.st-scene-trigger-inline-result');
+                if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
                 ensureTaggerButtonState(wrapper, '🔄 重新解析/刷新 tag');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'ready-generate');
@@ -10418,6 +10427,10 @@ SCHEMA:
                     scene: '', characters: [],
                 };
                 insertCard(messageId, trigger, reparsePlaceholder, reparseKey, key, (reparseWrapper) => {
+                    reparseWrapper.classList.add('rbq-sdt-reparse');
+                    reparseWrapper.dataset.rbqSdtIsResult = '0';
+                    const resEl = reparseWrapper.querySelector('.st-scene-trigger-inline-result');
+                    if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
                     ensureTaggerButtonState(reparseWrapper, '🔄 重新解析/刷新 tag');
                     setGenerateButtonState(reparseWrapper, false);
                     setWrapperStage(reparseWrapper, 'ready-generate');

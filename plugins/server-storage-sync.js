@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.3';
+    const PLUGIN_VERSION = '1.1.4';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -251,32 +251,50 @@
             };
         }
 
-        // 判定 2: 酒馆服务端高清原画
+        // 判定 2: 酒馆服务端高清原画（当前视口已载入原画或本地持有原画）
         if (serverOriginalUrl || (serverUrl && !serverUrl.includes('_preview.webp'))) {
             const effectivePath = serverOriginalUrl || serverUrl;
+            const isOriginalActive = Boolean(inIndexedDb || item._originalLoaded || url === effectivePath);
+            if (isOriginalActive) {
+                return {
+                    type: 'server',
+                    text: '酒馆服务端 (原图)',
+                    title: '酒馆服务器持久化高清原画 (已加载无损原画)',
+                    color: '#38bdf8', // sky blue
+                    inIndexedDb,
+                    blobSize,
+                    blobType,
+                    path: effectivePath,
+                    canSync: false,
+                    canSyncOriginal: false,
+                    serverUrl: effectivePath,
+                    cacheId,
+                };
+            }
+            // 云端有原图，但当前视口加载的是轻量预览图
             return {
-                type: 'server',
-                text: '酒馆服务端 (原图)',
-                title: '酒馆服务器持久化高清原画 (已同步云端)',
-                color: '#38bdf8', // sky blue
+                type: 'preview',
+                text: '酒馆服务端 (预览)',
+                title: '当前展示轻量预览图 (~60KB 省流中)；云端已有高清原画，点击「查看原图」即可加载',
+                color: '#facc15', // amber
                 inIndexedDb,
                 blobSize,
                 blobType,
-                path: effectivePath,
+                path: item.serverPreviewUrl || effectivePath,
                 canSync: false,
-                canSyncOriginal: false,
+                canSyncOriginal: false, // 云端已存在原图，无需重复补传
                 serverUrl: effectivePath,
                 cacheId,
             };
         }
 
-        // 判定 3: 酒馆服务端轻量预览图
+        // 判定 3: 酒馆服务端轻量预览图（云端尚未上传无损原图）
         if (serverUrl || item.serverPreviewUrl || url.includes('_preview.webp')) {
             const effectivePath = serverUrl || item.serverPreviewUrl || url;
             return {
                 type: 'preview',
                 text: '酒馆服务端 (预览)',
-                title: '酒馆轻量 WebP 预览图 (~60KB 省流中)',
+                title: '酒馆轻量 WebP 预览图 (~60KB 省流中)；云端暂无原图，可一键补传',
                 color: '#facc15', // amber
                 inIndexedDb,
                 blobSize,
@@ -391,7 +409,7 @@
                         img.serverUrl = path;
                         if (isOriginal) {
                             img.serverOriginalUrl = path;
-                            img.url = path;
+                            if (!img.url || img.url.startsWith('blob:') || !img.serverPreviewUrl) img.url = path;
                         } else {
                             img.serverPreviewUrl = path;
                             if (!img.url || img.url.startsWith('blob:')) img.url = path;
@@ -410,7 +428,9 @@
                             st.imageResult.serverUrl = path;
                             if (isOriginal) {
                                 st.imageResult.serverOriginalUrl = path;
-                                st.imageResult.url = path;
+                                if (!st.imageResult.url || st.imageResult.url.startsWith('blob:') || !st.imageResult.serverPreviewUrl) {
+                                    st.imageResult.url = path;
+                                }
                             } else {
                                 st.imageResult.serverPreviewUrl = path;
                                 if (!st.imageResult.url || st.imageResult.url.startsWith('blob:')) {
@@ -426,31 +446,46 @@
             if (typeof RBQ?.api?.saveChat === 'function') RBQ.api.saveChat();
             else if (typeof RBQ?.api?.saveChatDebounced === 'function') RBQ.api.saveChatDebounced();
 
-            // 实时将已同步图片渲染到当前页面正文卡片中（防止正文卡片留在“未出图/等待生图”状态）
+            // 实时将已同步图片渲染到当前页面正文卡片中（仅更新与当前 item 匹配的卡片，严禁误伤其他分镜或重新解析卡片）
             try {
-                const inlines = document.querySelectorAll(`.st-scene-trigger-inline-wrap[data-message-id="${targetMsgId}"]`);
-                inlines.forEach(inline => {
-                    if (inline instanceof HTMLElement && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
-                        RBQ.api.renderInlineGeneratedImage(inline, {
-                            ...item,
-                            url: path,
-                            serverUrl: path,
-                            serverOriginalUrl: isOriginal ? path : item.serverOriginalUrl,
-                            serverPreviewUrl: isOriginal ? item.serverPreviewUrl : path
-                        });
+                const targetCards = document.querySelectorAll(`.st-scene-trigger-inline-wrap[data-message-id="${targetMsgId}"]`);
+                targetCards.forEach(card => {
+                    if (!(card instanceof HTMLElement)) return;
+                    // 1. 严格跳过非出图卡片（如重新解析/刷新 tag 按钮）
+                    if (card.dataset.rbqSdtIsResult === '0' || card.dataset.rbqSdtKey?.endsWith('-reparse') || card.classList.contains('rbq-sdt-reparse')) {
+                        return;
                     }
-                });
-                const sdtCards = document.querySelectorAll(`.rbq-sdt-card[data-message-id="${targetMsgId}"]`);
-                sdtCards.forEach(sCard => {
-                    if (sCard instanceof HTMLElement && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
-                        RBQ.api.renderInlineGeneratedImage(sCard, {
+                    // 2. 检查此卡片是否与当前 item 匹配
+                    const cardPrompt = String(card.dataset.rbqSdtFinalPrompt || card.dataset.prompt || '').trim().toLowerCase();
+                    const itemPrompt = String(item.prompt || '').trim().toLowerCase();
+                    const link = card.querySelector('.st-scene-trigger-inline-image-link');
+                    const cardCacheId = link?.dataset?.cacheId || card.dataset.cacheId;
+                    const cardUrl = link?.dataset?.url || card.dataset.url;
+
+                    let isMatch = false;
+                    if (item.cacheId && cardCacheId && item.cacheId === cardCacheId) {
+                        isMatch = true;
+                    } else if (item.url && cardUrl && (item.url === cardUrl || path === cardUrl)) {
+                        isMatch = true;
+                    } else if (itemPrompt && cardPrompt && (itemPrompt === cardPrompt || itemPrompt.includes(cardPrompt) || cardPrompt.includes(itemPrompt))) {
+                        isMatch = true;
+                    } else if (!itemPrompt && !cardPrompt) {
+                        isMatch = true;
+                    }
+
+                    if (isMatch && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
+                        const previewPath = item.serverPreviewUrl || (!isOriginal ? path : '');
+                        const renderUrl = previewPath || path;
+                        RBQ.api.renderInlineGeneratedImage(card, {
                             ...item,
-                            url: path,
+                            url: renderUrl,
                             serverUrl: path,
                             serverOriginalUrl: isOriginal ? path : item.serverOriginalUrl,
-                            serverPreviewUrl: isOriginal ? item.serverPreviewUrl : path
+                            serverPreviewUrl: item.serverPreviewUrl || (!isOriginal ? path : undefined)
                         });
-                        sCard.dataset.rbqSdtStage = 'generated';
+                        if (card.classList.contains('rbq-sdt-card')) {
+                            card.dataset.rbqSdtStage = 'generated';
+                        }
                     }
                 });
             } catch (_) {}
@@ -554,9 +589,27 @@
                     if (uploadedPath) {
                         await applySyncedPathToAllRecords(item, uploadedPath, true);
                         console.info(`[${PLUGIN_NAME}] ✅ 原画已自动同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
-                        if (store.enableSyncToast) {
-                            toastr.info(`生图原画已同步至酒馆云端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
+                    }
+
+                    // 双轨保障：同时上传轻量预览图，保证多端正文秒开与省流
+                    if (!item.serverPreviewUrl) {
+                        const previewFilename = `rbq_${mode}_${now}_preview.webp`;
+                        const previewBlob = await createOptimizedWebpBlob(
+                            originalBlob,
+                            store.previewMaxDimension || 768,
+                            store.previewQuality || 0.8
+                        );
+                        if (previewBlob) {
+                            const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
+                            if (previewPath) {
+                                await applySyncedPathToAllRecords(item, previewPath, false);
+                                console.info(`[${PLUGIN_NAME}] ✅ 轻量预览图已自动同步至服务端: ${previewPath} (${formatBytes(previewBlob.size)})`);
+                            }
                         }
+                    }
+
+                    if (store.enableSyncToast) {
+                        toastr.info(`生图原画已同步至酒馆云端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
                     }
                 } else {
                     // 默认 stream_only: 压制 50~80KB 极轻预览图
@@ -644,6 +697,19 @@
             if (uploadedPath) {
                 await applySyncedPathToAllRecords(item, uploadedPath, true);
                 console.info(`[${PLUGIN_NAME}] ⭐ 收藏原画已成功同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
+
+                // 双轨保障：同时确保轻量预览图存在
+                if (!item.serverPreviewUrl) {
+                    const previewFilename = `rbq_${mode}_fav_${now}_preview.webp`;
+                    const previewBlob = await createOptimizedWebpBlob(originalBlob, 768, 0.8);
+                    if (previewBlob) {
+                        const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
+                        if (previewPath) {
+                            await applySyncedPathToAllRecords(item, previewPath, false);
+                        }
+                    }
+                }
+
                 toastr.success(`⭐ 收藏原画已持久化至酒馆服务端 (${formatBytes(originalBlob.size)})`, PLUGIN_NAME);
             }
         } catch (err) {
@@ -996,6 +1062,18 @@
                 const path = await uploadBlobToServer(blobToSync, filename);
 
                 await applySyncedPathToAllRecords(current, path, true);
+
+                // 双轨保障：同时确保轻量预览图存在
+                if (!current.serverPreviewUrl) {
+                    const previewFilename = `rbq_${mode}_manual_${now}_preview.webp`;
+                    const previewBlob = await createOptimizedWebpBlob(blobToSync, 768, 0.8);
+                    if (previewBlob) {
+                        const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
+                        if (previewPath) {
+                            await applySyncedPathToAllRecords(current, previewPath, false);
+                        }
+                    }
+                }
 
                 toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
                 popover.classList.remove('open');

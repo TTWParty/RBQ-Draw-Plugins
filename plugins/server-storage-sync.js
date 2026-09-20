@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.6';
+    const PLUGIN_VERSION = '1.1.7';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -291,11 +291,12 @@
         // 判定 3: 酒馆服务端轻量预览图（云端尚未上传无损原图）
         if (serverUrl || item.serverPreviewUrl || url.includes('_preview.webp')) {
             const effectivePath = serverUrl || item.serverPreviewUrl || url;
+            const isPending = Boolean(item.pendingOriginalUpload);
             return {
                 type: 'preview',
-                text: '酒馆服务端 (预览)',
-                title: '酒馆轻量 WebP 预览图 (~60KB 省流中)；云端暂无原图，可一键补传',
-                color: '#facc15', // amber
+                text: isPending ? '待生成端补传' : '酒馆服务端 (预览)',
+                title: isPending ? '⭐ 已加入收藏：无损原画将在切回生成设备时自动上传入库' : '酒馆轻量 WebP 预览图 (~60KB 省流中)；云端暂无原图，可一键补传',
+                color: isPending ? '#fb923c' : '#facc15', // orange / amber
                 inIndexedDb,
                 blobSize,
                 blobType,
@@ -304,6 +305,7 @@
                 canSyncOriginal: true, // 可补传无损原画
                 serverUrl: effectivePath,
                 cacheId,
+                isPending,
             };
         }
 
@@ -347,6 +349,7 @@
 
         if (isOriginal) {
             item.serverOriginalUrl = path;
+            delete item.pendingOriginalUpload;
             if (!item.serverPreviewUrl && (!item.url || item.url.startsWith('blob:'))) {
                 item.url = path;
             }
@@ -393,6 +396,7 @@
             }
             if (isOriginal) {
                 msg.extra.rbq_image.serverOriginalUrl = path;
+                delete msg.extra.rbq_image.pendingOriginalUpload;
                 if (!msg.extra.rbq_image.serverPreviewUrl && (!msg.extra.rbq_image.url || msg.extra.rbq_image.url.startsWith('blob:'))) {
                     msg.extra.rbq_image.url = path;
                 }
@@ -410,6 +414,7 @@
                         (!item.cacheId && item.prompt && img.prompt === item.prompt)) {
                         if (isOriginal) {
                             img.serverOriginalUrl = path;
+                            delete img.pendingOriginalUpload;
                             if (!img.serverPreviewUrl && (!img.url || img.url.startsWith('blob:'))) img.url = path;
                             if (!img.serverUrl) img.serverUrl = path;
                         } else {
@@ -504,6 +509,7 @@
             if (matched) {
                 if (isOriginal) {
                     matched.serverOriginalUrl = path;
+                    delete matched.pendingOriginalUpload;
                     if (!matched.serverPreviewUrl && (!matched.url || matched.url.startsWith('blob:'))) {
                         matched.url = path;
                     }
@@ -521,6 +527,7 @@
         if (currentViewerItem && (currentViewerItem === item || (item.cacheId && currentViewerItem.cacheId === item.cacheId))) {
             if (isOriginal) {
                 currentViewerItem.serverOriginalUrl = path;
+                delete currentViewerItem.pendingOriginalUpload;
                 if (!currentViewerItem.serverPreviewUrl) currentViewerItem.serverUrl = path;
             } else {
                 currentViewerItem.serverPreviewUrl = path;
@@ -670,22 +677,26 @@
                 if (rec?.blob instanceof Blob) originalBlob = rec.blob;
             }
 
-            if (!originalBlob && item.displayUrl) {
+            // 严禁将远程 _preview.webp 作为原图拉取；必须确保是真实的本地无损原始缓存
+            if (!originalBlob && item.url && item.url.startsWith('blob:')) {
+                try {
+                    const res = await fetch(item.url);
+                    if (res.ok) originalBlob = await res.blob();
+                } catch (_e) {}
+            }
+            if (!originalBlob && item.displayUrl && item.displayUrl.startsWith('blob:')) {
                 try {
                     const res = await fetch(item.displayUrl);
                     if (res.ok) originalBlob = await res.blob();
                 } catch (_e) {}
             }
 
-            if (!originalBlob && item.url) {
-                try {
-                    const res = await fetch(item.url);
-                    if (res.ok) originalBlob = await res.blob();
-                } catch (_e) {}
-            }
-
             if (!originalBlob) {
-                console.warn(`[${PLUGIN_NAME}] 收藏图片上传原图失败: 未能获取到原始图片二进制数据`);
+                console.info(`[${PLUGIN_NAME}] 当前设备无本地无损原画缓存，已标记为待同步，将在切回生成设备时自动上传入库 ⭐`);
+                item.pendingOriginalUpload = true;
+                item.favorite = true;
+                await markPendingOriginalUpload(item);
+                toastr.info('⭐ 已加入收藏！无损原画将在切回生成设备时自动同步入库', PLUGIN_NAME);
                 return;
             }
 
@@ -701,6 +712,7 @@
             const uploadedPath = await uploadBlobToServer(originalBlob, filename);
 
             if (uploadedPath) {
+                delete item.pendingOriginalUpload;
                 await applySyncedPathToAllRecords(item, uploadedPath, true);
                 console.info(`[${PLUGIN_NAME}] ⭐ 收藏原画已成功同步至服务端: ${uploadedPath} (${formatBytes(originalBlob.size)})`);
 
@@ -721,6 +733,161 @@
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 收藏原画同步失败:`, err);
             toastr.error(`收藏原画同步失败: ${err.message || err}`, PLUGIN_NAME);
+        }
+    }
+
+    // ── 7.1 跨设备待补传原图持久化与扫描同步 ──
+    async function markPendingOriginalUpload(item) {
+        if (!item) return;
+        item.pendingOriginalUpload = true;
+        item.favorite = true;
+
+        const ctx = RBQ?.api?.getContext?.();
+        let targetMsgId = (item.messageId != null && Number.isFinite(Number(item.messageId))) ? Number(item.messageId) : null;
+        if (targetMsgId == null && Array.isArray(ctx?.chat)) {
+            for (let i = ctx.chat.length - 1; i >= 0; i--) {
+                const m = ctx.chat[i];
+                if (!m) continue;
+                if (m.extra?.rbq_image?.cacheId === item.cacheId ||
+                    (Array.isArray(m.extra?.rbq_images) && m.extra.rbq_images.some(img => img?.cacheId === item.cacheId))) {
+                    targetMsgId = i;
+                    break;
+                }
+                if (item.prompt && m.mes && m.mes.includes(item.prompt)) {
+                    targetMsgId = i;
+                    break;
+                }
+            }
+        }
+
+        if (targetMsgId != null && ctx?.chat?.[targetMsgId]) {
+            const msg = ctx.chat[targetMsgId];
+            if (!msg.extra) msg.extra = {};
+            if (!msg.extra.rbq_image) {
+                msg.extra.rbq_image = { prompt: item.prompt || '', cacheId: item.cacheId || '' };
+            }
+            msg.extra.rbq_image.favorite = true;
+            msg.extra.rbq_image.pendingOriginalUpload = true;
+
+            if (Array.isArray(msg.extra.rbq_images)) {
+                for (const img of msg.extra.rbq_images) {
+                    if (img && ((item.cacheId && img.cacheId === item.cacheId) || (item.prompt && img.prompt === item.prompt))) {
+                        img.favorite = true;
+                        img.pendingOriginalUpload = true;
+                    }
+                }
+            }
+
+            if (typeof RBQ?.api?.saveChatDebounced === 'function') RBQ.api.saveChatDebounced();
+            else if (typeof RBQ?.api?.saveChat === 'function') RBQ.api.saveChat();
+        }
+
+        const settings = RBQ?.api?.getSettings?.();
+        if (Array.isArray(settings?.history)) {
+            const matched = settings.history.find(h =>
+                (item.cacheId && h.cacheId === item.cacheId) ||
+                (item.url && h.url === item.url) ||
+                (item.prompt && h.prompt === item.prompt && Math.abs((h.createdAt || 0) - (item.createdAt || 0)) < 15000)
+            );
+            if (matched) {
+                matched.favorite = true;
+                matched.pendingOriginalUpload = true;
+                RBQ.api.saveSettings?.();
+            }
+        }
+    }
+
+    let isCheckingPending = false;
+    async function syncPendingOriginalUploads() {
+        const store = getStore();
+        if (!store.enabled || !store.syncFavoritesOriginal) return;
+        if (isCheckingPending) return;
+        isCheckingPending = true;
+
+        try {
+            const settings = RBQ?.api?.getSettings?.();
+            const history = Array.isArray(settings?.history) ? settings.history : [];
+            const ctx = RBQ?.api?.getContext?.();
+            const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+
+            // 汇总所有被标记为收藏或待补传原图且服务端尚无原图的候选
+            const pendingCandidates = [];
+            const seenCacheIds = new Set();
+
+            // 1. 扫描 settings.history
+            for (const it of history) {
+                if (!it || !it.cacheId || seenCacheIds.has(it.cacheId)) continue;
+                if ((it.favorite || it.pendingOriginalUpload) && !it.serverOriginalUrl) {
+                    seenCacheIds.add(it.cacheId);
+                    pendingCandidates.push(it);
+                }
+            }
+
+            // 2. 扫描当前聊天各楼层消息 extra
+            for (let i = chat.length - 1; i >= 0; i--) {
+                const msg = chat[i];
+                if (!msg?.extra) continue;
+                const list = [];
+                if (msg.extra.rbq_image) list.push(msg.extra.rbq_image);
+                if (Array.isArray(msg.extra.rbq_images)) list.push(...msg.extra.rbq_images);
+
+                for (const img of list) {
+                    if (!img || !img.cacheId || seenCacheIds.has(img.cacheId)) continue;
+                    if ((img.favorite || img.pendingOriginalUpload) && !img.serverOriginalUrl) {
+                        seenCacheIds.add(img.cacheId);
+                        pendingCandidates.push({ ...img, messageId: i });
+                    }
+                }
+            }
+
+            if (!pendingCandidates.length) return;
+
+            let uploadedCount = 0;
+            for (const item of pendingCandidates) {
+                if (typeof RBQ?.api?.getCachedImageRecord !== 'function') break;
+                // 检测当前设备本地 IndexedDB 是否拥有原图物理缓存
+                const rec = await RBQ.api.getCachedImageRecord(item.cacheId);
+                if (!rec?.blob || !(rec.blob instanceof Blob)) {
+                    continue; // 本机无此原图（说明是在其他设备生成的），跳过
+                }
+
+                const originalBlob = rec.blob;
+                const mode = item.mode || 'rbq';
+                const now = Date.now();
+                let ext = 'png';
+                if (originalBlob.type === 'image/jpeg' || originalBlob.type === 'image/jpg') ext = 'jpg';
+                else if (originalBlob.type === 'image/webp') ext = 'webp';
+
+                const filename = `rbq_${mode}_fav_${now}.${ext}`;
+                const uploadedPath = await uploadBlobToServer(originalBlob, filename);
+
+                if (uploadedPath) {
+                    delete item.pendingOriginalUpload;
+                    await applySyncedPathToAllRecords(item, uploadedPath, true);
+
+                    // 双轨保障：同时确保轻量预览图存在
+                    if (!item.serverPreviewUrl) {
+                        const previewFilename = `rbq_${mode}_fav_${now}_preview.webp`;
+                        const previewBlob = await createOptimizedWebpBlob(originalBlob, 768, 0.8);
+                        if (previewBlob) {
+                            const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
+                            if (previewPath) {
+                                await applySyncedPathToAllRecords(item, previewPath, false);
+                            }
+                        }
+                    }
+                    uploadedCount++;
+                }
+            }
+
+            if (uploadedCount > 0) {
+                console.info(`[${PLUGIN_NAME}] ⭐ 已自动从本机上传 ${uploadedCount} 张在其他设备收藏的高清原画`);
+                toastr.success(`⭐ 已自动将其他设备收藏的 ${uploadedCount} 张高清原画从本机同步至服务端！`, PLUGIN_NAME);
+            }
+        } catch (err) {
+            console.warn(`[${PLUGIN_NAME}] 自动补传待处理收藏原图失败:`, err);
+        } finally {
+            isCheckingPending = false;
         }
     }
 
@@ -745,6 +912,20 @@
             }, 120);
         }
     });
+
+    // 跨端切回感知：窗口焦点/可见性/会话切换自动检测待补传的原图
+    window.addEventListener('focus', () => setTimeout(syncPendingOriginalUploads, 350));
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) setTimeout(syncPendingOriginalUploads, 350);
+    });
+    if (RBQ?.api?.eventSource && RBQ?.api?.event_types) {
+        const es = RBQ.api.eventSource;
+        const et = RBQ.api.event_types;
+        if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => setTimeout(syncPendingOriginalUploads, 600));
+        if (et.MESSAGE_UPDATED) es.on(et.MESSAGE_UPDATED, () => setTimeout(syncPendingOriginalUploads, 600));
+    }
+    window.addEventListener('st-scene-trigger:history-rendered', () => setTimeout(syncPendingOriginalUploads, 400));
+    setTimeout(syncPendingOriginalUploads, 2500);
 
     // ── 7. Storage Badge & Popover in Image Viewer ──
     let currentViewerItem = null;
@@ -1082,7 +1263,7 @@
                 </div>
                 <div class="rbq-storage-info-row">
                     <span class="rbq-storage-info-label">多端状态：</span>
-                    <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用')}</span>
+                    <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (current.pendingOriginalUpload ? '⭐ 已收藏 (切回生成端自动补传)' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用'))}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;">
                     <span class="rbq-storage-info-label">物理路径 / URL：</span>

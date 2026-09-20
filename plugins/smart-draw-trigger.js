@@ -2367,6 +2367,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         autoRunGenerate: false,
         minSegments: 0,
         manualDrawEnabled: false,
+        comicDrawerFloatingEnabled: true,
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         customSystemPrompt: '',
         lorebookEnabled: false,
@@ -11239,7 +11240,6 @@ SCHEMA:
                     <span class="st-scene-trigger-toggle"><input id="rbq-sdt-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span>
                 </div>
                 <button id="rbq-sdt-save" class="menu_button rbq-sdt-save-btn" type="button">💾 保存智能触发器设置</button>
-                <button id="rbq-sdt-open-comic-drawer-panel-btn" class="menu_button" style="margin:0!important; height:42px!important; padding:0 14px!important; background:rgba(168,85,247,.2)!important; border:1px solid rgba(168,85,247,.4)!important; border-radius:10px!important; display:flex; align-items:center; gap:6px; color:#f3e8ff; font-weight:600; cursor:pointer;" type="button" title="展开当前会话的剧情漫画时间轴侧边抽屉"><i class="fa-solid fa-film" style="color:#c084fc;"></i> 剧情画廊</button>
             </div>
             <!-- 现代化分段导航选项卡 (5大业务模块) -->
             <div class="rbq-sdt-nav-tabs">
@@ -11512,6 +11512,18 @@ SCHEMA:
                     </div>
                 </div>
 
+                <div class="rbq-sdt-card-group">
+                    <div class="rbq-sdt-card-header">
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-film" style="color:#38bdf8;"></i> 剧情漫画时间轴抽屉</span>
+                    </div>
+                    <div class="st-scene-trigger-modal-grid">
+                        <div id="rbq-sdt-comic-drawer-floating-field" class="st-scene-trigger-field switch" title="开启后，在悬浮球折叠菜单中显示「剧情画廊抽屉」快捷入口，方便长篇对话时一键滑出查看剧情分镜时间轴。">
+                            <span>悬浮球显示「剧情画廊抽屉」</span>
+                            <span class="st-scene-trigger-toggle"><input id="rbq-sdt-comic-drawer-floating" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 旧版短标记兼容：仅在非 auto 模式下可见 -->
                 <div id="rbq-sdt-markers-card" class="rbq-sdt-card-group" style="display:none;">
                     <div class="rbq-sdt-card-header">
@@ -11542,6 +11554,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-min-segments').value = store.minSegments || 0;
         document.getElementById('rbq-sdt-card-position').value = store.cardPosition || 'bottom';
         document.getElementById('rbq-sdt-manual-draw').checked = !!store.manualDrawEnabled;
+        document.getElementById('rbq-sdt-comic-drawer-floating').checked = store.comicDrawerFloatingEnabled !== false;
         document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
@@ -11815,9 +11828,6 @@ SCHEMA:
         document.getElementById('rbq-sdt-provider').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-mode').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
-        document.getElementById('rbq-sdt-open-comic-drawer-panel-btn')?.addEventListener('click', () => {
-            openStoryboardDrawer();
-        });
 
         document.getElementById('rbq-sdt-save').onclick = () => {
             const s = getStore();
@@ -11836,6 +11846,7 @@ SCHEMA:
             s.minSegments = Math.max(0, Math.min(10, Number(val('rbq-sdt-min-segments')) || 0));
             s.cardPosition = val('rbq-sdt-card-position') || 'bottom';
             s.manualDrawEnabled = checked('rbq-sdt-manual-draw');
+            s.comicDrawerFloatingEnabled = checked('rbq-sdt-comic-drawer-floating');
             s.systemPromptPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
             s.markers = val('rbq-sdt-markers');
             s.lorebookEnabled = checked('rbq-sdt-lorebook-enabled');
@@ -11900,6 +11911,8 @@ SCHEMA:
                 }
             }
             scanLatestVisible();
+            if (s.comicDrawerFloatingEnabled) injectFloatingComicDrawerButton();
+            else removeFloatingComicDrawerButton();
         };
         document.getElementById('rbq-sdt-system-preset').addEventListener('change', (e) => {
             const preset = e.target.value;
@@ -12476,6 +12489,22 @@ SCHEMA:
     let comicDrawerViewMode = localStorage.getItem('rbq-sdt-comic-mode') || 'stream'; // 'stream' | 'grid'
     let drawerKeyHandler = null;
 
+    function cleanDialogueForComic(text, maxLen = 140) {
+        if (!text) return '';
+        let str = String(text);
+        // 1. Strip think / thinking tags from deep reasoning models
+        str = str.replace(/<think[\s\S]*?<\/think>/gi, '').replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
+        str = str.replace(/<think[\s\S]*$/gi, ''); // in case of unclosed streaming think tags
+        // 2. Strip markdown code blocks
+        str = str.replace(/```[\s\S]*?```/g, '');
+        // 3. Strip trigger / prompt brackets
+        str = str.replace(/\[\/?(?:scene|img|draw|画图|分镜|图组)[^\]]*\]/gi, '');
+        // 4. Clean line breaks and excess spaces
+        str = str.replace(/\s+/g, ' ').trim();
+        if (!str) return '';
+        return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
+    }
+
     async function collectChatStoryboardTimeline() {
         const ctx = (window.RBQ?.api?.getContext?.()) || (window.SillyTavern?.getContext?.());
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
@@ -12520,8 +12549,8 @@ SCHEMA:
                                 isUser,
                                 timeText: sendDate,
                                 panelIndex: 0,
-                                anchorText: String(seg.anchor?.text || seg.anchorText || sdt.anchor?.text || '').trim(),
-                                sceneText: String(seg.scene || sdt.scene || '').trim(),
+                                anchorText: cleanDialogueForComic(seg.anchor?.text || seg.anchorText || sdt.anchor?.text || ''),
+                                sceneText: cleanDialogueForComic(seg.scene || sdt.scene || '', 100),
                                 label: String(seg.label || `分镜 #${segIdx + 1}`).trim(),
                                 characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
                                 prompt: String(imgRes.prompt || seg.prompt || sdt.prompt || '').trim(),
@@ -12551,8 +12580,8 @@ SCHEMA:
                                 isUser,
                                 timeText: sendDate,
                                 panelIndex: 0,
-                                anchorText: String(sdt.anchor?.text || sdt.anchorText || '').trim(),
-                                sceneText: String(sdt.scene || sdt.reason || '').trim(),
+                                anchorText: cleanDialogueForComic(sdt.anchor?.text || sdt.anchorText || ''),
+                                sceneText: cleanDialogueForComic(sdt.scene || sdt.reason || '', 100),
                                 label: '剧情分镜',
                                 characters: Array.isArray(sdt.characters) ? sdt.characters : [],
                                 prompt: String(imgRes.prompt || sdt.prompt || '').trim(),
@@ -12580,7 +12609,7 @@ SCHEMA:
                 if (imgKey && seenIdentifiers.has(imgKey)) continue;
                 if (imgKey) seenIdentifiers.add(imgKey);
 
-                const dialogueExcerpt = msgText ? (msgText.length > 80 ? msgText.slice(0, 80) + '...' : msgText) : '';
+                const dialogueExcerpt = cleanDialogueForComic(msgText, 100);
                 items.push({
                     id: `host-${mesId}-${hIdx}`,
                     messageId: mesId,
@@ -12606,7 +12635,7 @@ SCHEMA:
         // Restore URLs from IndexedDB asynchronously for expired blob URLs
         if (typeof RBQ?.api?.ensureHistoryItemDisplayUrl === 'function') {
             await Promise.all(items.map(async (item) => {
-                if (item.cacheId && (!item.displayUrl || item.displayUrl.startsWith('blob:'))) {
+                if (item.cacheId && (!item.displayUrl || item.displayUrl.startsWith('blob:') || !item.url || item.url.startsWith('blob:'))) {
                     try {
                         const freshUrl = await RBQ.api.ensureHistoryItemDisplayUrl(item.imageResult || { cacheId: item.cacheId, url: item.url });
                         if (freshUrl) {
@@ -12618,12 +12647,19 @@ SCHEMA:
             }));
         }
 
-        // Assign chronological panelIndex (1..N)
-        items.forEach((item, i) => {
+        // CRITICAL FILTER: Only keep items that actually have a valid, resolvable image!
+        // A gallery must never render broken black frames for images that were not generated or whose cache was cleared.
+        const validItems = items.filter(it => {
+            const effectiveUrl = (it.displayUrl || it.url || '').trim();
+            return effectiveUrl.length > 0 && !effectiveUrl.startsWith('javascript:');
+        });
+
+        // Assign chronological panelIndex (1..N) on valid images only
+        validItems.forEach((item, i) => {
             item.panelIndex = i + 1;
         });
 
-        return items;
+        return validItems;
     }
 
     async function openStoryboardDrawer() {
@@ -13060,6 +13096,8 @@ SCHEMA:
 
     /* ── 悬浮球注入与生命周期 ── */
     function injectFloatingComicDrawerButton() {
+        const store = getStore();
+        if (store.comicDrawerFloatingEnabled === false) return;
         const menu = document.getElementById('st-scene-trigger-floating-menu');
         if (!menu || menu.querySelector('[data-action="sdt-comic-drawer"]')) return;
         const divider = menu.querySelector('.st-scene-trigger-floating-divider');
@@ -13088,13 +13126,15 @@ SCHEMA:
             try { floatingObserver.disconnect(); } catch (_e) {}
             floatingObserver = null;
         }
-        injectFloatingManualButton();
-        injectFloatingComicDrawerButton();
+        const s = getStore();
+        if (s.manualDrawEnabled) injectFloatingManualButton();
+        if (s.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
         const observer = new MutationObserver(() => {
-            const s = getStore();
-            if (s.manualDrawEnabled) injectFloatingManualButton();
+            const curStore = getStore();
+            if (curStore.manualDrawEnabled) injectFloatingManualButton();
             else removeFloatingManualButton();
-            injectFloatingComicDrawerButton();
+            if (curStore.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
+            else removeFloatingComicDrawerButton();
         });
         observer.observe(document.body, { childList: true, subtree: true });
         floatingObserver = observer;

@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器';
-    const PLUGIN_VERSION = '6.0.17';
+    const PLUGIN_VERSION = '6.0.18';
     const STORAGE_KEY = '_smartDrawTrigger';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 44;
@@ -12490,7 +12490,8 @@ SCHEMA:
                 }
             }
         });
-        observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+        const targetEl = document.getElementById('chat') || document.body;
+        observer.observe(targetEl, { childList: true, characterData: true, subtree: true });
         bodyObserver = observer;
 
         // 订阅 SillyTavern 官方生命周期事件（完美解决 Swipe 切换分身及楼层恢复）
@@ -14064,12 +14065,17 @@ SCHEMA:
         const s = getStore();
         if (s.manualDrawEnabled) injectFloatingManualButton();
         if (s.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
+        let floatingTimer = null;
         const observer = new MutationObserver(() => {
-            const curStore = getStore();
-            if (curStore.manualDrawEnabled) injectFloatingManualButton();
-            else removeFloatingManualButton();
-            if (curStore.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
-            else removeFloatingComicDrawerButton();
+            if (floatingTimer) return;
+            floatingTimer = setTimeout(() => {
+                floatingTimer = null;
+                const curStore = getStore();
+                if (curStore.manualDrawEnabled) injectFloatingManualButton();
+                else removeFloatingManualButton();
+                if (curStore.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
+                else removeFloatingComicDrawerButton();
+            }, 250);
         });
         observer.observe(document.body, { childList: true, subtree: true });
         floatingObserver = observer;

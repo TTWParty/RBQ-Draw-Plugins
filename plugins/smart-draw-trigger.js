@@ -10827,6 +10827,89 @@ SCHEMA:
                 border-color: rgba(56, 189, 248, 0.5);
                 color: #fff;
             }
+            /* Pending Storyboard Frame & Generate Action */
+            .rbq-comic-pending-frame {
+                border-radius: 10px;
+                padding: 12px 14px;
+                background: rgba(15, 23, 42, 0.65);
+                border: 1px dashed rgba(56, 189, 248, 0.4);
+                display: flex;
+                flex-direction: column;
+                gap: 9px;
+            }
+            .rbq-comic-pending-meta {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            .rbq-comic-pending-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11.5px;
+                font-weight: 600;
+                color: #38bdf8;
+                background: rgba(56, 189, 248, 0.12);
+                border: 1px solid rgba(56, 189, 248, 0.25);
+                border-radius: 4px;
+                padding: 3px 8px;
+                width: fit-content;
+            }
+            .rbq-comic-prompt-preview {
+                font-size: 11.5px;
+                line-height: 1.5;
+                color: #94a3b8;
+                background: rgba(0, 0, 0, 0.3);
+                padding: 6px 10px;
+                border-radius: 6px;
+                word-break: break-all;
+            }
+            .rbq-comic-prompt-preview strong {
+                color: #e2e8f0;
+            }
+            .rbq-comic-pending-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 2px;
+                flex-wrap: wrap;
+            }
+            .rbq-comic-generate-btn {
+                background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+                border: 1px solid rgba(56, 189, 248, 0.5);
+                color: #fff;
+                font-weight: 600;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 12px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+                transition: all 0.2s ease;
+            }
+            .rbq-comic-generate-btn:hover:not(:disabled) {
+                background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+                box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+                transform: translateY(-1px);
+            }
+            .rbq-comic-generate-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+            }
+            .rbq-comic-grid-thumb.is-pending {
+                background: rgba(15, 23, 42, 0.7);
+                border: 1px dashed rgba(56, 189, 248, 0.4);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                color: #38bdf8;
+                font-size: 12px;
+            }
             /* Grid Mode */
             .rbq-comic-grid-container {
                 display: grid;
@@ -12537,31 +12620,42 @@ SCHEMA:
                         }
 
                         const imgRes = state?.imageResult;
-                        if (imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId)) {
-                            const imgKey = imgRes.cacheId || imgRes.url || imgRes.displayUrl;
-                            if (imgKey && seenIdentifiers.has(imgKey)) continue;
-                            if (imgKey) seenIdentifiers.add(imgKey);
+                        const hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
+                        const promptText = String(imgRes?.prompt || seg.prompt || sdt.prompt || '').trim();
+                        const anchorText = cleanDialogueForComic(seg.anchor?.text || seg.anchorText || sdt.anchor?.text || '');
+                        const sceneText = cleanDialogueForComic(seg.scene || sdt.scene || '', 100);
 
-                            items.push({
-                                id: `sdt-${mesId}-${segIdx}`,
-                                messageId: mesId,
-                                senderName,
-                                isUser,
-                                timeText: sendDate,
-                                panelIndex: 0,
-                                anchorText: cleanDialogueForComic(seg.anchor?.text || seg.anchorText || sdt.anchor?.text || ''),
-                                sceneText: cleanDialogueForComic(seg.scene || sdt.scene || '', 100),
-                                label: String(seg.label || `分镜 #${segIdx + 1}`).trim(),
-                                characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
-                                prompt: String(imgRes.prompt || seg.prompt || sdt.prompt || '').trim(),
-                                negative: String(seg.negative || sdt.negative || '').trim(),
-                                url: imgRes.url || imgRes.displayUrl || '',
-                                displayUrl: imgRes.displayUrl || imgRes.url || '',
-                                cacheId: imgRes.cacheId || '',
-                                imageResult: imgRes,
-                                source: 'sdt-segment',
-                            });
-                        }
+                        // If neither image nor storyboard content, skip
+                        if (!hasImg && !promptText && !sceneText && !anchorText) continue;
+
+                        const imgKey = hasImg ? (imgRes.cacheId || imgRes.url || imgRes.displayUrl) : `pending-${mesId}-${segIdx}`;
+                        if (seenIdentifiers.has(imgKey)) continue;
+                        seenIdentifiers.add(imgKey);
+
+                        items.push({
+                            id: `sdt-${mesId}-${segIdx}`,
+                            messageId: mesId,
+                            senderName,
+                            isUser,
+                            timeText: sendDate,
+                            panelIndex: 0,
+                            anchorText,
+                            sceneText,
+                            label: String(seg.label || `分镜 #${segIdx + 1}`).trim(),
+                            characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
+                            prompt: promptText,
+                            negative: String(seg.negative || sdt.negative || '').trim(),
+                            url: hasImg ? (imgRes.url || imgRes.displayUrl || '') : '',
+                            displayUrl: hasImg ? (imgRes.displayUrl || imgRes.url || '') : '',
+                            cacheId: hasImg ? (imgRes.cacheId || '') : '',
+                            imageResult: hasImg ? imgRes : null,
+                            isPending: !hasImg,
+                            hasGenerateButton: true,
+                            baseKey,
+                            segKey,
+                            segIdx,
+                            source: 'sdt-segment',
+                        });
                     }
                 } else {
                     let state = segmentStates[baseKey] || segmentStates['default'] || Object.values(segmentStates)[0];
@@ -12569,10 +12663,15 @@ SCHEMA:
                         state = store.cache[baseKey].segmentStates[baseKey] || Object.values(store.cache[baseKey].segmentStates)[0];
                     }
                     const imgRes = state?.imageResult || sdt.imageResult;
-                    if (imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId)) {
-                        const imgKey = imgRes.cacheId || imgRes.url || imgRes.displayUrl;
-                        if (!imgKey || !seenIdentifiers.has(imgKey)) {
-                            if (imgKey) seenIdentifiers.add(imgKey);
+                    const hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
+                    const promptText = String(imgRes?.prompt || sdt.prompt || '').trim();
+                    const anchorText = cleanDialogueForComic(sdt.anchor?.text || sdt.anchorText || '');
+                    const sceneText = cleanDialogueForComic(sdt.scene || sdt.reason || '', 100);
+
+                    if (hasImg || promptText || sceneText || anchorText) {
+                        const imgKey = hasImg ? (imgRes.cacheId || imgRes.url || imgRes.displayUrl) : `pending-${mesId}-0`;
+                        if (!seenIdentifiers.has(imgKey)) {
+                            seenIdentifiers.add(imgKey);
                             items.push({
                                 id: `sdt-${mesId}-0`,
                                 messageId: mesId,
@@ -12580,16 +12679,21 @@ SCHEMA:
                                 isUser,
                                 timeText: sendDate,
                                 panelIndex: 0,
-                                anchorText: cleanDialogueForComic(sdt.anchor?.text || sdt.anchorText || ''),
-                                sceneText: cleanDialogueForComic(sdt.scene || sdt.reason || '', 100),
+                                anchorText,
+                                sceneText,
                                 label: '剧情分镜',
                                 characters: Array.isArray(sdt.characters) ? sdt.characters : [],
-                                prompt: String(imgRes.prompt || sdt.prompt || '').trim(),
+                                prompt: promptText,
                                 negative: String(sdt.negative || '').trim(),
-                                url: imgRes.url || imgRes.displayUrl || '',
-                                displayUrl: imgRes.displayUrl || imgRes.url || '',
-                                cacheId: imgRes.cacheId || '',
-                                imageResult: imgRes,
+                                url: hasImg ? (imgRes.url || imgRes.displayUrl || '') : '',
+                                displayUrl: hasImg ? (imgRes.displayUrl || imgRes.url || '') : '',
+                                cacheId: hasImg ? (imgRes.cacheId || '') : '',
+                                imageResult: hasImg ? imgRes : null,
+                                isPending: !hasImg,
+                                hasGenerateButton: true,
+                                baseKey,
+                                segKey: baseKey,
+                                segIdx: 0,
                                 source: 'sdt-single',
                             });
                         }
@@ -12627,6 +12731,8 @@ SCHEMA:
                     displayUrl: hImg.displayUrl || hImg.url || '',
                     cacheId: hImg.cacheId || '',
                     imageResult: hImg,
+                    isPending: false,
+                    hasGenerateButton: false,
                     source: 'host-image',
                 });
             }
@@ -12635,7 +12741,7 @@ SCHEMA:
         // Restore URLs from IndexedDB asynchronously for expired blob URLs
         if (typeof RBQ?.api?.ensureHistoryItemDisplayUrl === 'function') {
             await Promise.all(items.map(async (item) => {
-                if (item.cacheId && (!item.displayUrl || item.displayUrl.startsWith('blob:') || !item.url || item.url.startsWith('blob:'))) {
+                if (!item.isPending && item.cacheId && (!item.displayUrl || item.displayUrl.startsWith('blob:') || !item.url || item.url.startsWith('blob:'))) {
                     try {
                         const freshUrl = await RBQ.api.ensureHistoryItemDisplayUrl(item.imageResult || { cacheId: item.cacheId, url: item.url });
                         if (freshUrl) {
@@ -12647,14 +12753,19 @@ SCHEMA:
             }));
         }
 
-        // CRITICAL FILTER: Only keep items that actually have a valid, resolvable image!
-        // A gallery must never render broken black frames for images that were not generated or whose cache was cleared.
+        // CRITICAL FILTER: Keep items that:
+        // 1. Are pending storyboards with a generate button and valid prompt/dialogue/scene
+        // 2. Are generated items with a valid, non-broken image URL
+        // Ghost records (dead blobs with no image and no generate button) are eliminated.
         const validItems = items.filter(it => {
+            if (it.isPending) {
+                return it.hasGenerateButton && !!(it.prompt || it.sceneText || it.anchorText);
+            }
             const effectiveUrl = (it.displayUrl || it.url || '').trim();
             return effectiveUrl.length > 0 && !effectiveUrl.startsWith('javascript:');
         });
 
-        // Assign chronological panelIndex (1..N) on valid images only
+        // Assign chronological panelIndex (1..N) on all valid panels
         validItems.forEach((item, i) => {
             item.panelIndex = i + 1;
         });
@@ -12793,8 +12904,87 @@ SCHEMA:
         const countBadge = document.getElementById('rbq-drawer-count-badge');
         if (countBadge) countBadge.textContent = '扫描中...';
         currentComicItems = await collectChatStoryboardTimeline();
-        if (countBadge) countBadge.textContent = `共 ${currentComicItems.length} 格分镜`;
+        if (countBadge) {
+            const total = currentComicItems.length;
+            const done = currentComicItems.filter(it => !it.isPending).length;
+            const pending = total - done;
+            countBadge.textContent = pending > 0 ? `共 ${total} 格 (${done} 已出图 / ${pending} 待生图)` : `共 ${total} 格分镜`;
+        }
         renderStoryboardDrawerContent();
+    }
+
+    async function runDrawerPanelGeneration(item, btnEl) {
+        if (!item || !item.prompt) {
+            toastr.warning('当前分镜没有可用 prompt，无法生图', PLUGIN_NAME);
+            return;
+        }
+
+        const origHtml = btnEl.innerHTML;
+        btnEl.disabled = true;
+        btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生图...';
+
+        try {
+            // 1. Prepare NAI characters if any
+            if (Array.isArray(item.characters) && item.characters.length > 0) {
+                try {
+                    prepareNaiCharData({ characters: item.characters });
+                } catch (_e) { /* ignore */ }
+            }
+
+            // 2. Call RBQ image generation
+            const image = await RBQ.api.generateImage(
+                item.prompt,
+                'smart-draw-trigger',
+                { messageId: item.messageId },
+                (progressText) => {
+                    if (btnEl) btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText || '正在生成...')}`;
+                }
+            );
+
+            if (!image) throw new Error('生图未返回有效图片结果');
+
+            // 3. Mark state as generated
+            item.url = image.url || image.displayUrl || '';
+            item.displayUrl = image.displayUrl || image.url || '';
+            item.cacheId = image.cacheId || '';
+            item.isPending = false;
+            item.imageResult = image;
+
+            if (item.baseKey && item.segKey) {
+                markSegmentAutoGenerated(item.baseKey, item.segKey, image, item.messageId);
+            }
+
+            // 4. Synchronize to corresponding chat card if present in DOM
+            const textContainer = RBQ.api.getMessageTextContainer(item.messageId);
+            if (textContainer instanceof HTMLElement) {
+                const segCard = textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(item.segKey)}"]`) ||
+                                textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(item.baseKey)}"]`);
+                if (segCard) {
+                    RBQ.api.renderInlineGeneratedImage(segCard, image);
+                    setGenerateButtonState(segCard, true, getRegenLabel(segCard), false);
+                    setWrapperStage(segCard, 'generated');
+                }
+            }
+
+            toastr.success(`分镜 #${item.panelIndex} 生图成功！`, PLUGIN_NAME);
+
+            // 5. Update header count & re-render drawer
+            const countBadge = document.getElementById('rbq-drawer-count-badge');
+            if (countBadge) {
+                const total = currentComicItems.length;
+                const done = currentComicItems.filter(it => !it.isPending).length;
+                const pending = total - done;
+                countBadge.textContent = pending > 0 ? `共 ${total} 格 (${done} 已出图 / ${pending} 待生图)` : `共 ${total} 格分镜`;
+            }
+            renderStoryboardDrawerContent();
+        } catch (error) {
+            console.error('[Comic Drawer] Generate failed:', error);
+            toastr.error('分镜生图失败: ' + (error?.message || String(error)), PLUGIN_NAME);
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.innerHTML = origHtml;
+            }
+        }
     }
 
     function renderStoryboardDrawerContent() {
@@ -12842,6 +13032,41 @@ SCHEMA:
                     </div>
                 ` : '';
 
+                let contentHtml = '';
+                if (item.isPending) {
+                    contentHtml = `
+                        <div class="rbq-comic-pending-frame">
+                            <div class="rbq-comic-pending-meta">
+                                <div class="rbq-comic-pending-badge">
+                                    <i class="fa-solid fa-hourglass-half"></i> 待生图分镜
+                                </div>
+                                ${item.prompt ? `<div class="rbq-comic-prompt-preview" title="${escapeHtml(item.prompt)}"><i class="fa-solid fa-wand-magic-sparkles"></i> <strong>提示词:</strong> ${escapeHtml(item.prompt.length > 130 ? item.prompt.slice(0, 130) + '...' : item.prompt)}</div>` : ''}
+                            </div>
+                            <div class="rbq-comic-pending-actions">
+                                <button class="rbq-comic-generate-btn" data-panel-id="${escapeHtml(item.id)}" type="button">
+                                    <i class="fa-solid fa-paintbrush"></i> 生成此分镜图片
+                                </button>
+                                <button class="rbq-comic-tool-btn" data-action="jump" data-message-id="${item.messageId}" title="平滑定位至原消息楼层" type="button">
+                                    <i class="fa-solid fa-location-crosshairs"></i> 原楼层
+                                </button>
+                                ${item.prompt ? `<button class="rbq-comic-tool-btn" data-action="copy-prompt" data-panel-id="${escapeHtml(item.id)}" title="复制提示词" type="button"><i class="fa-solid fa-copy"></i> 复制</button>` : ''}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    contentHtml = `
+                        <div class="rbq-comic-image-frame">
+                            <img class="rbq-comic-img" src="${escapeHtml(item.displayUrl || item.url)}" alt="Panel ${item.panelIndex}" loading="lazy" data-cache-id="${escapeHtml(item.cacheId || '')}">
+                            <div class="rbq-comic-img-toolbar">
+                                <button class="rbq-comic-tool-btn" data-action="preview" data-panel-id="${escapeHtml(item.id)}" title="全屏大图预览" type="button"><i class="fa-solid fa-expand"></i> 预览</button>
+                                <button class="rbq-comic-tool-btn" data-action="copy-prompt" data-panel-id="${escapeHtml(item.id)}" title="复制生成提示词" type="button"><i class="fa-solid fa-copy"></i> 提示词</button>
+                                <button class="rbq-comic-tool-btn" data-action="download" data-panel-id="${escapeHtml(item.id)}" title="下载当前分镜原图" type="button"><i class="fa-solid fa-download"></i> 保存</button>
+                                <button class="rbq-comic-tool-btn" data-action="jump" data-message-id="${item.messageId}" title="平滑定位至聊天窗口对应楼层" type="button"><i class="fa-solid fa-arrow-up-right-from-square"></i> 跳转</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
                 html += `
                     <div class="rbq-comic-item" data-panel-id="${escapeHtml(item.id)}" data-message-id="${item.messageId}">
                         <div class="rbq-comic-timeline-node">
@@ -12862,15 +13087,7 @@ SCHEMA:
                             </div>
                             ${bubbleHtml}
                             ${sceneHtml}
-                            <div class="rbq-comic-image-frame">
-                                <img class="rbq-comic-img" src="${escapeHtml(item.displayUrl || item.url)}" alt="Panel ${item.panelIndex}" loading="lazy" data-cache-id="${escapeHtml(item.cacheId || '')}">
-                                <div class="rbq-comic-img-toolbar">
-                                    <button class="rbq-comic-tool-btn" data-action="preview" data-panel-id="${escapeHtml(item.id)}" title="全屏大图预览" type="button"><i class="fa-solid fa-expand"></i> 预览</button>
-                                    <button class="rbq-comic-tool-btn" data-action="copy-prompt" data-panel-id="${escapeHtml(item.id)}" title="复制生成提示词" type="button"><i class="fa-solid fa-copy"></i> 提示词</button>
-                                    <button class="rbq-comic-tool-btn" data-action="download" data-panel-id="${escapeHtml(item.id)}" title="下载当前分镜原图" type="button"><i class="fa-solid fa-download"></i> 保存</button>
-                                    <button class="rbq-comic-tool-btn" data-action="jump" data-message-id="${item.messageId}" title="平滑定位至聊天窗口对应楼层" type="button"><i class="fa-solid fa-arrow-up-right-from-square"></i> 跳转</button>
-                                </div>
-                            </div>
+                            ${contentHtml}
                         </div>
                     </div>
                 `;
@@ -12882,19 +13099,39 @@ SCHEMA:
             let html = '<div class="rbq-comic-grid-container">';
             for (const item of itemsToRender) {
                 const descSnippet = item.anchorText || item.sceneText || item.prompt;
-                html += `
-                    <div class="rbq-comic-grid-card" data-panel-id="${escapeHtml(item.id)}" data-message-id="${item.messageId}">
-                        <div class="rbq-comic-grid-thumb">
-                            <img src="${escapeHtml(item.displayUrl || item.url)}" alt="Panel ${item.panelIndex}" loading="lazy">
-                            <div class="rbq-comic-grid-badge">${String(item.panelIndex).padStart(2, '0')}</div>
-                            <div class="rbq-comic-grid-floor">#${item.messageId + 1} 楼</div>
+                if (item.isPending) {
+                    html += `
+                        <div class="rbq-comic-grid-card" data-panel-id="${escapeHtml(item.id)}" data-message-id="${item.messageId}">
+                            <div class="rbq-comic-grid-thumb is-pending">
+                                <i class="fa-solid fa-paintbrush" style="font-size: 26px; color: #38bdf8;"></i>
+                                <span style="font-size: 11px; color: #94a3b8; font-weight: 500;">待生成分镜</span>
+                                <div class="rbq-comic-grid-badge">${String(item.panelIndex).padStart(2, '0')}</div>
+                                <div class="rbq-comic-grid-floor">#${item.messageId + 1} 楼</div>
+                            </div>
+                            <div class="rbq-comic-grid-info">
+                                <div class="rbq-comic-grid-speaker">${escapeHtml(item.senderName)}</div>
+                                <div class="rbq-comic-grid-desc">${escapeHtml(descSnippet.slice(0, 50))}</div>
+                                <button class="rbq-comic-generate-btn" data-panel-id="${escapeHtml(item.id)}" style="margin-top: 6px; width: 100%; justify-content: center; padding: 4px 8px; font-size: 11px;" type="button">
+                                    <i class="fa-solid fa-paintbrush"></i> 立即生成
+                                </button>
+                            </div>
                         </div>
-                        <div class="rbq-comic-grid-info">
-                            <div class="rbq-comic-grid-speaker">${escapeHtml(item.senderName)}</div>
-                            <div class="rbq-comic-grid-desc">${escapeHtml(descSnippet.slice(0, 50))}</div>
+                    `;
+                } else {
+                    html += `
+                        <div class="rbq-comic-grid-card" data-panel-id="${escapeHtml(item.id)}" data-message-id="${item.messageId}">
+                            <div class="rbq-comic-grid-thumb">
+                                <img src="${escapeHtml(item.displayUrl || item.url)}" alt="Panel ${item.panelIndex}" loading="lazy">
+                                <div class="rbq-comic-grid-badge">${String(item.panelIndex).padStart(2, '0')}</div>
+                                <div class="rbq-comic-grid-floor">#${item.messageId + 1} 楼</div>
+                            </div>
+                            <div class="rbq-comic-grid-info">
+                                <div class="rbq-comic-grid-speaker">${escapeHtml(item.senderName)}</div>
+                                <div class="rbq-comic-grid-desc">${escapeHtml(descSnippet.slice(0, 50))}</div>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
             }
             html += '</div>';
             body.innerHTML = html;
@@ -12904,14 +13141,26 @@ SCHEMA:
     }
 
     function bindDrawerInteractiveEvents(container) {
+        // Pending storyboard generate button click
+        container.querySelectorAll('.rbq-comic-generate-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const pId = btn.dataset.panelId;
+                const targetItem = currentComicItems.find(it => it.id === pId);
+                if (targetItem) {
+                    await runDrawerPanelGeneration(targetItem, btn);
+                }
+            });
+        });
+
         // Image click -> preview
-        container.querySelectorAll('.rbq-comic-img, .rbq-comic-grid-thumb').forEach(el => {
+        container.querySelectorAll('.rbq-comic-img, .rbq-comic-grid-thumb:not(.is-pending)').forEach(el => {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const card = el.closest('[data-panel-id]');
                 const pId = card?.dataset?.panelId;
                 const targetItem = currentComicItems.find(it => it.id === pId);
-                if (targetItem) previewStoryboardImage(targetItem);
+                if (targetItem && !targetItem.isPending) previewStoryboardImage(targetItem);
             });
         });
 
@@ -12926,10 +13175,16 @@ SCHEMA:
 
         // Grid card click -> jump or preview
         container.querySelectorAll('.rbq-comic-grid-card').forEach(card => {
-            card.addEventListener('click', () => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.rbq-comic-generate-btn')) return;
                 const pId = card.dataset.panelId;
                 const targetItem = currentComicItems.find(it => it.id === pId);
-                if (targetItem) previewStoryboardImage(targetItem);
+                if (!targetItem) return;
+                if (targetItem.isPending) {
+                    jumpToMessage(targetItem.messageId);
+                } else {
+                    previewStoryboardImage(targetItem);
+                }
             });
         });
 
@@ -12943,7 +13198,7 @@ SCHEMA:
                 if (!targetItem) return;
 
                 if (action === 'preview') {
-                    previewStoryboardImage(targetItem);
+                    if (!targetItem.isPending) previewStoryboardImage(targetItem);
                 } else if (action === 'copy-prompt') {
                     const promptToCopy = targetItem.prompt;
                     if (promptToCopy) {
@@ -13067,8 +13322,9 @@ SCHEMA:
     }
 
     async function exportComicStripZip(items) {
-        if (!items || items.length === 0) {
-            toastr.info('当前没有可打包的分镜图片', PLUGIN_NAME);
+        const validImages = (items || []).filter(it => !it.isPending && (it.displayUrl || it.url));
+        if (validImages.length === 0) {
+            toastr.info('当前画廊中还没有已生成的图片可打包，请先点击分镜上的【生成图片】出图', PLUGIN_NAME);
             return;
         }
         if (typeof RBQ?.api?.exportChatImagesZip === 'function') {
@@ -13080,8 +13336,8 @@ SCHEMA:
                 console.warn('[SDT Comic Drawer] exportChatImagesZip failed, falling back to direct download', e);
             }
         }
-        toastr.info(`正在依次下载当前画廊 ${items.length} 张图片...`, PLUGIN_NAME);
-        for (const item of items) {
+        toastr.info(`正在依次下载当前画廊 ${validImages.length} 张图片...`, PLUGIN_NAME);
+        for (const item of validImages) {
             const url = item.displayUrl || item.url;
             if (!url) continue;
             const a = document.createElement('a');

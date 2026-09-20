@@ -12588,6 +12588,122 @@ SCHEMA:
         return str.length > maxLen ? str.slice(0, maxLen) + '...' : str;
     }
 
+    function normalizePromptKey(str) {
+        return String(str || '')
+            .toLowerCase()
+            .replace(/[\s\-_,，。\[\]【】\(\)（）]/g, '');
+    }
+
+    function extractNarrativeContext(msgText, rawPrompt) {
+        if (!msgText) return '';
+        let preceding = msgText;
+        if (rawPrompt && msgText.includes(rawPrompt)) {
+            preceding = msgText.slice(0, msgText.indexOf(rawPrompt));
+        }
+        preceding = preceding.replace(/<think[\s\S]*?<\/think>/gi, '').replace(/<think[\s\S]*$/gi, '');
+        preceding = preceding.replace(/```[\s\S]*?```/g, '');
+        preceding = preceding.replace(/\[\/?(?:scene|img|draw|画图|分镜|图组)[^\]]*\]/gi, '');
+        preceding = preceding.replace(/(?:\[|【)[^\]】]*?(?:\]|】)/g, ''); // strip other prompt brackets
+        const lines = preceding.split(/\r?\n+/).map(l => l.trim()).filter(Boolean);
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i];
+            if (!line.startsWith('[') && !line.startsWith('【') && line.length > 3) {
+                return cleanDialogueForComic(line, 120);
+            }
+        }
+        if (lines.length > 0) {
+            return cleanDialogueForComic(lines[lines.length - 1], 120);
+        }
+        return cleanDialogueForComic(msgText, 100);
+    }
+
+    function extractHostPromptsFromMessage(msgText, mesId) {
+        const prompts = [];
+        const seen = new Set();
+
+        // 1. Check DOM elements if rendered in current chat
+        const container = (typeof RBQ?.api?.getMessageTextContainer === 'function')
+            ? RBQ.api.getMessageTextContainer(mesId)
+            : null;
+
+        if (container instanceof HTMLElement) {
+            const wrappers = container.querySelectorAll('.st-scene-trigger-inline-wrap:not(.rbq-sdt-card)');
+            wrappers.forEach((w, idx) => {
+                const prompt = String(w.dataset.prompt || '').trim();
+                const raw = w.querySelector('.st-scene-trigger-inline-raw')?.textContent || (prompt ? `[${prompt}]` : '');
+                const resultImg = w.querySelector('.st-scene-trigger-inline-result img');
+                const resultLink = w.querySelector('.st-scene-trigger-inline-image-link');
+                const url = resultImg?.getAttribute('src') || resultLink?.getAttribute('href') || '';
+                const cacheId = resultLink?.dataset?.cacheId || resultImg?.dataset?.cacheId || '';
+                const isGenerated = !!(url || cacheId);
+
+                if (prompt && !seen.has(prompt)) {
+                    seen.add(prompt);
+                    prompts.push({
+                        id: String(w.dataset.promptId || `dom:${mesId}:${idx}`),
+                        label: '分镜',
+                        prompt,
+                        raw,
+                        wrapperEl: w,
+                        domImage: isGenerated ? { url, cacheId, prompt } : null,
+                    });
+                }
+            });
+        }
+
+        // 2. Call RBQ.api.extractPrompts(msgText) if available
+        if (typeof RBQ?.api?.extractPrompts === 'function' && msgText) {
+            try {
+                const extracted = RBQ.api.extractPrompts(msgText) || [];
+                for (const p of extracted) {
+                    const prompt = String(p.prompt || '').trim();
+                    if (prompt && !seen.has(prompt)) {
+                        seen.add(prompt);
+                        prompts.push({
+                            id: String(p.id || `api:${mesId}:${prompts.length}`),
+                            label: String(p.label || '分镜'),
+                            prompt,
+                            raw: String(p.raw || `[${prompt}]`),
+                            wrapperEl: null,
+                            domImage: null,
+                        });
+                    }
+                }
+            } catch (_e) {}
+        }
+
+        // 3. Fallback bracket matching if nothing found yet
+        if (prompts.length === 0 && msgText) {
+            const bracketRegex = /(?:\[|【)([\s\S]*?)(?:\]|】)/g;
+            let match;
+            while ((match = bracketRegex.exec(msgText)) !== null) {
+                const raw = match[0];
+                let inner = String(match[1] || '').trim();
+                if (!inner) continue;
+
+                if (inner.startsWith('/') || inner.startsWith('http://') || inner.startsWith('https://')) continue;
+                if (/^(?:img|scene|draw|画图|分镜|图组)$/i.test(inner)) continue;
+                if (/^(?:[0-9]{1,4})$/.test(inner)) continue;
+                if (inner.includes('```')) continue;
+
+                inner = inner.replace(/\s+/g, ' ').trim();
+                if (inner.length >= 2 && !seen.has(inner)) {
+                    seen.add(inner);
+                    prompts.push({
+                        id: `regex:${mesId}:${prompts.length}`,
+                        label: '分镜',
+                        prompt: inner,
+                        raw,
+                        wrapperEl: null,
+                        domImage: null,
+                    });
+                }
+            }
+        }
+
+        return prompts;
+    }
+
     async function collectChatStoryboardTimeline() {
         const ctx = (window.RBQ?.api?.getContext?.()) || (window.SillyTavern?.getContext?.());
         const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
@@ -12602,6 +12718,7 @@ SCHEMA:
             const senderName = String(msg.name || (isUser ? 'User' : 'Assistant')).trim();
             const sendDate = msg.send_date || '';
             const msgText = String(msg.mes || '').trim();
+            const seenPromptsInMessage = new Set();
 
             // 1. Core SDT backpack: message.extra.rbq_sdt
             const sdt = msg.extra?.rbq_sdt;
@@ -12631,6 +12748,11 @@ SCHEMA:
                         const imgKey = hasImg ? (imgRes.cacheId || imgRes.url || imgRes.displayUrl) : `pending-${mesId}-${segIdx}`;
                         if (seenIdentifiers.has(imgKey)) continue;
                         seenIdentifiers.add(imgKey);
+
+                        if (promptText) {
+                            const norm = normalizePromptKey(promptText);
+                            if (norm) seenPromptsInMessage.add(norm);
+                        }
 
                         items.push({
                             id: `sdt-${mesId}-${segIdx}`,
@@ -12672,6 +12794,10 @@ SCHEMA:
                         const imgKey = hasImg ? (imgRes.cacheId || imgRes.url || imgRes.displayUrl) : `pending-${mesId}-0`;
                         if (!seenIdentifiers.has(imgKey)) {
                             seenIdentifiers.add(imgKey);
+                            if (promptText) {
+                                const norm = normalizePromptKey(promptText);
+                                if (norm) seenPromptsInMessage.add(norm);
+                            }
                             items.push({
                                 id: `sdt-${mesId}-0`,
                                 messageId: mesId,
@@ -12701,21 +12827,107 @@ SCHEMA:
                 }
             }
 
-            // 2. Host direct images: msg.extra.rbq_images / msg.extra.rbq_image
+            // 2. Host direct images & host prompt cards (from regex / DOM / extractPrompts)
             const hostExtras = [];
             if (Array.isArray(msg.extra?.rbq_images)) hostExtras.push(...msg.extra.rbq_images);
             if (msg.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
 
+            const hostPrompts = extractHostPromptsFromMessage(msgText, mesId);
+            const consumedHostExtras = new Set();
+
+            // 2a: Match host prompts with generated host images or DOM results
+            for (let hpIdx = 0; hpIdx < hostPrompts.length; hpIdx++) {
+                const hp = hostPrompts[hpIdx];
+                const normP = normalizePromptKey(hp.prompt);
+                if (!normP) continue;
+                if (seenPromptsInMessage.has(normP)) continue;
+                seenPromptsInMessage.add(normP);
+
+                let matchedImg = hp.domImage;
+                if (!matchedImg) {
+                    for (const hImg of hostExtras) {
+                        if (!hImg || consumedHostExtras.has(hImg)) continue;
+                        if (!hImg.url && !hImg.displayUrl && !hImg.cacheId) continue;
+                        const normH = normalizePromptKey(hImg.prompt);
+                        if (normH === normP || normH.includes(normP) || normP.includes(normH)) {
+                            matchedImg = hImg;
+                            consumedHostExtras.add(hImg);
+                            break;
+                        }
+                    }
+                }
+
+                const dialogueExcerpt = extractNarrativeContext(msgText, hp.raw);
+                if (matchedImg && (matchedImg.url || matchedImg.displayUrl || matchedImg.cacheId)) {
+                    const imgKey = matchedImg.cacheId || matchedImg.url || matchedImg.displayUrl;
+                    if (imgKey && seenIdentifiers.has(imgKey)) continue;
+                    if (imgKey) seenIdentifiers.add(imgKey);
+
+                    items.push({
+                        id: `host-prompt-${mesId}-${hpIdx}`,
+                        messageId: mesId,
+                        senderName,
+                        isUser,
+                        timeText: sendDate,
+                        panelIndex: 0,
+                        anchorText: dialogueExcerpt,
+                        sceneText: '',
+                        label: hp.label || '分镜插画',
+                        characters: [senderName],
+                        prompt: hp.prompt,
+                        negative: '',
+                        url: matchedImg.url || matchedImg.displayUrl || '',
+                        displayUrl: matchedImg.displayUrl || matchedImg.url || '',
+                        cacheId: matchedImg.cacheId || '',
+                        imageResult: matchedImg,
+                        isPending: false,
+                        hasGenerateButton: false,
+                        source: 'host-prompt-done',
+                    });
+                } else {
+                    const pendingKey = `pending-host-${mesId}-${hpIdx}-${normP}`;
+                    if (seenIdentifiers.has(pendingKey)) continue;
+                    seenIdentifiers.add(pendingKey);
+
+                    items.push({
+                        id: `host-pending-${mesId}-${hpIdx}`,
+                        messageId: mesId,
+                        senderName,
+                        isUser,
+                        timeText: sendDate,
+                        panelIndex: 0,
+                        anchorText: dialogueExcerpt,
+                        sceneText: '',
+                        label: hp.label || '待生分镜',
+                        characters: [senderName],
+                        prompt: hp.prompt,
+                        negative: '',
+                        url: '',
+                        displayUrl: '',
+                        cacheId: '',
+                        imageResult: null,
+                        isPending: true,
+                        hasGenerateButton: true,
+                        source: 'host-prompt',
+                    });
+                }
+            }
+
+            // 2b: Any unconsumed images in hostExtras
             for (let hIdx = 0; hIdx < hostExtras.length; hIdx++) {
                 const hImg = hostExtras[hIdx];
                 if (!hImg || (!hImg.url && !hImg.displayUrl && !hImg.cacheId)) continue;
+                if (consumedHostExtras.has(hImg)) continue;
                 const imgKey = hImg.cacheId || hImg.url || hImg.displayUrl;
                 if (imgKey && seenIdentifiers.has(imgKey)) continue;
                 if (imgKey) seenIdentifiers.add(imgKey);
 
+                const normH = normalizePromptKey(hImg.prompt);
+                if (normH && seenPromptsInMessage.has(normH)) continue;
+
                 const dialogueExcerpt = cleanDialogueForComic(msgText, 100);
                 items.push({
-                    id: `host-${mesId}-${hIdx}`,
+                    id: `host-img-${mesId}-${hIdx}`,
                     messageId: mesId,
                     senderName,
                     isUser,
@@ -12955,14 +13167,33 @@ SCHEMA:
             }
 
             // 4. Synchronize to corresponding chat card if present in DOM
-            const textContainer = RBQ.api.getMessageTextContainer(item.messageId);
+            const textContainer = (typeof RBQ?.api?.getMessageTextContainer === 'function')
+                ? RBQ.api.getMessageTextContainer(item.messageId)
+                : null;
             if (textContainer instanceof HTMLElement) {
-                const segCard = textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(item.segKey)}"]`) ||
-                                textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(item.baseKey)}"]`);
+                const segCard = (item.segKey ? textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(item.segKey)}"]`) : null) ||
+                                (item.baseKey ? textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(item.baseKey)}"]`) : null);
                 if (segCard) {
                     RBQ.api.renderInlineGeneratedImage(segCard, image);
                     setGenerateButtonState(segCard, true, getRegenLabel(segCard), false);
                     setWrapperStage(segCard, 'generated');
+                } else if (item.source?.startsWith('host-')) {
+                    const hostWrappers = textContainer.querySelectorAll('.st-scene-trigger-inline-wrap:not(.rbq-sdt-card)');
+                    let matchedWrapper = null;
+                    const normItemPrompt = normalizePromptKey(item.prompt);
+                    for (const hw of hostWrappers) {
+                        const hwPrompt = normalizePromptKey(hw.dataset.prompt || hw.querySelector('.st-scene-trigger-inline-raw')?.textContent);
+                        if (hwPrompt && (hwPrompt === normItemPrompt || normItemPrompt.includes(hwPrompt) || hwPrompt.includes(normItemPrompt))) {
+                            matchedWrapper = hw;
+                            break;
+                        }
+                    }
+                    if (!matchedWrapper && hostWrappers.length === 1) {
+                        matchedWrapper = hostWrappers[0];
+                    }
+                    if (matchedWrapper && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
+                        RBQ.api.renderInlineGeneratedImage(matchedWrapper, image);
+                    }
                 }
             }
 

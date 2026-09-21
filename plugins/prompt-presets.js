@@ -37,7 +37,30 @@
         if (mutated) save();
         return store;
     }
-    function save() { RBQ.api.saveSettings(); }
+
+    let renderPresetUi = null;
+
+    function syncToActiveProfile() {
+        try {
+            const activeProfile = RBQ.api.getActiveGlobalProfile?.();
+            if (activeProfile && activeProfile.data && typeof activeProfile.data === 'object') {
+                const store = getStore();
+                activeProfile.data.promptPresetsConfig = {
+                    globalPositivePrefix: store.globalPositivePrefix || '',
+                    globalPositiveSuffix: store.globalPositiveSuffix || '',
+                    globalNegative: store.globalNegative || '',
+                    activeId: store.activeId || '',
+                    position: store.position || 'prepend',
+                };
+                activeProfile.updatedAt = Date.now();
+            }
+        } catch (_e) {}
+    }
+
+    function save() {
+        syncToActiveProfile();
+        RBQ.api.saveSettings();
+    }
     function uid() { return 'pp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
     function getActivePreset() {
         const store = getStore();
@@ -249,6 +272,31 @@
         return payload;
     });
 
+    // ── Global Profile Switch Listener ──
+    RBQ.on('profile:switched', (event) => {
+        const store = getStore();
+        if (event?.profile?.data?.promptPresetsConfig) {
+            const cfg = event.profile.data.promptPresetsConfig;
+            store.globalPositivePrefix = cfg.globalPositivePrefix || '';
+            store.globalPositiveSuffix = cfg.globalPositiveSuffix || '';
+            store.globalNegative = cfg.globalNegative || '';
+            store.activeId = cfg.activeId || '';
+            store.position = cfg.position || 'prepend';
+        }
+        if (typeof renderPresetUi === 'function') {
+            renderPresetUi();
+        }
+        const preset = getActivePreset();
+        try {
+            if (preset) {
+                restorePresetVibesToHost(preset);
+            } else {
+                RBQ.api.setNaiVibes?.([], { source: 'plugin:preset-clear' });
+                RBQ.api.refreshNaiVibeUi?.();
+            }
+        } catch (_e) {}
+    });
+
     // ── Checkbox Dialog ──
     function showCheckboxDialog(title, items, onConfirm) {
         const overlay = document.createElement('div');
@@ -422,17 +470,17 @@
         const negInput = document.getElementById('rbq-pp-negative');
 
         globalPosPreInput?.addEventListener('input', () => {
-            getStore().globalPositivePrefix = globalPosPreInput.value.trim();
+            getStore().globalPositivePrefix = globalPosPreInput.value;
             save();
         });
 
         globalPosSufInput?.addEventListener('input', () => {
-            getStore().globalPositiveSuffix = globalPosSufInput.value.trim();
+            getStore().globalPositiveSuffix = globalPosSufInput.value;
             save();
         });
 
         globalNegInput?.addEventListener('input', () => {
-            getStore().globalNegative = globalNegInput.value.trim();
+            getStore().globalNegative = globalNegInput.value;
             save();
         });
 
@@ -504,6 +552,7 @@
         }
 
         function renderSelect() {
+            renderPresetUi = renderSelect;
             const store = getStore();
             if (globalPosPreInput && document.activeElement !== globalPosPreInput) {
                 globalPosPreInput.value = store.globalPositivePrefix || '';

@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.26';
+    const PLUGIN_VERSION = '6.0.27';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7940,6 +7940,7 @@ SCHEMA:
 
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
         const detail = event?.detail;
         if (!detail) return;
         const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
@@ -7958,6 +7959,10 @@ SCHEMA:
         } else {
             bottomBar.innerHTML = '';
         }
+    });
+
+    window.addEventListener('st-scene-trigger:viewer-closed', () => {
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
     });
 
     function getFinalPrompt(obj) {

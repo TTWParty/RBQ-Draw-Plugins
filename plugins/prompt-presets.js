@@ -221,15 +221,28 @@
 
         for (const key of Object.keys(payload)) {
             const node = payload[key];
-            if (node?.class_type === 'CLIPTextEncode' && node?.inputs?.text !== undefined) {
+            if (!node || !node.inputs) continue;
+
+            // 1. 标准 CLIPTextEncode 节点
+            if (node.class_type === 'CLIPTextEncode' && typeof node.inputs.text === 'string') {
                 const isNeg = Object.values(payload).some(n =>
                     n?.inputs?.negative && Array.isArray(n.inputs.negative) && n.inputs.negative[0] === key
-                );
+                ) || node._meta?.title?.toLowerCase()?.includes('negative') || node._meta?.title?.includes('负面') || node._meta?.title?.includes('反向');
                 if (isNeg && (gNeg || presetNeg)) {
                     node.inputs.text = resolveNegativePrompt(node.inputs.text, presetNeg, gNeg);
                 } else if (!isNeg && (gPre || gSuf || presetPos)) {
                     node.inputs.text = resolvePositivePrompt(node.inputs.text, presetPos, gPre, gSuf, pos);
                 }
+            }
+
+            // 2. 支持 WeiLinPromptUI 及各类第三方自定义节点（具有 positive 文本字段）
+            if (typeof node.inputs.positive === 'string' && (gPre || gSuf || presetPos)) {
+                node.inputs.positive = resolvePositivePrompt(node.inputs.positive, presetPos, gPre, gSuf, pos);
+            }
+
+            // 3. 支持第三方具有 negative 文本字段的节点
+            if (typeof node.inputs.negative === 'string' && (gNeg || presetNeg)) {
+                node.inputs.negative = resolveNegativePrompt(node.inputs.negative, presetNeg, gNeg);
             }
         }
         console.info('[Prompt Presets] ComfyUI workflow modified with presets/global prompts');

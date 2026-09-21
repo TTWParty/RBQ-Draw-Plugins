@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.27';
+    const PLUGIN_VERSION = '6.0.28';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6317,7 +6317,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 99999999 !important;
+            z-index: 2147483647 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
@@ -6588,7 +6588,7 @@ SCHEMA:
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 99999999 !important;
+            z-index: 2147483647 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
@@ -6781,7 +6781,7 @@ SCHEMA:
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 99999999 !important;
+            z-index: 2147483647 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
@@ -7153,7 +7153,7 @@ SCHEMA:
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 99999999 !important;
+            z-index: 2147483647 !important;
             background: rgba(0,0,0,0.8) !important;
             display: flex !important;
             align-items: center !important;
@@ -7559,7 +7559,7 @@ SCHEMA:
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 99999999 !important;
+            z-index: 2147483647 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
@@ -7667,7 +7667,9 @@ SCHEMA:
     }
 
     function openCharCoordDetailModal(characters) {
-        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => {
+            if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
+        });
 
         const overlay = document.createElement('div');
         overlay.className = 'rbq-sdt-coord-modal-overlay';
@@ -7676,7 +7678,7 @@ SCHEMA:
             background: rgba(0,0,0,0.72) !important;
             backdrop-filter: blur(8px) !important;
             -webkit-backdrop-filter: blur(8px) !important;
-            z-index: 10000000 !important;
+            z-index: 2147483647 !important;
             display: flex !important; align-items: center !important; justify-content: center !important;
             padding: 20px !important; box-sizing: border-box !important;
         `;
@@ -7685,10 +7687,27 @@ SCHEMA:
         overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
 
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                closeModal();
+            }
+        };
+
+        const closeModal = () => {
+            window.removeEventListener('keydown', handleKeyDown, true);
+            overlay.remove();
+        };
+        overlay.__rbqCleanup = closeModal;
+        window.addEventListener('keydown', handleKeyDown, true);
+
         let canDismiss = false;
         setTimeout(() => { canDismiss = true; }, 350);
         overlay.addEventListener('click', (e) => {
-            if (canDismiss && e.target === overlay) overlay.remove();
+            e.stopPropagation();
+            if (canDismiss && e.target === overlay) closeModal();
         });
 
         const dialog = document.createElement('div');
@@ -7701,6 +7720,7 @@ SCHEMA:
             box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
             color: #e2e8f0 !important; padding: 18px 20px !important;
             box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 14px !important;
+            max-height: 85vh !important;
         `;
         dialog.addEventListener('click', (e) => e.stopPropagation());
 
@@ -7708,7 +7728,7 @@ SCHEMA:
             const charName = c._rawName || c.name || `角色 #${i + 1}`;
             const center = c.center || 'C3';
             const posName = formatCoordLabel(center);
-            const prompt = c.prompt ? escapeHtml(c.prompt) : '';
+            const prompt = c.prompt || c.caption || [c.action, c.outfit].filter(Boolean).join(' · ') || '';
             return `
                 <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px;">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -7719,7 +7739,7 @@ SCHEMA:
                             机位: ${escapeHtml(center)} (${posName})
                         </span>
                     </div>
-                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.4; word-break: break-word;">${prompt}</div>` : ''}
+                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.4; word-break: break-word;">${escapeHtml(prompt)}</div>` : ''}
                 </div>
             `;
         }).join('');
@@ -7740,7 +7760,7 @@ SCHEMA:
 
         dialog.querySelector('.rbq-sdt-coord-close')?.addEventListener('click', (e) => {
             e.stopPropagation();
-            overlay.remove();
+            closeModal();
         });
 
         overlay.appendChild(dialog);
@@ -7940,7 +7960,9 @@ SCHEMA:
 
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
-        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay, #rbq-sdt-hit-viewer-modal, #rbq-sdt-card-outfit-modal, #rbq-sdt-refiner-modal, #rbq-sdt-manual-tag-modal, #rbq-sdt-tagger-debug-modal').forEach(el => {
+            if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
+        });
         const detail = event?.detail;
         if (!detail) return;
         const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
@@ -7962,7 +7984,9 @@ SCHEMA:
     });
 
     window.addEventListener('st-scene-trigger:viewer-closed', () => {
-        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay, #rbq-sdt-hit-viewer-modal, #rbq-sdt-card-outfit-modal, #rbq-sdt-refiner-modal, #rbq-sdt-manual-tag-modal, #rbq-sdt-tagger-debug-modal').forEach(el => {
+            if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
+        });
     });
 
     function getFinalPrompt(obj) {

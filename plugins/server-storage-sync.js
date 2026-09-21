@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.13';
+    const PLUGIN_VERSION = '1.1.14';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -984,12 +984,12 @@
                 position: fixed !important;
                 inset: 0 !important;
                 z-index: 2147483645 !important;
-                background: rgba(0, 0, 0, 0.72) !important;
+                background: rgba(0, 0, 0, 0.76) !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                backdrop-filter: blur(6px) !important;
-                -webkit-backdrop-filter: blur(6px) !important;
+                backdrop-filter: blur(8px) !important;
+                -webkit-backdrop-filter: blur(8px) !important;
                 padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px) !important;
                 box-sizing: border-box !important;
                 animation: rbqStorageFadeIn 0.15s ease-out !important;
@@ -1002,11 +1002,11 @@
                 background: #161a29 !important;
                 background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
                 border: 1px solid rgba(255, 255, 255, 0.14) !important;
-                border-radius: 14px !important;
+                border-radius: 16px !important;
                 width: 100% !important;
                 max-width: 420px !important;
                 color: #e2e8f0 !important;
-                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
                 display: flex !important;
                 flex-direction: column !important;
                 overflow: hidden !important;
@@ -1017,6 +1017,38 @@
             @keyframes rbqStorageScaleIn {
                 from { opacity: 0; transform: scale(0.95); }
                 to { opacity: 1; transform: scale(1); }
+            }
+            @media (max-width: 900px) {
+                .rbq-storage-modal-overlay {
+                    align-items: flex-end !important;
+                    padding: 0 !important;
+                }
+                .rbq-storage-modal-dialog {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    max-height: 85vh !important;
+                    border-radius: 22px 22px 0 0 !important;
+                    border-bottom: none !important;
+                    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+                    animation: rbqSheetSlideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                }
+                @keyframes rbqSheetSlideUp {
+                    from { transform: translateY(100%); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+                .rbq-storage-modal-handle {
+                    width: 40px;
+                    height: 5px;
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.28);
+                    margin: 10px auto 2px auto;
+                    flex-shrink: 0;
+                }
+            }
+            @media (min-width: 901px) {
+                .rbq-storage-modal-handle {
+                    display: none !important;
+                }
             }
             .rbq-storage-modal-header {
                 padding: 12px 16px !important;
@@ -1387,11 +1419,15 @@
 
         const overlay = document.createElement('div');
         overlay.className = 'rbq-storage-modal-overlay';
+        overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
 
         const dialog = document.createElement('div');
         dialog.className = 'rbq-storage-modal-dialog';
 
         dialog.innerHTML = `
+            <div class="rbq-storage-modal-handle"></div>
             <div class="rbq-storage-modal-header">
                 <div class="rbq-storage-modal-title">
                     <span class="rbq-storage-dot" style="background:${info.color};"></span>

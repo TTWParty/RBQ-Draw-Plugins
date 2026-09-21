@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.10';
+    const PLUGIN_VERSION = '1.1.11';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {

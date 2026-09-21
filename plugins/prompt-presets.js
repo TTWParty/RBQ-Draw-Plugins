@@ -146,6 +146,16 @@
     }
 
     // ── Join Logic ──
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     function combineParts(...parts) {
         return parts
             .map(p => (p || '').trim())
@@ -443,14 +453,48 @@
                 <button id="rbq-pp-batch-delete" class="menu_button" style="font-size:12px; padding:4px 10px; color:#ff4444; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-trash-can"></i> 批量删除</button>
                 <input id="rbq-pp-import-file" type="file" accept=".json" hidden>
             </div>
+
+            <!-- 动态合成实时预览卡片 (替换旧的死板预览) -->
+            <div id="rbq-pp-live-preview-box" style="margin-top:14px; padding:12px; background:var(--linear-surface, rgba(255,255,255,0.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,0.08)); border-radius:10px; display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-size:12.5px; font-weight:700; color:#38bdf8; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fa-solid fa-eye"></i> 最终合成提示词实时预览 (Live Preview)
+                    </span>
+                    <div style="display:flex; gap:6px;">
+                        <button id="rbq-pp-copy-pos-preview" class="menu_button" type="button" style="font-size:11px; padding:2px 8px; border-radius:6px; cursor:pointer;" title="复制正面提示词合成模板">
+                            <i class="fa-regular fa-copy"></i> 复制正面
+                        </button>
+                        <button id="rbq-pp-copy-neg-preview" class="menu_button" type="button" style="font-size:11px; padding:2px 8px; border-radius:6px; cursor:pointer;" title="复制负面提示词合成模板">
+                            <i class="fa-regular fa-copy"></i> 复制负面
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <div style="font-size:11px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:4px;">
+                        <span style="color:#a78bfa; font-weight:600;">[正面提示词]</span> 最终拼接结果 (发给 ComfyUI / NAI)：
+                    </div>
+                    <div id="rbq-pp-preview-positive" style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; color:#e2e8f0; word-break:break-word; max-height:120px; overflow-y:auto; font-family:monospace;"></div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <div style="font-size:11px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:4px;">
+                        <span style="color:#f87171; font-weight:600;">[负面提示词]</span> 最终拼接结果：
+                    </div>
+                    <div id="rbq-pp-preview-negative" style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; color:#cbd5e1; word-break:break-word; max-height:80px; overflow-y:auto; font-family:monospace;"></div>
+                </div>
+            </div>
         `;
 
         const helpBox = panel.querySelector('.st-scene-trigger-help-box');
         if (helpBox) {
             helpBox.parentElement.insertBefore(container, helpBox);
+            helpBox.style.display = 'none';
         } else {
             panel.appendChild(container);
         }
+        const oldPreviewBox = panel.querySelector('.st-scene-trigger-preview-box');
+        if (oldPreviewBox) oldPreviewBox.style.display = 'none';
 
         // CRITICAL: Stop change events from bubbling out of our plugin UI
         // The host modal has a global 'change' listener that calls saveFromModal(),
@@ -469,19 +513,107 @@
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
 
+        function renderLivePreview() {
+            const store = getStore();
+            const preset = getActivePreset();
+            const pos = posSelect?.value || store.position || 'prepend';
+            const gPre = (globalPosPreInput?.value ?? store.globalPositivePrefix ?? '').trim();
+            const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
+            const gNeg = (globalNegInput?.value ?? store.globalNegative ?? '').trim();
+            const presetPos = preset ? (posInput?.value ?? preset.positive ?? '').trim() : '';
+            const presetNeg = preset ? (negInput?.value ?? preset.negative ?? '').trim() : '';
+
+            const posContainer = document.getElementById('rbq-pp-preview-positive');
+            if (posContainer) {
+                const dummyDynamic = '<span style="background:rgba(56,189,248,0.16);color:#38bdf8;border:1px dashed rgba(56,189,248,0.45);border-radius:4px;padding:1px 6px;font-weight:600;display:inline-block;margin:1px 0;">&lt;剧情/分镜生图提示词&gt;</span>';
+                let parts = [];
+                if (gPre) parts.push(`<span style="color:#93c5fd;font-weight:500;" title="全局前缀">${escapeHtml(gPre)}</span>`);
+                if (pos === 'prepend') {
+                    if (presetPos) parts.push(`<span style="color:#c4b5fd;font-weight:500;" title="当前预设正面词 (前置)">${escapeHtml(presetPos)}</span>`);
+                    parts.push(dummyDynamic);
+                } else {
+                    parts.push(dummyDynamic);
+                    if (presetPos) parts.push(`<span style="color:#c4b5fd;font-weight:500;" title="当前预设正面词 (后置)">${escapeHtml(presetPos)}</span>`);
+                }
+                if (gSuf) parts.push(`<span style="color:#fbcfe8;font-weight:500;" title="全局后缀">${escapeHtml(gSuf)}</span>`);
+                posContainer.innerHTML = parts.join('<span style="color:rgba(255,255,255,0.4);margin:0 4px;font-weight:bold;">, </span>');
+            }
+
+            const negContainer = document.getElementById('rbq-pp-preview-negative');
+            if (negContainer) {
+                let negParts = [];
+                if (gNeg) negParts.push(`<span style="color:#fca5a5;font-weight:500;" title="全局负面词">${escapeHtml(gNeg)}</span>`);
+                if (presetNeg) negParts.push(`<span style="color:#fdba74;font-weight:500;" title="当前预设负面词">${escapeHtml(presetNeg)}</span>`);
+                negContainer.innerHTML = negParts.length
+                    ? negParts.join('<span style="color:rgba(255,255,255,0.4);margin:0 4px;font-weight:bold;">, </span>')
+                    : '<span style="color:rgba(255,255,255,0.3);font-style:italic;">(未设置负面提示词)</span>';
+            }
+        }
+
         globalPosPreInput?.addEventListener('input', () => {
             getStore().globalPositivePrefix = globalPosPreInput.value;
             save();
+            renderLivePreview();
         });
 
         globalPosSufInput?.addEventListener('input', () => {
             getStore().globalPositiveSuffix = globalPosSufInput.value;
             save();
+            renderLivePreview();
         });
 
         globalNegInput?.addEventListener('input', () => {
             getStore().globalNegative = globalNegInput.value;
             save();
+            renderLivePreview();
+        });
+
+        posInput?.addEventListener('input', () => {
+            renderLivePreview();
+        });
+
+        negInput?.addEventListener('input', () => {
+            renderLivePreview();
+        });
+
+        document.getElementById('rbq-pp-copy-pos-preview')?.addEventListener('click', () => {
+            const store = getStore();
+            const preset = getActivePreset();
+            const pos = posSelect?.value || store.position || 'prepend';
+            const gPre = (globalPosPreInput?.value ?? store.globalPositivePrefix ?? '').trim();
+            const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
+            const presetPos = preset ? (posInput?.value ?? preset.positive ?? '').trim() : '';
+            const assembled = resolvePositivePrompt('{prompt}', presetPos, gPre, gSuf, pos);
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(assembled).then(() => {
+                    toastr.success('已复制正面合成模板: ' + assembled);
+                }).catch(() => {
+                    toastr.info('请手动复制: ' + assembled);
+                });
+            } else {
+                toastr.info('请手动复制: ' + assembled);
+            }
+        });
+
+        document.getElementById('rbq-pp-copy-neg-preview')?.addEventListener('click', () => {
+            const store = getStore();
+            const preset = getActivePreset();
+            const gNeg = (globalNegInput?.value ?? store.globalNegative ?? '').trim();
+            const presetNeg = preset ? (negInput?.value ?? preset.negative ?? '').trim() : '';
+            const assembled = resolveNegativePrompt('', presetNeg, gNeg);
+            if (!assembled) {
+                toastr.warning('当前无负面提示词');
+                return;
+            }
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(assembled).then(() => {
+                    toastr.success('已复制负面合成结果: ' + assembled);
+                }).catch(() => {
+                    toastr.info('请手动复制: ' + assembled);
+                });
+            } else {
+                toastr.info('请手动复制: ' + assembled);
+            }
         });
 
         function applyPresetSelection(nextId) {
@@ -575,6 +707,7 @@
             posSelect.value = store.position || 'prepend';
             loadEditor();
             syncFloatingMenu();
+            renderLivePreview();
         }
 
         function loadEditor() {
@@ -590,6 +723,7 @@
                 negInput.value = '';
                 editor.style.display = 'none';
             }
+            renderLivePreview();
         }
 
         select.addEventListener('change', () => {
@@ -599,6 +733,7 @@
         posSelect.addEventListener('change', () => {
             getStore().position = posSelect.value;
             save();
+            renderLivePreview();
         });
 
         floatingCheckbox.addEventListener('change', () => {
@@ -797,15 +932,24 @@
                 if (el.closest('label')) el.closest('label').style.display = 'none';
             }
         });
+
+        // Hide legacy static prompt preview and syntax help boxes
+        const helpBox = document.querySelector('.st-scene-trigger-help-box');
+        if (helpBox) helpBox.style.display = 'none';
+        const oldPreviewBox = document.querySelector('.st-scene-trigger-preview-box');
+        if (oldPreviewBox) oldPreviewBox.style.display = 'none';
     }
 
     // Run on load and re-run periodically (in case modal reopens and syncUi refills hidden inputs)
     neutralizeBuiltinFields();
     setInterval(() => {
         const el = document.getElementById('st-scene-trigger-modal-prefix');
-        if (!el) return;
-        // Re-neutralize if label became visible again OR if syncUi refilled the hidden input
-        if (el.closest('label')?.style.display !== 'none' || el.value) neutralizeBuiltinFields();
+        const oldPreviewBox = document.querySelector('.st-scene-trigger-preview-box');
+        if (!el && !oldPreviewBox) return;
+        // Re-neutralize if label became visible again OR if syncUi refilled the hidden input OR old preview appeared
+        if (el?.closest('label')?.style.display !== 'none' || el?.value || (oldPreviewBox && oldPreviewBox.style.display !== 'none')) {
+            neutralizeBuiltinFields();
+        }
     }, 2000);
 
     console.info('📋 Prompt Presets plugin loaded');

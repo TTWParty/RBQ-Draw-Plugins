@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.12';
+    const PLUGIN_VERSION = '1.1.13';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -921,22 +921,17 @@
         const style = document.createElement('style');
         style.id = 'rbq-gallery-sync-style';
         style.textContent = `
-            .rbq-storage-badge-wrap {
-                display: inline-flex;
-                align-items: center;
-                position: relative;
-                margin-right: 4px;
-                flex-shrink: 0;
-            }
             .rbq-storage-badge-btn {
                 position: relative !important;
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                width: 32px !important;
-                height: 32px !important;
+                width: 38px !important;
+                height: 38px !important;
+                min-width: 38px !important;
                 padding: 0 !important;
-                border-radius: 50% !important;
+                margin: 0 !important;
+                border-radius: 10px !important;
                 background: rgba(18, 20, 30, 0.72) !important;
                 backdrop-filter: blur(12px) !important;
                 -webkit-backdrop-filter: blur(12px) !important;
@@ -952,7 +947,14 @@
                 user-select: none !important;
                 -webkit-user-select: none !important;
             }
-            /* 移动端 44px 隐式触控热区，极大降低手指误触难度 */
+            @media (max-width: 900px) {
+                .rbq-storage-badge-btn {
+                    width: 32px !important;
+                    min-width: 32px !important;
+                    height: 32px !important;
+                    border-radius: 8px !important;
+                }
+            }
             .rbq-storage-badge-btn::before {
                 content: '';
                 position: absolute;
@@ -969,78 +971,113 @@
                 transform: translateY(-1px);
             }
             .rbq-storage-dot {
-                width: 8px;
-                height: 8px;
+                width: 9px;
+                height: 9px;
                 border-radius: 50%;
                 display: inline-block;
                 flex-shrink: 0;
-                box-shadow: 0 0 8px currentColor;
+                box-shadow: 0 0 10px currentColor;
                 pointer-events: none;
                 transition: background-color 0.25s ease;
             }
-            .rbq-storage-popover {
+            .rbq-storage-modal-overlay {
                 position: fixed !important;
-                z-index: 1000050 !important;
-                display: none;
-                flex-direction: column;
-                gap: 10px;
-                color: #e2e8f0;
-                font-family: inherit;
-                box-sizing: border-box;
-                background: rgba(15, 18, 28, 0.96);
-                backdrop-filter: blur(20px);
-                -webkit-backdrop-filter: blur(20px);
-                border: 1px solid rgba(255, 255, 255, 0.14);
-                border-radius: 14px;
-                padding: 14px 16px;
-                box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
-                animation: rbqPopoverIn 0.15s ease-out;
+                inset: 0 !important;
+                z-index: 2147483645 !important;
+                background: rgba(0, 0, 0, 0.72) !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                backdrop-filter: blur(6px) !important;
+                -webkit-backdrop-filter: blur(6px) !important;
+                padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px) !important;
+                box-sizing: border-box !important;
+                animation: rbqStorageFadeIn 0.15s ease-out !important;
             }
-            @media (min-width: 901px) {
-                .rbq-storage-popover {
-                    width: 320px;
-                }
-            }
-            @media (max-width: 900px) {
-                .rbq-storage-popover {
-                    top: 50% !important;
-                    left: 50% !important;
-                    right: auto !important;
-                    bottom: auto !important;
-                    transform: translate(-50%, -50%) !important;
-                    width: calc(100vw - 32px) !important;
-                    max-width: 340px !important;
-                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
-                }
-            }
-            @keyframes rbqPopoverIn {
+            @keyframes rbqStorageFadeIn {
                 from { opacity: 0; }
                 to { opacity: 1; }
             }
-            .rbq-storage-popover.open {
+            .rbq-storage-modal-dialog {
+                background: #161a29 !important;
+                background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
+                border: 1px solid rgba(255, 255, 255, 0.14) !important;
+                border-radius: 14px !important;
+                width: 100% !important;
+                max-width: 420px !important;
+                color: #e2e8f0 !important;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
                 display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                pointer-events: auto !important;
+                animation: rbqStorageScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                box-sizing: border-box !important;
             }
-            .rbq-storage-popover-title {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                font-size: 13px;
-                font-weight: 600;
-                color: #f8fafc;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                padding-bottom: 8px;
+            @keyframes rbqStorageScaleIn {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+            }
+            .rbq-storage-modal-header {
+                padding: 12px 16px !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                background: rgba(255, 255, 255, 0.02) !important;
+                flex-shrink: 0 !important;
+            }
+            .rbq-storage-modal-title {
+                font-weight: 600 !important;
+                font-size: 14px !important;
+                color: #f8fafc !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }
+            .rbq-storage-modal-close {
+                width: 32px !important;
+                height: 32px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                background: transparent !important;
+                border: none !important;
+                color: #94a3b8 !important;
+                cursor: pointer !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                transition: all 0.15s ease !important;
+                padding: 0 !important;
+            }
+            .rbq-storage-modal-close:hover {
+                background: rgba(255, 255, 255, 0.08) !important;
+                color: #fff !important;
+            }
+            .rbq-storage-modal-body {
+                padding: 16px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 12px !important;
+                overflow-y: auto !important;
+                max-height: calc(min(100dvh, 100vh) - 100px) !important;
+                box-sizing: border-box !important;
             }
             .rbq-storage-info-list {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
-                font-size: 12px;
+                gap: 8px;
+                font-size: 12.5px;
             }
             .rbq-storage-info-row {
                 display: flex;
                 align-items: flex-start;
                 justify-content: space-between;
                 gap: 10px;
+                padding: 6px 10px;
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.04);
             }
             .rbq-storage-info-label {
                 color: #94a3b8;
@@ -1055,45 +1092,48 @@
             .rbq-storage-path-box {
                 background: rgba(0, 0, 0, 0.35);
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 6px;
-                padding: 6px 8px;
+                border-radius: 8px;
+                padding: 8px 10px;
                 font-size: 11px;
                 font-family: ui-monospace, monospace;
                 color: #38bdf8;
-                max-height: 52px;
+                max-height: 60px;
                 overflow-y: auto;
                 word-break: break-all;
+                user-select: text;
+                -webkit-user-select: text;
             }
             .rbq-storage-actions {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 8px;
                 margin-top: 4px;
                 border-top: 1px solid rgba(255, 255, 255, 0.08);
-                padding-top: 8px;
+                padding-top: 12px;
             }
             .rbq-storage-action-btn {
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                gap: 6px !important;
+                gap: 8px !important;
                 width: 100% !important;
-                height: 30px !important;
-                border-radius: 8px !important;
-                font-size: 12px !important;
-                font-weight: 500 !important;
+                height: 36px !important;
+                border-radius: 10px !important;
+                font-size: 12.5px !important;
+                font-weight: 600 !important;
                 cursor: pointer !important;
                 transition: all 0.16s ease !important;
                 box-sizing: border-box !important;
             }
             .rbq-storage-btn-sync {
-                background: rgba(56, 189, 248, 0.16) !important;
-                border: 1px solid rgba(56, 189, 248, 0.35) !important;
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.18)) !important;
+                border: 1px solid rgba(56, 189, 248, 0.4) !important;
                 color: #38bdf8 !important;
             }
             .rbq-storage-btn-sync:hover {
-                background: rgba(56, 189, 248, 0.28) !important;
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(99, 102, 241, 0.28)) !important;
                 border-color: #38bdf8 !important;
+                transform: translateY(-1px);
             }
             .rbq-storage-btn-copy {
                 background: rgba(255, 255, 255, 0.06) !important;
@@ -1102,6 +1142,7 @@
             }
             .rbq-storage-btn-copy:hover {
                 background: rgba(255, 255, 255, 0.12) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
             }
 
             /* ── 设置面板现代化样式 ── */
@@ -1338,6 +1379,160 @@
         document.head.appendChild(style);
     }
 
+    function showStorageModal(current, info) {
+        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+
+        const sizeStr = info?.blobSize ? formatBytes(info.blobSize) : (current?.url ? '云端流媒体' : '未知');
+        const dimStr = (current?.width && current?.height) ? `${current.width} × ${current.height}` : '自适应';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'rbq-storage-modal-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'rbq-storage-modal-dialog';
+
+        dialog.innerHTML = `
+            <div class="rbq-storage-modal-header">
+                <div class="rbq-storage-modal-title">
+                    <span class="rbq-storage-dot" style="background:${info.color};"></span>
+                    <span>${escapeHtml(info.text)}</span>
+                </div>
+                <button class="rbq-storage-modal-close" type="button" title="关闭">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="rbq-storage-modal-body">
+                <div class="rbq-storage-info-list">
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">存储归属</span>
+                        <span class="rbq-storage-info-val" style="color:${info.color};font-weight:600;">${escapeHtml(info.title)}</span>
+                    </div>
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">规格尺寸</span>
+                        <span class="rbq-storage-info-val">${escapeHtml(dimStr)} (${escapeHtml(sizeStr)})</span>
+                    </div>
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">多端状态</span>
+                        <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (current.pendingOriginalUpload ? '⭐ 已收藏 (切回生成端自动补传)' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用'))}</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px;">
+                        <span class="rbq-storage-info-label">物理路径 / URL：</span>
+                        <div class="rbq-storage-path-box">${escapeHtml(info.path || '(内存链接)')}</div>
+                    </div>
+                </div>
+                <div class="rbq-storage-actions">
+                    ${info.canSync ? `
+                        <button id="rbq-action-manual-sync" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" type="button">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> ${info.type === 'preview' ? '上传高清原画至酒馆' : '一键同步至酒馆服务端'}
+                        </button>
+                    ` : ''}
+                    <button id="rbq-action-copy-path" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
+                        <i class="fa-solid fa-copy"></i> 复制物理路径 / 链接
+                    </button>
+                    <button id="rbq-action-open-settings" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
+                        <i class="fa-solid fa-sliders"></i> 打开云同步设置
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const closeModal = () => {
+            overlay.remove();
+        };
+
+        const closeBtn = dialog.querySelector('.rbq-storage-modal-close');
+        if (closeBtn) closeBtn.onclick = closeModal;
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+
+        // 绑定手动同步按钮
+        const syncBtn = dialog.querySelector('#rbq-action-manual-sync');
+        if (syncBtn) {
+            syncBtn.onclick = async (e) => {
+                e.stopPropagation();
+                syncBtn.disabled = true;
+                syncBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在上传服务端...';
+
+                try {
+                    let blobToSync = null;
+                    if (current.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
+                        const rec = await RBQ.api.getCachedImageRecord(current.cacheId);
+                        if (rec?.blob instanceof Blob) blobToSync = rec.blob;
+                    }
+                    if (!blobToSync && current.displayUrl) {
+                        const res = await fetch(current.displayUrl);
+                        if (res.ok) blobToSync = await res.blob();
+                    }
+                    if (!blobToSync && current.url) {
+                        const res = await fetch(current.url);
+                        if (res.ok) blobToSync = await res.blob();
+                    }
+
+                    if (!blobToSync) throw new Error('无法读取图片原始数据');
+
+                    const mode = current.mode || 'rbq';
+                    const now = Date.now();
+                    let ext = 'png';
+                    if (blobToSync.type === 'image/jpeg' || blobToSync.type === 'image/jpg') ext = 'jpg';
+                    else if (blobToSync.type === 'image/webp') ext = 'webp';
+
+                    const filename = `rbq_${mode}_manual_${now}.${ext}`;
+                    const path = await uploadBlobToServer(blobToSync, filename);
+
+                    await applySyncedPathToAllRecords(current, path, true);
+
+                    // 双轨保障：同时确保轻量预览图存在
+                    if (!current.serverPreviewUrl) {
+                        const previewFilename = `rbq_${mode}_manual_${now}_preview.webp`;
+                        const previewBlob = await createOptimizedWebpBlob(blobToSync, 768, 0.8);
+                        if (previewBlob) {
+                            const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
+                            if (previewPath) {
+                                await applySyncedPathToAllRecords(current, previewPath, false);
+                            }
+                        }
+                    }
+
+                    toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
+                    closeModal();
+                    updateViewerBadge({ modal: document.getElementById('st-scene-trigger-image-viewer'), current });
+                } catch (syncErr) {
+                    toastr.error(`同步失败: ${syncErr.message || syncErr}`, PLUGIN_NAME);
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 重试同步';
+                }
+            };
+        }
+
+        // 复制路径
+        dialog.querySelector('#rbq-action-copy-path')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const textToCopy = info.path || current.url || '';
+            if (!textToCopy) return toastr.warning('没有可复制的有效路径', PLUGIN_NAME);
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                toastr.success('路径已成功复制到剪贴板', PLUGIN_NAME);
+            }).catch(() => {
+                toastr.info(textToCopy, '路径复制');
+            });
+        });
+
+        // 打开设置
+        dialog.querySelector('#rbq-action-open-settings')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeModal();
+            const drawerBtn = document.getElementById('st-scene-trigger-open-from-drawer');
+            if (drawerBtn) drawerBtn.click();
+            setTimeout(() => {
+                document.querySelector('[data-kite-tab="rbq-gallery-sync"]')?.click();
+            }, 150);
+        });
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+    }
+
     async function updateViewerBadge(detail) {
         const store = getStore();
         if (!store.enableViewerBadge) return;
@@ -1354,232 +1549,45 @@
 
         injectStyles();
 
-        let wrap = actions.querySelector('#rbq-storage-badge-wrap');
-        if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.id = 'rbq-storage-badge-wrap';
-            wrap.className = 'rbq-storage-badge-wrap';
+        // 移除旧版遗留的 popover 与 wrapper 节点
+        modal.querySelector('#rbq-storage-popover')?.remove();
+        document.getElementById('rbq-storage-popover')?.remove();
+        modal.querySelector('#rbq-storage-badge-wrap')?.remove();
 
-            wrap.innerHTML = `
-                <button id="rbq-storage-badge-btn" class="rbq-storage-badge-btn menu_button" type="button" title="点击查阅存储归属与云端同步详情">
-                    <span id="rbq-storage-dot" class="rbq-storage-dot" style="background:#94a3b8;"></span>
-                </button>
-            `;
+        let badgeBtn = actions.querySelector('#rbq-storage-badge-btn');
+        if (!badgeBtn) {
+            badgeBtn = document.createElement('button');
+            badgeBtn.id = 'rbq-storage-badge-btn';
+            badgeBtn.className = 'rbq-storage-badge-btn menu_button st-scene-trigger-icon-button';
+            badgeBtn.type = 'button';
+            badgeBtn.title = '查阅图片存储归属与云端同步详情';
+            badgeBtn.innerHTML = '<span id="rbq-storage-dot" class="rbq-storage-dot" style="background:#94a3b8;"></span>';
 
             // 挂在缩放倍率按钮前面
             const zoomPill = actions.querySelector('.st-scene-trigger-viewer-zoom-pill');
             if (zoomPill) {
-                actions.insertBefore(wrap, zoomPill);
+                actions.insertBefore(badgeBtn, zoomPill);
             } else {
-                actions.prepend(wrap);
+                actions.prepend(badgeBtn);
             }
+
+            badgeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            badgeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
         }
 
-        // 弹窗直接挂载至 viewer 根节点，由全局点击外部事件负责关闭（无需阻断事件的 backdrop 遮罩）
-        let popover = modal.querySelector('#rbq-storage-popover');
-        if (!popover) {
-            popover = document.createElement('div');
-            popover.id = 'rbq-storage-popover';
-            popover.className = 'rbq-storage-popover';
-            modal.appendChild(popover);
-        }
-
-        const badgeBtn = wrap.querySelector('#rbq-storage-badge-btn');
-        const dot = wrap.querySelector('#rbq-storage-dot');
-
-        const positionPopover = () => {
-            if (window.innerWidth > 900 && badgeBtn) {
-                const rect = badgeBtn.getBoundingClientRect();
-                popover.style.top = `${rect.bottom + 8}px`;
-                popover.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
-                popover.style.left = 'auto';
-                popover.style.bottom = 'auto';
-                popover.style.transform = 'none';
-            } else {
-                popover.style.top = '';
-                popover.style.right = '';
-                popover.style.left = '';
-                popover.style.bottom = '';
-                popover.style.transform = '';
-            }
-        };
-
-        const closePopover = (e) => {
-            if (e) e.stopPropagation();
-            popover.classList.remove('open');
-        };
-
-        const openPopover = () => {
-            positionPopover();
-            popover.classList.add('open');
-        };
-
-        const togglePopover = (e) => {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            if (popover.classList.contains('open')) {
-                closePopover(e);
-            } else {
-                openPopover();
-            }
-        };
-
-        if (badgeBtn) {
-            badgeBtn.onclick = togglePopover;
-        }
-
-        // 全局单次监听点击外部区域关闭弹窗
-        if (!window.__rbqStorageOutsideClickBound) {
-            window.__rbqStorageOutsideClickBound = true;
-            document.addEventListener('click', (e) => {
-                const pop = document.getElementById('rbq-storage-popover');
-                const btn = document.getElementById('rbq-storage-badge-btn');
-                if (pop && pop.classList.contains('open')) {
-                    if (pop.contains(e.target) || btn?.contains(e.target)) return;
-                    pop.classList.remove('open');
-                }
-            });
-        }
+        const dot = badgeBtn.querySelector('#rbq-storage-dot');
 
         // 检测存储物理归属
         const info = await inspectImageStorage(current);
 
         if (dot) dot.style.background = info.color;
-        if (badgeBtn) badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
+        badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
 
-        const sizeStr = info.blobSize ? formatBytes(info.blobSize) : (current.url ? '云端流媒体' : '未知');
-        const dimStr = (current.width && current.height) ? `${current.width} × ${current.height}` : '自适应';
-
-        popover.innerHTML = `
-            <div class="rbq-storage-popover-title">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <span class="rbq-storage-dot" style="background:${info.color};"></span>
-                    <span style="font-weight:600;color:#f8fafc;">${info.text}</span>
-                </div>
-                <button id="rbq-popover-close-btn" type="button" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:15px;padding:2px 6px;line-height:1;" title="关闭">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div class="rbq-storage-info-list">
-                <div class="rbq-storage-info-row">
-                    <span class="rbq-storage-info-label">存储归属：</span>
-                    <span class="rbq-storage-info-val" style="color:${info.color};font-weight:600;">${info.title}</span>
-                </div>
-                <div class="rbq-storage-info-row">
-                    <span class="rbq-storage-info-label">规格尺寸：</span>
-                    <span class="rbq-storage-info-val">${dimStr} (${sizeStr})</span>
-                </div>
-                <div class="rbq-storage-info-row">
-                    <span class="rbq-storage-info-label">多端状态：</span>
-                    <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (current.pendingOriginalUpload ? '⭐ 已收藏 (切回生成端自动补传)' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用'))}</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;">
-                    <span class="rbq-storage-info-label">物理路径 / URL：</span>
-                    <div class="rbq-storage-path-box">${escapeHtml(info.path || '(内存链接)')}</div>
-                </div>
-            </div>
-            <div class="rbq-storage-actions">
-                ${info.canSync ? `
-                    <button id="rbq-action-manual-sync" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" type="button">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> ${info.type === 'preview' ? '上传高清原画至酒馆' : '一键同步至酒馆服务端'}
-                    </button>
-                ` : ''}
-                <button id="rbq-action-copy-path" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
-                    <i class="fa-solid fa-copy"></i> 复制物理路径 / 链接
-                </button>
-                <button id="rbq-action-open-settings" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
-                    <i class="fa-solid fa-sliders"></i> 打开云同步设置
-                </button>
-            </div>
-        `;
-
-        // 绑定关闭按钮
-        const closeBtn = popover.querySelector('#rbq-popover-close-btn');
-        if (closeBtn) {
-            closeBtn.onclick = closePopover;
-            closeBtn.ontouchend = null;
-        }
-
-        // 绑定弹窗内操作按钮
-        popover.querySelector('#rbq-action-manual-sync')?.addEventListener('click', async (e) => {
+        badgeBtn.onclick = (e) => {
+            e.preventDefault();
             e.stopPropagation();
-            const syncBtn = e.currentTarget;
-            syncBtn.disabled = true;
-            syncBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在上传服务端...';
-
-            try {
-                let blobToSync = null;
-                if (current.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
-                    const rec = await RBQ.api.getCachedImageRecord(current.cacheId);
-                    if (rec?.blob instanceof Blob) blobToSync = rec.blob;
-                }
-                if (!blobToSync && current.displayUrl) {
-                    const res = await fetch(current.displayUrl);
-                    if (res.ok) blobToSync = await res.blob();
-                }
-                if (!blobToSync && current.url) {
-                    const res = await fetch(current.url);
-                    if (res.ok) blobToSync = await res.blob();
-                }
-
-                if (!blobToSync) throw new Error('无法读取图片原始数据');
-
-                const mode = current.mode || 'rbq';
-                const now = Date.now();
-                let ext = 'png';
-                if (blobToSync.type === 'image/jpeg' || blobToSync.type === 'image/jpg') ext = 'jpg';
-                else if (blobToSync.type === 'image/webp') ext = 'webp';
-
-                const filename = `rbq_${mode}_manual_${now}.${ext}`;
-                const path = await uploadBlobToServer(blobToSync, filename);
-
-                await applySyncedPathToAllRecords(current, path, true);
-
-                // 双轨保障：同时确保轻量预览图存在
-                if (!current.serverPreviewUrl) {
-                    const previewFilename = `rbq_${mode}_manual_${now}_preview.webp`;
-                    const previewBlob = await createOptimizedWebpBlob(blobToSync, 768, 0.8);
-                    if (previewBlob) {
-                        const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
-                        if (previewPath) {
-                            await applySyncedPathToAllRecords(current, previewPath, false);
-                        }
-                    }
-                }
-
-                toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
-                closePopover();
-                updateViewerBadge({ modal, current });
-            } catch (syncErr) {
-                toastr.error(`同步失败: ${syncErr.message || syncErr}`, PLUGIN_NAME);
-                syncBtn.disabled = false;
-                syncBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 重试同步';
-            }
-        });
-
-        popover.querySelector('#rbq-action-copy-path')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const textToCopy = info.path || current.url || '';
-            if (!textToCopy) return toastr.warning('没有可复制的有效路径', PLUGIN_NAME);
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                toastr.success('路径已成功复制到剪贴板', PLUGIN_NAME);
-            }).catch(() => {
-                toastr.info(textToCopy, '路径复制');
-            });
-        });
-
-        popover.querySelector('#rbq-action-open-settings')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            closePopover();
-            // 打开主控制台并切到该设置页
-            const drawerBtn = document.getElementById('st-scene-trigger-open-from-drawer');
-            if (drawerBtn) drawerBtn.click();
-            setTimeout(() => {
-                document.querySelector('[data-kite-tab="rbq-gallery-sync"]')?.click();
-            }, 150);
-        });
+            showStorageModal(current, info);
+        };
     }
 
     function escapeHtml(str) {
@@ -1591,7 +1599,8 @@
     });
 
     window.addEventListener('st-scene-trigger:viewer-closed', () => {
-        document.getElementById('rbq-storage-popover')?.classList.remove('open');
+        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+        document.getElementById('rbq-storage-popover')?.remove();
     });
 
     async function batchSyncAllFavorites() {
@@ -1910,7 +1919,10 @@
     if (typeof RBQ?.registerPluginCleanup === 'function') {
         RBQ.registerPluginCleanup(PLUGIN_ID, () => {
             document.getElementById('rbq-gallery-sync-style')?.remove();
+            document.getElementById('rbq-storage-badge-btn')?.remove();
             document.getElementById('rbq-storage-badge-wrap')?.remove();
+            document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+            document.getElementById('rbq-storage-popover')?.remove();
             RBQ.ui.removeSettingPanel('rbq-gallery-sync');
         });
     }

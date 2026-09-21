@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.25';
+    const PLUGIN_VERSION = '6.0.26';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7845,19 +7845,22 @@ SCHEMA:
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
         const detail = event?.detail;
-        if (!detail || !detail.bottomBar) return;
+        if (!detail) return;
+        const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
+        const bottomBar = detail.bottomBar || modal?.querySelector('.st-scene-trigger-viewer-bottom-bar') || document.querySelector('.st-scene-trigger-viewer-bottom-bar');
+        if (!bottomBar) return;
         const current = detail.current;
         if (!current) {
-            detail.bottomBar.innerHTML = '';
+            bottomBar.innerHTML = '';
             return;
         }
 
         const segData = findSegmentDataForViewer(current);
         if (segData && segData.segResult) {
-            renderViewerBottomBar(detail.bottomBar, segData.segResult, segData.wrapper, current, detail.modal);
-            detail.bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
+            renderViewerBottomBar(bottomBar, segData.segResult, segData.wrapper, current, modal);
+            bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
         } else {
-            detail.bottomBar.innerHTML = '';
+            bottomBar.innerHTML = '';
         }
     });
 

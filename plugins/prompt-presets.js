@@ -292,6 +292,13 @@
             store.globalNegative = cfg.globalNegative || '';
             store.activeId = cfg.activeId || '';
             store.position = cfg.position || 'prepend';
+        } else {
+            const hostStore = RBQ.api.getSettings?.()?.['_promptPresets'];
+            store.globalPositivePrefix = hostStore?.globalPositivePrefix || '';
+            store.globalPositiveSuffix = hostStore?.globalPositiveSuffix || '';
+            store.globalNegative = hostStore?.globalNegative || '';
+            store.activeId = hostStore?.activeId || '';
+            store.position = hostStore?.position || 'prepend';
         }
         if (typeof renderPresetUi === 'function') {
             renderPresetUi();
@@ -686,13 +693,13 @@
         function renderSelect() {
             renderPresetUi = renderSelect;
             const store = getStore();
-            if (globalPosPreInput && document.activeElement !== globalPosPreInput) {
+            if (globalPosPreInput) {
                 globalPosPreInput.value = store.globalPositivePrefix || '';
             }
-            if (globalPosSufInput && document.activeElement !== globalPosSufInput) {
+            if (globalPosSufInput) {
                 globalPosSufInput.value = store.globalPositiveSuffix || '';
             }
-            if (globalNegInput && document.activeElement !== globalNegInput) {
+            if (globalNegInput) {
                 globalNegInput.value = store.globalNegative || '';
             }
             floatingCheckbox.checked = !!store.showFloating;

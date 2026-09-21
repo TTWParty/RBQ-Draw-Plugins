@@ -7711,15 +7711,6 @@ SCHEMA:
 
         bottomBar.innerHTML = badges.join('');
 
-        // 阻止底栏内所有触摸事件冒泡到 shell，防止 iOS 手势识别器把按钮点击误判为滑动
-        if (!bottomBar._rbqTouchStartBlocked) {
-            bottomBar._rbqTouchStartBlocked = true;
-            bottomBar.addEventListener('touchstart', (e) => {
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-            }, { passive: true });
-        }
-
         bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
@@ -7855,19 +7846,9 @@ SCHEMA:
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
         const detail = event?.detail;
         if (!detail) return;
-
-        // detail.bottomBar 不在 renderViewer() 的事件 payload 里，需要从 DOM 自行查找
         const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
-        if (!modal) return;
-
-        let bottomBar = detail.bottomBar || modal.querySelector('.st-scene-trigger-viewer-bottom-bar');
-        if (!bottomBar) {
-            const shell = modal.querySelector('.st-scene-trigger-image-viewer-shell') || modal;
-            bottomBar = document.createElement('div');
-            bottomBar.className = 'st-scene-trigger-viewer-bottom-bar';
-            shell.appendChild(bottomBar);
-        }
-
+        const bottomBar = detail.bottomBar || modal?.querySelector('.st-scene-trigger-viewer-bottom-bar') || document.querySelector('.st-scene-trigger-viewer-bottom-bar');
+        if (!bottomBar) return;
         const current = detail.current;
         if (!current) {
             bottomBar.innerHTML = '';

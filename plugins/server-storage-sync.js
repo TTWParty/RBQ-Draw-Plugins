@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.10';
+    const PLUGIN_VERSION = '1.1.13';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -921,22 +921,17 @@
         const style = document.createElement('style');
         style.id = 'rbq-gallery-sync-style';
         style.textContent = `
-            .rbq-storage-badge-wrap {
-                display: inline-flex;
-                align-items: center;
-                position: relative;
-                margin-right: 4px;
-                flex-shrink: 0;
-            }
             .rbq-storage-badge-btn {
                 position: relative !important;
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                width: 32px !important;
-                height: 32px !important;
+                width: 38px !important;
+                height: 38px !important;
+                min-width: 38px !important;
                 padding: 0 !important;
-                border-radius: 50% !important;
+                margin: 0 !important;
+                border-radius: 10px !important;
                 background: rgba(18, 20, 30, 0.72) !important;
                 backdrop-filter: blur(12px) !important;
                 -webkit-backdrop-filter: blur(12px) !important;
@@ -952,7 +947,14 @@
                 user-select: none !important;
                 -webkit-user-select: none !important;
             }
-            /* 移动端 44px 隐式触控热区，极大降低手指误触难度 */
+            @media (max-width: 900px) {
+                .rbq-storage-badge-btn {
+                    width: 32px !important;
+                    min-width: 32px !important;
+                    height: 32px !important;
+                    border-radius: 8px !important;
+                }
+            }
             .rbq-storage-badge-btn::before {
                 content: '';
                 position: absolute;
@@ -969,89 +971,113 @@
                 transform: translateY(-1px);
             }
             .rbq-storage-dot {
-                width: 8px;
-                height: 8px;
+                width: 9px;
+                height: 9px;
                 border-radius: 50%;
                 display: inline-block;
                 flex-shrink: 0;
-                box-shadow: 0 0 8px currentColor;
+                box-shadow: 0 0 10px currentColor;
                 pointer-events: none;
                 transition: background-color 0.25s ease;
             }
-            .rbq-storage-backdrop {
-                display: none;
-                position: fixed;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.45);
-                backdrop-filter: blur(2px);
-                -webkit-backdrop-filter: blur(2px);
-                z-index: 1000045 !important;
-            }
-            .rbq-storage-backdrop.open {
-                display: block !important;
-            }
-            .rbq-storage-popover {
+            .rbq-storage-modal-overlay {
                 position: fixed !important;
-                z-index: 1000050 !important;
-                display: none;
-                flex-direction: column;
-                gap: 10px;
-                color: #e2e8f0;
-                font-family: inherit;
-                box-sizing: border-box;
-                background: rgba(15, 18, 28, 0.96);
-                backdrop-filter: blur(20px);
-                -webkit-backdrop-filter: blur(20px);
-                border: 1px solid rgba(255, 255, 255, 0.14);
-                border-radius: 14px;
-                padding: 14px 16px;
-                box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
-                animation: rbqPopoverIn 0.2s ease-out;
-            }
-            @media (min-width: 901px) {
-                .rbq-storage-popover {
-                    width: 320px;
-                }
-            }
-            @media (max-width: 900px) {
-                .rbq-storage-popover {
-                    top: auto !important;
-                    bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
-                    left: 12px !important;
-                    right: 12px !important;
-                    width: auto !important;
-                    max-width: calc(100vw - 24px) !important;
-                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
-                }
-            }
-            @keyframes rbqPopoverIn {
-                from { opacity: 0; transform: translateY(-6px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            .rbq-storage-popover.open {
+                inset: 0 !important;
+                z-index: 2147483645 !important;
+                background: rgba(0, 0, 0, 0.72) !important;
                 display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                backdrop-filter: blur(6px) !important;
+                -webkit-backdrop-filter: blur(6px) !important;
+                padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px) !important;
+                box-sizing: border-box !important;
+                animation: rbqStorageFadeIn 0.15s ease-out !important;
             }
-            .rbq-storage-popover-title {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                font-size: 13px;
-                font-weight: 600;
-                color: #f8fafc;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                padding-bottom: 8px;
+            @keyframes rbqStorageFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            .rbq-storage-modal-dialog {
+                background: #161a29 !important;
+                background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
+                border: 1px solid rgba(255, 255, 255, 0.14) !important;
+                border-radius: 14px !important;
+                width: 100% !important;
+                max-width: 420px !important;
+                color: #e2e8f0 !important;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                pointer-events: auto !important;
+                animation: rbqStorageScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                box-sizing: border-box !important;
+            }
+            @keyframes rbqStorageScaleIn {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+            }
+            .rbq-storage-modal-header {
+                padding: 12px 16px !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                background: rgba(255, 255, 255, 0.02) !important;
+                flex-shrink: 0 !important;
+            }
+            .rbq-storage-modal-title {
+                font-weight: 600 !important;
+                font-size: 14px !important;
+                color: #f8fafc !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }
+            .rbq-storage-modal-close {
+                width: 32px !important;
+                height: 32px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                background: transparent !important;
+                border: none !important;
+                color: #94a3b8 !important;
+                cursor: pointer !important;
+                border-radius: 8px !important;
+                font-size: 16px !important;
+                transition: all 0.15s ease !important;
+                padding: 0 !important;
+            }
+            .rbq-storage-modal-close:hover {
+                background: rgba(255, 255, 255, 0.08) !important;
+                color: #fff !important;
+            }
+            .rbq-storage-modal-body {
+                padding: 16px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 12px !important;
+                overflow-y: auto !important;
+                max-height: calc(min(100dvh, 100vh) - 100px) !important;
+                box-sizing: border-box !important;
             }
             .rbq-storage-info-list {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
-                font-size: 12px;
+                gap: 8px;
+                font-size: 12.5px;
             }
             .rbq-storage-info-row {
                 display: flex;
                 align-items: flex-start;
                 justify-content: space-between;
                 gap: 10px;
+                padding: 6px 10px;
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.04);
             }
             .rbq-storage-info-label {
                 color: #94a3b8;
@@ -1066,45 +1092,48 @@
             .rbq-storage-path-box {
                 background: rgba(0, 0, 0, 0.35);
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 6px;
-                padding: 6px 8px;
+                border-radius: 8px;
+                padding: 8px 10px;
                 font-size: 11px;
                 font-family: ui-monospace, monospace;
                 color: #38bdf8;
-                max-height: 52px;
+                max-height: 60px;
                 overflow-y: auto;
                 word-break: break-all;
+                user-select: text;
+                -webkit-user-select: text;
             }
             .rbq-storage-actions {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 8px;
                 margin-top: 4px;
                 border-top: 1px solid rgba(255, 255, 255, 0.08);
-                padding-top: 8px;
+                padding-top: 12px;
             }
             .rbq-storage-action-btn {
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                gap: 6px !important;
+                gap: 8px !important;
                 width: 100% !important;
-                height: 30px !important;
-                border-radius: 8px !important;
-                font-size: 12px !important;
-                font-weight: 500 !important;
+                height: 36px !important;
+                border-radius: 10px !important;
+                font-size: 12.5px !important;
+                font-weight: 600 !important;
                 cursor: pointer !important;
                 transition: all 0.16s ease !important;
                 box-sizing: border-box !important;
             }
             .rbq-storage-btn-sync {
-                background: rgba(56, 189, 248, 0.16) !important;
-                border: 1px solid rgba(56, 189, 248, 0.35) !important;
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.18)) !important;
+                border: 1px solid rgba(56, 189, 248, 0.4) !important;
                 color: #38bdf8 !important;
             }
             .rbq-storage-btn-sync:hover {
-                background: rgba(56, 189, 248, 0.28) !important;
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(99, 102, 241, 0.28)) !important;
                 border-color: #38bdf8 !important;
+                transform: translateY(-1px);
             }
             .rbq-storage-btn-copy {
                 background: rgba(255, 255, 255, 0.06) !important;
@@ -1113,9 +1142,395 @@
             }
             .rbq-storage-btn-copy:hover {
                 background: rgba(255, 255, 255, 0.12) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
+            }
+
+            /* ── 设置面板现代化样式 ── */
+            .rbq-sync-subpanel {
+                display: flex;
+                flex-direction: column;
+                gap: 14px;
+                padding: 4px 0;
+            }
+            .rbq-sync-card {
+                background: var(--linear-surface, rgba(22, 27, 46, 0.7));
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.08));
+                border-radius: 14px;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                box-sizing: border-box;
+                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            }
+            .rbq-sync-card-title {
+                font-size: 13.5px;
+                font-weight: 600;
+                color: var(--linear-text-primary, #f8fafc);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .rbq-sync-card-desc {
+                font-size: 11.5px;
+                color: var(--linear-text-secondary, #94a3b8);
+                line-height: 1.5;
+                margin-top: 2px;
+            }
+            .rbq-sync-tiles {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 10px;
+                margin-top: 4px;
+            }
+            .rbq-sync-tile {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 14px;
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.025);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                cursor: pointer;
+                transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                user-select: none;
+                box-sizing: border-box;
+            }
+            .rbq-sync-tile:hover {
+                background: rgba(255, 255, 255, 0.055);
+                border-color: rgba(255, 255, 255, 0.18);
+                transform: translateY(-1px);
+            }
+            .rbq-sync-tile.active {
+                background: rgba(56, 189, 248, 0.08) !important;
+                border-color: #38bdf8 !important;
+                box-shadow: 0 0 16px rgba(56, 189, 248, 0.14) !important;
+            }
+            .rbq-sync-tile-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+            }
+            .rbq-sync-tile-title {
+                font-size: 13px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .rbq-sync-badge-pill {
+                font-size: 10px;
+                font-weight: 600;
+                padding: 2px 7px;
+                border-radius: 999px;
+                letter-spacing: 0.02em;
+                white-space: nowrap;
+            }
+            .rbq-sync-tile-text {
+                font-size: 11px;
+                line-height: 1.45;
+                color: var(--linear-text-secondary, #94a3b8);
+            }
+            .rbq-sync-tile-features {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 5px;
+                margin-top: 2px;
+            }
+            .rbq-sync-feature-tag {
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 10px;
+                color: var(--linear-text-muted, #64748b);
+                white-space: nowrap;
+            }
+            .rbq-sync-toggle-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 12px 14px;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                cursor: pointer;
+                transition: background 0.15s ease, border-color 0.15s ease;
+                box-sizing: border-box;
+            }
+            .rbq-sync-toggle-row:hover {
+                background: rgba(255, 255, 255, 0.045);
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+            .rbq-sync-toggle-info {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                flex: 1;
+                min-width: 0;
+            }
+            .rbq-sync-toggle-title {
+                font-size: 12.5px;
+                font-weight: 600;
+                color: var(--linear-text-primary, #f8fafc);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .rbq-sync-toggle-desc {
+                font-size: 11px;
+                color: var(--linear-text-secondary, #94a3b8);
+                line-height: 1.4;
+            }
+            .rbq-switch {
+                position: relative;
+                display: inline-block;
+                width: 44px;
+                height: 24px;
+                flex-shrink: 0;
+                pointer-events: none;
+            }
+            .rbq-switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .rbq-slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background-color: rgba(255, 255, 255, 0.15);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 24px;
+                transition: all 0.2s ease;
+            }
+            .rbq-slider:before {
+                position: absolute;
+                content: "";
+                height: 18px;
+                width: 18px;
+                left: 2px;
+                bottom: 2px;
+                background-color: #ffffff;
+                border-radius: 50%;
+                transition: transform 0.2s ease;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+            .rbq-switch input:checked + .rbq-slider {
+                background-color: #38bdf8;
+                border-color: #38bdf8;
+            }
+            .rbq-switch input:checked + .rbq-slider:before {
+                transform: translateX(20px);
+            }
+            .rbq-batch-btn {
+                width: 100% !important;
+                box-sizing: border-box !important;
+                white-space: nowrap !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 8px !important;
+                padding: 12px 20px !important;
+                font-size: 13px !important;
+                font-weight: 600 !important;
+                border-radius: 10px !important;
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(99, 102, 241, 0.15)) !important;
+                border: 1px solid rgba(56, 189, 248, 0.35) !important;
+                color: #38bdf8 !important;
+                cursor: pointer !important;
+                transition: all 0.2s ease !important;
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important;
+            }
+            .rbq-batch-btn:hover {
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.25)) !important;
+                border-color: #38bdf8 !important;
+                transform: translateY(-1px);
+                box-shadow: 0 6px 20px rgba(56, 189, 248, 0.25) !important;
+            }
+            .rbq-batch-btn:active {
+                transform: translateY(0);
+            }
+            .rbq-save-btn {
+                padding: 7px 20px !important;
+                font-size: 12.5px !important;
+                font-weight: 600 !important;
+                border-radius: 8px !important;
+                background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+                border: 1px solid rgba(56, 189, 248, 0.4) !important;
+                color: #ffffff !important;
+                cursor: pointer !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                white-space: nowrap !important;
+                transition: all 0.2s ease !important;
+                box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35) !important;
+            }
+            .rbq-save-btn:hover {
+                background: linear-gradient(135deg, #0369a1, #075985) !important;
+                box-shadow: 0 6px 18px rgba(2, 132, 199, 0.5) !important;
+                transform: translateY(-1px);
             }
         `;
         document.head.appendChild(style);
+    }
+
+    function showStorageModal(current, info) {
+        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+
+        const sizeStr = info?.blobSize ? formatBytes(info.blobSize) : (current?.url ? '云端流媒体' : '未知');
+        const dimStr = (current?.width && current?.height) ? `${current.width} × ${current.height}` : '自适应';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'rbq-storage-modal-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'rbq-storage-modal-dialog';
+
+        dialog.innerHTML = `
+            <div class="rbq-storage-modal-header">
+                <div class="rbq-storage-modal-title">
+                    <span class="rbq-storage-dot" style="background:${info.color};"></span>
+                    <span>${escapeHtml(info.text)}</span>
+                </div>
+                <button class="rbq-storage-modal-close" type="button" title="关闭">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="rbq-storage-modal-body">
+                <div class="rbq-storage-info-list">
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">存储归属</span>
+                        <span class="rbq-storage-info-val" style="color:${info.color};font-weight:600;">${escapeHtml(info.title)}</span>
+                    </div>
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">规格尺寸</span>
+                        <span class="rbq-storage-info-val">${escapeHtml(dimStr)} (${escapeHtml(sizeStr)})</span>
+                    </div>
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">多端状态</span>
+                        <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (current.pendingOriginalUpload ? '⭐ 已收藏 (切回生成端自动补传)' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用'))}</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px;">
+                        <span class="rbq-storage-info-label">物理路径 / URL：</span>
+                        <div class="rbq-storage-path-box">${escapeHtml(info.path || '(内存链接)')}</div>
+                    </div>
+                </div>
+                <div class="rbq-storage-actions">
+                    ${info.canSync ? `
+                        <button id="rbq-action-manual-sync" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" type="button">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> ${info.type === 'preview' ? '上传高清原画至酒馆' : '一键同步至酒馆服务端'}
+                        </button>
+                    ` : ''}
+                    <button id="rbq-action-copy-path" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
+                        <i class="fa-solid fa-copy"></i> 复制物理路径 / 链接
+                    </button>
+                    <button id="rbq-action-open-settings" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
+                        <i class="fa-solid fa-sliders"></i> 打开云同步设置
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const closeModal = () => {
+            overlay.remove();
+        };
+
+        const closeBtn = dialog.querySelector('.rbq-storage-modal-close');
+        if (closeBtn) closeBtn.onclick = closeModal;
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+
+        // 绑定手动同步按钮
+        const syncBtn = dialog.querySelector('#rbq-action-manual-sync');
+        if (syncBtn) {
+            syncBtn.onclick = async (e) => {
+                e.stopPropagation();
+                syncBtn.disabled = true;
+                syncBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在上传服务端...';
+
+                try {
+                    let blobToSync = null;
+                    if (current.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
+                        const rec = await RBQ.api.getCachedImageRecord(current.cacheId);
+                        if (rec?.blob instanceof Blob) blobToSync = rec.blob;
+                    }
+                    if (!blobToSync && current.displayUrl) {
+                        const res = await fetch(current.displayUrl);
+                        if (res.ok) blobToSync = await res.blob();
+                    }
+                    if (!blobToSync && current.url) {
+                        const res = await fetch(current.url);
+                        if (res.ok) blobToSync = await res.blob();
+                    }
+
+                    if (!blobToSync) throw new Error('无法读取图片原始数据');
+
+                    const mode = current.mode || 'rbq';
+                    const now = Date.now();
+                    let ext = 'png';
+                    if (blobToSync.type === 'image/jpeg' || blobToSync.type === 'image/jpg') ext = 'jpg';
+                    else if (blobToSync.type === 'image/webp') ext = 'webp';
+
+                    const filename = `rbq_${mode}_manual_${now}.${ext}`;
+                    const path = await uploadBlobToServer(blobToSync, filename);
+
+                    await applySyncedPathToAllRecords(current, path, true);
+
+                    // 双轨保障：同时确保轻量预览图存在
+                    if (!current.serverPreviewUrl) {
+                        const previewFilename = `rbq_${mode}_manual_${now}_preview.webp`;
+                        const previewBlob = await createOptimizedWebpBlob(blobToSync, 768, 0.8);
+                        if (previewBlob) {
+                            const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
+                            if (previewPath) {
+                                await applySyncedPathToAllRecords(current, previewPath, false);
+                            }
+                        }
+                    }
+
+                    toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
+                    closeModal();
+                    updateViewerBadge({ modal: document.getElementById('st-scene-trigger-image-viewer'), current });
+                } catch (syncErr) {
+                    toastr.error(`同步失败: ${syncErr.message || syncErr}`, PLUGIN_NAME);
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 重试同步';
+                }
+            };
+        }
+
+        // 复制路径
+        dialog.querySelector('#rbq-action-copy-path')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const textToCopy = info.path || current.url || '';
+            if (!textToCopy) return toastr.warning('没有可复制的有效路径', PLUGIN_NAME);
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                toastr.success('路径已成功复制到剪贴板', PLUGIN_NAME);
+            }).catch(() => {
+                toastr.info(textToCopy, '路径复制');
+            });
+        });
+
+        // 打开设置
+        dialog.querySelector('#rbq-action-open-settings')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeModal();
+            const drawerBtn = document.getElementById('st-scene-trigger-open-from-drawer');
+            if (drawerBtn) drawerBtn.click();
+            setTimeout(() => {
+                document.querySelector('[data-kite-tab="rbq-gallery-sync"]')?.click();
+            }, 150);
+        });
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
     }
 
     async function updateViewerBadge(detail) {
@@ -1134,257 +1549,45 @@
 
         injectStyles();
 
-        let wrap = actions.querySelector('#rbq-storage-badge-wrap');
-        if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.id = 'rbq-storage-badge-wrap';
-            wrap.className = 'rbq-storage-badge-wrap';
+        // 移除旧版遗留的 popover 与 wrapper 节点
+        modal.querySelector('#rbq-storage-popover')?.remove();
+        document.getElementById('rbq-storage-popover')?.remove();
+        modal.querySelector('#rbq-storage-badge-wrap')?.remove();
 
-            wrap.innerHTML = `
-                <button id="rbq-storage-badge-btn" class="rbq-storage-badge-btn menu_button" type="button" title="点击查阅存储归属与云端同步详情">
-                    <span id="rbq-storage-dot" class="rbq-storage-dot" style="background:#94a3b8;"></span>
-                </button>
-            `;
+        let badgeBtn = actions.querySelector('#rbq-storage-badge-btn');
+        if (!badgeBtn) {
+            badgeBtn = document.createElement('button');
+            badgeBtn.id = 'rbq-storage-badge-btn';
+            badgeBtn.className = 'rbq-storage-badge-btn menu_button st-scene-trigger-icon-button';
+            badgeBtn.type = 'button';
+            badgeBtn.title = '查阅图片存储归属与云端同步详情';
+            badgeBtn.innerHTML = '<span id="rbq-storage-dot" class="rbq-storage-dot" style="background:#94a3b8;"></span>';
 
             // 挂在缩放倍率按钮前面
             const zoomPill = actions.querySelector('.st-scene-trigger-viewer-zoom-pill');
             if (zoomPill) {
-                actions.insertBefore(wrap, zoomPill);
+                actions.insertBefore(badgeBtn, zoomPill);
             } else {
-                actions.prepend(wrap);
+                actions.prepend(badgeBtn);
             }
+
+            badgeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            badgeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
         }
 
-        // 弹窗与独立全屏遮罩直接挂载至 viewer 根节点，避免任何嵌套盒模型与 stacking context 影响
-        let backdrop = modal.querySelector('#rbq-storage-backdrop');
-        if (!backdrop) {
-            backdrop = document.createElement('div');
-            backdrop.id = 'rbq-storage-backdrop';
-            backdrop.className = 'rbq-storage-backdrop';
-            modal.appendChild(backdrop);
-        }
-
-        let popover = modal.querySelector('#rbq-storage-popover');
-        if (!popover) {
-            popover = document.createElement('div');
-            popover.id = 'rbq-storage-popover';
-            popover.className = 'rbq-storage-popover';
-            modal.appendChild(popover);
-        }
-
-        const badgeBtn = wrap.querySelector('#rbq-storage-badge-btn');
-        const dot = wrap.querySelector('#rbq-storage-dot');
-
-        const positionPopover = () => {
-            if (window.innerWidth > 900 && badgeBtn) {
-                const rect = badgeBtn.getBoundingClientRect();
-                popover.style.top = `${rect.bottom + 8}px`;
-                popover.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
-                popover.style.left = 'auto';
-                popover.style.bottom = 'auto';
-            } else {
-                popover.style.top = '';
-                popover.style.right = '';
-                popover.style.left = '';
-                popover.style.bottom = '';
-            }
-        };
-
-        const closePopover = (e) => {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            backdrop.classList.remove('open');
-            popover.classList.remove('open');
-        };
-
-        const openPopover = () => {
-            positionPopover();
-            backdrop.classList.add('open');
-            popover.classList.add('open');
-        };
-
-        let lastToggleTime = 0;
-        const togglePopover = (e) => {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            const now = Date.now();
-            if (now - lastToggleTime < 500) return;
-            lastToggleTime = now;
-
-            if (popover.classList.contains('open')) {
-                closePopover();
-            } else {
-                openPopover();
-            }
-        };
-
-        if (badgeBtn) {
-            // 清除旧的事件绑定（防止 updateViewerBadge 重入时重复绑定）
-            if (badgeBtn._rbqToggle) {
-                badgeBtn.removeEventListener('click', badgeBtn._rbqToggle);
-                badgeBtn.removeEventListener('touchend', badgeBtn._rbqToggle);
-            }
-            if (badgeBtn._rbqTouchStart) {
-                badgeBtn.removeEventListener('touchstart', badgeBtn._rbqTouchStart);
-            }
-            badgeBtn._rbqToggle = togglePopover;
-            // touchstart 阻止冒泡，防止 shell 的手势识别器误把按钮点击当成滑动
-            badgeBtn._rbqTouchStart = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
-            badgeBtn.addEventListener('touchstart', badgeBtn._rbqTouchStart, { passive: true });
-            badgeBtn.addEventListener('click', togglePopover);
-            badgeBtn.addEventListener('touchend', togglePopover);
-        }
-        if (backdrop) {
-            if (backdrop._rbqClose) {
-                backdrop.removeEventListener('click', backdrop._rbqClose);
-                backdrop.removeEventListener('touchend', backdrop._rbqClose);
-            }
-            backdrop._rbqClose = closePopover;
-            backdrop.addEventListener('click', closePopover);
-            backdrop.addEventListener('touchend', closePopover);
-        }
+        const dot = badgeBtn.querySelector('#rbq-storage-dot');
 
         // 检测存储物理归属
         const info = await inspectImageStorage(current);
 
         if (dot) dot.style.background = info.color;
-        if (badgeBtn) badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
+        badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
 
-        const sizeStr = info.blobSize ? formatBytes(info.blobSize) : (current.url ? '云端流媒体' : '未知');
-        const dimStr = (current.width && current.height) ? `${current.width} × ${current.height}` : '自适应';
-
-        popover.innerHTML = `
-            <div class="rbq-storage-popover-title">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <span class="rbq-storage-dot" style="background:${info.color};"></span>
-                    <span style="font-weight:600;color:#f8fafc;">${info.text}</span>
-                </div>
-                <button id="rbq-popover-close-btn" type="button" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:15px;padding:2px 6px;line-height:1;" title="关闭">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div class="rbq-storage-info-list">
-                <div class="rbq-storage-info-row">
-                    <span class="rbq-storage-info-label">存储归属：</span>
-                    <span class="rbq-storage-info-val" style="color:${info.color};font-weight:600;">${info.title}</span>
-                </div>
-                <div class="rbq-storage-info-row">
-                    <span class="rbq-storage-info-label">规格尺寸：</span>
-                    <span class="rbq-storage-info-val">${dimStr} (${sizeStr})</span>
-                </div>
-                <div class="rbq-storage-info-row">
-                    <span class="rbq-storage-info-label">多端状态：</span>
-                    <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (current.pendingOriginalUpload ? '⭐ 已收藏 (切回生成端自动补传)' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用'))}</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;">
-                    <span class="rbq-storage-info-label">物理路径 / URL：</span>
-                    <div class="rbq-storage-path-box">${escapeHtml(info.path || '(内存链接)')}</div>
-                </div>
-            </div>
-            <div class="rbq-storage-actions">
-                ${info.canSync ? `
-                    <button id="rbq-action-manual-sync" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" type="button">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> ${info.type === 'preview' ? '上传高清原画至酒馆' : '一键同步至酒馆服务端'}
-                    </button>
-                ` : ''}
-                <button id="rbq-action-copy-path" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
-                    <i class="fa-solid fa-copy"></i> 复制物理路径 / 链接
-                </button>
-                <button id="rbq-action-open-settings" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
-                    <i class="fa-solid fa-sliders"></i> 打开云同步设置
-                </button>
-            </div>
-        `;
-
-        // 绑定关闭按钮
-        const closeBtn = popover.querySelector('#rbq-popover-close-btn');
-        if (closeBtn) {
-            closeBtn.onclick = closePopover;
-            closeBtn.ontouchend = null;
-        }
-
-        // 绑定弹窗内操作按钮
-        popover.querySelector('#rbq-action-manual-sync')?.addEventListener('click', async (e) => {
+        badgeBtn.onclick = (e) => {
+            e.preventDefault();
             e.stopPropagation();
-            const syncBtn = e.currentTarget;
-            syncBtn.disabled = true;
-            syncBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在上传服务端...';
-
-            try {
-                let blobToSync = null;
-                if (current.cacheId && typeof RBQ?.api?.getCachedImageRecord === 'function') {
-                    const rec = await RBQ.api.getCachedImageRecord(current.cacheId);
-                    if (rec?.blob instanceof Blob) blobToSync = rec.blob;
-                }
-                if (!blobToSync && current.displayUrl) {
-                    const res = await fetch(current.displayUrl);
-                    if (res.ok) blobToSync = await res.blob();
-                }
-                if (!blobToSync && current.url) {
-                    const res = await fetch(current.url);
-                    if (res.ok) blobToSync = await res.blob();
-                }
-
-                if (!blobToSync) throw new Error('无法读取图片原始数据');
-
-                const mode = current.mode || 'rbq';
-                const now = Date.now();
-                let ext = 'png';
-                if (blobToSync.type === 'image/jpeg' || blobToSync.type === 'image/jpg') ext = 'jpg';
-                else if (blobToSync.type === 'image/webp') ext = 'webp';
-
-                const filename = `rbq_${mode}_manual_${now}.${ext}`;
-                const path = await uploadBlobToServer(blobToSync, filename);
-
-                await applySyncedPathToAllRecords(current, path, true);
-
-                // 双轨保障：同时确保轻量预览图存在
-                if (!current.serverPreviewUrl) {
-                    const previewFilename = `rbq_${mode}_manual_${now}_preview.webp`;
-                    const previewBlob = await createOptimizedWebpBlob(blobToSync, 768, 0.8);
-                    if (previewBlob) {
-                        const previewPath = await uploadBlobToServer(previewBlob, previewFilename);
-                        if (previewPath) {
-                            await applySyncedPathToAllRecords(current, previewPath, false);
-                        }
-                    }
-                }
-
-                toastr.success(`已成功同步高清原画到酒馆服务端: ${path}`, PLUGIN_NAME);
-                closePopover();
-                updateViewerBadge({ modal, current });
-            } catch (syncErr) {
-                toastr.error(`同步失败: ${syncErr.message || syncErr}`, PLUGIN_NAME);
-                syncBtn.disabled = false;
-                syncBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 重试同步';
-            }
-        });
-
-        popover.querySelector('#rbq-action-copy-path')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const textToCopy = info.path || current.url || '';
-            if (!textToCopy) return toastr.warning('没有可复制的有效路径', PLUGIN_NAME);
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                toastr.success('路径已成功复制到剪贴板', PLUGIN_NAME);
-            }).catch(() => {
-                toastr.info(textToCopy, '路径复制');
-            });
-        });
-
-        popover.querySelector('#rbq-action-open-settings')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            closePopover();
-            // 打开主控制台并切到该设置页
-            const drawerBtn = document.getElementById('st-scene-trigger-open-from-drawer');
-            if (drawerBtn) drawerBtn.click();
-            setTimeout(() => {
-                document.querySelector('[data-kite-tab="rbq-gallery-sync"]')?.click();
-            }, 150);
-        });
+            showStorageModal(current, info);
+        };
     }
 
     function escapeHtml(str) {
@@ -1396,8 +1599,8 @@
     });
 
     window.addEventListener('st-scene-trigger:viewer-closed', () => {
-        document.getElementById('rbq-storage-backdrop')?.classList.remove('open');
-        document.getElementById('rbq-storage-popover')?.classList.remove('open');
+        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+        document.getElementById('rbq-storage-popover')?.remove();
     });
 
     async function batchSyncAllFavorites() {
@@ -1470,102 +1673,168 @@
 
     // ── 8. Setting Panel Registration ──
     function renderSettings() {
+        injectStyles();
         const store = getStore();
         return `
-            <div id="rbq-gallery-sync-settings" style="display:flex; flex-direction:column; gap:16px; padding:6px 0;">
-                <div class="st-scene-trigger-subpanel-title" style="margin-bottom:0;">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    <span>服务端图库同步与存储管理 <small style="font-size:12px;opacity:0.75;font-weight:normal;">v${PLUGIN_VERSION}</small></span>
-                </div>
-
-                <div class="st-scene-trigger-section" style="background:var(--linear-bg-subtle); padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
-                    <div style="font-size:13px; font-weight:600; margin-bottom:6px; color:var(--linear-text-primary);">
-                        <i class="fa-solid fa-sliders"></i> 同步策略选择
-                    </div>
-                    <div style="font-size:12px; color:var(--linear-text-secondary); line-height:1.45; margin-bottom:12px;">
-                        控制生成的图片是否持久化至酒馆服务端磁盘，以及多端（手机/平板/电脑）同步时如何最节省流量与带宽。
-                    </div>
-
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
-                            <input type="radio" name="rbq-sync-mode" value="stream_only" ${store.syncMode === 'stream_only' ? 'checked' : ''} style="margin-top:3px;">
-                            <div>
-                                <strong style="font-size:13px; color:#38bdf8;">⚡ 极速省流云同步 (强烈推荐)</strong>
-                                <div style="font-size:11px; opacity:0.8; margin-top:2px; line-height:1.35;">
-                                    客户端自动在出图后压制约 <strong>50~80KB 的超小 WebP 预览图</strong>上传至酒馆服务端。多端打开秒开秒显，100 张历史图总流量仅 ~6MB，手机流量 0 压力。
-                                </div>
-                            </div>
-                        </label>
-
-                        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
-                            <input type="radio" name="rbq-sync-mode" value="local" ${store.syncMode === 'local' ? 'checked' : ''} style="margin-top:3px;">
-                            <div>
-                                <strong style="font-size:13px; color:#4ade80;">💻 纯本地模式 (不上云)</strong>
-                                <div style="font-size:11px; opacity:0.8; margin-top:2px; line-height:1.35;">
-                                    图片仅保留在当前设备的浏览器 IndexedDB 中，完全不占用服务端任何磁盘与上行带宽。换设备时无法跨端同步已生出的历史图片。
-                                </div>
-                            </div>
-                        </label>
-
-                        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
-                            <input type="radio" name="rbq-sync-mode" value="full" ${store.syncMode === 'full' ? 'checked' : ''} style="margin-top:3px;">
-                            <div>
-                                <strong style="font-size:13px; color:#c084fc;">💎 全量原画云存档 (适合千兆局域网)</strong>
-                                <div style="font-size:11px; opacity:0.8; margin-top:2px; line-height:1.35;">
-                                    预览图与数兆原始 PNG 原画双轨上传至酒馆服务器，原汁原味永久留存。适合家庭千兆局域网或服务器带宽充足环境。
-                                </div>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="st-scene-trigger-section" style="background:var(--linear-bg-subtle); padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
-                    <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--linear-text-primary);">
-                        <i class="fa-solid fa-shield-halved"></i> 存储策略与智能上传
-                    </div>
-
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
-                            <span style="font-size:12px;">⭐ 收藏时自动上传高清原画至服务端 (推荐)</span>
-                            <input id="rbq-sync-fav-original" type="checkbox" ${store.syncFavoritesOriginal ? 'checked' : ''}>
-                        </label>
-                        <div style="font-size:11px; color:var(--linear-text-muted); margin-top:-6px;">
-                            当在画廊或大图查看器中点击「⭐ 收藏」时，自动提取最高画质原图上传至酒馆服务端永久留存，兼顾日常省流与原图备份。
+            <div id="rbq-gallery-sync-settings" class="rbq-sync-subpanel">
+                <!-- 顶部标题与快速保存 -->
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg, rgba(56,189,248,0.2), rgba(99,102,241,0.2)); border:1px solid rgba(56,189,248,0.3); display:flex; align-items:center; justify-content:center; color:#38bdf8; font-size:16px;">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
                         </div>
-
-                        <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin-top:6px;">
-                            <span style="font-size:12px;">📱 移动蜂窝网络流量保护 (Save-Data 感知)</span>
-                            <input id="rbq-sync-savedata" type="checkbox" ${store.saveDataAware ? 'checked' : ''}>
-                        </label>
-                        <div style="font-size:11px; color:var(--linear-text-muted); margin-top:-6px;">
-                            检测到 4G/5G 移动数据时，自动阻断原图全量同步与拉取，防止流量意外消耗。
-                        </div>
-
-                        <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin-top:6px;">
-                            <span style="font-size:12px;">🏷️ 大图查看器显示「存储归属指示点」</span>
-                            <input id="rbq-sync-badge-enable" type="checkbox" ${store.enableViewerBadge ? 'checked' : ''}>
-                        </label>
-                        <div style="font-size:11px; color:var(--linear-text-muted); margin-top:-6px;">
-                            在大图查看器顶栏显示存储状态呼吸圆点（🟢本地 / 🔵云端原图 / 🟡省流预览 / 🟣绘图后端），点击展开详情卡片。
+                        <div>
+                            <div style="font-size:14.5px; font-weight:700; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+                                服务端图库同步与存储管理
+                                <span style="font-size:11px; padding:1px 7px; border-radius:999px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-weight:normal;">v${PLUGIN_VERSION}</span>
+                            </div>
+                            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">双轨省流云同步 · 高清原画智能归档 · 存储状态微型指示</div>
                         </div>
                     </div>
-                </div>
-
-                <div class="st-scene-trigger-section" style="background:var(--linear-bg-subtle); padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.08);">
-                    <div style="font-size:13px; font-weight:600; margin-bottom:6px; color:var(--linear-text-primary);">
-                        <i class="fa-solid fa-cloud-arrow-up" style="color:#38bdf8;"></i> 存量收藏原画补传
-                    </div>
-                    <div style="font-size:12px; color:var(--linear-text-secondary); line-height:1.45; margin-bottom:12px;">
-                        自动扫描本地历史记录中所有带 ⭐ 收藏标记的图片，若尚未上传高清原画至云端酒馆，一键批量补传，实现跨设备永久留存。
-                    </div>
-                    <button id="rbq-sync-batch-fav-btn" class="menu_button" type="button" style="padding:6px 16px; display:inline-flex; align-items:center; gap:6px; color:#38bdf8 !important;">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> 一键补传所有已收藏原画至服务端
+                    <button id="rbq-sync-save-btn" class="rbq-save-btn" type="button">
+                        <i class="fa-solid fa-check"></i> 保存配置
                     </button>
                 </div>
 
-                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
-                    <button id="rbq-sync-save-btn" class="menu_button st-scene-trigger-icon-button st-scene-trigger-btn-primary" type="button" style="padding:6px 16px;">
-                        <i class="fa-solid fa-check"></i> 保存同步配置
+                <!-- 模块 1: 同步策略选择 -->
+                <div class="rbq-sync-card">
+                    <div>
+                        <div class="rbq-sync-card-title">
+                            <i class="fa-solid fa-sliders" style="color:#38bdf8;"></i> 同步策略选择
+                        </div>
+                        <div class="rbq-sync-card-desc">
+                            控制新生成的图片是否持久化至酒馆服务端磁盘，以及多端（手机/平板/电脑）同步时如何最节省流量与带宽。
+                        </div>
+                    </div>
+
+                    <div class="rbq-sync-tiles">
+                        <!-- 极速省流 -->
+                        <div class="rbq-sync-tile ${store.syncMode === 'stream_only' ? 'active' : ''}" data-mode="stream_only">
+                            <input type="radio" name="rbq-sync-mode" value="stream_only" ${store.syncMode === 'stream_only' ? 'checked' : ''} style="display:none;">
+                            <div class="rbq-sync-tile-head">
+                                <span class="rbq-sync-tile-title" style="color:#38bdf8;">
+                                    <i class="fa-solid fa-bolt-lightning"></i> 极速省流云同步
+                                </span>
+                                <span class="rbq-sync-badge-pill" style="background:rgba(56,189,248,0.18); color:#38bdf8; border:1px solid rgba(56,189,248,0.35);">强烈推荐</span>
+                            </div>
+                            <div class="rbq-sync-tile-text">
+                                客户端出图后自动压制约 <strong>50~80KB 超轻量 WebP 预览图</strong>至服务端。多端打开秒开秒显，手机流量 0 压力。
+                            </div>
+                            <div class="rbq-sync-tile-features">
+                                <span class="rbq-sync-feature-tag">📱 移动端秒显</span>
+                                <span class="rbq-sync-feature-tag">📶 百图仅~6MB</span>
+                                <span class="rbq-sync-feature-tag">⭐ 收藏升原画</span>
+                            </div>
+                        </div>
+
+                        <!-- 纯本地模式 -->
+                        <div class="rbq-sync-tile ${store.syncMode === 'local' ? 'active' : ''}" data-mode="local">
+                            <input type="radio" name="rbq-sync-mode" value="local" ${store.syncMode === 'local' ? 'checked' : ''} style="display:none;">
+                            <div class="rbq-sync-tile-head">
+                                <span class="rbq-sync-tile-title" style="color:#4ade80;">
+                                    <i class="fa-solid fa-laptop"></i> 纯本地模式
+                                </span>
+                                <span class="rbq-sync-badge-pill" style="background:rgba(74,222,128,0.15); color:#4ade80; border:1px solid rgba(74,222,128,0.3);">不上云</span>
+                            </div>
+                            <div class="rbq-sync-tile-text">
+                                图片仅保存在当前设备浏览器数据库中，完全不占用服务端磁盘与上行带宽。换设备时无法同步历史图。
+                            </div>
+                            <div class="rbq-sync-tile-features">
+                                <span class="rbq-sync-feature-tag">🔒 零服务端占用</span>
+                                <span class="rbq-sync-feature-tag">⚠️ 仅本机可用</span>
+                            </div>
+                        </div>
+
+                        <!-- 全量原画云存档 -->
+                        <div class="rbq-sync-tile ${store.syncMode === 'full' ? 'active' : ''}" data-mode="full">
+                            <input type="radio" name="rbq-sync-mode" value="full" ${store.syncMode === 'full' ? 'checked' : ''} style="display:none;">
+                            <div class="rbq-sync-tile-head">
+                                <span class="rbq-sync-tile-title" style="color:#c084fc;">
+                                    <i class="fa-solid fa-gem"></i> 全量原画云存档
+                                </span>
+                                <span class="rbq-sync-badge-pill" style="background:rgba(192,132,252,0.15); color:#c084fc; border:1px solid rgba(192,132,252,0.3);">千兆局域网</span>
+                            </div>
+                            <div class="rbq-sync-tile-text">
+                                轻量预览图与数兆原始 PNG 原画双轨同步上传至酒馆服务器磁盘，原汁原味永久留存。
+                            </div>
+                            <div class="rbq-sync-tile-features">
+                                <span class="rbq-sync-feature-tag">🖼️ 无损原画存档</span>
+                                <span class="rbq-sync-feature-tag">🚀 需家庭千兆/大带宽</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 模块 2: 存储策略与智能上传 -->
+                <div class="rbq-sync-card">
+                    <div>
+                        <div class="rbq-sync-card-title">
+                            <i class="fa-solid fa-shield-halved" style="color:#a78bfa;"></i> 存储策略与智能上传
+                        </div>
+                        <div class="rbq-sync-card-desc">
+                            微调跨端同步行为与原画上传触发机制。
+                        </div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <!-- 收藏自动上传 -->
+                        <label class="rbq-sync-toggle-row">
+                            <div class="rbq-sync-toggle-info">
+                                <span class="rbq-sync-toggle-title">
+                                    <span style="color:#fbbf24;">⭐</span> 收藏时自动上传高清原画至服务端
+                                    <span class="rbq-sync-badge-pill" style="background:rgba(251,191,36,0.15); color:#fbbf24; border:1px solid rgba(251,191,36,0.3); font-size:10px;">推荐</span>
+                                </span>
+                                <span class="rbq-sync-toggle-desc">在画廊或大图查看器中点击「⭐ 收藏」时，自动提取最高画质原图上传至酒馆服务端永久留存。若在移动端收藏，切回有原图的设备时会自动无感补传。</span>
+                            </div>
+                            <span class="rbq-switch">
+                                <input id="rbq-sync-fav-original" type="checkbox" ${store.syncFavoritesOriginal ? 'checked' : ''}>
+                                <span class="rbq-slider"></span>
+                            </span>
+                        </label>
+
+                        <!-- 移动蜂窝保护 -->
+                        <label class="rbq-sync-toggle-row">
+                            <div class="rbq-sync-toggle-info">
+                                <span class="rbq-sync-toggle-title">
+                                    <span style="color:#38bdf8;">📶</span> 移动蜂窝网络流量保护 (Save-Data 感知)
+                                </span>
+                                <span class="rbq-sync-toggle-desc">检测到当前处于手机 4G/5G 移动蜂窝网络时，自动阻断原画全量拉取与同步，优先使用 50KB 轻量预览图，防止流量意外消耗。</span>
+                            </div>
+                            <span class="rbq-switch">
+                                <input id="rbq-sync-savedata" type="checkbox" ${store.saveDataAware ? 'checked' : ''}>
+                                <span class="rbq-slider"></span>
+                            </span>
+                        </label>
+
+                        <!-- 存储归属指示点 -->
+                        <label class="rbq-sync-toggle-row">
+                            <div class="rbq-sync-toggle-info">
+                                <span class="rbq-sync-toggle-title">
+                                    <span style="color:#4ade80;">🏷️</span> 大图查看器显示「存储归属指示点」
+                                </span>
+                                <span class="rbq-sync-toggle-desc">在大图查看器右上角显示存储状态呼吸圆点（🟢本地 / 🔵服务端原画 / 🟡省流预览 / 🟣绘图后端），点击居中展开规格详情与一键补传。</span>
+                            </div>
+                            <span class="rbq-switch">
+                                <input id="rbq-sync-badge-enable" type="checkbox" ${store.enableViewerBadge ? 'checked' : ''}>
+                                <span class="rbq-slider"></span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 模块 3: 存量收藏原画补传 -->
+                <div class="rbq-sync-card" style="border:1px solid rgba(56,189,248,0.22); background:linear-gradient(135deg, rgba(56,189,248,0.03), rgba(99,102,241,0.03));">
+                    <div>
+                        <div class="rbq-sync-card-title" style="color:#38bdf8;">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> 存量收藏原画一键补传
+                        </div>
+                        <div class="rbq-sync-card-desc">
+                            自动扫描当前设备浏览器中所有带 ⭐ 收藏标记的图片记录。若服务端尚未存档高清原画，一键批量补传，实现跨设备永久留存。
+                        </div>
+                    </div>
+
+                    <button id="rbq-sync-batch-fav-btn" class="rbq-batch-btn" type="button">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> 一键扫描并补传所有已收藏原画至服务端
                     </button>
                 </div>
             </div>
@@ -1576,19 +1845,50 @@
         const root = document.getElementById('rbq-gallery-sync-settings');
         if (!root) return;
 
+        // 绑定模式卡片单选点击
+        const tiles = root.querySelectorAll('.rbq-sync-tile');
+        tiles.forEach(tile => {
+            tile.onclick = () => {
+                tiles.forEach(t => t.classList.remove('active'));
+                tile.classList.add('active');
+                const radio = tile.querySelector('input[type="radio"]');
+                if (radio) {
+                    radio.checked = true;
+                    saveCurrentSettings(false);
+                }
+            };
+        });
+
+        // 绑定开关行点击
+        const toggleRows = root.querySelectorAll('.rbq-sync-toggle-row');
+        toggleRows.forEach(row => {
+            row.onclick = (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                const checkbox = row.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    saveCurrentSettings(false);
+                }
+            };
+        });
+
+        function saveCurrentSettings(showToast = true) {
+            const store = getStore();
+            const selectedMode = root.querySelector('input[name="rbq-sync-mode"]:checked')?.value || 'stream_only';
+            store.syncMode = selectedMode;
+            store.syncFavoritesOriginal = !!root.querySelector('#rbq-sync-fav-original')?.checked;
+            store.saveDataAware = !!root.querySelector('#rbq-sync-savedata')?.checked;
+            store.enableViewerBadge = !!root.querySelector('#rbq-sync-badge-enable')?.checked;
+
+            save();
+            if (showToast) {
+                toastr.success('图库同步配置已保存', PLUGIN_NAME);
+            }
+        }
+
         const saveBtn = root.querySelector('#rbq-sync-save-btn');
         if (saveBtn) {
-            saveBtn.onclick = () => {
-                const store = getStore();
-                const selectedMode = root.querySelector('input[name="rbq-sync-mode"]:checked')?.value || 'stream_only';
-                store.syncMode = selectedMode;
-                store.syncFavoritesOriginal = !!root.querySelector('#rbq-sync-fav-original')?.checked;
-                store.saveDataAware = !!root.querySelector('#rbq-sync-savedata')?.checked;
-                store.enableViewerBadge = !!root.querySelector('#rbq-sync-badge-enable')?.checked;
-
-                save();
-                toastr.success('图库同步配置已保存', PLUGIN_NAME);
-            };
+            saveBtn.onclick = () => saveCurrentSettings(true);
         }
 
         const batchFavBtn = root.querySelector('#rbq-sync-batch-fav-btn');
@@ -1619,7 +1919,10 @@
     if (typeof RBQ?.registerPluginCleanup === 'function') {
         RBQ.registerPluginCleanup(PLUGIN_ID, () => {
             document.getElementById('rbq-gallery-sync-style')?.remove();
+            document.getElementById('rbq-storage-badge-btn')?.remove();
             document.getElementById('rbq-storage-badge-wrap')?.remove();
+            document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+            document.getElementById('rbq-storage-popover')?.remove();
             RBQ.ui.removeSettingPanel('rbq-gallery-sync');
         });
     }

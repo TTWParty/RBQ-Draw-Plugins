@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.25';
+    const PLUGIN_VERSION = '6.0.26';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7711,6 +7711,15 @@ SCHEMA:
 
         bottomBar.innerHTML = badges.join('');
 
+        // 阻止底栏内所有触摸事件冒泡到 shell，防止 iOS 手势识别器把按钮点击误判为滑动
+        if (!bottomBar._rbqTouchStartBlocked) {
+            bottomBar._rbqTouchStartBlocked = true;
+            bottomBar.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }, { passive: true });
+        }
+
         bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
             openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
@@ -7845,19 +7854,32 @@ SCHEMA:
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
         const detail = event?.detail;
-        if (!detail || !detail.bottomBar) return;
+        if (!detail) return;
+
+        // detail.bottomBar 不在 renderViewer() 的事件 payload 里，需要从 DOM 自行查找
+        const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
+        if (!modal) return;
+
+        let bottomBar = detail.bottomBar || modal.querySelector('.st-scene-trigger-viewer-bottom-bar');
+        if (!bottomBar) {
+            const shell = modal.querySelector('.st-scene-trigger-image-viewer-shell') || modal;
+            bottomBar = document.createElement('div');
+            bottomBar.className = 'st-scene-trigger-viewer-bottom-bar';
+            shell.appendChild(bottomBar);
+        }
+
         const current = detail.current;
         if (!current) {
-            detail.bottomBar.innerHTML = '';
+            bottomBar.innerHTML = '';
             return;
         }
 
         const segData = findSegmentDataForViewer(current);
         if (segData && segData.segResult) {
-            renderViewerBottomBar(detail.bottomBar, segData.segResult, segData.wrapper, current, detail.modal);
-            detail.bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
+            renderViewerBottomBar(bottomBar, segData.segResult, segData.wrapper, current, modal);
+            bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
         } else {
-            detail.bottomBar.innerHTML = '';
+            bottomBar.innerHTML = '';
         }
     });
 

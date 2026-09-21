@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.9';
+    const PLUGIN_VERSION = '1.1.10';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -1228,7 +1228,13 @@
                 badgeBtn.removeEventListener('click', badgeBtn._rbqToggle);
                 badgeBtn.removeEventListener('touchend', badgeBtn._rbqToggle);
             }
+            if (badgeBtn._rbqTouchStart) {
+                badgeBtn.removeEventListener('touchstart', badgeBtn._rbqTouchStart);
+            }
             badgeBtn._rbqToggle = togglePopover;
+            // touchstart 阻止冒泡，防止 shell 的手势识别器误把按钮点击当成滑动
+            badgeBtn._rbqTouchStart = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
+            badgeBtn.addEventListener('touchstart', badgeBtn._rbqTouchStart, { passive: true });
             badgeBtn.addEventListener('click', togglePopover);
             badgeBtn.addEventListener('touchend', togglePopover);
         }

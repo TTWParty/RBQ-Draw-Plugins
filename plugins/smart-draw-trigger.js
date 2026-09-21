@@ -10,8 +10,8 @@
         }
     }
 
-    const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.30';
+    const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
+    const PLUGIN_VERSION = '6.0.31';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7960,7 +7960,7 @@ SCHEMA:
 
     function renderViewerBottomBar(bottomBar, segResult, wrapper, currentItem, modal) {
         if (!(bottomBar instanceof HTMLElement)) return;
-        bottomBar.innerHTML = '';
+        bottomBar.querySelectorAll('.rbq-sdt-viewer-badge').forEach(el => el.remove());
         if (!segResult) return;
 
         const store = getStore();
@@ -7974,30 +7974,45 @@ SCHEMA:
 
         // 1. Worldbook hit button in viewer
         if (store.showLorebookHitBadge && validLorebooks.length > 0) {
-            badges.push(`<button class="menu_button rbq-sdt-viewer-lorebook-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-book-bookmark" style="font-size: 11px !important;"></i> 命中世界书 (${validLorebooks.length}条) ▾</button>`);
+            badges.push(`<button class="menu_button rbq-sdt-viewer-badge rbq-sdt-viewer-lorebook-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-book-bookmark" style="font-size: 11px !important;"></i> 命中世界书 (${validLorebooks.length}条) ▾</button>`);
         }
 
         // 2. Multi-char coordinate button (compact icon button)
         if (store.showCharCoordBadge && Array.isArray(segResult?.characters) && segResult.characters.length > 0) {
             const charCount = segResult.characters.length;
-            badges.push(`<button class="menu_button rbq-sdt-viewer-coord-btn" type="button" title="点击查看分镜角色与机位详情" style="font-size: 12px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 600 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-users" style="font-size: 11px !important;"></i> 角色机位 (${charCount})</button>`);
+            badges.push(`<button class="menu_button rbq-sdt-viewer-badge rbq-sdt-viewer-coord-btn" type="button" title="点击查看分镜角色与机位详情" style="font-size: 12px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 600 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-users" style="font-size: 11px !important;"></i> 角色机位 (${charCount})</button>`);
         }
 
         // 3. Modular Outfit Quick Switcher button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-outfit-btn" type="button" style="font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-vest-patches" style="font-size: 11px !important;"></i> 👗 换装 ▾</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-badge rbq-sdt-viewer-outfit-btn" type="button" style="font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-vest-patches" style="font-size: 11px !important;"></i> 👗 换装 ▾</button>`);
 
         // 4. AI Segment Refinement button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-badge rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
 
         // 5. Manual Tag Refinement button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-badge rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
 
         // 6. Tagger Debug / Raw Output button if store.showTaggerDebug is enabled (or debug info present)
         if (store.showTaggerDebug) {
-            badges.push(`<button class="menu_button rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
+            badges.push(`<button class="menu_button rbq-sdt-viewer-badge rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
         }
 
-        bottomBar.innerHTML = badges.join('');
+        const sssBtn = bottomBar.querySelector('#rbq-storage-bottom-badge');
+        const container = document.createElement('div');
+        container.innerHTML = badges.join('');
+        Array.from(container.children).forEach(el => {
+            if (sssBtn) {
+                bottomBar.insertBefore(el, sssBtn);
+            } else {
+                bottomBar.appendChild(el);
+            }
+        });
+
+        try {
+            window.dispatchEvent(new CustomEvent('rbq-sdt:bottom-bar-rendered', {
+                detail: { bottomBar, modal, currentItem, segResult }
+            }));
+        } catch (_) {}
 
         // 彻底隔离底部栏 touch & wheel 事件，防止在底栏滑动时导致查看器切图或收起
         if (!bottomBar.__rbqViewerIsolated) {
@@ -8161,7 +8176,7 @@ SCHEMA:
         if (!bottomBar) return;
         const current = detail.current;
         if (!current) {
-            bottomBar.innerHTML = '';
+            bottomBar.querySelectorAll('.rbq-sdt-viewer-badge').forEach(el => el.remove());
             return;
         }
 
@@ -8170,7 +8185,7 @@ SCHEMA:
             renderViewerBottomBar(bottomBar, segData.segResult, segData.wrapper, current, modal);
             bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
         } else {
-            bottomBar.innerHTML = '';
+            bottomBar.querySelectorAll('.rbq-sdt-viewer-badge').forEach(el => el.remove());
         }
     });
 

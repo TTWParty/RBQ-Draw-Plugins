@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.14';
+    const PLUGIN_VERSION = '1.1.15';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -982,16 +982,27 @@
             }
             .rbq-storage-modal-overlay {
                 position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100% !important;
+                width: 100vw !important;
+                height: 100% !important;
+                height: 100vh !important;
+                height: 100dvh !important;
                 inset: 0 !important;
-                z-index: 2147483645 !important;
-                background: rgba(0, 0, 0, 0.72) !important;
+                z-index: 2147483647 !important;
+                background: rgba(0, 0, 0, 0.75) !important;
                 display: flex !important;
-                align-items: center !important;
+                align-items: flex-start !important;
                 justify-content: center !important;
-                backdrop-filter: blur(6px) !important;
-                -webkit-backdrop-filter: blur(6px) !important;
-                padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px) !important;
+                backdrop-filter: blur(8px) !important;
+                -webkit-backdrop-filter: blur(8px) !important;
+                padding: max(16px, env(safe-area-inset-top, 16px)) max(16px, env(safe-area-inset-right, 16px)) max(16px, env(safe-area-inset-bottom, 16px)) max(16px, env(safe-area-inset-left, 16px)) !important;
                 box-sizing: border-box !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch !important;
                 animation: rbqStorageFadeIn 0.15s ease-out !important;
             }
             @keyframes rbqStorageFadeIn {
@@ -1001,15 +1012,17 @@
             .rbq-storage-modal-dialog {
                 background: #161a29 !important;
                 background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
-                border: 1px solid rgba(255, 255, 255, 0.14) !important;
-                border-radius: 14px !important;
+                border: 1px solid rgba(255, 255, 255, 0.16) !important;
+                border-radius: 16px !important;
                 width: 100% !important;
-                max-width: 420px !important;
+                max-width: 440px !important;
+                margin: auto !important;
                 color: #e2e8f0 !important;
-                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+                box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85) !important;
                 display: flex !important;
                 flex-direction: column !important;
                 overflow: hidden !important;
+                max-height: calc(min(100dvh, 100vh) - max(32px, env(safe-area-inset-top, 16px) * 2) - max(32px, env(safe-area-inset-bottom, 16px) * 2)) !important;
                 pointer-events: auto !important;
                 animation: rbqStorageScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
                 box-sizing: border-box !important;
@@ -1060,8 +1073,31 @@
                 flex-direction: column !important;
                 gap: 12px !important;
                 overflow-y: auto !important;
-                max-height: calc(min(100dvh, 100vh) - 100px) !important;
+                -webkit-overflow-scrolling: touch !important;
+                flex: 1 1 auto !important;
+                min-height: 0 !important;
                 box-sizing: border-box !important;
+            }
+            .rbq-storage-bottom-badge {
+                font-size: 12px !important;
+                background: rgba(255, 255, 255, 0.08) !important;
+                color: #cbd5e1 !important;
+                border: 1px solid rgba(255, 255, 255, 0.16) !important;
+                border-radius: 20px !important;
+                padding: 4px 12px !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                cursor: pointer !important;
+                white-space: nowrap !important;
+                font-weight: 500 !important;
+                flex-shrink: 0 !important;
+                transition: all 0.16s ease !important;
+            }
+            .rbq-storage-bottom-badge:hover {
+                background: rgba(255, 255, 255, 0.15) !important;
+                color: #fff !important;
+                border-color: rgba(255, 255, 255, 0.28) !important;
             }
             .rbq-storage-info-list {
                 display: flex;
@@ -1436,9 +1472,21 @@
             </div>
         `;
 
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                closeModal();
+            }
+        };
+
         const closeModal = () => {
+            window.removeEventListener('keydown', handleKeyDown, true);
             overlay.remove();
         };
+        overlay.__rbqCleanup = closeModal;
+        window.addEventListener('keydown', handleKeyDown, true);
 
         const closeBtn = dialog.querySelector('.rbq-storage-modal-close');
         if (closeBtn) closeBtn.onclick = closeModal;
@@ -1548,9 +1596,10 @@
         if (!modal) return;
 
         const actions = modal.querySelector('.st-scene-trigger-viewer-actions');
-        if (!actions) return;
+        const bottomBar = detail?.bottomBar || modal.querySelector('.st-scene-trigger-viewer-bottom-bar');
+        if (!actions && !bottomBar) return;
 
-        const current = detail?.current;
+        const current = detail?.current || currentViewerItem;
         currentViewerItem = current;
         if (!current) return;
 
@@ -1561,8 +1610,9 @@
         document.getElementById('rbq-storage-popover')?.remove();
         modal.querySelector('#rbq-storage-badge-wrap')?.remove();
 
-        let badgeBtn = actions.querySelector('#rbq-storage-badge-btn');
-        if (!badgeBtn) {
+        // 1. 顶部操作栏指示点
+        let badgeBtn = actions?.querySelector('#rbq-storage-badge-btn');
+        if (actions && !badgeBtn) {
             badgeBtn = document.createElement('button');
             badgeBtn.id = 'rbq-storage-badge-btn';
             badgeBtn.className = 'rbq-storage-badge-btn menu_button st-scene-trigger-icon-button';
@@ -1582,19 +1632,43 @@
             badgeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
         }
 
-        const dot = badgeBtn.querySelector('#rbq-storage-dot');
+        // 2. 底部栏胶囊按钮（手机端与大图极佳访问体验）
+        let bottomBadge = bottomBar?.querySelector('#rbq-storage-bottom-badge');
+        if (bottomBar && !bottomBadge) {
+            bottomBadge = document.createElement('button');
+            bottomBadge.id = 'rbq-storage-bottom-badge';
+            bottomBadge.className = 'menu_button rbq-storage-bottom-badge';
+            bottomBadge.type = 'button';
+            bottomBadge.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            bottomBadge.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+            bottomBadge.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+            bottomBadge.addEventListener('pointerdown', (e) => e.stopPropagation());
+            bottomBar.appendChild(bottomBadge);
+        }
 
         // 检测存储物理归属
         const info = await inspectImageStorage(current);
 
-        if (dot) dot.style.background = info.color;
-        badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
+        if (badgeBtn) {
+            const dot = badgeBtn.querySelector('#rbq-storage-dot');
+            if (dot) dot.style.background = info.color;
+            badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
+            badgeBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showStorageModal(current, info);
+            };
+        }
 
-        badgeBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            showStorageModal(current, info);
-        };
+        if (bottomBadge) {
+            bottomBadge.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
+            bottomBadge.innerHTML = `<span class="rbq-storage-dot" style="background:${info.color};"></span> 存储: ${escapeHtml(info.text)}`;
+            bottomBadge.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showStorageModal(current, info);
+            };
+        }
     }
 
     function escapeHtml(str) {
@@ -1605,8 +1679,15 @@
         updateViewerBadge(event?.detail);
     });
 
+    window.addEventListener('rbq-sdt:bottom-bar-rendered', (event) => {
+        const modal = event?.detail?.modal || document.getElementById('st-scene-trigger-image-viewer');
+        updateViewerBadge({ modal, bottomBar: event?.detail?.bottomBar, current: currentViewerItem });
+    });
+
     window.addEventListener('st-scene-trigger:viewer-closed', () => {
-        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => {
+            if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
+        });
         document.getElementById('rbq-storage-popover')?.remove();
     });
 

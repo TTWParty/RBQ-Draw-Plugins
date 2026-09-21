@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.14';
+    const PLUGIN_VERSION = '1.1.15';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -1472,14 +1472,26 @@
             </div>
         `;
 
+        const modalOpenedAt = Date.now();
         const closeModal = () => {
             overlay.remove();
         };
 
+        dialog.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
         const closeBtn = dialog.querySelector('.rbq-storage-modal-close');
-        if (closeBtn) closeBtn.onclick = closeModal;
+        if (closeBtn) {
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeModal();
+            };
+        }
 
         overlay.addEventListener('click', (e) => {
+            // 彻底防止移动端触发按钮的合成点击穿透导致秒关 (400ms 保护窗口)
+            if (Date.now() - modalOpenedAt < 400) return;
             if (e.target === overlay) closeModal();
         });
 
@@ -1622,7 +1634,9 @@
         badgeBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            showStorageModal(current, info);
+            setTimeout(() => {
+                showStorageModal(current, info);
+            }, 30);
         };
     }
 

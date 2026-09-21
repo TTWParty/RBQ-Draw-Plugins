@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.30';
+    const PLUGIN_VERSION = '6.0.25';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6395,28 +6395,12 @@ Zimage 擅长理解复杂的英文长句和语境。
             </div>
         `;
 
-        let isOverlaySelfDown = false;
-        modal.addEventListener('pointerdown', (e) => {
-            isOverlaySelfDown = (e.target === modal);
-        });
-        modal.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            isOverlaySelfDown = (e.target === modal);
-        }, { passive: true });
-        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-
-        modal.querySelector('#rbq-sdt-hit-viewer-close')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            modal.remove();
-        });
+        modal.querySelector('#rbq-sdt-hit-viewer-close')?.addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => {
-            if (!isOverlaySelfDown) return;
             if (e.target === modal) modal.remove();
         });
         modal.querySelectorAll('.rbq-sdt-copy-hit-tags').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
+            btn.addEventListener('click', () => {
                 const tags = btn.dataset.tags || '';
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(tags).then(() => {
@@ -6665,28 +6649,10 @@ SCHEMA:
             </div>
         `;
 
-        let isOverlaySelfDown = false;
-        modal.addEventListener('pointerdown', (e) => {
-            isOverlaySelfDown = (e.target === modal);
-        });
-        modal.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            isOverlaySelfDown = (e.target === modal);
-        }, { passive: true });
-        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-refiner-close')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close();
-        });
-        modal.querySelector('#rbq-sdt-refiner-cancel')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close();
-        });
+        modal.querySelector('#rbq-sdt-refiner-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-refiner-cancel')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => {
-            if (!isOverlaySelfDown) return;
             if (e.target === modal) close();
         });
 
@@ -6954,28 +6920,10 @@ SCHEMA:
             </div>
         `;
 
-        let isOverlaySelfDown = false;
-        modal.addEventListener('pointerdown', (e) => {
-            isOverlaySelfDown = (e.target === modal);
-        });
-        modal.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            isOverlaySelfDown = (e.target === modal);
-        }, { passive: true });
-        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-manual-close')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close();
-        });
-        modal.querySelector('#rbq-sdt-manual-cancel')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close();
-        });
+        modal.querySelector('#rbq-sdt-manual-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-manual-cancel')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => {
-            if (!isOverlaySelfDown) return;
             if (e.target === modal) close();
         });
 
@@ -7297,28 +7245,10 @@ SCHEMA:
             </div>
         `;
 
-        let isOverlaySelfDown = false;
-        modal.addEventListener('pointerdown', (e) => {
-            isOverlaySelfDown = (e.target === modal);
-        });
-        modal.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            isOverlaySelfDown = (e.target === modal);
-        }, { passive: true });
-        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-card-outfit-close')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close();
-        });
-        modal.querySelector('#rbq-sdt-card-outfit-cancel')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            close();
-        });
+        modal.querySelector('#rbq-sdt-card-outfit-close')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-card-outfit-cancel')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => {
-            if (!isOverlaySelfDown) return;
             if (e.target === modal) close();
         });
 
@@ -7720,28 +7650,10 @@ SCHEMA:
         modal.append(panel);
         document.body.append(modal);
 
-        let isOverlaySelfDown = false;
-        modal.addEventListener('pointerdown', (e) => {
-            isOverlaySelfDown = (e.target === modal);
-        });
-        modal.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            isOverlaySelfDown = (e.target === modal);
-        }, { passive: true });
-        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-
         const closeModal = () => modal.remove();
-        header.querySelector('.rbq-sdt-debug-close-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            closeModal();
-        });
-        footer.querySelector('.rbq-sdt-debug-close-btn2')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            closeModal();
-        });
+        header.querySelector('.rbq-sdt-debug-close-btn')?.addEventListener('click', closeModal);
+        footer.querySelector('.rbq-sdt-debug-close-btn2')?.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => {
-            if (!isOverlaySelfDown) return;
             if (e.target === modal) closeModal();
         });
 
@@ -7752,93 +7664,6 @@ SCHEMA:
                 toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
             });
         });
-    }
-
-    function openCharCoordDetailModal(characters) {
-        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
-        const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
-        const overlay = document.createElement('div');
-        overlay.className = 'rbq-sdt-coord-modal-overlay';
-        overlay.style.cssText = `
-            position: fixed !important; inset: 0 !important; z-index: 2147483647 !important;
-            background: rgba(0,0,0,0.68) !important; backdrop-filter: blur(8px) !important;
-            -webkit-backdrop-filter: blur(8px) !important;
-            display: flex !important; align-items: ${isMobile ? 'flex-end' : 'center'} !important; justify-content: center !important;
-            animation: rbqStorageFadeIn 0.15s ease-out !important;
-        `;
-        let isOverlaySelfDown = false;
-        overlay.addEventListener('pointerdown', (e) => {
-            isOverlaySelfDown = (e.target === overlay);
-        });
-        overlay.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-            isOverlaySelfDown = (e.target === overlay);
-        }, { passive: true });
-        overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-        overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-        overlay.addEventListener('click', (e) => {
-            if (!isOverlaySelfDown) return;
-            if (e.target === overlay) overlay.remove();
-        });
-
-        const dialog = document.createElement('div');
-        dialog.className = 'rbq-sdt-coord-modal-dialog';
-        dialog.style.cssText = `
-            width: 100% !important; max-width: ${isMobile ? '100%' : '440px'} !important;
-            background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
-            border: 1px solid rgba(255,255,255,0.14) !important;
-            border-radius: ${isMobile ? '20px 20px 0 0' : '16px'} !important;
-            ${isMobile ? 'border-bottom: none !important;' : ''}
-            box-shadow: 0 ${isMobile ? '-10px' : '20px'} 40px rgba(0,0,0,0.8) !important;
-            color: #e2e8f0 !important; padding: ${isMobile ? '14px 18px max(20px, env(safe-area-inset-bottom, 20px)) 18px' : '16px 20px 20px 20px'} !important;
-            box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 12px !important;
-            animation: ${isMobile ? 'rbqSheetSlideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1)' : 'rbqStorageFadeIn 0.18s ease-out'} !important;
-        `;
-        dialog.addEventListener('click', (e) => e.stopPropagation());
-
-        const charList = Array.isArray(characters) ? characters : [];
-        const itemsHtml = charList.length > 0 ? charList.map((c, i) => {
-            const charName = c._rawName || c.name || `角色 #${i + 1}`;
-            const center = c.center || 'C3';
-            const posName = formatCoordLabel(center);
-            const prompt = c.prompt ? escapeHtml(c.prompt) : '';
-            return `
-                <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span style="font-weight: 600; color: #fff; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fa-solid fa-user" style="color: #79e4ff; font-size: 12px;"></i> ${escapeHtml(charName)}
-                        </span>
-                        <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600;">
-                            机位: ${escapeHtml(center)} (${posName})
-                        </span>
-                    </div>
-                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.4; word-break: break-word;">${prompt}</div>` : ''}
-                </div>
-            `;
-        }).join('') : `<div style="text-align: center; color: #94a3b8; padding: 20px 0; font-size: 13px;">暂无分镜角色信息</div>`;
-
-        dialog.innerHTML = `
-            ${isMobile ? '<div style="width: 38px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.28); margin: 0 auto 4px auto; flex-shrink: 0;"></div>' : ''}
-            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
-                <span style="font-weight: 700; font-size: 14px; color: #f8fafc; display: inline-flex; align-items: center; gap: 6px;">
-                    <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位坐标
-                </span>
-                <button type="button" class="rbq-sdt-coord-close" style="background: none; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; padding: 2px 6px;">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto;">
-                ${itemsHtml}
-            </div>
-        `;
-
-        dialog.querySelector('.rbq-sdt-coord-close')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            overlay.remove();
-        });
-
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
     }
 
     function renderViewerBottomBar(bottomBar, segResult, wrapper, currentItem, modal) {
@@ -7860,64 +7685,57 @@ SCHEMA:
             badges.push(`<button class="menu_button rbq-sdt-viewer-lorebook-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-book-bookmark" style="font-size: 11px !important;"></i> 命中世界书 (${validLorebooks.length}条) ▾</button>`);
         }
 
-        // 2. Multi-char coordinate button (compact icon button, tap to pop up details)
+        // 2. Multi-char coordinate badges
         if (store.showCharCoordBadge && Array.isArray(segResult?.characters) && segResult.characters.length > 0) {
-            const charCount = segResult.characters.length;
-            badges.push(`<button class="menu_button rbq-sdt-viewer-coord-btn" type="button" title="点击查看分镜角色与机位详情" style="font-size: 12px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important; border-radius: 20px !important; padding: 4px 11px !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 600 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-user" style="font-size: 11px !important;"></i>${charCount > 1 ? `<span style="font-size: 10.5px; opacity: 0.9;">${charCount}</span>` : ''}</button>`);
+            for (const c of segResult.characters) {
+                const charName = c._rawName || c.name || '角色';
+                const center = c.center || 'C3';
+                const posName = formatCoordLabel(center);
+                badges.push(`<span class="rbq-sdt-viewer-coord-badge" style="font-size: 12px !important; background: rgba(255,255,255,0.08) !important; color: #eee !important; border: 1px solid rgba(255,255,255,0.18) !important; border-radius: 20px !important; padding: 4px 10px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; white-space: nowrap !important;"><i class="fa-solid fa-user" style="font-size: 11px !important; color: #79e4ff !important;"></i> ${escapeHtml(charName)}: <b style="color: #79e4ff !important;">${escapeHtml(center)}</b> (${posName})</span>`);
+            }
         }
 
         // 3. Modular Outfit Quick Switcher button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-outfit-btn" type="button" style="font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-vest-patches" style="font-size: 11px !important;"></i> 👗 换装 ▾</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-outfit-btn" type="button" style="font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-vest-patches" style="font-size: 11px !important;"></i> 👗 换装 ▾</button>`);
 
         // 4. AI Segment Refinement button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
 
         // 5. Manual Tag Refinement button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
 
         // 6. Tagger Debug / Raw Output button if store.showTaggerDebug is enabled (or debug info present)
         if (store.showTaggerDebug) {
-            badges.push(`<button class="menu_button rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
+            badges.push(`<button class="menu_button rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
         }
 
         bottomBar.innerHTML = badges.join('');
 
-        // 拦截底部栏一切 touch 事件，彻底阻断大图切图串扰
-        if (!bottomBar.__rbqTouchIsolated) {
-            bottomBar.__rbqTouchIsolated = true;
-            bottomBar.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-            bottomBar.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-            bottomBar.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
-        }
+        bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
+        });
 
-        const bindViewerBottomAction = (selector, action) => {
-            const btn = bottomBar.querySelector(selector);
-            if (btn) {
-                btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-                btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-                btn.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
-                btn.addEventListener('touchend', (e) => e.stopPropagation());
-                btn.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    action();
-                };
-            }
-        };
+        bottomBar.querySelector('.rbq-sdt-viewer-outfit-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openCardOutfitModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
+        });
 
-        bindViewerBottomAction('.rbq-sdt-viewer-coord-btn', () => openCharCoordDetailModal(segResult.characters));
-        bindViewerBottomAction('.rbq-sdt-viewer-lorebook-btn', () => openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt));
-        bindViewerBottomAction('.rbq-sdt-viewer-outfit-btn', () => openCardOutfitModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar }));
-        bindViewerBottomAction('.rbq-sdt-viewer-refine-btn', () => openSegmentAiRefinerModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar }));
-        bindViewerBottomAction('.rbq-sdt-viewer-manual-tag-btn', () => openSegmentManualTagModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar }));
-        bindViewerBottomAction('.rbq-sdt-viewer-debug-btn', () => openTaggerDebugModal(segResult, wrapper));
+        bottomBar.querySelector('.rbq-sdt-viewer-refine-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openSegmentAiRefinerModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
+        });
+
+        bottomBar.querySelector('.rbq-sdt-viewer-manual-tag-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openSegmentManualTagModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
+        });
+
+        bottomBar.querySelector('.rbq-sdt-viewer-debug-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openTaggerDebugModal(segResult, wrapper);
+        });
     }
-
-    function closeViewerSubModals() {
-        document.querySelectorAll('.rbq-sdt-coord-modal-overlay, #rbq-sdt-hit-viewer-modal, #rbq-sdt-card-outfit-modal, #rbq-sdt-refiner-modal, #rbq-sdt-manual-tag-modal, #rbq-sdt-tagger-debug-modal').forEach(el => el.remove());
-    }
-
-    window.addEventListener('st-scene-trigger:viewer-closed', closeViewerSubModals);
 
     function findSegmentDataForViewer(current) {
         if (!current) return null;
@@ -8026,24 +7844,20 @@ SCHEMA:
 
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
-        closeViewerSubModals();
         const detail = event?.detail;
-        if (!detail) return;
-        const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
-        const bottomBar = detail.bottomBar || modal?.querySelector('.st-scene-trigger-viewer-bottom-bar') || document.querySelector('.st-scene-trigger-viewer-bottom-bar');
-        if (!bottomBar) return;
+        if (!detail || !detail.bottomBar) return;
         const current = detail.current;
         if (!current) {
-            bottomBar.innerHTML = '';
+            detail.bottomBar.innerHTML = '';
             return;
         }
 
         const segData = findSegmentDataForViewer(current);
         if (segData && segData.segResult) {
-            renderViewerBottomBar(bottomBar, segData.segResult, segData.wrapper, current, modal);
-            bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
+            renderViewerBottomBar(detail.bottomBar, segData.segResult, segData.wrapper, current, detail.modal);
+            detail.bottomBar.dataset.renderedSrc = current.displayUrl || current.url;
         } else {
-            bottomBar.innerHTML = '';
+            detail.bottomBar.innerHTML = '';
         }
     });
 
@@ -11457,14 +11271,6 @@ SCHEMA:
             }
             .rbq-sdt-lightbox-close:hover {
                 background: rgba(239, 68, 68, 0.8);
-            }
-            @keyframes rbqStorageFadeIn {
-                from { opacity: 0; }
-                to { opacity: 1; }
-            }
-            @keyframes rbqSheetSlideUp {
-                from { transform: translateY(100%); opacity: 0; }
-                to { transform: translateY(0); opacity: 1; }
             }
         `;
         document.head.append(style);

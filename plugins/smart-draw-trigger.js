@@ -7666,6 +7666,87 @@ SCHEMA:
         });
     }
 
+    function openCharCoordDetailModal(characters) {
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
+
+        const overlay = document.createElement('div');
+        overlay.className = 'rbq-sdt-coord-modal-overlay';
+        overlay.style.cssText = `
+            position: fixed !important; inset: 0 !important;
+            background: rgba(0,0,0,0.72) !important;
+            backdrop-filter: blur(8px) !important;
+            -webkit-backdrop-filter: blur(8px) !important;
+            z-index: 10000000 !important;
+            display: flex !important; align-items: center !important; justify-content: center !important;
+            padding: 20px !important; box-sizing: border-box !important;
+        `;
+
+        overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+
+        let canDismiss = false;
+        setTimeout(() => { canDismiss = true; }, 350);
+        overlay.addEventListener('click', (e) => {
+            if (canDismiss && e.target === overlay) overlay.remove();
+        });
+
+        const dialog = document.createElement('div');
+        dialog.className = 'rbq-sdt-coord-modal-dialog';
+        dialog.style.cssText = `
+            width: 100% !important; max-width: 460px !important;
+            background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
+            border: 1px solid rgba(255,255,255,0.16) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
+            color: #e2e8f0 !important; padding: 18px 20px !important;
+            box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 14px !important;
+        `;
+        dialog.addEventListener('click', (e) => e.stopPropagation());
+
+        const itemsHtml = (characters || []).map((c, i) => {
+            const charName = c._rawName || c.name || `角色 #${i + 1}`;
+            const center = c.center || 'C3';
+            const posName = formatCoordLabel(center);
+            const prompt = c.prompt ? escapeHtml(c.prompt) : '';
+            return `
+                <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-weight: 600; color: #fff; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-user" style="color: #79e4ff; font-size: 12px;"></i> ${escapeHtml(charName)}
+                        </span>
+                        <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600;">
+                            机位: ${escapeHtml(center)} (${posName})
+                        </span>
+                    </div>
+                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.4; word-break: break-word;">${prompt}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        dialog.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px;">
+                <span style="font-weight: 700; font-size: 15px; color: #f8fafc; display: inline-flex; align-items: center; gap: 7px;">
+                    <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位信息 (${(characters || []).length}位)
+                </span>
+                <button type="button" class="rbq-sdt-coord-close" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; font-size: 14px; cursor: pointer; border-radius: 8px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto;">
+                ${itemsHtml}
+            </div>
+        `;
+
+        dialog.querySelector('.rbq-sdt-coord-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            overlay.remove();
+        });
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+    }
+
     function renderViewerBottomBar(bottomBar, segResult, wrapper, currentItem, modal) {
         if (!(bottomBar instanceof HTMLElement)) return;
         bottomBar.innerHTML = '';
@@ -7682,34 +7763,49 @@ SCHEMA:
 
         // 1. Worldbook hit button in viewer
         if (store.showLorebookHitBadge && validLorebooks.length > 0) {
-            badges.push(`<button class="menu_button rbq-sdt-viewer-lorebook-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-book-bookmark" style="font-size: 11px !important;"></i> 命中世界书 (${validLorebooks.length}条) ▾</button>`);
+            badges.push(`<button class="menu_button rbq-sdt-viewer-lorebook-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-book-bookmark" style="font-size: 11px !important;"></i> 命中世界书 (${validLorebooks.length}条) ▾</button>`);
         }
 
-        // 2. Multi-char coordinate badges
+        // 2. Multi-char coordinate button (compact icon button)
         if (store.showCharCoordBadge && Array.isArray(segResult?.characters) && segResult.characters.length > 0) {
-            for (const c of segResult.characters) {
-                const charName = c._rawName || c.name || '角色';
-                const center = c.center || 'C3';
-                const posName = formatCoordLabel(center);
-                badges.push(`<span class="rbq-sdt-viewer-coord-badge" style="font-size: 12px !important; background: rgba(255,255,255,0.08) !important; color: #eee !important; border: 1px solid rgba(255,255,255,0.18) !important; border-radius: 20px !important; padding: 4px 10px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; white-space: nowrap !important;"><i class="fa-solid fa-user" style="font-size: 11px !important; color: #79e4ff !important;"></i> ${escapeHtml(charName)}: <b style="color: #79e4ff !important;">${escapeHtml(center)}</b> (${posName})</span>`);
-            }
+            const charCount = segResult.characters.length;
+            badges.push(`<button class="menu_button rbq-sdt-viewer-coord-btn" type="button" title="点击查看分镜角色与机位详情" style="font-size: 12px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 600 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-users" style="font-size: 11px !important;"></i> 角色机位 (${charCount})</button>`);
         }
 
         // 3. Modular Outfit Quick Switcher button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-outfit-btn" type="button" style="font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-vest-patches" style="font-size: 11px !important;"></i> 👗 换装 ▾</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-outfit-btn" type="button" style="font-size: 12px !important; background: rgba(255,184,108,0.2) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-vest-patches" style="font-size: 11px !important;"></i> 👗 换装 ▾</button>`);
 
         // 4. AI Segment Refinement button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-refine-btn" type="button" style="font-size: 12px !important; background: rgba(180,104,255,0.2) !important; color: #d8aaff !important; border: 1px solid rgba(180,104,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-wand-magic-sparkles" style="font-size: 11px !important;"></i> ✨ AI 调整此图</button>`);
 
         // 5. Manual Tag Refinement button
-        badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
+        badges.push(`<button class="menu_button rbq-sdt-viewer-manual-tag-btn" type="button" style="font-size: 12px !important; background: rgba(104,215,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-tags" style="font-size: 11px !important;"></i> 🏷️ 手动调整 Tag</button>`);
 
         // 6. Tagger Debug / Raw Output button if store.showTaggerDebug is enabled (or debug info present)
         if (store.showTaggerDebug) {
-            badges.push(`<button class="menu_button rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
+            badges.push(`<button class="menu_button rbq-sdt-viewer-debug-btn" type="button" style="font-size: 12px !important; background: rgba(255,200,50,0.18) !important; color: #ffd166 !important; border: 1px solid rgba(255,200,50,0.45) !important; border-radius: 20px !important; padding: 4px 12px !important; display: inline-flex !important; align-items: center !important; gap: 5px !important; cursor: pointer !important; white-space: nowrap !important; font-weight: 500 !important; flex-shrink: 0 !important;"><i class="fa-solid fa-bug" style="font-size: 11px !important;"></i> 🔍 Tagger 调试</button>`);
         }
 
         bottomBar.innerHTML = badges.join('');
+
+        // 彻底隔离底部栏 touch & wheel 事件，防止在底栏滑动时导致查看器切图或收起
+        if (!bottomBar.__rbqViewerIsolated) {
+            bottomBar.__rbqViewerIsolated = true;
+            bottomBar.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            bottomBar.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+            bottomBar.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+            bottomBar.addEventListener('wheel', (e) => {
+                if (e.deltaY !== 0 || e.deltaX !== 0) {
+                    e.stopPropagation();
+                    bottomBar.scrollLeft += (e.deltaX || e.deltaY);
+                }
+            }, { passive: false });
+        }
+
+        bottomBar.querySelector('.rbq-sdt-viewer-coord-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openCharCoordDetailModal(segResult.characters);
+        });
 
         bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();

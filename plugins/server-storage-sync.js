@@ -1443,8 +1443,15 @@
         const closeBtn = dialog.querySelector('.rbq-storage-modal-close');
         if (closeBtn) closeBtn.onclick = closeModal;
 
+        overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+        dialog.addEventListener('click', (e) => e.stopPropagation());
+
+        let canClose = false;
+        setTimeout(() => { canClose = true; }, 350);
         overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) closeModal();
+            if (canClose && e.target === overlay) closeModal();
         });
 
         // 绑定手动同步按钮

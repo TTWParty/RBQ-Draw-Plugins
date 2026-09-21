@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.28';
+    const PLUGIN_VERSION = '6.0.30';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6395,12 +6395,28 @@ Zimage 擅长理解复杂的英文长句和语境。
             </div>
         `;
 
-        modal.querySelector('#rbq-sdt-hit-viewer-close')?.addEventListener('click', () => modal.remove());
+        let isOverlaySelfDown = false;
+        modal.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === modal);
+        });
+        modal.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === modal);
+        }, { passive: true });
+        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+
+        modal.querySelector('#rbq-sdt-hit-viewer-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            modal.remove();
+        });
         modal.addEventListener('click', (e) => {
+            if (!isOverlaySelfDown) return;
             if (e.target === modal) modal.remove();
         });
         modal.querySelectorAll('.rbq-sdt-copy-hit-tags').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const tags = btn.dataset.tags || '';
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(tags).then(() => {
@@ -6649,10 +6665,28 @@ SCHEMA:
             </div>
         `;
 
+        let isOverlaySelfDown = false;
+        modal.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === modal);
+        });
+        modal.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === modal);
+        }, { passive: true });
+        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-refiner-close')?.addEventListener('click', close);
-        modal.querySelector('#rbq-sdt-refiner-cancel')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-refiner-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close();
+        });
+        modal.querySelector('#rbq-sdt-refiner-cancel')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close();
+        });
         modal.addEventListener('click', (e) => {
+            if (!isOverlaySelfDown) return;
             if (e.target === modal) close();
         });
 
@@ -6920,10 +6954,28 @@ SCHEMA:
             </div>
         `;
 
+        let isOverlaySelfDown = false;
+        modal.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === modal);
+        });
+        modal.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === modal);
+        }, { passive: true });
+        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-manual-close')?.addEventListener('click', close);
-        modal.querySelector('#rbq-sdt-manual-cancel')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-manual-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close();
+        });
+        modal.querySelector('#rbq-sdt-manual-cancel')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close();
+        });
         modal.addEventListener('click', (e) => {
+            if (!isOverlaySelfDown) return;
             if (e.target === modal) close();
         });
 
@@ -7245,10 +7297,28 @@ SCHEMA:
             </div>
         `;
 
+        let isOverlaySelfDown = false;
+        modal.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === modal);
+        });
+        modal.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === modal);
+        }, { passive: true });
+        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+
         const close = () => modal.remove();
-        modal.querySelector('#rbq-sdt-card-outfit-close')?.addEventListener('click', close);
-        modal.querySelector('#rbq-sdt-card-outfit-cancel')?.addEventListener('click', close);
+        modal.querySelector('#rbq-sdt-card-outfit-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close();
+        });
+        modal.querySelector('#rbq-sdt-card-outfit-cancel')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            close();
+        });
         modal.addEventListener('click', (e) => {
+            if (!isOverlaySelfDown) return;
             if (e.target === modal) close();
         });
 
@@ -7650,10 +7720,28 @@ SCHEMA:
         modal.append(panel);
         document.body.append(modal);
 
+        let isOverlaySelfDown = false;
+        modal.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === modal);
+        });
+        modal.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === modal);
+        }, { passive: true });
+        modal.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        modal.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+
         const closeModal = () => modal.remove();
-        header.querySelector('.rbq-sdt-debug-close-btn')?.addEventListener('click', closeModal);
-        footer.querySelector('.rbq-sdt-debug-close-btn2')?.addEventListener('click', closeModal);
+        header.querySelector('.rbq-sdt-debug-close-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeModal();
+        });
+        footer.querySelector('.rbq-sdt-debug-close-btn2')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeModal();
+        });
         modal.addEventListener('click', (e) => {
+            if (!isOverlaySelfDown) return;
             if (e.target === modal) closeModal();
         });
 
@@ -7668,39 +7756,48 @@ SCHEMA:
 
     function openCharCoordDetailModal(characters) {
         document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => el.remove());
+        const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
         const overlay = document.createElement('div');
         overlay.className = 'rbq-sdt-coord-modal-overlay';
         overlay.style.cssText = `
-            position: fixed !important; inset: 0 !important; z-index: 2147483646 !important;
+            position: fixed !important; inset: 0 !important; z-index: 2147483647 !important;
             background: rgba(0,0,0,0.68) !important; backdrop-filter: blur(8px) !important;
             -webkit-backdrop-filter: blur(8px) !important;
-            display: flex !important; align-items: flex-end !important; justify-content: center !important;
+            display: flex !important; align-items: ${isMobile ? 'flex-end' : 'center'} !important; justify-content: center !important;
             animation: rbqStorageFadeIn 0.15s ease-out !important;
         `;
-        const modalOpenedAt = Date.now();
-        overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        let isOverlaySelfDown = false;
+        overlay.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === overlay);
+        });
+        overlay.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === overlay);
+        }, { passive: true });
         overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('click', (e) => {
-            if (Date.now() - modalOpenedAt < 400) return;
+            if (!isOverlaySelfDown) return;
             if (e.target === overlay) overlay.remove();
         });
 
         const dialog = document.createElement('div');
         dialog.className = 'rbq-sdt-coord-modal-dialog';
         dialog.style.cssText = `
-            width: 100% !important; max-width: 440px !important;
+            width: 100% !important; max-width: ${isMobile ? '100%' : '440px'} !important;
             background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
             border: 1px solid rgba(255,255,255,0.14) !important;
-            border-radius: 20px 20px 0 0 !important;
-            box-shadow: 0 -10px 40px rgba(0,0,0,0.8) !important;
-            color: #e2e8f0 !important; padding: 14px 18px max(20px, env(safe-area-inset-bottom, 20px)) 18px !important;
+            border-radius: ${isMobile ? '20px 20px 0 0' : '16px'} !important;
+            ${isMobile ? 'border-bottom: none !important;' : ''}
+            box-shadow: 0 ${isMobile ? '-10px' : '20px'} 40px rgba(0,0,0,0.8) !important;
+            color: #e2e8f0 !important; padding: ${isMobile ? '14px 18px max(20px, env(safe-area-inset-bottom, 20px)) 18px' : '16px 20px 20px 20px'} !important;
             box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 12px !important;
-            animation: rbqSheetSlideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            animation: ${isMobile ? 'rbqSheetSlideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1)' : 'rbqStorageFadeIn 0.18s ease-out'} !important;
         `;
         dialog.addEventListener('click', (e) => e.stopPropagation());
 
-        const itemsHtml = (characters || []).map((c, i) => {
+        const charList = Array.isArray(characters) ? characters : [];
+        const itemsHtml = charList.length > 0 ? charList.map((c, i) => {
             const charName = c._rawName || c.name || `角色 #${i + 1}`;
             const center = c.center || 'C3';
             const posName = formatCoordLabel(center);
@@ -7718,10 +7815,10 @@ SCHEMA:
                     ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.4; word-break: break-word;">${prompt}</div>` : ''}
                 </div>
             `;
-        }).join('');
+        }).join('') : `<div style="text-align: center; color: #94a3b8; padding: 20px 0; font-size: 13px;">暂无分镜角色信息</div>`;
 
         dialog.innerHTML = `
-            <div style="width: 38px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.28); margin: 0 auto 4px auto; flex-shrink: 0;"></div>
+            ${isMobile ? '<div style="width: 38px; height: 5px; border-radius: 999px; background: rgba(255,255,255,0.28); margin: 0 auto 4px auto; flex-shrink: 0;"></div>' : ''}
             <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
                 <span style="font-weight: 700; font-size: 14px; color: #f8fafc; display: inline-flex; align-items: center; gap: 6px;">
                     <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位坐标
@@ -7793,36 +7890,34 @@ SCHEMA:
             bottomBar.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
         }
 
-        bottomBar.querySelector('.rbq-sdt-viewer-coord-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openCharCoordDetailModal(segResult.characters);
-        });
+        const bindViewerBottomAction = (selector, action) => {
+            const btn = bottomBar.querySelector(selector);
+            if (btn) {
+                btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+                btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+                btn.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+                btn.addEventListener('touchend', (e) => e.stopPropagation());
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    action();
+                };
+            }
+        };
 
-        bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt);
-        });
-
-        bottomBar.querySelector('.rbq-sdt-viewer-outfit-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openCardOutfitModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
-        });
-
-        bottomBar.querySelector('.rbq-sdt-viewer-refine-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openSegmentAiRefinerModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
-        });
-
-        bottomBar.querySelector('.rbq-sdt-viewer-manual-tag-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openSegmentManualTagModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar });
-        });
-
-        bottomBar.querySelector('.rbq-sdt-viewer-debug-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openTaggerDebugModal(segResult, wrapper);
-        });
+        bindViewerBottomAction('.rbq-sdt-viewer-coord-btn', () => openCharCoordDetailModal(segResult.characters));
+        bindViewerBottomAction('.rbq-sdt-viewer-lorebook-btn', () => openLorebookHitViewerModal(validLorebooks, '本生图卡片命中的世界书词条与 Tag', finalPrompt));
+        bindViewerBottomAction('.rbq-sdt-viewer-outfit-btn', () => openCardOutfitModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar }));
+        bindViewerBottomAction('.rbq-sdt-viewer-refine-btn', () => openSegmentAiRefinerModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar }));
+        bindViewerBottomAction('.rbq-sdt-viewer-manual-tag-btn', () => openSegmentManualTagModal(wrapper, segResult, { inViewer: true, currentItem, modal, bottomBar }));
+        bindViewerBottomAction('.rbq-sdt-viewer-debug-btn', () => openTaggerDebugModal(segResult, wrapper));
     }
+
+    function closeViewerSubModals() {
+        document.querySelectorAll('.rbq-sdt-coord-modal-overlay, #rbq-sdt-hit-viewer-modal, #rbq-sdt-card-outfit-modal, #rbq-sdt-refiner-modal, #rbq-sdt-manual-tag-modal, #rbq-sdt-tagger-debug-modal').forEach(el => el.remove());
+    }
+
+    window.addEventListener('st-scene-trigger:viewer-closed', closeViewerSubModals);
 
     function findSegmentDataForViewer(current) {
         if (!current) return null;
@@ -7931,6 +8026,7 @@ SCHEMA:
 
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
+        closeViewerSubModals();
         const detail = event?.detail;
         if (!detail) return;
         const modal = detail.modal || document.getElementById('st-scene-trigger-image-viewer');
@@ -11361,6 +11457,14 @@ SCHEMA:
             }
             .rbq-sdt-lightbox-close:hover {
                 background: rgba(239, 68, 68, 0.8);
+            }
+            @keyframes rbqStorageFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes rbqSheetSlideUp {
+                from { transform: translateY(100%); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
             }
         `;
         document.head.append(style);

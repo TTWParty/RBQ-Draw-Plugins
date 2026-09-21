@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.15';
+    const PLUGIN_VERSION = '1.1.16';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -983,7 +983,7 @@
             .rbq-storage-modal-overlay {
                 position: fixed !important;
                 inset: 0 !important;
-                z-index: 2147483645 !important;
+                z-index: 2147483647 !important;
                 background: rgba(0, 0, 0, 0.76) !important;
                 display: flex !important;
                 align-items: center !important;
@@ -1419,7 +1419,14 @@
 
         const overlay = document.createElement('div');
         overlay.className = 'rbq-storage-modal-overlay';
-        overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        let isOverlaySelfDown = false;
+        overlay.addEventListener('pointerdown', (e) => {
+            isOverlaySelfDown = (e.target === overlay);
+        });
+        overlay.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            isOverlaySelfDown = (e.target === overlay);
+        }, { passive: true });
         overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
 
@@ -1472,7 +1479,6 @@
             </div>
         `;
 
-        const modalOpenedAt = Date.now();
         const closeModal = () => {
             overlay.remove();
         };
@@ -1490,8 +1496,7 @@
         }
 
         overlay.addEventListener('click', (e) => {
-            // 彻底防止移动端触发按钮的合成点击穿透导致秒关 (400ms 保护窗口)
-            if (Date.now() - modalOpenedAt < 400) return;
+            if (!isOverlaySelfDown) return;
             if (e.target === overlay) closeModal();
         });
 
@@ -1621,12 +1626,15 @@
 
             badgeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
             badgeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            badgeBtn.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+            badgeBtn.addEventListener('touchend', (e) => e.stopPropagation());
         }
 
         const dot = badgeBtn.querySelector('#rbq-storage-dot');
 
         // 检测存储物理归属
         const info = await inspectImageStorage(current);
+        if (currentViewerItem !== current) return;
 
         if (dot) dot.style.background = info.color;
         badgeBtn.title = `存储状态: ${info.text} (${info.title}) - 点击查看详情`;
@@ -1634,9 +1642,7 @@
         badgeBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            setTimeout(() => {
-                showStorageModal(current, info);
-            }, 30);
+            showStorageModal(current, info);
         };
     }
 
@@ -1645,6 +1651,7 @@
     }
 
     window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
+        document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
         updateViewerBadge(event?.detail);
     });
 

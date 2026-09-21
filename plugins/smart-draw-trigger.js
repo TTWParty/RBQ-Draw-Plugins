@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.28';
+    const PLUGIN_VERSION = '6.0.29';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7674,13 +7674,28 @@ SCHEMA:
         const overlay = document.createElement('div');
         overlay.className = 'rbq-sdt-coord-modal-overlay';
         overlay.style.cssText = `
-            position: fixed !important; inset: 0 !important;
-            background: rgba(0,0,0,0.72) !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            width: 100vw !important;
+            height: 100% !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            inset: 0 !important;
+            background: rgba(0, 0, 0, 0.72) !important;
             backdrop-filter: blur(8px) !important;
             -webkit-backdrop-filter: blur(8px) !important;
             z-index: 2147483647 !important;
-            display: flex !important; align-items: center !important; justify-content: center !important;
-            padding: 20px !important; box-sizing: border-box !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: max(16px, env(safe-area-inset-top, 16px)) max(16px, env(safe-area-inset-right, 16px)) max(16px, env(safe-area-inset-bottom, 16px)) max(16px, env(safe-area-inset-left, 16px)) !important;
+            box-sizing: border-box !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
         `;
 
         overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
@@ -7713,14 +7728,20 @@ SCHEMA:
         const dialog = document.createElement('div');
         dialog.className = 'rbq-sdt-coord-modal-dialog';
         dialog.style.cssText = `
-            width: 100% !important; max-width: 460px !important;
+            width: 100% !important;
+            max-width: 460px !important;
+            margin: auto !important;
             background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
-            border: 1px solid rgba(255,255,255,0.16) !important;
+            border: 1px solid rgba(255, 255, 255, 0.16) !important;
             border-radius: 16px !important;
-            box-shadow: 0 16px 48px rgba(0,0,0,0.85) !important;
-            color: #e2e8f0 !important; padding: 18px 20px !important;
-            box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 14px !important;
-            max-height: 85vh !important;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85) !important;
+            color: #e2e8f0 !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            max-height: calc(min(100dvh, 100vh) - max(32px, env(safe-area-inset-top, 16px) * 2) - max(32px, env(safe-area-inset-bottom, 16px) * 2)) !important;
+            pointer-events: auto !important;
         `;
         dialog.addEventListener('click', (e) => e.stopPropagation());
 
@@ -7730,30 +7751,30 @@ SCHEMA:
             const posName = formatCoordLabel(center);
             const prompt = c.prompt || c.caption || [c.action, c.outfit].filter(Boolean).join(' · ') || '';
             return `
-                <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <span style="font-weight: 600; color: #fff; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-user" style="color: #79e4ff; font-size: 12px;"></i> ${escapeHtml(charName)}
                         </span>
-                        <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600;">
+                        <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;">
                             机位: ${escapeHtml(center)} (${posName})
                         </span>
                     </div>
-                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.4; word-break: break-word;">${escapeHtml(prompt)}</div>` : ''}
+                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.28); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); max-height: 130px; overflow-y: auto; -webkit-overflow-scrolling: touch;">${escapeHtml(prompt)}</div>` : ''}
                 </div>
             `;
         }).join('');
 
         dialog.innerHTML = `
-            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px;">
+            <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; padding: 14px 18px !important; flex-shrink: 0 !important; background: rgba(255,255,255,0.02) !important;">
                 <span style="font-weight: 700; font-size: 15px; color: #f8fafc; display: inline-flex; align-items: center; gap: 7px;">
                     <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位信息 (${(characters || []).length}位)
                 </span>
-                <button type="button" class="rbq-sdt-coord-close" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; font-size: 14px; cursor: pointer; border-radius: 8px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+                <button type="button" class="rbq-sdt-coord-close" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; font-size: 14px; cursor: pointer; border-radius: 8px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto;">
+            <div style="display: flex !important; flex-direction: column !important; gap: 10px !important; padding: 14px 18px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; flex: 1 1 auto !important; min-height: 0 !important; box-sizing: border-box !important;">
                 ${itemsHtml}
             </div>
         `;

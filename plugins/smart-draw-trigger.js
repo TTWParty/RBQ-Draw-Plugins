@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能分镜生图触发器';
-    const PLUGIN_VERSION = '6.0.29';
+    const PLUGIN_VERSION = '6.0.30';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6120,6 +6120,10 @@ Zimage 擅长理解复杂的英文长句和语境。
 
                     return {
                         index: charIndex + 1,
+                        name: name,
+                        base: llmBase,
+                        outfit: llmOutfit,
+                        action: llmAction,
                         caption: finalCaption,
                         center: String(char?.center || 'C3').trim().toUpperCase(),
                         uc: String(char?.uc || '').trim(),
@@ -7666,7 +7670,30 @@ SCHEMA:
         });
     }
 
-    function openCharCoordDetailModal(characters) {
+    function renderMiniCoordGrid(center) {
+        const s = String(center || 'C3').trim().toUpperCase();
+        const colChar = s.charAt(0);
+        const rowChar = s.charAt(1);
+        const cols = ['A', 'B', 'C', 'D', 'E'];
+        const rows = ['1', '2', '3', '4', '5'];
+        const targetCol = cols.indexOf(colChar) >= 0 ? cols.indexOf(colChar) : 2;
+        const targetRow = rows.indexOf(rowChar) >= 0 ? rows.indexOf(rowChar) : 2;
+
+        let cells = '';
+        for (let r = 0; r < 5; r++) {
+            for (let c = 0; c < 5; c++) {
+                const isMatch = (r === targetRow && c === targetCol);
+                cells += `<span style="width: 4.5px; height: 4.5px; border-radius: 50%; background: ${isMatch ? '#79e4ff' : 'rgba(255,255,255,0.22)'}; ${isMatch ? 'box-shadow: 0 0 6px #79e4ff;' : ''}"></span>`;
+            }
+        }
+        return `
+            <div title="机位空间坐标: ${escapeHtml(s)} (${cols[targetCol]}列·${rows[targetRow]}行)" style="display: inline-grid; grid-template-columns: repeat(5, 4.5px); grid-gap: 2.5px; padding: 3px 4px; background: rgba(0,0,0,0.4); border: 1px solid rgba(121,228,255,0.3); border-radius: 6px; flex-shrink: 0; vertical-align: middle;">
+                ${cells}
+            </div>
+        `;
+    }
+
+    function openCharCoordDetailModal(characters, segResult = null) {
         document.querySelectorAll('.rbq-sdt-coord-modal-overlay').forEach(el => {
             if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
         });
@@ -7685,12 +7712,12 @@ SCHEMA:
             height: 100vh !important;
             height: 100dvh !important;
             inset: 0 !important;
-            background: rgba(0, 0, 0, 0.72) !important;
+            background: rgba(0, 0, 0, 0.75) !important;
             backdrop-filter: blur(8px) !important;
             -webkit-backdrop-filter: blur(8px) !important;
             z-index: 2147483647 !important;
             display: flex !important;
-            align-items: center !important;
+            align-items: flex-start !important;
             justify-content: center !important;
             padding: max(16px, env(safe-area-inset-top, 16px)) max(16px, env(safe-area-inset-right, 16px)) max(16px, env(safe-area-inset-bottom, 16px)) max(16px, env(safe-area-inset-left, 16px)) !important;
             box-sizing: border-box !important;
@@ -7729,7 +7756,7 @@ SCHEMA:
         dialog.className = 'rbq-sdt-coord-modal-dialog';
         dialog.style.cssText = `
             width: 100% !important;
-            max-width: 460px !important;
+            max-width: 480px !important;
             margin: auto !important;
             background: linear-gradient(180deg, #1e2438 0%, #141724 100%) !important;
             border: 1px solid rgba(255, 255, 255, 0.16) !important;
@@ -7745,36 +7772,165 @@ SCHEMA:
         `;
         dialog.addEventListener('click', (e) => e.stopPropagation());
 
-        const itemsHtml = (characters || []).map((c, i) => {
-            const charName = c._rawName || c.name || `角色 #${i + 1}`;
+        const finalPrompt = getFinalPrompt(segResult);
+        const charList = Array.isArray(characters) && characters.length > 0
+            ? characters
+            : [{ name: '分镜主角', _rawName: '分镜主角', center: 'C3' }];
+
+        const itemsHtml = charList.map((c, i) => {
+            const charName = c._rawName || c.name || (charList.length === 1 ? '主角 / 出镜角色' : `角色 #${i + 1}`);
             const center = c.center || 'C3';
             const posName = formatCoordLabel(center);
-            const prompt = c.prompt || c.caption || [c.action, c.outfit].filter(Boolean).join(' · ') || '';
-            return `
-                <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <span style="font-weight: 600; color: #fff; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fa-solid fa-user" style="color: #79e4ff; font-size: 12px;"></i> ${escapeHtml(charName)}
+            const miniGrid = renderMiniCoordGrid(center);
+
+            let action = (c._rawAction || c.action || '').trim();
+            let outfit = (c._rawOutfit || c.outfit || '').trim();
+            let base = (c._rawBase || c.base || '').trim();
+            const uc = (c.uc || '').trim();
+
+            const rawCaption = String(c.caption || c.prompt || '').trim();
+            const isFullPrompt = (rawCaption && (
+                rawCaption === segResult?.prompt ||
+                rawCaption === segResult?.scene ||
+                rawCaption === finalPrompt
+            ));
+            const charCaption = isFullPrompt ? '' : rawCaption;
+
+            // Fallback parsing from charCaption if base/outfit/action are empty
+            if (!action && !outfit && !base && charCaption) {
+                const baseMatch = charCaption.match(/^\{([^}]+)\}/);
+                if (baseMatch) {
+                    base = baseMatch[1].trim();
+                    const remainder = charCaption.slice(baseMatch[0].length).replace(/^[\s,]+/, '').trim();
+                    if (remainder) {
+                        outfit = remainder;
+                    }
+                }
+            }
+
+            const hasStructuredFields = !!(action || outfit || base || uc);
+
+            let bodyContentHtml = '';
+            if (hasStructuredFields) {
+                const parts = [];
+                if (action) {
+                    parts.push(`
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <span style="font-size: 11px; font-weight: 600; color: #79e4ff; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-person-running" style="font-size: 10px;"></i> 分镜即时动作 (Action)
+                            </span>
+                            <div style="font-size: 11.5px; color: #e2e8f0; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.3); padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                                ${escapeHtml(action)}
+                            </div>
+                        </div>
+                    `);
+                }
+                if (outfit) {
+                    parts.push(`
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <span style="font-size: 11px; font-weight: 600; color: #ffb86c; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-shirt" style="font-size: 10px;"></i> 即时服装设定 (Outfit)
+                            </span>
+                            <div style="font-size: 11.5px; color: #e2e8f0; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.3); padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                                ${escapeHtml(outfit)}
+                            </div>
+                        </div>
+                    `);
+                }
+                if (base) {
+                    parts.push(`
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <span style="font-size: 11px; font-weight: 600; color: #d8aaff; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-id-card" style="font-size: 10px;"></i> 基础特征设定 (Base)
+                            </span>
+                            <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.3); padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                                ${escapeHtml(base)}
+                            </div>
+                        </div>
+                    `);
+                }
+                if (uc) {
+                    parts.push(`
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <span style="font-size: 11px; font-weight: 600; color: #ff7979; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-ban" style="font-size: 10px;"></i> 角色专属排除 (Negative UC)
+                            </span>
+                            <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.3); padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                                ${escapeHtml(uc)}
+                            </div>
+                        </div>
+                    `);
+                }
+                if (charCaption) {
+                    parts.push(`
+                        <details style="margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 6px;">
+                            <summary style="cursor: pointer; user-select: none; font-size: 11px; color: #79e4ff; opacity: 0.85; display: inline-flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-code" style="font-size: 10px;"></i> 展开查看底层生图 Tag (NAI V4 char_caption)
+                            </summary>
+                            <div style="margin-top: 6px; position: relative;">
+                                <div style="font-size: 10.5px; font-family: monospace; color: #94a3b8; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.45); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06); max-height: 90px; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+                                    ${escapeHtml(charCaption)}
+                                </div>
+                                <button type="button" class="rbq-sdt-copy-char-caption-btn" data-caption="${escapeHtml(charCaption)}" style="position: absolute; top: 6px; right: 6px; background: rgba(121,228,255,0.18); border: 1px solid rgba(121,228,255,0.4); color: #79e4ff; border-radius: 4px; padding: 2px 7px; font-size: 10.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;">
+                                    <i class="fa-regular fa-copy"></i> 复制
+                                </button>
+                            </div>
+                        </details>
+                    `);
+                }
+                bodyContentHtml = parts.join('');
+            } else if (charCaption) {
+                bodyContentHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <span style="font-size: 11px; font-weight: 600; color: #94a3b8; display: inline-flex; align-items: center; gap: 5px;">
+                            <i class="fa-solid fa-palette" style="font-size: 10px;"></i> 角色视觉特征 (Tags)
                         </span>
-                        <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;">
-                            机位: ${escapeHtml(center)} (${posName})
-                        </span>
+                        <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.3); padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+                            ${escapeHtml(charCaption)}
+                        </div>
                     </div>
-                    ${prompt ? `<div style="font-size: 11.5px; color: #94a3b8; line-height: 1.45; word-break: break-word; background: rgba(0,0,0,0.28); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); max-height: 130px; overflow-y: auto; -webkit-overflow-scrolling: touch;">${escapeHtml(prompt)}</div>` : ''}
+                `;
+            } else {
+                bodyContentHtml = `
+                    <div style="font-size: 11.5px; color: rgba(255,255,255,0.45); font-style: italic; padding: 4px 2px;">
+                        未单独指定角色视觉设定（继承分镜全局提示词）
+                    </div>
+                `;
+            }
+
+            return `
+                <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <span style="font-weight: 600; color: #fff; font-size: 14px; display: inline-flex; align-items: center; gap: 7px;">
+                            <i class="fa-solid fa-user" style="color: #79e4ff; font-size: 13px;"></i> ${escapeHtml(charName)}
+                        </span>
+                        <div style="display: inline-flex; align-items: center; gap: 8px;">
+                            ${miniGrid}
+                            <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;">
+                                机位: ${escapeHtml(center)} (${posName})
+                            </span>
+                        </div>
+                    </div>
+                    ${bodyContentHtml}
                 </div>
             `;
         }).join('');
 
         dialog.innerHTML = `
             <div style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; padding: 14px 18px !important; flex-shrink: 0 !important; background: rgba(255,255,255,0.02) !important;">
-                <span style="font-weight: 700; font-size: 15px; color: #f8fafc; display: inline-flex; align-items: center; gap: 7px;">
-                    <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位信息 (${(characters || []).length}位)
-                </span>
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font-weight: 700; font-size: 15px; color: #f8fafc; display: inline-flex; align-items: center; gap: 7px;">
+                        <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位信息 (${charList.length}位)
+                    </span>
+                    <span style="font-size: 11px; color: #94a3b8; font-weight: normal;">
+                        构图网格机位 (A-E×1-5) 与该分镜的角色动作/服装/外貌设定
+                    </span>
+                </div>
                 <button type="button" class="rbq-sdt-coord-close" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; font-size: 14px; cursor: pointer; border-radius: 8px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div style="display: flex !important; flex-direction: column !important; gap: 10px !important; padding: 14px 18px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; flex: 1 1 auto !important; min-height: 0 !important; box-sizing: border-box !important;">
+            <div style="display: flex !important; flex-direction: column !important; gap: 12px !important; padding: 14px 18px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; flex: 1 1 auto !important; min-height: 0 !important; box-sizing: border-box !important;">
                 ${itemsHtml}
             </div>
         `;
@@ -7782,6 +7938,20 @@ SCHEMA:
         dialog.querySelector('.rbq-sdt-coord-close')?.addEventListener('click', (e) => {
             e.stopPropagation();
             closeModal();
+        });
+
+        dialog.querySelectorAll('.rbq-sdt-copy-char-caption-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const text = btn.getAttribute('data-caption') || '';
+                if (text) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        toastr.success('已复制角色生图词', PLUGIN_NAME);
+                    }).catch(() => {
+                        toastr.info(text.slice(0, 100), '角色生图词');
+                    });
+                }
+            });
         });
 
         overlay.appendChild(dialog);
@@ -7845,7 +8015,7 @@ SCHEMA:
 
         bottomBar.querySelector('.rbq-sdt-viewer-coord-btn')?.addEventListener('click', (e) => {
             e.stopPropagation();
-            openCharCoordDetailModal(segResult.characters);
+            openCharCoordDetailModal(segResult.characters, segResult);
         });
 
         bottomBar.querySelector('.rbq-sdt-viewer-lorebook-btn')?.addEventListener('click', (e) => {

@@ -849,20 +849,86 @@
                 flex-direction: column;
                 gap: 8px;
             }
-            .rbq-pp-code-box {
-                background: rgba(0, 0, 0, 0.4);
+            .rbq-pp-flow-bar {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                flex-wrap: wrap;
+                padding: 6px 10px;
+                background: rgba(0, 0, 0, 0.35);
                 border: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 6px;
+                border-radius: 7px;
+                margin-bottom: 2px;
+            }
+            .rbq-pp-flow-label {
+                font-size: 10px;
+                font-weight: 700;
+                color: var(--linear-text-muted, #8a8f98);
+                letter-spacing: 0.5px;
+                margin-right: 2px;
+                user-select: none;
+            }
+            .rbq-pp-flow-node {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 2px 7px;
+                border-radius: 4px;
+                font-size: 10.5px;
+                font-weight: 500;
+                transition: all 0.15s ease;
+                white-space: nowrap;
+                user-select: none;
+            }
+            .rbq-pp-flow-node.active.pre {
+                background: rgba(56, 189, 248, 0.14);
+                color: #38bdf8;
+                border: 1px solid rgba(56, 189, 248, 0.3);
+            }
+            .rbq-pp-flow-node.active.preset {
+                background: rgba(168, 85, 247, 0.14);
+                color: #c084fc;
+                border: 1px solid rgba(168, 85, 247, 0.3);
+            }
+            .rbq-pp-flow-node.dynamic {
+                background: linear-gradient(135deg, rgba(94, 106, 210, 0.3), rgba(113, 112, 255, 0.2));
+                color: #a5b4fc;
+                border: 1px solid rgba(94, 106, 210, 0.5);
+                font-weight: 600;
+            }
+            .rbq-pp-flow-node.active.suf {
+                background: rgba(244, 114, 182, 0.14);
+                color: #f472b6;
+                border: 1px solid rgba(244, 114, 182, 0.3);
+            }
+            .rbq-pp-flow-node.dim {
+                background: rgba(255, 255, 255, 0.02);
+                color: rgba(255, 255, 255, 0.28);
+                border: 1px dashed rgba(255, 255, 255, 0.08);
+            }
+            .rbq-pp-flow-arrow {
+                color: rgba(255, 255, 255, 0.2);
+                font-size: 9px;
+            }
+            .rbq-pp-code-box {
+                background: rgba(0, 0, 0, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 7px;
                 padding: 8px 10px;
-                font-size: 11.5px;
-                line-height: 1.6;
+                font-size: 12px;
+                line-height: 20px;
                 color: #e2e8f0;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
                 word-break: break-word;
-                max-height: 110px;
+                max-height: 76px; /* 3 lines * 20px + 16px padding = 76px */
                 overflow-y: auto;
                 scrollbar-width: thin;
                 scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+                transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                box-sizing: border-box;
+            }
+            .rbq-pp-code-box.expanded {
+                max-height: 380px !important;
             }
             .rbq-pp-code-box::-webkit-scrollbar {
                 width: 4px;
@@ -871,66 +937,92 @@
                 background: rgba(255, 255, 255, 0.15);
                 border-radius: 4px;
             }
-            .rbq-pp-token-prefix {
-                background: rgba(56, 189, 248, 0.14);
-                color: #7dd3fc;
-                border: 1px solid rgba(56, 189, 248, 0.3);
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-weight: 500;
-                display: inline-block;
-                margin: 1px 0;
+            .rbq-pp-syntax-section {
+                display: inline;
+                line-height: inherit;
             }
-            .rbq-pp-token-preset {
-                background: rgba(168, 85, 247, 0.14);
+            .rbq-pp-syntax-section.pre {
+                color: #38bdf8;
+            }
+            .rbq-pp-syntax-section.preset {
                 color: #c084fc;
-                border: 1px solid rgba(168, 85, 247, 0.3);
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-weight: 500;
-                display: inline-block;
-                margin: 1px 0;
             }
-            .rbq-pp-token-dynamic {
-                background: rgba(94, 106, 210, 0.22);
-                color: #a5b4fc;
-                border: 1px dashed rgba(129, 140, 248, 0.6);
-                border-radius: 4px;
-                padding: 1px 7px;
-                font-weight: 600;
-                display: inline-block;
-                margin: 1px 0;
-                letter-spacing: 0.2px;
-            }
-            .rbq-pp-token-suffix {
-                background: rgba(244, 114, 182, 0.14);
+            .rbq-pp-syntax-section.suf {
                 color: #f472b6;
-                border: 1px solid rgba(244, 114, 182, 0.3);
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-weight: 500;
-                display: inline-block;
-                margin: 1px 0;
             }
-            .rbq-pp-token-neg-global {
-                background: rgba(248, 113, 113, 0.14);
+            .rbq-pp-syntax-section.neg-global {
                 color: #fca5a5;
-                border: 1px solid rgba(248, 113, 113, 0.3);
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-weight: 500;
-                display: inline-block;
-                margin: 1px 0;
             }
-            .rbq-pp-token-neg-preset {
-                background: rgba(251, 146, 60, 0.14);
+            .rbq-pp-syntax-section.neg-preset {
                 color: #fdba74;
-                border: 1px solid rgba(251, 146, 60, 0.3);
+            }
+            .rbq-pp-syntax-chip {
+                display: inline-flex;
+                align-items: center;
+                font-size: 9.5px;
+                font-weight: 600;
+                padding: 0 4px;
+                height: 14px;
+                line-height: 14px;
+                border-radius: 3px;
+                margin-right: 4px;
+                vertical-align: 1px;
+                font-family: system-ui, -apple-system, sans-serif;
+                user-select: none;
+            }
+            .rbq-pp-syntax-chip.chip-pre {
+                background: rgba(56, 189, 248, 0.18);
+                color: #7dd3fc;
+                border: 1px solid rgba(56, 189, 248, 0.35);
+            }
+            .rbq-pp-syntax-chip.chip-preset {
+                background: rgba(168, 85, 247, 0.18);
+                color: #d8b4fe;
+                border: 1px solid rgba(168, 85, 247, 0.35);
+            }
+            .rbq-pp-syntax-chip.chip-suf {
+                background: rgba(244, 114, 182, 0.18);
+                color: #f9a8d4;
+                border: 1px solid rgba(244, 114, 182, 0.35);
+            }
+            .rbq-pp-syntax-chip.chip-neg-global {
+                background: rgba(248, 113, 113, 0.18);
+                color: #fca5a5;
+                border: 1px solid rgba(248, 113, 113, 0.35);
+            }
+            .rbq-pp-syntax-chip.chip-neg-preset {
+                background: rgba(251, 146, 60, 0.18);
+                color: #fdba74;
+                border: 1px solid rgba(251, 146, 60, 0.35);
+            }
+            .rbq-pp-syntax-dynamic {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                background: linear-gradient(135deg, rgba(94, 106, 210, 0.35), rgba(113, 112, 255, 0.2));
+                color: #c7d2fe;
+                border: 1px dashed rgba(129, 140, 248, 0.7);
                 border-radius: 4px;
-                padding: 1px 6px;
-                font-weight: 500;
-                display: inline-block;
-                margin: 1px 0;
+                padding: 0 6px;
+                font-weight: 600;
+                font-size: 11px;
+                letter-spacing: 0.2px;
+                vertical-align: 1px;
+                margin: 0 2px;
+                animation: rbq-pp-pulse-glow 2.5s infinite;
+            }
+            @keyframes rbq-pp-pulse-glow {
+                0%, 100% { box-shadow: 0 0 0 rgba(94, 106, 210, 0); border-color: rgba(129, 140, 248, 0.7); }
+                50% { box-shadow: 0 0 8px rgba(94, 106, 210, 0.4); border-color: #818cf8; }
+            }
+            .rbq-pp-syntax-comma {
+                color: rgba(255, 255, 255, 0.35);
+                font-weight: bold;
+                margin-right: 3px;
+            }
+            .rbq-pp-copy-btn.active {
+                color: #38bdf8 !important;
+                background: rgba(56, 189, 248, 0.12) !important;
             }
         `;
         document.head.appendChild(styleEl);
@@ -1090,6 +1182,10 @@
                         </div>
                     </div>
                     <div class="rbq-pp-copy-group">
+                        <button id="rbq-pp-expand-toggle" class="rbq-pp-copy-btn" type="button" title="切换完整视图 / 紧凑视图">
+                            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                        </button>
+                        <div style="width: 1px; height: 12px; background: rgba(255,255,255,0.1);"></div>
                         <button id="rbq-pp-copy-pos-preview" class="rbq-pp-copy-btn" type="button" title="复制正面提示词合成模板">
                             <i class="fa-regular fa-copy"></i> <span>复制正面</span>
                         </button>
@@ -1100,19 +1196,28 @@
                     </div>
                 </div>
                 <div class="rbq-pp-terminal-body">
+                    <!-- 拼接拓扑指示条 -->
+                    <div id="rbq-pp-flow-bar" class="rbq-pp-flow-bar"></div>
+
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <div style="font-size: 11px; color: var(--linear-text-muted, #8a8f98); display: flex; align-items: center; gap: 6px;">
-                            <span style="color: #38bdf8; font-weight: 600; font-family: monospace;">[POSITIVE]</span>
-                            <span>发送至 ComfyUI / NAI 的最终正面提示词：</span>
+                        <div style="font-size: 11px; color: var(--linear-text-muted, #8a8f98); display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="color: #38bdf8; font-weight: 600; font-family: monospace;">[POSITIVE]</span>
+                                <span>发送至生图引擎的最终正面提示词：</span>
+                            </div>
+                            <span id="rbq-pp-pos-count" style="font-size: 10px; color: rgba(255,255,255,0.3); font-family: monospace;"></span>
                         </div>
                         <div id="rbq-pp-preview-positive" class="rbq-pp-code-box"></div>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <div style="font-size: 11px; color: var(--linear-text-muted, #8a8f98); display: flex; align-items: center; gap: 6px;">
-                            <span style="color: #f87171; font-weight: 600; font-family: monospace;">[NEGATIVE]</span>
-                            <span>最终负面提示词：</span>
+                        <div style="font-size: 11px; color: var(--linear-text-muted, #8a8f98); display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="color: #f87171; font-weight: 600; font-family: monospace;">[NEGATIVE]</span>
+                                <span>最终负面提示词：</span>
+                            </div>
+                            <span id="rbq-pp-neg-count" style="font-size: 10px; color: rgba(255,255,255,0.3); font-family: monospace;"></span>
                         </div>
-                        <div id="rbq-pp-preview-negative" class="rbq-pp-code-box" style="max-height: 80px;"></div>
+                        <div id="rbq-pp-preview-negative" class="rbq-pp-code-box" style="max-height: 56px;"></div>
                     </div>
                 </div>
             </div>
@@ -1185,30 +1290,99 @@
             const presetPos = preset ? (posInput?.value ?? preset.positive ?? '').trim() : '';
             const presetNeg = preset ? (negInput?.value ?? preset.negative ?? '').trim() : '';
 
+            // 1. 渲染顶部拼接拓扑指示条
+            const flowBar = document.getElementById('rbq-pp-flow-bar');
+            if (flowBar) {
+                const arrow = `<i class="fa-solid fa-angle-right rbq-pp-flow-arrow"></i>`;
+                let flowItems = [];
+                flowItems.push(`<span class="rbq-pp-flow-label"><i class="fa-solid fa-timeline"></i> 流向:</span>`);
+
+                if (gPre) {
+                    flowItems.push(`<span class="rbq-pp-flow-node active pre" title="全局前缀已启用 (${gPre.length} 字符)"><i class="fa-solid fa-earth-americas"></i> 全局前缀</span>`);
+                } else {
+                    flowItems.push(`<span class="rbq-pp-flow-node dim" title="未设置全局前缀"><i class="fa-solid fa-earth-americas"></i> (无前缀)</span>`);
+                }
+
+                const presetNode = presetPos
+                    ? `<span class="rbq-pp-flow-node active preset" title="当前预设: ${escapeHtml(preset?.name || '')} (${presetPos.length} 字符)"><i class="fa-solid fa-bookmark"></i> 预设 (${pos === 'prepend' ? '前置' : '后置'})</span>`
+                    : `<span class="rbq-pp-flow-node dim" title="当前无生效预设正面词"><i class="fa-regular fa-bookmark"></i> (无预设)</span>`;
+
+                const dynamicNode = `<span class="rbq-pp-flow-node dynamic" title="正文剧情/分镜生图时提取的动态提示词"><i class="fa-solid fa-bolt"></i> 动态分镜词</span>`;
+
+                if (pos === 'prepend') {
+                    flowItems.push(presetNode);
+                    flowItems.push(dynamicNode);
+                } else {
+                    flowItems.push(dynamicNode);
+                    flowItems.push(presetNode);
+                }
+
+                if (gSuf) {
+                    flowItems.push(`<span class="rbq-pp-flow-node active suf" title="全局后缀已启用 (${gSuf.length} 字符)"><i class="fa-solid fa-flag"></i> 全局后缀</span>`);
+                } else {
+                    flowItems.push(`<span class="rbq-pp-flow-node dim" title="未设置全局后缀"><i class="fa-regular fa-flag"></i> (无后缀)</span>`);
+                }
+
+                flowBar.innerHTML = flowItems.join(arrow);
+            }
+
+            // 2. 渲染正面提示词 (流式语法高亮)
             const posContainer = document.getElementById('rbq-pp-preview-positive');
             if (posContainer) {
-                const dummyDynamic = '<span class="rbq-pp-token-dynamic" title="动态剧情/分镜生图提示词">&lt;剧情/分镜生图提示词&gt;</span>';
+                const dummyDynamic = '<span class="rbq-pp-syntax-dynamic" title="动态剧情/分镜生图提示词"><i class="fa-solid fa-bolt" style="font-size:10px;margin-right:3px;"></i>剧情分镜提示词</span>';
                 let parts = [];
-                if (gPre) parts.push(`<span class="rbq-pp-token-prefix" title="全局正面前缀">${escapeHtml(gPre)}</span>`);
+                let totalChars = 0;
+
+                if (gPre) {
+                    parts.push(`<span class="rbq-pp-syntax-section pre" title="全局正面前缀"><span class="rbq-pp-syntax-chip chip-pre">前缀</span>${escapeHtml(gPre)}</span>`);
+                    totalChars += gPre.length;
+                }
                 if (pos === 'prepend') {
-                    if (presetPos) parts.push(`<span class="rbq-pp-token-preset" title="当前预设正面词 (前置)">${escapeHtml(presetPos)}</span>`);
+                    if (presetPos) {
+                        parts.push(`<span class="rbq-pp-syntax-section preset" title="预设正面词 (前置)"><span class="rbq-pp-syntax-chip chip-preset">预设</span>${escapeHtml(presetPos)}</span>`);
+                        totalChars += presetPos.length;
+                    }
                     parts.push(dummyDynamic);
                 } else {
                     parts.push(dummyDynamic);
-                    if (presetPos) parts.push(`<span class="rbq-pp-token-preset" title="当前预设正面词 (后置)">${escapeHtml(presetPos)}</span>`);
+                    if (presetPos) {
+                        parts.push(`<span class="rbq-pp-syntax-section preset" title="预设正面词 (后置)"><span class="rbq-pp-syntax-chip chip-preset">预设</span>${escapeHtml(presetPos)}</span>`);
+                        totalChars += presetPos.length;
+                    }
                 }
-                if (gSuf) parts.push(`<span class="rbq-pp-token-suffix" title="全局正面后缀">${escapeHtml(gSuf)}</span>`);
-                posContainer.innerHTML = parts.join('<span style="color:rgba(255,255,255,0.3);margin:0 4px;font-weight:bold;">, </span>');
+                if (gSuf) {
+                    parts.push(`<span class="rbq-pp-syntax-section suf" title="全局正面后缀"><span class="rbq-pp-syntax-chip chip-suf">后缀</span>${escapeHtml(gSuf)}</span>`);
+                    totalChars += gSuf.length;
+                }
+                posContainer.innerHTML = parts.join('<span class="rbq-pp-syntax-comma">, </span>');
+
+                const posCountEl = document.getElementById('rbq-pp-pos-count');
+                if (posCountEl) {
+                    posCountEl.textContent = `${totalChars} 字符 (预置)`;
+                }
             }
 
+            // 3. 渲染负面提示词 (流式语法高亮)
             const negContainer = document.getElementById('rbq-pp-preview-negative');
             if (negContainer) {
                 let negParts = [];
-                if (gNeg) negParts.push(`<span class="rbq-pp-token-neg-global" title="全局负面词">${escapeHtml(gNeg)}</span>`);
-                if (presetNeg) negParts.push(`<span class="rbq-pp-token-neg-preset" title="当前预设负面词">${escapeHtml(presetNeg)}</span>`);
+                let totalNegChars = 0;
+                if (gNeg) {
+                    negParts.push(`<span class="rbq-pp-syntax-section neg-global" title="全局负面词"><span class="rbq-pp-syntax-chip chip-neg-global">全局</span>${escapeHtml(gNeg)}</span>`);
+                    totalNegChars += gNeg.length;
+                }
+                if (presetNeg) {
+                    negParts.push(`<span class="rbq-pp-syntax-section neg-preset" title="预设负面词"><span class="rbq-pp-syntax-chip chip-neg-preset">预设</span>${escapeHtml(presetNeg)}</span>`);
+                    totalNegChars += presetNeg.length;
+                }
                 negContainer.innerHTML = negParts.length
-                    ? negParts.join('<span style="color:rgba(255,255,255,0.3);margin:0 4px;font-weight:bold;">, </span>')
+                    ? negParts.join('<span class="rbq-pp-syntax-comma">, </span>')
                     : '<span style="color:rgba(255,255,255,0.25);font-style:italic;">(未设置负面提示词)</span>';
+
+                const negCountEl = document.getElementById('rbq-pp-neg-count');
+                if (negCountEl) {
+                    negCountEl.textContent = totalNegChars > 0 ? `${totalNegChars} 字符` : '';
+                }
             }
         }
 
@@ -1314,6 +1488,29 @@
                 });
             } else {
                 toastr.info('请手动复制: ' + assembled);
+            }
+        });
+
+        let isPreviewExpanded = false;
+        document.getElementById('rbq-pp-expand-toggle')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isPreviewExpanded = !isPreviewExpanded;
+            const posBox = document.getElementById('rbq-pp-preview-positive');
+            const negBox = document.getElementById('rbq-pp-preview-negative');
+            const btn = document.getElementById('rbq-pp-expand-toggle');
+            posBox?.classList.toggle('expanded', isPreviewExpanded);
+            negBox?.classList.toggle('expanded', isPreviewExpanded);
+            const icon = btn?.querySelector('i');
+            const span = btn?.querySelector('span');
+            if (isPreviewExpanded) {
+                if (icon) icon.className = 'fa-solid fa-down-left-and-up-right-to-center';
+                if (span) span.textContent = '收起';
+                btn?.classList.add('active');
+            } else {
+                if (icon) icon.className = 'fa-solid fa-up-right-and-down-left-from-center';
+                if (span) span.textContent = '展开';
+                btn?.classList.remove('active');
             }
         });
 

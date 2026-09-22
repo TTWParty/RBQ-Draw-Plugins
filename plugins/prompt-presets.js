@@ -156,54 +156,6 @@
             .replace(/'/g, '&#039;');
     }
 
-    function splitPromptTags(str) {
-        if (!str || typeof str !== 'string') return [];
-        const tags = [];
-        let current = '';
-        let parenDepth = 0;
-        let bracketDepth = 0;
-        let angleDepth = 0;
-
-        for (let i = 0; i < str.length; i++) {
-            const char = str[i];
-            if (char === '(') parenDepth++;
-            else if (char === ')' && parenDepth > 0) parenDepth--;
-            else if (char === '[') bracketDepth++;
-            else if (char === ']' && bracketDepth > 0) bracketDepth--;
-            else if (char === '<') angleDepth++;
-            else if (char === '>') angleDepth--;
-
-            if (char === ',' && parenDepth === 0 && bracketDepth === 0 && angleDepth === 0) {
-                const trimmed = current.trim();
-                if (trimmed) tags.push(trimmed);
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        const finalTrimmed = current.trim();
-        if (finalTrimmed) tags.push(finalTrimmed);
-        return tags;
-    }
-
-    function cleanAndDeduplicateTags(...parts) {
-        const seen = new Set();
-        const result = [];
-        for (const part of parts) {
-            if (!part || typeof part !== 'string') continue;
-            const tags = splitPromptTags(part);
-            for (const tag of tags) {
-                if (/^(负面提示词|反向提示词|negative_prompt|\{\{.*?\}\})$/i.test(tag)) continue;
-                const norm = tag.toLowerCase().replace(/\s+/g, ' ');
-                if (!seen.has(norm)) {
-                    seen.add(norm);
-                    result.push(tag);
-                }
-            }
-        }
-        return result.join(', ');
-    }
-
     function combineParts(...parts) {
         return parts
             .map(p => (p || '').trim())
@@ -212,10 +164,7 @@
     }
 
     function resolvePositivePrompt(original, presetText, globalPrefix, globalSuffix, position) {
-        let orig = (original || '').trim();
-        if (/^(正面提示词|正向提示词|提示词|\{\{.*?\}\})$/i.test(orig)) {
-            orig = '';
-        }
+        const orig = (original || '').trim();
         const preset = (presetText || '').trim();
         const gPre = (globalPrefix || '').trim();
         const gSuf = (globalSuffix || '').trim();
@@ -235,7 +184,7 @@
         const preset = (presetText || '').trim();
         const global = (globalText || '').trim();
         if (!preset && !global) return orig;
-        return cleanAndDeduplicateTags(global, preset, orig);
+        return combineParts(global, preset, orig);
     }
 
     // ── Payload Hooks ──
@@ -491,7 +440,7 @@
                         <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                     </label>
                     <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局负面提示词 <small style="font-size:10.5px;color:#94a3b8;font-weight:normal;">(对全部预设生效，与预设负面自动合并并智能去重)</small></span>
+                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局负面提示词</span>
                         <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
                     </label>
                 </div>
@@ -510,7 +459,7 @@
                 <div class="st-scene-trigger-modal-grid">
                     <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用"></label>
                     <label class="st-scene-trigger-field wide"><span>预设正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
-                    <label class="st-scene-trigger-field wide"><span>预设负面提示词 <small style="font-size:10.5px;color:#94a3b8;font-weight:normal;">(与全局负面自动合并去重)</small></span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
+                    <label class="st-scene-trigger-field wide"><span>预设负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
                 </div>
                 <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
                     <button id="rbq-pp-save" class="menu_button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
@@ -616,9 +565,11 @@
 
             const negContainer = document.getElementById('rbq-pp-preview-negative');
             if (negContainer) {
-                const mergedNeg = resolveNegativePrompt('', presetNeg, gNeg);
-                negContainer.innerHTML = mergedNeg
-                    ? `<span style="color:#fca5a5;font-weight:500;" title="已合并并去重的负面提示词">${escapeHtml(mergedNeg)}</span>`
+                let negParts = [];
+                if (gNeg) negParts.push(`<span style="color:#fca5a5;font-weight:500;" title="全局负面词">${escapeHtml(gNeg)}</span>`);
+                if (presetNeg) negParts.push(`<span style="color:#fdba74;font-weight:500;" title="当前预设负面词">${escapeHtml(presetNeg)}</span>`);
+                negContainer.innerHTML = negParts.length
+                    ? negParts.join('<span style="color:rgba(255,255,255,0.4);margin:0 4px;font-weight:bold;">, </span>')
                     : '<span style="color:rgba(255,255,255,0.3);font-style:italic;">(未设置负面提示词)</span>';
             }
         }

@@ -2499,6 +2499,30 @@ Zimage 擅长理解复杂的英文长句和语境。
             container = RBQ.api.getMessageTextContainer(latest);
             wrapper = container?.querySelector?.(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
         }
+        if (!wrapper && store.cardPosition === 'message_actions') {
+            const trigger = getTrigger(msgSnapshot);
+            if (!trigger) return;
+            const currentKey = makeKey(latest, msgSnapshot, trigger.type, trigger.marker || 'auto');
+            if (inFlight.has(currentKey)) return;
+            const placeholder = {
+                shouldDraw: true,
+                prompt: trigger.marker || '[Smart Draw]',
+                negative: '',
+                anchor: { type: 'bottom' },
+                reason: '',
+                multiChar: false,
+                scene: '',
+                characters: [],
+            };
+            wrapper = createConfiguredCard({
+                messageId: latest,
+                trigger,
+                result: placeholder,
+                key: currentKey,
+                baseKey: currentKey,
+                isResult: false,
+            });
+        }
         if (!wrapper) return;
         if (wrapper.dataset.rbqSdtIsResult === '1') return;
         const stage = wrapper.dataset.rbqSdtStage;
@@ -10107,17 +10131,26 @@ SCHEMA:
         return -1;
     }
 
-    function injectMessageActionButton(messageId, wrapper, trigger, key) {
+    function syncMessageActionButton(messageId, wrapper, trigger, key) {
         try {
+            const store = getStore();
             const mesEl = document.querySelector(`.mes[mesid="${messageId}"]`);
             if (!mesEl) return;
             const btnBar = mesEl.querySelector('.extraMesButtons') || mesEl.querySelector('.mes_buttons') || mesEl.querySelector('.flex-container');
             if (!btnBar) return;
             let existing = btnBar.querySelector(`.rbq-sdt-action-btn`);
+
+            // 如果当前不是「消息操作栏小图标」模式，坚决清理移除该按钮，绝不常驻干扰
+            if (store.cardPosition !== 'message_actions') {
+                if (existing) existing.remove();
+                return;
+            }
+
+            // 仅在「消息操作栏小图标」模式下挂载按钮
             if (!existing) {
                 const btn = document.createElement('div');
                 btn.className = 'mes_button extra_mes_button rbq-sdt-action-btn';
-                btn.title = '智能生图 / 解析分镜';
+                btn.title = '智能生图 / 解析分镜 (纯净免占位)';
                 btn.innerHTML = '<i class="fa-solid fa-camera" style="color:#38bdf8"></i>';
                 btn.style.cursor = 'pointer';
                 btn.style.display = 'inline-flex';
@@ -10126,11 +10159,23 @@ SCHEMA:
                 btn.style.margin = '0 2px';
                 btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    let targetWrapper = wrapper;
-                    if (!(targetWrapper instanceof HTMLElement) || !targetWrapper.isConnected) {
+                    const msgSnapshot = getMessageSnapshot(messageId);
+                    const effectiveTrigger = trigger || getTrigger(msgSnapshot);
+                    const curKey = key || (effectiveTrigger ? makeKey(messageId, msgSnapshot, effectiveTrigger.type, effectiveTrigger.marker || 'auto') : '');
+                    if (!curKey || inFlight.has(curKey)) {
+                        toastr.info('当前分镜正在解析中，请稍候...', PLUGIN_NAME);
+                        return;
+                    }
+                    const icon = btn.querySelector('i');
+                    if (icon) {
+                        icon.className = 'fa-solid fa-spinner fa-spin';
+                        icon.style.color = '#38bdf8';
+                    }
+                    toastr.info('正在调用 tagger API 解析分镜与提示词...', PLUGIN_NAME);
+                    try {
                         const placeholder = {
                             shouldDraw: true,
-                            prompt: trigger?.marker || '[Smart Draw]',
+                            prompt: effectiveTrigger?.marker || '[Smart Draw]',
                             negative: '',
                             anchor: { type: 'bottom' },
                             reason: '正在调用 tagger API 解析世界书与提示词...',
@@ -10138,14 +10183,24 @@ SCHEMA:
                             scene: '',
                             characters: [],
                         };
-                        targetWrapper = insertCard(messageId, trigger, placeholder, key);
-                    }
-                    if (!(targetWrapper instanceof HTMLElement)) return;
-                    const stage = targetWrapper.dataset?.rbqSdtStage;
-                    if (stage === 'idle' || !stage || stage === 'error') {
-                        runTaggerForWrapper(targetWrapper, trigger, messageId, key);
-                    } else {
-                        targetWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        const detachedWrapper = createConfiguredCard({
+                            messageId,
+                            trigger: effectiveTrigger,
+                            result: placeholder,
+                            key: curKey,
+                            baseKey: curKey,
+                            isResult: false,
+                        });
+                        inFlight.add(curKey);
+                        await runTaggerForWrapper(detachedWrapper, effectiveTrigger, messageId, curKey);
+                    } catch (err) {
+                        console.error(`[${PLUGIN_NAME}] action button tagger error:`, err);
+                    } finally {
+                        inFlight.delete(curKey);
+                        if (icon) {
+                            icon.className = 'fa-solid fa-camera';
+                            icon.style.color = '#38bdf8';
+                        }
                     }
                 });
                 btnBar.appendChild(btn);
@@ -10260,7 +10315,7 @@ SCHEMA:
             mountFallbackFragment(container, fragment, store);
         }
 
-        injectMessageActionButton(messageId, wrapper, trigger, key);
+        syncMessageActionButton(messageId, wrapper, trigger, key);
         debugInfo(`insertCard => #${messageId} (${key}) [${trigger?.type || 'auto'}]`);
         return wrapper;
     }
@@ -10358,16 +10413,22 @@ SCHEMA:
     function getSegmentLabel(seg, prefix = '🎨') {
         if (!seg) return `${prefix} 生成图片`;
         // 1. LLM 输出的 label 字段（首选）
-        if (seg.label) return `${prefix} ${seg.label}`;
+        if (seg.label) {
+            const l = String(seg.label).trim();
+            return `${prefix} ${l.length > 20 ? l.slice(0, 19) + '…' : l}`;
+        }
         // 2. 角色名拼接
         if (Array.isArray(seg.characters) && seg.characters.length > 0) {
             const names = seg.characters.map(c => c._rawName).filter(Boolean);
-            if (names.length) return `${prefix} ${names.join('·')}`;
+            if (names.length) {
+                const joined = names.join('·');
+                return `${prefix} ${joined.length > 20 ? joined.slice(0, 19) + '…' : joined}`;
+            }
         }
         // 3. reason
         if (seg.reason) {
             const r = String(seg.reason).trim();
-            return `${prefix} ${r.length > 12 ? r.slice(0, 11) + '…' : r}`;
+            return `${prefix} ${r.length > 14 ? r.slice(0, 13) + '…' : r}`;
         }
         return `${prefix} 生成图片`;
     }
@@ -10543,11 +10604,17 @@ SCHEMA:
             const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment) || segment.scene || (segment.characters && segment.characters.length > 0));
             const hasTopLevelPrompt = !!getFinalPrompt(result) || !!result?.scene;
             if (!result.shouldDraw && !hasUsableSegments && !hasTopLevelPrompt) {
-                ensureTaggerButtonState(wrapper, '⚠️ tagger 判定无需生图（点击重新解析）');
-                setGenerateButtonState(wrapper, false);
-                setWrapperStage(wrapper, 'done-no-draw');
+                if (store.cardPosition === 'message_actions') {
+                    if (wrapper.parentElement) wrapper.remove();
+                    toastr.info('tagger 判定无需生图', PLUGIN_NAME);
+                } else {
+                    ensureTaggerButtonState(wrapper, '⚠️ tagger 判定无需生图（点击重新解析）');
+                    setGenerateButtonState(wrapper, false);
+                    setWrapperStage(wrapper, 'done-no-draw');
+                    renderTaggerDebugInfo(wrapper, result);
+                }
+                syncMessageActionButton(messageId, null, trigger, cacheKey);
                 processedKeys.add(cacheKey);
-                renderTaggerDebugInfo(wrapper, result);
                 return;
             }
             // Remove old segment cards before re-materializing — prevents stale cards
@@ -10565,7 +10632,7 @@ SCHEMA:
             }
             const rendered = materializeResultCards(messageId, trigger, result, cacheKey);
             // Repurpose the initial placeholder card as the sole "re-parse" button at bottom
-            if (rendered.length > 0 && rendered.every(item => item.wrapper !== wrapper)) {
+            if (store.cardPosition !== 'message_actions' && rendered.length > 0 && rendered.every(item => item.wrapper !== wrapper)) {
                 wrapper.classList.add('rbq-sdt-reparse');
                 wrapper.dataset.rbqSdtIsResult = '0';
                 const resEl = wrapper.querySelector('.st-scene-trigger-inline-result');
@@ -10574,7 +10641,10 @@ SCHEMA:
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'ready-generate');
                 clearWrapperLoading(wrapper);
+            } else if (store.cardPosition === 'message_actions') {
+                if (wrapper.parentElement) wrapper.remove();
             }
+            syncMessageActionButton(messageId, null, trigger, cacheKey);
             for (const item of rendered) {
                 const renderedWrapper = item.wrapper;
                 const segmentState = getSegmentState(store, cacheKey, item.key, messageId);
@@ -10717,6 +10787,14 @@ SCHEMA:
         ));
         const cached = (isExtraValid ? extraSdt : null) || store.cache[key];
         if (cached?.checked && !cached.shouldDraw) {
+            if (store.cardPosition === 'message_actions') {
+                if (container instanceof HTMLElement) {
+                    container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-is-result="0"], .${CARD_CLASS}.rbq-sdt-reparse`).forEach(c => c.remove());
+                }
+                syncMessageActionButton(messageId, null, trigger, key);
+                processedKeys.add(key);
+                return;
+            }
             // 如果缓存中判定为“无需生图”，依然渲染一个可重新解析的卡片，防止按钮凭空消失导致用户无法手动生图
             const noDrawPlaceholder = {
                 shouldDraw: false,
@@ -10789,8 +10867,8 @@ SCHEMA:
                     await maybeAutoGenerate(wrapper, item.segment, messageId, key, item.key);
                 }
             }
-            // Insert a bottom re-parse card if segments were rendered
-            if (rendered.length > 0) {
+            // Insert a bottom re-parse card if segments were rendered (仅在非 message_actions 模式挂载正文重新解析按钮)
+            if (rendered.length > 0 && store.cardPosition !== 'message_actions') {
                 const reparseKey = `${key}-reparse`;
                 const reparsePlaceholder = {
                     shouldDraw: true, prompt: '', negative: '',
@@ -10807,6 +10885,8 @@ SCHEMA:
                     setWrapperStage(reparseWrapper, 'ready-generate');
                     bindWrapperManualRun(reparseWrapper, trigger, messageId, key);
                 });
+            } else if (store.cardPosition === 'message_actions') {
+                syncMessageActionButton(messageId, null, trigger, key);
             }
             processedKeys.add(key);
             return;
@@ -10814,7 +10894,10 @@ SCHEMA:
 
         // 若用户选择了「消息操作栏小图标」纯净模式，在未解析前绝不在正文插入占位大卡片与按钮
         if (store.cardPosition === 'message_actions') {
-            injectMessageActionButton(messageId, null, trigger, key);
+            if (container instanceof HTMLElement) {
+                container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-is-result="0"], .${CARD_CLASS}.rbq-sdt-reparse`).forEach(c => c.remove());
+            }
+            syncMessageActionButton(messageId, null, trigger, key);
             processedKeys.add(key);
             return;
         }
@@ -10874,6 +10957,57 @@ SCHEMA:
         }, delay));
     }
 
+    function syncCardPositionsOnSettingChange() {
+        const store = getStore();
+        const pos = store.cardPosition || 'bottom';
+        document.querySelectorAll('.mes[mesid]').forEach(mesEl => {
+            const id = Number(mesEl.getAttribute('mesid'));
+            if (!Number.isFinite(id)) return;
+            const container = RBQ.api.getMessageTextContainer(id);
+            if (!(container instanceof HTMLElement)) return;
+
+            // 1. 同步消息操作栏小图标 (非 message_actions 模式绝不残留)
+            const btnBar = mesEl.querySelector('.extraMesButtons') || mesEl.querySelector('.mes_buttons') || mesEl.querySelector('.flex-container');
+            const actionBtn = btnBar?.querySelector('.rbq-sdt-action-btn');
+            if (pos !== 'message_actions') {
+                if (actionBtn) actionBtn.remove();
+            }
+
+            // 2. 正文占位卡片 (data-rbq-sdt-is-result="0") 与重新解析卡片 (.rbq-sdt-reparse)
+            const unresultCards = Array.from(container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-is-result="0"], .${CARD_CLASS}.rbq-sdt-reparse`));
+            if (pos === 'message_actions') {
+                unresultCards.forEach(c => c.remove());
+                const msg = getMessageSnapshot(id);
+                const trigger = getTrigger(msg);
+                if (trigger) {
+                    const key = makeKey(id, msg, trigger.type, trigger.marker || 'auto');
+                    syncMessageActionButton(id, null, trigger, key);
+                }
+            } else if (unresultCards.length > 0) {
+                unresultCards.forEach(card => {
+                    if (pos === 'top') {
+                        const reasoningEl = container.querySelector('.mes_reasoning, details, .thinking-block, .thought');
+                        if (reasoningEl && reasoningEl.nextSibling) {
+                            container.insertBefore(card, reasoningEl.nextSibling);
+                        } else if (reasoningEl) {
+                            reasoningEl.insertAdjacentElement('afterend', card);
+                        } else {
+                            container.prepend(card);
+                        }
+                    } else {
+                        container.append(card);
+                    }
+                });
+            } else {
+                // 原先在 message_actions 纯净模式下未出图的楼层，切换到 top/bottom 时重新挂载占位大卡片
+                const hasResultCards = !!container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-is-result="1"]`);
+                if (!hasResultCards) {
+                    scheduleProcess(id, { force: true, allowHistorical: true });
+                }
+            }
+        });
+    }
+
     function scanAllVisible(force = false) {
         document.querySelectorAll('.mes[mesid]').forEach(element => {
             scheduleProcess(Number(element.getAttribute('mesid')), { allowHistorical: true, force: !!force });
@@ -10895,7 +11029,15 @@ SCHEMA:
             #rbq-smart-draw-panel .rbq-sdt-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
             #rbq-smart-draw-panel textarea { min-height: 70px; }
             #rbq-smart-draw-panel .rbq-sdt-note { font-size:12px; opacity:.72; line-height:1.45; }
-            .rbq-sdt-card { display:block; margin: 10px 0; }
+            .rbq-sdt-card { display:block; margin: 10px 0; max-width: 100%; box-sizing: border-box; }
+            .rbq-sdt-card .st-scene-trigger-inline-ui { max-width: 100%; box-sizing: border-box; display: inline-flex; align-items: center; }
+            .rbq-sdt-card .st-scene-trigger-inline-button {
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+            }
             .rbq-sdt-card[data-rbq-sdt-is-result="1"] .st-scene-trigger-generate:not(.rbq-sdt-run-image) { display: none !important; }
             .rbq-sdt-card[data-rbq-sdt-stage="parsing"],
             .rbq-sdt-card[data-rbq-sdt-stage="generating-image"] { opacity:.92; }
@@ -12624,6 +12766,7 @@ SCHEMA:
                     toastr.warning('检测到您在 HTTPS 环境下配置了不安全的 HTTP API 接口，这可能会被浏览器拦截导致请求失败。建议改用 HTTPS 接口或使用 HTTP 协议访问网页。', PLUGIN_NAME, { timeOut: 8000 });
                 }
             }
+            syncCardPositionsOnSettingChange();
             scanLatestVisible();
             if (s.comicDrawerFloatingEnabled) injectFloatingComicDrawerButton();
             else removeFloatingComicDrawerButton();

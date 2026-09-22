@@ -73,10 +73,23 @@
                 align-items: center;
                 gap: 8px;
                 vertical-align: middle;
+                max-width: 100%;
+                box-sizing: border-box;
+            }
+            .rbq-privacy-bar .rbq-privacy-view-btn,
+            .rbq-privacy-bar .rbq-privacy-collapse-toggle {
+                flex: 1 1 auto;
+                min-width: 0 !important;
+                max-width: calc(100% - 44px);
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+                box-sizing: border-box !important;
             }
             .rbq-privacy-bar .st-scene-trigger-inline-button {
                 min-height: 34px;
                 padding: 6px 14px;
+                box-sizing: border-box;
             }
             .rbq-privacy-regen-btn {
                 min-width: 34px !important;

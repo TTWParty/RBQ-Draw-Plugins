@@ -10,10 +10,10 @@
   {
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
-    "description": "全新 Linear 风格卡片UI，整合正文提取标记与高级正则规则卡片。支持前后双置同时插入（前置+后置双文本域）、全局正面前置/后置/负面词、预设切换、NAI Vibe氛围图绑定及实时流水线高亮预览。",
-    "version": "1.3.12",
+    "description": "全新 Linear 风格卡片UI与正文生图提取规则卡片。预设正面词采用紧凑分段Tab（前置/后置独立编辑并可同时生效）、全局提示词默认展开与记忆折叠、预设切换、NAI Vibe氛围图绑定及实时流水线高亮预览。",
+    "version": "1.3.13",
     "author": "TTWP-09",
-    "main": "plugins/prompt-presets.js?v=1.3.12"
+    "main": "plugins/prompt-presets.js?v=1.3.13"
   },
   {
     "id": "rbq-png-metadata",

@@ -22,6 +22,9 @@
             if (!item || typeof item !== 'object') return null;
             const preset = { ...item };
             preset.id = String(preset.id || uid());
+            if (typeof preset.positive !== 'string') { preset.positive = ''; mutated = true; }
+            if (typeof preset.positiveSuffix !== 'string') { preset.positiveSuffix = ''; mutated = true; }
+            if (typeof preset.negative !== 'string') { preset.negative = ''; mutated = true; }
             if (seenIds.has(preset.id)) {
                 preset.id = uid();
                 mutated = true;
@@ -163,20 +166,32 @@
             .join(', ');
     }
 
-    function resolvePositivePrompt(original, presetText, globalPrefix, globalSuffix, position) {
+    function resolvePositivePrompt(original, presetPre, presetSuf, globalPrefix, globalSuffix, position = 'prepend') {
+        // Legacy 5-argument form support: resolvePositivePrompt(orig, presetPos, gPre, gSuf, pos)
+        if (typeof globalSuffix === 'undefined' && typeof position === 'string' && (position === 'prepend' || position === 'append')) {
+            const legacyPos = position;
+            const legacyGSuf = globalPrefix;
+            const legacyGPre = presetSuf;
+            const legacyPreset = presetPre;
+            presetPre = legacyPos === 'append' ? '' : legacyPreset;
+            presetSuf = legacyPos === 'append' ? legacyPreset : '';
+            globalPrefix = legacyGPre;
+            globalSuffix = legacyGSuf;
+            position = legacyPos;
+        }
         const orig = (original || '').trim();
-        const preset = (presetText || '').trim();
+        let pre = (presetPre || '').trim();
+        let suf = (presetSuf || '').trim();
         const gPre = (globalPrefix || '').trim();
         const gSuf = (globalSuffix || '').trim();
 
-        let middle = orig;
-        if (preset) {
-            middle = position === 'prepend'
-                ? combineParts(preset, orig)
-                : combineParts(orig, preset);
+        // Fallback for legacy preset where only pre is populated but position was append
+        if (position === 'append' && pre && !suf) {
+            suf = pre;
+            pre = '';
         }
 
-        return combineParts(gPre, middle, gSuf);
+        return combineParts(gPre, pre, orig, suf, gSuf);
     }
 
     function resolveNegativePrompt(original, presetText, globalText) {
@@ -196,13 +211,14 @@
         const gSuf = store.globalPositiveSuffix || '';
         const gNeg = store.globalNegative || '';
         const presetPos = preset ? (preset.positive || '') : '';
+        const presetPosSuf = preset ? (preset.positiveSuffix || '') : '';
         const presetNeg = preset ? (preset.negative || '') : '';
 
-        if (gPre || gSuf || presetPos) {
-            payload.input = resolvePositivePrompt(payload.input, presetPos, gPre, gSuf, pos);
+        if (gPre || gSuf || presetPos || presetPosSuf) {
+            payload.input = resolvePositivePrompt(payload.input, presetPos, presetPosSuf, gPre, gSuf, pos);
             if (payload.parameters?.v4_prompt?.caption) {
                 payload.parameters.v4_prompt.caption.base_caption = resolvePositivePrompt(
-                    payload.parameters.v4_prompt.caption.base_caption, presetPos, gPre, gSuf, pos
+                    payload.parameters.v4_prompt.caption.base_caption, presetPos, presetPosSuf, gPre, gSuf, pos
                 );
             }
         }
@@ -230,10 +246,11 @@
         const gSuf = store.globalPositiveSuffix || '';
         const gNeg = store.globalNegative || '';
         const presetPos = preset ? (preset.positive || '') : '';
+        const presetPosSuf = preset ? (preset.positiveSuffix || '') : '';
         const presetNeg = preset ? (preset.negative || '') : '';
 
-        if (gPre || gSuf || presetPos) {
-            payload.positive_prompt = resolvePositivePrompt(payload.positive_prompt, presetPos, gPre, gSuf, pos);
+        if (gPre || gSuf || presetPos || presetPosSuf) {
+            payload.positive_prompt = resolvePositivePrompt(payload.positive_prompt, presetPos, presetPosSuf, gPre, gSuf, pos);
         }
         if (gNeg || presetNeg) {
             payload.negative_prompt = resolveNegativePrompt(payload.negative_prompt, presetNeg, gNeg);
@@ -250,6 +267,7 @@
         const gSuf = store.globalPositiveSuffix || '';
         const gNeg = store.globalNegative || '';
         const presetPos = preset ? (preset.positive || '') : '';
+        const presetPosSuf = preset ? (preset.positiveSuffix || '') : '';
         const presetNeg = preset ? (preset.negative || '') : '';
 
         for (const key of Object.keys(payload)) {
@@ -264,14 +282,14 @@
                 ) || node._meta?.title?.toLowerCase()?.includes('negative') || node._meta?.title?.includes('负面') || node._meta?.title?.includes('反向');
                 if (isNeg && (gNeg || presetNeg)) {
                     node.inputs.text = resolveNegativePrompt(node.inputs.text, presetNeg, gNeg);
-                } else if (!isNeg && (gPre || gSuf || presetPos)) {
-                    node.inputs.text = resolvePositivePrompt(node.inputs.text, presetPos, gPre, gSuf, pos);
+                } else if (!isNeg && (gPre || gSuf || presetPos || presetPosSuf)) {
+                    node.inputs.text = resolvePositivePrompt(node.inputs.text, presetPos, presetPosSuf, gPre, gSuf, pos);
                 }
             }
 
             // 2. 支持 WeiLin 全能提示词编辑器 (WeiLinPromptUI) 及具有 positive 文本字段的节点
-            if (typeof node.inputs.positive === 'string' && (gPre || gSuf || presetPos)) {
-                node.inputs.positive = resolvePositivePrompt(node.inputs.positive, presetPos, gPre, gSuf, pos);
+            if (typeof node.inputs.positive === 'string' && (gPre || gSuf || presetPos || presetPosSuf)) {
+                node.inputs.positive = resolvePositivePrompt(node.inputs.positive, presetPos, presetPosSuf, gPre, gSuf, pos);
             }
             if (/WeiLin/i.test(cType) || /PromptUI/i.test(cType)) {
                 if (node.inputs.auto_random !== undefined) {
@@ -285,13 +303,13 @@
             }
 
             // 4. 支持具有 prompt 文本字段的节点 (如 WeiLinPromptToString, CR Prompt Text 等)
-            if (typeof node.inputs.prompt === 'string' && (gPre || gSuf || presetPos)) {
+            if (typeof node.inputs.prompt === 'string' && (gPre || gSuf || presetPos || presetPosSuf)) {
                 const title = node._meta?.title || '';
                 const isNeg = /neg|反向|负面/i.test(title);
                 if (isNeg && (gNeg || presetNeg)) {
                     node.inputs.prompt = resolveNegativePrompt(node.inputs.prompt, presetNeg, gNeg);
-                } else if (!isNeg && (gPre || gSuf || presetPos)) {
-                    node.inputs.prompt = resolvePositivePrompt(node.inputs.prompt, presetPos, gPre, gSuf, pos);
+                } else if (!isNeg && (gPre || gSuf || presetPos || presetPosSuf)) {
+                    node.inputs.prompt = resolvePositivePrompt(node.inputs.prompt, presetPos, presetPosSuf, gPre, gSuf, pos);
                 }
             }
         }
@@ -1024,6 +1042,77 @@
                 color: #38bdf8 !important;
                 background: rgba(56, 189, 248, 0.12) !important;
             }
+            .rbq-pp-textarea.expanded {
+                min-height: 180px !important;
+            }
+            .rbq-pp-segmented-tabs {
+                display: inline-flex;
+                background: rgba(0, 0, 0, 0.35);
+                padding: 2px;
+                border-radius: 8px;
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.08));
+                gap: 3px;
+            }
+            .rbq-pp-tab {
+                background: transparent;
+                border: 1px solid transparent;
+                color: var(--linear-text-muted, #8a8f98);
+                font-size: 11px;
+                font-weight: 500;
+                padding: 3px 9px;
+                border-radius: 6px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                transition: all 0.15s ease;
+                user-select: none;
+            }
+            .rbq-pp-tab:hover {
+                color: var(--linear-text-primary, #f7f8f8);
+                background: rgba(255, 255, 255, 0.05);
+            }
+            .rbq-pp-tab.active {
+                background: rgba(94, 106, 210, 0.28);
+                color: #ffffff;
+                font-weight: 600;
+                border-color: rgba(94, 106, 210, 0.45);
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+            }
+            .rbq-pp-tab-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                display: inline-block;
+            }
+            .rbq-pp-tab-dot.pre {
+                background: #38bdf8;
+                box-shadow: 0 0 5px #38bdf8;
+            }
+            .rbq-pp-tab-dot.suf {
+                background: #e879f9;
+                box-shadow: 0 0 5px #e879f9;
+            }
+            .rbq-pp-flow-node.active.preset-pre {
+                background: rgba(168, 85, 247, 0.14);
+                color: #c084fc;
+                border: 1px solid rgba(168, 85, 247, 0.3);
+            }
+            .rbq-pp-flow-node.active.preset-suf {
+                background: rgba(232, 121, 249, 0.14);
+                color: #e879f9;
+                border: 1px solid rgba(232, 121, 249, 0.3);
+            }
+            .rbq-pp-syntax-chip.chip-preset-pre {
+                background: rgba(168, 85, 247, 0.2);
+                color: #d8b4fe;
+                border: 1px solid rgba(168, 85, 247, 0.35);
+            }
+            .rbq-pp-syntax-chip.chip-preset-suf {
+                background: rgba(232, 121, 249, 0.2);
+                color: #f0abfc;
+                border: 1px solid rgba(232, 121, 249, 0.35);
+            }
         `;
         document.head.appendChild(styleEl);
 
@@ -1043,7 +1132,7 @@
                 </div>
             </div>
 
-            <!-- 全局提示词卡片 (支持折叠收起以节省纵向空间) -->
+            <!-- 全局提示词卡片 (支持折叠收起以节省纵向空间，默认展开) -->
             <div class="rbq-pp-card" id="rbq-pp-global-card" style="padding: 10px 12px;">
                 <button type="button" class="rbq-pp-collapsible-btn" id="rbq-pp-global-toggle" title="展开/收起全局提示词">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -1053,28 +1142,46 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span id="rbq-pp-global-status-badge" class="rbq-pp-header-badge" style="display: none; color: #38bdf8; background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.25);">已生效</span>
+                        <span class="rbq-pp-copy-btn rbq-pp-global-expand-btn" id="rbq-pp-global-expand-text" style="font-size: 11px; padding: 2px 7px; border-radius: 5px; display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                        </span>
                         <i class="fa-solid fa-chevron-down rbq-pp-chevron"></i>
                     </div>
                 </button>
                 <div id="rbq-pp-global-content" style="display: none; flex-direction: column; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));">
                     <div class="rbq-pp-field">
-                        <div class="rbq-pp-field-label">
-                            <span class="rbq-pp-field-tag rbq-pp-tag-prefix">Prefix 前置</span>
-                            <span>全局正面提示词</span>
+                        <div class="rbq-pp-field-label" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="rbq-pp-field-tag rbq-pp-tag-prefix">Prefix 前置</span>
+                                <span>全局正面提示词</span>
+                            </div>
+                            <button type="button" class="rbq-pp-copy-btn rbq-pp-textarea-expand-btn" data-target="rbq-pp-global-pos-prefix" title="展开/收起输入框">
+                                <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                            </button>
                         </div>
                         <textarea id="rbq-pp-global-pos-prefix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
                     </div>
                     <div class="rbq-pp-field">
-                        <div class="rbq-pp-field-label">
-                            <span class="rbq-pp-field-tag rbq-pp-tag-suffix">Suffix 后置</span>
-                            <span>全局正面提示词</span>
+                        <div class="rbq-pp-field-label" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="rbq-pp-field-tag rbq-pp-tag-suffix">Suffix 后置</span>
+                                <span>全局正面提示词</span>
+                            </div>
+                            <button type="button" class="rbq-pp-copy-btn rbq-pp-textarea-expand-btn" data-target="rbq-pp-global-pos-suffix" title="展开/收起输入框">
+                                <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                            </button>
                         </div>
                         <textarea id="rbq-pp-global-pos-suffix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                     </div>
                     <div class="rbq-pp-field">
-                        <div class="rbq-pp-field-label">
-                            <span class="rbq-pp-field-tag rbq-pp-tag-neg">Negative</span>
-                            <span>全局负面提示词</span>
+                        <div class="rbq-pp-field-label" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="rbq-pp-field-tag rbq-pp-tag-neg">Negative</span>
+                                <span>全局负面提示词</span>
+                            </div>
+                            <button type="button" class="rbq-pp-copy-btn rbq-pp-textarea-expand-btn" data-target="rbq-pp-global-negative" title="展开/收起输入框">
+                                <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                            </button>
                         </div>
                         <textarea id="rbq-pp-global-negative" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
                     </div>
@@ -1112,16 +1219,40 @@
                     <input id="rbq-pp-name" class="rbq-pp-input" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用">
                 </div>
                 <div class="rbq-pp-field">
-                    <div class="rbq-pp-field-label">
-                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 6px #4ade80;"></span>
-                        <span>预设正面提示词</span>
+                    <!-- 正面词分段切换栏 (前置 / 后置独立编辑且同时生效) -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
+                        <div class="rbq-pp-segmented-tabs">
+                            <button type="button" id="rbq-pp-tab-pre" class="rbq-pp-tab active" data-tab="prepend">
+                                <i class="fa-solid fa-arrow-left" style="font-size: 10px;"></i>
+                                <span>前置词 (Prepend)</span>
+                                <span id="rbq-pp-dot-pre" class="rbq-pp-tab-dot pre" style="display: none;" title="已配置前置词"></span>
+                            </button>
+                            <button type="button" id="rbq-pp-tab-suf" class="rbq-pp-tab" data-tab="append">
+                                <i class="fa-solid fa-arrow-right" style="font-size: 10px;"></i>
+                                <span>后置词 (Append)</span>
+                                <span id="rbq-pp-dot-suf" class="rbq-pp-tab-dot suf" style="display: none;" title="已配置后置词"></span>
+                            </button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span id="rbq-pp-both-indicator" class="rbq-pp-header-badge" style="display: none; color: #4ade80; background: rgba(74, 222, 128, 0.1); border-color: rgba(74, 222, 128, 0.25); font-size: 10.5px;">
+                                <i class="fa-solid fa-link" style="font-size: 9px; margin-right: 3px;"></i>前后双置均生效
+                            </span>
+                            <button type="button" class="rbq-pp-copy-btn rbq-pp-textarea-expand-btn" data-target="rbq-pp-positive" title="展开/收起输入框">
+                                <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                            </button>
+                        </div>
                     </div>
-                    <textarea id="rbq-pp-positive" class="rbq-pp-textarea" data-action="plugin-ignore" rows="3" placeholder="例如: masterpiece, best quality, highly detailed..."></textarea>
+                    <textarea id="rbq-pp-positive" class="rbq-pp-textarea" data-action="plugin-ignore" rows="3" placeholder="例如: masterpiece, best quality, highly detailed... (拼在正文分镜动态词之前)"></textarea>
                 </div>
                 <div class="rbq-pp-field">
-                    <div class="rbq-pp-field-label">
-                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f87171; box-shadow: 0 0 6px #f87171;"></span>
-                        <span>预设负面提示词</span>
+                    <div class="rbq-pp-field-label" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f87171; box-shadow: 0 0 6px #f87171;"></span>
+                            <span>预设负面提示词</span>
+                        </div>
+                        <button type="button" class="rbq-pp-copy-btn rbq-pp-textarea-expand-btn" data-target="rbq-pp-negative" title="展开/收起输入框">
+                            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> <span>展开</span>
+                        </button>
                     </div>
                     <textarea id="rbq-pp-negative" class="rbq-pp-textarea" data-action="plugin-ignore" rows="3" placeholder="例如: lowres, bad anatomy, worst quality..."></textarea>
                 </div>
@@ -1245,6 +1376,7 @@
         const globalToggle = document.getElementById('rbq-pp-global-toggle');
         const globalContent = document.getElementById('rbq-pp-global-content');
         const globalStatusBadge = document.getElementById('rbq-pp-global-status-badge');
+        const globalExpandText = document.getElementById('rbq-pp-global-expand-text');
         const select = document.getElementById('rbq-pp-select');
         const posSelect = document.getElementById('rbq-pp-position');
         const floatingCheckbox = document.getElementById('rbq-pp-show-floating');
@@ -1252,8 +1384,14 @@
         const nameInput = document.getElementById('rbq-pp-name');
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
+        const tabPre = document.getElementById('rbq-pp-tab-pre');
+        const tabSuf = document.getElementById('rbq-pp-tab-suf');
+        const dotPre = document.getElementById('rbq-pp-dot-pre');
+        const dotSuf = document.getElementById('rbq-pp-dot-suf');
+        const bothBadge = document.getElementById('rbq-pp-both-indicator');
 
-        let isGlobalExpanded = false;
+        let activePositiveTab = 'prepend';
+
         function updateGlobalBadge() {
             const pre = (globalPosPreInput?.value || '').trim();
             const suf = (globalPosSufInput?.value || '').trim();
@@ -1272,12 +1410,113 @@
             }
         }
 
+        function updateGlobalExpandBtn(expanded) {
+            if (!globalExpandText) return;
+            const icon = globalExpandText.querySelector('i');
+            const span = globalExpandText.querySelector('span');
+            if (expanded) {
+                if (icon) icon.className = 'fa-solid fa-down-left-and-up-right-to-center';
+                if (span) span.textContent = '收起';
+                globalExpandText.classList.add('active');
+            } else {
+                if (icon) icon.className = 'fa-solid fa-up-right-and-down-left-from-center';
+                if (span) span.textContent = '展开';
+                globalExpandText.classList.remove('active');
+            }
+        }
+
+        let isGlobalExpanded = getStore().globalExpanded !== false;
         globalToggle?.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             isGlobalExpanded = !isGlobalExpanded;
+            getStore().globalExpanded = isGlobalExpanded;
+            save();
             if (globalContent) globalContent.style.display = isGlobalExpanded ? 'flex' : 'none';
             globalToggle.classList.toggle('rbq-pp-collapsible-open', isGlobalExpanded);
+            updateGlobalExpandBtn(isGlobalExpanded);
+        });
+
+        // 通用输入框展开/紧凑切换
+        container.querySelectorAll('.rbq-pp-textarea-expand-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetId = btn.getAttribute('data-target');
+                const targetEl = document.getElementById(targetId);
+                if (!targetEl) return;
+                const isExp = targetEl.classList.toggle('expanded');
+                const icon = btn.querySelector('i');
+                const span = btn.querySelector('span');
+                if (isExp) {
+                    if (icon) icon.className = 'fa-solid fa-down-left-and-up-right-to-center';
+                    if (span) span.textContent = '收起';
+                    btn.classList.add('active');
+                } else {
+                    if (icon) icon.className = 'fa-solid fa-up-right-and-down-left-from-center';
+                    if (span) span.textContent = '展开';
+                    btn.classList.remove('active');
+                }
+            });
+        });
+
+        function updateTabDots() {
+            const preset = getActivePreset();
+            if (!preset) {
+                if (dotPre) dotPre.style.display = 'none';
+                if (dotSuf) dotSuf.style.display = 'none';
+                if (bothBadge) bothBadge.style.display = 'none';
+                return;
+            }
+            const preVal = (activePositiveTab === 'prepend' ? posInput?.value : preset.positive || '').trim();
+            const sufVal = (activePositiveTab === 'append' ? posInput?.value : preset.positiveSuffix || '').trim();
+            if (dotPre) dotPre.style.display = preVal ? 'inline-block' : 'none';
+            if (dotSuf) dotSuf.style.display = sufVal ? 'inline-block' : 'none';
+            if (bothBadge) bothBadge.style.display = (preVal && sufVal) ? 'inline-flex' : 'none';
+        }
+
+        function switchPositiveTab(targetTab) {
+            const preset = getActivePreset();
+            if (preset && posInput) {
+                if (activePositiveTab === 'prepend') {
+                    preset.positive = posInput.value.trim();
+                } else {
+                    preset.positiveSuffix = posInput.value.trim();
+                }
+            }
+            activePositiveTab = targetTab === 'append' ? 'append' : 'prepend';
+            if (tabPre) tabPre.classList.toggle('active', activePositiveTab === 'prepend');
+            if (tabSuf) tabSuf.classList.toggle('active', activePositiveTab === 'append');
+            if (posSelect && posSelect.value !== activePositiveTab) {
+                posSelect.value = activePositiveTab;
+            }
+            if (posInput) {
+                if (activePositiveTab === 'prepend') {
+                    posInput.value = preset?.positive || '';
+                    posInput.placeholder = '例如: masterpiece, best quality, highly detailed... (拼在正文分镜动态词之前)';
+                } else {
+                    posInput.value = preset?.positiveSuffix || '';
+                    posInput.placeholder = '例如: year 2025, cinematic lighting... (拼在正文分镜动态词之后)';
+                }
+            }
+            updateTabDots();
+            renderLivePreview();
+        }
+
+        tabPre?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            switchPositiveTab('prepend');
+            getStore().position = 'prepend';
+            save();
+        });
+
+        tabSuf?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            switchPositiveTab('append');
+            getStore().position = 'append';
+            save();
         });
 
         function renderLivePreview() {
@@ -1287,7 +1526,18 @@
             const gPre = (globalPosPreInput?.value ?? store.globalPositivePrefix ?? '').trim();
             const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
             const gNeg = (globalNegInput?.value ?? store.globalNegative ?? '').trim();
-            const presetPos = preset ? (posInput?.value ?? preset.positive ?? '').trim() : '';
+
+            let presetPos = '';
+            let presetPosSuf = '';
+            if (preset) {
+                if (activePositiveTab === 'prepend') {
+                    presetPos = (posInput?.value ?? preset.positive ?? '').trim();
+                    presetPosSuf = (preset.positiveSuffix ?? '').trim();
+                } else {
+                    presetPos = (preset.positive ?? '').trim();
+                    presetPosSuf = (posInput?.value ?? preset.positiveSuffix ?? '').trim();
+                }
+            }
             const presetNeg = preset ? (negInput?.value ?? preset.negative ?? '').trim() : '';
 
             // 1. 渲染顶部拼接拓扑指示条
@@ -1303,18 +1553,18 @@
                     flowItems.push(`<span class="rbq-pp-flow-node dim" title="未设置全局前缀"><i class="fa-solid fa-earth-americas"></i> (无前缀)</span>`);
                 }
 
-                const presetNode = presetPos
-                    ? `<span class="rbq-pp-flow-node active preset" title="当前预设: ${escapeHtml(preset?.name || '')} (${presetPos.length} 字符)"><i class="fa-solid fa-bookmark"></i> 预设 (${pos === 'prepend' ? '前置' : '后置'})</span>`
-                    : `<span class="rbq-pp-flow-node dim" title="当前无生效预设正面词"><i class="fa-regular fa-bookmark"></i> (无预设)</span>`;
-
-                const dynamicNode = `<span class="rbq-pp-flow-node dynamic" title="正文剧情/分镜生图时提取的动态提示词"><i class="fa-solid fa-bolt"></i> 动态分镜词</span>`;
-
-                if (pos === 'prepend') {
-                    flowItems.push(presetNode);
-                    flowItems.push(dynamicNode);
+                if (presetPos) {
+                    flowItems.push(`<span class="rbq-pp-flow-node active preset-pre" title="预设前置: ${escapeHtml(preset?.name || '')} (${presetPos.length} 字符)"><i class="fa-solid fa-bookmark"></i> 预设前置</span>`);
                 } else {
-                    flowItems.push(dynamicNode);
-                    flowItems.push(presetNode);
+                    flowItems.push(`<span class="rbq-pp-flow-node dim" title="当前无预设前置词"><i class="fa-regular fa-bookmark"></i> (无预设前置)</span>`);
+                }
+
+                flowItems.push(`<span class="rbq-pp-flow-node dynamic" title="正文剧情/分镜生图时提取的动态提示词"><i class="fa-solid fa-bolt"></i> 动态分镜词</span>`);
+
+                if (presetPosSuf) {
+                    flowItems.push(`<span class="rbq-pp-flow-node active preset-suf" title="预设后置: ${escapeHtml(preset?.name || '')} (${presetPosSuf.length} 字符)"><i class="fa-solid fa-bookmark"></i> 预设后置</span>`);
+                } else {
+                    flowItems.push(`<span class="rbq-pp-flow-node dim" title="当前无预设后置词"><i class="fa-regular fa-bookmark"></i> (无预设后置)</span>`);
                 }
 
                 if (gSuf) {
@@ -1337,18 +1587,14 @@
                     parts.push(`<span class="rbq-pp-syntax-section pre" title="全局正面前缀"><span class="rbq-pp-syntax-chip chip-pre">前缀</span>${escapeHtml(gPre)}</span>`);
                     totalChars += gPre.length;
                 }
-                if (pos === 'prepend') {
-                    if (presetPos) {
-                        parts.push(`<span class="rbq-pp-syntax-section preset" title="预设正面词 (前置)"><span class="rbq-pp-syntax-chip chip-preset">预设</span>${escapeHtml(presetPos)}</span>`);
-                        totalChars += presetPos.length;
-                    }
-                    parts.push(dummyDynamic);
-                } else {
-                    parts.push(dummyDynamic);
-                    if (presetPos) {
-                        parts.push(`<span class="rbq-pp-syntax-section preset" title="预设正面词 (后置)"><span class="rbq-pp-syntax-chip chip-preset">预设</span>${escapeHtml(presetPos)}</span>`);
-                        totalChars += presetPos.length;
-                    }
+                if (presetPos) {
+                    parts.push(`<span class="rbq-pp-syntax-section preset" title="预设正面词 (前置)"><span class="rbq-pp-syntax-chip chip-preset-pre">预设前置</span>${escapeHtml(presetPos)}</span>`);
+                    totalChars += presetPos.length;
+                }
+                parts.push(dummyDynamic);
+                if (presetPosSuf) {
+                    parts.push(`<span class="rbq-pp-syntax-section preset" title="预设正面词 (后置)"><span class="rbq-pp-syntax-chip chip-preset-suf">预设后置</span>${escapeHtml(presetPosSuf)}</span>`);
+                    totalChars += presetPosSuf.length;
                 }
                 if (gSuf) {
                     parts.push(`<span class="rbq-pp-syntax-section suf" title="全局正面后缀"><span class="rbq-pp-syntax-chip chip-suf">后缀</span>${escapeHtml(gSuf)}</span>`);
@@ -1408,6 +1654,15 @@
         });
 
         posInput?.addEventListener('input', () => {
+            const preset = getActivePreset();
+            if (preset) {
+                if (activePositiveTab === 'prepend') {
+                    preset.positive = posInput.value;
+                } else {
+                    preset.positiveSuffix = posInput.value;
+                }
+                updateTabDots();
+            }
             renderLivePreview();
         });
 
@@ -1423,8 +1678,18 @@
             const pos = posSelect?.value || store.position || 'prepend';
             const gPre = (globalPosPreInput?.value ?? store.globalPositivePrefix ?? '').trim();
             const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
-            const presetPos = preset ? (posInput?.value ?? preset.positive ?? '').trim() : '';
-            const assembled = resolvePositivePrompt('{prompt}', presetPos, gPre, gSuf, pos);
+            let presetPos = '';
+            let presetPosSuf = '';
+            if (preset) {
+                if (activePositiveTab === 'prepend') {
+                    presetPos = (posInput?.value ?? preset.positive ?? '').trim();
+                    presetPosSuf = (preset.positiveSuffix ?? '').trim();
+                } else {
+                    presetPos = (preset.positive ?? '').trim();
+                    presetPosSuf = (posInput?.value ?? preset.positiveSuffix ?? '').trim();
+                }
+            }
+            const assembled = resolvePositivePrompt('{prompt}', presetPos, presetPosSuf, gPre, gSuf, pos);
 
             const showFeedback = () => {
                 const icon = btn.querySelector('i');
@@ -1594,6 +1859,11 @@
                 globalNegInput.value = store.globalNegative || '';
             }
             updateGlobalBadge();
+            const isGlobalExpanded = store.globalExpanded !== false;
+            if (globalContent) globalContent.style.display = isGlobalExpanded ? 'flex' : 'none';
+            if (globalToggle) globalToggle.classList.toggle('rbq-pp-collapsible-open', isGlobalExpanded);
+            updateGlobalExpandBtn(isGlobalExpanded);
+
             floatingCheckbox.checked = !!store.showFloating;
             select.innerHTML = '<option value="">-- 不使用预设 --</option>';
             store.presets.forEach(p => {
@@ -1613,14 +1883,34 @@
             const preset = getActivePreset();
             if (preset) {
                 nameInput.value = preset.name || '';
-                posInput.value = preset.positive || '';
+                // Auto switch tab if only positiveSuffix exists
+                if (preset.positiveSuffix && !preset.positive) {
+                    activePositiveTab = 'append';
+                } else {
+                    activePositiveTab = 'prepend';
+                }
+                if (tabPre) tabPre.classList.toggle('active', activePositiveTab === 'prepend');
+                if (tabSuf) tabSuf.classList.toggle('active', activePositiveTab === 'append');
+                if (posSelect) posSelect.value = activePositiveTab;
+
+                if (posInput) {
+                    if (activePositiveTab === 'prepend') {
+                        posInput.value = preset.positive || '';
+                        posInput.placeholder = '例如: masterpiece, best quality, highly detailed... (拼在正文分镜动态词之前)';
+                    } else {
+                        posInput.value = preset.positiveSuffix || '';
+                        posInput.placeholder = '例如: year 2025, cinematic lighting... (拼在正文分镜动态词之后)';
+                    }
+                }
                 negInput.value = preset.negative || '';
                 editor.style.display = 'flex';
+                updateTabDots();
             } else {
                 nameInput.value = '';
                 posInput.value = '';
                 negInput.value = '';
                 editor.style.display = 'none';
+                updateTabDots();
             }
             renderLivePreview();
         }
@@ -1630,9 +1920,10 @@
         });
 
         posSelect.addEventListener('change', () => {
-            getStore().position = posSelect.value;
+            const targetPos = posSelect.value;
+            getStore().position = targetPos;
             save();
-            renderLivePreview();
+            switchPositiveTab(targetPos);
         });
 
         floatingCheckbox.addEventListener('change', () => {
@@ -1646,7 +1937,7 @@
             if (!name) return;
             const store = getStore();
             const id = uid();
-            store.presets.push({ id, name, positive: '', negative: '' });
+            store.presets.push({ id, name, positive: '', positiveSuffix: '', negative: '' });
             store.activeId = id;
             save();
             renderSelect();
@@ -1657,13 +1948,18 @@
             const preset = getActivePreset();
             if (!preset) return;
             preset.name = nameInput.value.trim() || preset.name;
-            preset.positive = posInput.value.trim();
+            if (activePositiveTab === 'prepend') {
+                preset.positive = posInput.value.trim();
+            } else {
+                preset.positiveSuffix = posInput.value.trim();
+            }
             preset.negative = negInput.value.trim();
             const vibes = getCurrentNaiVibes();
             if (vibes.length > 0) {
                 showVibeSaveDialog((mode) => {
                     preset.vibes = snapshotNaiVibes(mode);
                     save();
+                    updateTabDots();
                     renderSelect();
                     toastr.success('预设已保存: ' + preset.name);
                 });
@@ -1671,6 +1967,7 @@
             }
             preset.vibes = [];
             save();
+            updateTabDots();
             renderSelect();
             toastr.success('预设已保存: ' + preset.name);
         });
@@ -1694,11 +1991,12 @@
             showCheckboxDialog('选择要导出的预设', store.presets, (selectedIds) => {
                 const selected = store.presets.filter(p => selectedIds.includes(p.id));
                 if (!selected.length) return toastr.warning('未选择任何预设');
-                // Export in compatible format (positivePrompt / negativePrompt)
+                // Export in compatible format (positivePrompt / positiveSuffix / negativePrompt)
                 const exportData = selected.map((p, idx) => ({
                     id: p.id,
                     name: p.name,
                     positivePrompt: p.positive || '',
+                    positiveSuffix: p.positiveSuffix || '',
                     negativePrompt: p.negative || '',
                     sequence: idx,
                     referenceImage: null,
@@ -1732,16 +2030,17 @@
                 const text = await file.text();
                 const imported = JSON.parse(text);
                 if (!Array.isArray(imported)) throw new Error('格式错误：文件内容应为数组');
-                const candidates = imported.filter(item => item.name || item.positive || item.negative || item.positivePrompt || item.negativePrompt || (Array.isArray(item.vibes) && item.vibes.length));
+                const candidates = imported.filter(item => item.name || item.positive || item.positiveSuffix || item.negative || item.positivePrompt || item.positiveSuffixPrompt || (Array.isArray(item.vibes) && item.vibes.length));
                 if (!candidates.length) throw new Error('文件中没有有效的预设');
 
                 // Normalize items - support both formats:
-                // Plugin native: { positive, negative }
-                // External compat: { positivePrompt, negativePrompt, sequence, referenceImage, thumbnail }
+                // Plugin native: { positive, positiveSuffix, negative }
+                // External compat: { positivePrompt, positiveSuffix, negativePrompt, sequence, referenceImage, thumbnail }
                 const displayItems = candidates.map((item, idx) => ({
                     id: item.id || uid(),
                     name: item.name || '未命名预设',
                     positive: item.positive || item.positivePrompt || '',
+                    positiveSuffix: item.positiveSuffix || item.positiveSuffixPrompt || '',
                     negative: item.negative || item.negativePrompt || '',
                     vibes: Array.isArray(item.vibes) ? item.vibes.map(compactVibeEntry).filter(Boolean).slice(0, 6) : [],
                 }));

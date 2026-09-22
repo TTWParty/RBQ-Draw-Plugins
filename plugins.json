@@ -11,9 +11,9 @@
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
     "description": "全新 Linear 风格卡片UI与正文生图提取规则卡片。预设正面词采用紧凑分段Tab（前置/后置独立编辑并可同时生效）、全局提示词默认展开与记忆折叠、预设切换、NAI Vibe氛围图绑定及实时流水线高亮预览。",
-    "version": "1.3.13",
+    "version": "1.3.14",
     "author": "TTWP-09",
-    "main": "plugins/prompt-presets.js?v=1.3.13"
+    "main": "plugins/prompt-presets.js?v=1.3.14"
   },
   {
     "id": "rbq-png-metadata",

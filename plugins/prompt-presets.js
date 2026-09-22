@@ -427,7 +427,16 @@
     }
 
     waitForPanel((panel) => {
-        document.getElementById('rbq-prompt-presets-panel')?.remove();
+        const existingPanel = document.getElementById('rbq-prompt-presets-panel');
+        if (existingPanel) {
+            const sInput = document.getElementById('st-scene-trigger-modal-start-tag');
+            const eInput = document.getElementById('st-scene-trigger-modal-end-tag');
+            const rInput = document.getElementById('st-scene-trigger-modal-custom-regex');
+            if (sInput) document.body.appendChild(sInput);
+            if (eInput) document.body.appendChild(eInput);
+            if (rInput) document.body.appendChild(rInput);
+            existingPanel.remove();
+        }
 
         // ── Scoped Styles ──
         document.getElementById('rbq-pp-styles')?.remove();
@@ -1246,20 +1255,22 @@
                         <i class="fa-solid fa-chevron-down rbq-pp-chevron"></i>
                     </div>
                 </button>
-                <div id="rbq-pp-global-content" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));">
-                    <div class="rbq-pp-field">
-                        <div class="rbq-pp-field-label">
-                            <span class="rbq-pp-field-tag rbq-pp-tag-prefix">Prefix 前置</span>
-                            <span>全局正面提示词</span>
+                <div id="rbq-pp-global-content" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div class="rbq-pp-field">
+                            <div class="rbq-pp-field-label">
+                                <span class="rbq-pp-field-tag rbq-pp-tag-prefix">Prefix 前置</span>
+                                <span>全局正面前缀</span>
+                            </div>
+                            <textarea id="rbq-pp-global-pos-prefix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality... (始终拼在最前面)"></textarea>
                         </div>
-                        <textarea id="rbq-pp-global-pos-prefix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
-                    </div>
-                    <div class="rbq-pp-field">
-                        <div class="rbq-pp-field-label">
-                            <span class="rbq-pp-field-tag rbq-pp-tag-suffix">Suffix 后置</span>
-                            <span>全局正面提示词</span>
+                        <div class="rbq-pp-field">
+                            <div class="rbq-pp-field-label">
+                                <span class="rbq-pp-field-tag rbq-pp-tag-suffix">Suffix 后置</span>
+                                <span>全局正面后缀</span>
+                            </div>
+                            <textarea id="rbq-pp-global-pos-suffix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                         </div>
-                        <textarea id="rbq-pp-global-pos-suffix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
                     </div>
                     <div class="rbq-pp-field">
                         <div class="rbq-pp-field-label">
@@ -1447,25 +1458,41 @@
         container.addEventListener('input', (e) => e.stopPropagation());
 
         // ── 移动并挂载正文触发规则输入框 ──
-        const oldStartInput = document.getElementById('st-scene-trigger-modal-start-tag');
-        const oldEndInput = document.getElementById('st-scene-trigger-modal-end-tag');
-        const oldRegexInput = document.getElementById('st-scene-trigger-modal-custom-regex');
+        let oldStartInput = document.getElementById('st-scene-trigger-modal-start-tag');
+        let oldEndInput = document.getElementById('st-scene-trigger-modal-end-tag');
+        let oldRegexInput = document.getElementById('st-scene-trigger-modal-custom-regex');
 
-        if (oldStartInput) {
-            oldStartInput.className = 'rbq-pp-input';
-            oldStartInput.placeholder = '例如: image###';
-            document.getElementById('rbq-pp-start-slot')?.appendChild(oldStartInput);
+        const curSettings = RBQ.api.getSettings?.() || {};
+        if (!oldStartInput) {
+            oldStartInput = document.createElement('input');
+            oldStartInput.id = 'st-scene-trigger-modal-start-tag';
+            oldStartInput.type = 'text';
+            oldStartInput.value = curSettings.startTag || 'image###';
         }
-        if (oldEndInput) {
-            oldEndInput.className = 'rbq-pp-input';
-            oldEndInput.placeholder = '例如: ###';
-            document.getElementById('rbq-pp-end-slot')?.appendChild(oldEndInput);
+        if (!oldEndInput) {
+            oldEndInput = document.createElement('input');
+            oldEndInput.id = 'st-scene-trigger-modal-end-tag';
+            oldEndInput.type = 'text';
+            oldEndInput.value = curSettings.endTag || '###';
         }
-        if (oldRegexInput) {
-            oldRegexInput.className = 'rbq-pp-input';
-            oldRegexInput.placeholder = '例如: \\{image:(.*?)\\}';
-            document.getElementById('rbq-pp-regex-slot')?.appendChild(oldRegexInput);
+        if (!oldRegexInput) {
+            oldRegexInput = document.createElement('input');
+            oldRegexInput.id = 'st-scene-trigger-modal-custom-regex';
+            oldRegexInput.type = 'text';
+            oldRegexInput.value = curSettings.customRegex || '';
         }
+
+        oldStartInput.className = 'rbq-pp-input';
+        oldStartInput.placeholder = '例如: image###';
+        document.getElementById('rbq-pp-start-slot')?.appendChild(oldStartInput);
+
+        oldEndInput.className = 'rbq-pp-input';
+        oldEndInput.placeholder = '例如: ###';
+        document.getElementById('rbq-pp-end-slot')?.appendChild(oldEndInput);
+
+        oldRegexInput.className = 'rbq-pp-input';
+        oldRegexInput.placeholder = '例如: \\{image:(.*?)\\}';
+        document.getElementById('rbq-pp-regex-slot')?.appendChild(oldRegexInput);
 
         function syncTriggerSettings() {
             const s = RBQ.api.getSettings?.();
@@ -1537,6 +1564,7 @@
         const posSufInput = document.getElementById('rbq-pp-positive-suffix');
         const negInput = document.getElementById('rbq-pp-negative');
 
+        const store = getStore();
         let isGlobalExpanded = store.globalExpanded !== false;
         function updateGlobalBadge() {
             const pre = (globalPosPreInput?.value || '').trim();

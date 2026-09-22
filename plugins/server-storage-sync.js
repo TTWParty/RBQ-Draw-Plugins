@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.16';
+    const PLUGIN_VERSION = '1.1.17';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const DEFAULT_SETTINGS = {
@@ -403,8 +403,8 @@
                 if (!msg.extra.rbq_image.serverUrl) msg.extra.rbq_image.serverUrl = path;
             } else {
                 msg.extra.rbq_image.serverPreviewUrl = path;
-                msg.extra.rbq_image.serverUrl = path;
-                msg.extra.rbq_image.url = path;
+                if (!msg.extra.rbq_image.serverUrl) msg.extra.rbq_image.serverUrl = path;
+                if (!msg.extra.rbq_image.url) msg.extra.rbq_image.url = path;
             }
 
             if (Array.isArray(msg.extra.rbq_images)) {
@@ -419,8 +419,8 @@
                             if (!img.serverUrl) img.serverUrl = path;
                         } else {
                             img.serverPreviewUrl = path;
-                            img.serverUrl = path;
-                            img.url = path;
+                            if (!img.serverUrl) img.serverUrl = path;
+                            if (!img.url) img.url = path;
                         }
                     }
                 }
@@ -441,8 +441,8 @@
                                 if (!st.imageResult.serverUrl) st.imageResult.serverUrl = path;
                             } else {
                                 st.imageResult.serverPreviewUrl = path;
-                                st.imageResult.serverUrl = path;
-                                st.imageResult.url = path;
+                                if (!st.imageResult.serverUrl) st.imageResult.serverUrl = path;
+                                if (!st.imageResult.url) st.imageResult.url = path;
                             }
                         }
                     }
@@ -481,15 +481,28 @@
                     }
 
                     if (isMatch && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
-                        const previewPath = item.serverPreviewUrl || (!isOriginal ? path : '');
-                        const renderUrl = previewPath || path;
-                        RBQ.api.renderInlineGeneratedImage(card, {
-                            ...item,
-                            url: renderUrl,
-                            serverUrl: path,
-                            serverOriginalUrl: isOriginal ? path : item.serverOriginalUrl,
-                            serverPreviewUrl: item.serverPreviewUrl || (!isOriginal ? path : undefined)
-                        });
+                        // 保护已在卡片展示的本地原画：
+                        // 如果卡片已经在展示本地完整原图（不是 _preview.webp），且当前只是同步完预览图，绝不触发 DOM 降级重绘与跳动！
+                        const existingImg = card.querySelector('.st-scene-trigger-inline-image') || card.querySelector('img');
+                        const isShowingOriginal = existingImg && existingImg.complete && existingImg.naturalWidth > 0 && !existingImg.src.includes('_preview.webp');
+                        if (!isShowingOriginal || isOriginal) {
+                            const renderUrl = isOriginal ? path : (item.url || path);
+                            RBQ.api.renderInlineGeneratedImage(card, {
+                                ...item,
+                                url: renderUrl,
+                                serverUrl: path,
+                                serverOriginalUrl: isOriginal ? path : item.serverOriginalUrl,
+                                serverPreviewUrl: item.serverPreviewUrl || (!isOriginal ? path : undefined)
+                            });
+                        } else {
+                            // 卡片已在展示本地高清原画，仅静默记录 dataset，绝不触发 DOM 降级重绘与跳动
+                            const link = card.querySelector('.st-scene-trigger-inline-image-link');
+                            if (link) {
+                                link.dataset.serverPreviewUrl = path;
+                                if (isOriginal) link.dataset.serverOriginalUrl = path;
+                            }
+                            card.dataset.serverPreviewUrl = path;
+                        }
                         if (card.classList.contains('rbq-sdt-card')) {
                             card.dataset.rbqSdtStage = 'generated';
                         }
@@ -516,8 +529,8 @@
                     if (!matched.serverUrl) matched.serverUrl = path;
                 } else {
                     matched.serverPreviewUrl = path;
-                    matched.serverUrl = path;
-                    matched.url = path;
+                    if (!matched.serverUrl) matched.serverUrl = path;
+                    if (!matched.url) matched.url = path;
                 }
                 RBQ.api.saveSettings?.();
             }
@@ -531,8 +544,8 @@
                 if (!currentViewerItem.serverPreviewUrl) currentViewerItem.serverUrl = path;
             } else {
                 currentViewerItem.serverPreviewUrl = path;
-                currentViewerItem.serverUrl = path;
-                currentViewerItem.url = path;
+                if (!currentViewerItem.serverUrl) currentViewerItem.serverUrl = path;
+                if (!currentViewerItem.url) currentViewerItem.url = path;
             }
             const modal = document.getElementById('st-scene-trigger-image-viewer');
             if (modal) {

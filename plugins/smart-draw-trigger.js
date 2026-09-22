@@ -10380,7 +10380,9 @@ SCHEMA:
         const button = wrapper?.querySelector?.('.st-scene-trigger-generate');
         const loader = wrapper?.querySelector?.('.st-scene-trigger-inline-loader');
         if (loader instanceof HTMLElement) loader.style.display = 'none';
-        if (button instanceof HTMLElement) button.style.display = '';
+        if (button instanceof HTMLElement && wrapper?.dataset?.rbqSdtIsResult !== '1') {
+            button.style.display = '';
+        }
     }
 
     function ensureTaggerButtonState(wrapper, text = '开始解析/生成 tag') {

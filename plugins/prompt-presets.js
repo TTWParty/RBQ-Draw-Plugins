@@ -418,94 +418,702 @@
     waitForPanel((panel) => {
         document.getElementById('rbq-prompt-presets-panel')?.remove();
 
+        // ── Scoped Styles ──
+        document.getElementById('rbq-pp-styles')?.remove();
+        const styleEl = document.createElement('style');
+        styleEl.id = 'rbq-pp-styles';
+        styleEl.textContent = `
+            #rbq-prompt-presets-panel {
+                margin-top: 6px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .rbq-pp-card {
+                background: var(--linear-surface, #141517);
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.08));
+                border-radius: 10px;
+                padding: 12px;
+                box-sizing: border-box;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            }
+            .rbq-pp-card:hover {
+                border-color: rgba(255, 255, 255, 0.12);
+            }
+            .rbq-pp-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .rbq-pp-header-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--linear-text-primary, #f7f8f8);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                letter-spacing: -0.2px;
+            }
+            .rbq-pp-header-icon {
+                width: 26px;
+                height: 26px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 7px;
+                background: linear-gradient(135deg, rgba(94, 106, 210, 0.25), rgba(113, 112, 255, 0.1));
+                color: #828fff;
+                font-size: 12px;
+                border: 1px solid rgba(94, 106, 210, 0.35);
+                flex-shrink: 0;
+            }
+            .rbq-pp-header-badge {
+                font-size: 10.5px;
+                font-weight: 600;
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.05);
+                color: var(--linear-text-muted, #8a8f98);
+                border: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));
+                transition: all 0.2s ease;
+            }
+            .rbq-pp-collapsible-btn {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                background: transparent;
+                border: none;
+                padding: 0;
+                color: inherit;
+                cursor: pointer;
+                font: inherit;
+                text-align: left;
+            }
+            .rbq-pp-chevron {
+                transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                color: var(--linear-text-muted, #8a8f98);
+                font-size: 11px;
+            }
+            .rbq-pp-collapsible-open .rbq-pp-chevron {
+                transform: rotate(180deg);
+            }
+            .rbq-pp-field {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }
+            .rbq-pp-field-label {
+                font-size: 11.5px;
+                font-weight: 500;
+                color: var(--linear-text-secondary, #d0d6e0);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .rbq-pp-field-tag {
+                font-size: 10px;
+                font-weight: 600;
+                padding: 1px 5px;
+                border-radius: 4px;
+                letter-spacing: 0.3px;
+            }
+            .rbq-pp-tag-prefix {
+                background: rgba(56, 189, 248, 0.15);
+                color: #38bdf8;
+                border: 1px solid rgba(56, 189, 248, 0.3);
+            }
+            .rbq-pp-tag-suffix {
+                background: rgba(232, 121, 249, 0.15);
+                color: #e879f9;
+                border: 1px solid rgba(232, 121, 249, 0.3);
+            }
+            .rbq-pp-tag-neg {
+                background: rgba(248, 113, 113, 0.15);
+                color: #f87171;
+                border: 1px solid rgba(248, 113, 113, 0.3);
+            }
+            .rbq-pp-textarea, .rbq-pp-input {
+                width: 100%;
+                box-sizing: border-box;
+                background: rgba(0, 0, 0, 0.25) !important;
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.08)) !important;
+                border-radius: 6px !important;
+                padding: 7px 10px !important;
+                color: var(--linear-text-primary, #f7f8f8) !important;
+                font-size: 12.5px !important;
+                line-height: 1.5 !important;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+                transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+            }
+            .rbq-pp-textarea:focus, .rbq-pp-input:focus {
+                outline: none !important;
+                border-color: #5e6ad2 !important;
+                box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.25) !important;
+                background: rgba(0, 0, 0, 0.35) !important;
+            }
+            .rbq-pp-selector-row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            .rbq-pp-select-wrap {
+                flex: 1;
+                position: relative;
+                display: flex;
+                align-items: center;
+            }
+            .rbq-pp-select {
+                width: 100%;
+                appearance: none;
+                -webkit-appearance: none;
+                background: var(--linear-surface, #191a1b);
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.1));
+                color: var(--linear-text-primary, #f7f8f8);
+                font-size: 12.5px;
+                font-weight: 500;
+                padding: 7px 28px 7px 10px;
+                border-radius: 7px;
+                outline: none;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                box-sizing: border-box;
+            }
+            .rbq-pp-select:hover {
+                border-color: rgba(255, 255, 255, 0.2);
+                background: var(--linear-surface-hover, #242528);
+            }
+            .rbq-pp-select:focus {
+                border-color: #5e6ad2;
+                box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.25);
+            }
+            .rbq-pp-select-arrow {
+                position: absolute;
+                right: 10px;
+                pointer-events: none;
+                color: var(--linear-text-muted, #8a8f98);
+                font-size: 10px;
+            }
+            .rbq-pp-pos-select {
+                width: 110px;
+                appearance: none;
+                -webkit-appearance: none;
+                background: var(--linear-surface, #191a1b);
+                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.1));
+                color: var(--linear-text-secondary, #d0d6e0);
+                font-size: 12px;
+                font-weight: 500;
+                padding: 7px 24px 7px 9px;
+                border-radius: 7px;
+                outline: none;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                box-sizing: border-box;
+            }
+            .rbq-pp-pos-select:hover {
+                border-color: rgba(255, 255, 255, 0.2);
+                color: var(--linear-text-primary, #f7f8f8);
+            }
+            .rbq-pp-toggle-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 12px;
+                background: var(--linear-bg-subtle, rgba(255, 255, 255, 0.02));
+                border: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));
+                border-radius: 8px;
+                cursor: pointer;
+                transition: background 0.15s ease;
+                margin: 0;
+            }
+            .rbq-pp-toggle-row:hover {
+                background: rgba(255, 255, 255, 0.04);
+            }
+            .rbq-pp-toggle-info {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .rbq-pp-toggle-title {
+                font-size: 12.5px;
+                font-weight: 500;
+                color: var(--linear-text-primary, #f7f8f8);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .rbq-pp-toggle-sub {
+                font-size: 11px;
+                color: var(--linear-text-muted, #8a8f98);
+            }
+            .rbq-pp-switch {
+                position: relative;
+                display: inline-block;
+                width: 36px;
+                height: 20px;
+                flex-shrink: 0;
+            }
+            .rbq-pp-switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+                margin: 0;
+            }
+            .rbq-pp-slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background-color: rgba(255, 255, 255, 0.15);
+                transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                border-radius: 20px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            .rbq-pp-slider:before {
+                position: absolute;
+                content: "";
+                height: 14px;
+                width: 14px;
+                left: 2px;
+                bottom: 2px;
+                background-color: #fff;
+                transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                border-radius: 50%;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            }
+            .rbq-pp-switch input:checked + .rbq-pp-slider {
+                background-color: #5e6ad2;
+                border-color: #7170ff;
+            }
+            .rbq-pp-switch input:checked + .rbq-pp-slider:before {
+                transform: translateX(16px);
+            }
+            .rbq-pp-toolbar {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 8px;
+            }
+            @media (max-width: 520px) {
+                .rbq-pp-toolbar {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
+            .rbq-pp-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                padding: 6px 10px;
+                font-size: 12px;
+                font-weight: 500;
+                border-radius: 7px;
+                cursor: pointer;
+                border: 1px solid transparent;
+                transition: all 0.15s ease;
+                white-space: nowrap;
+                text-decoration: none;
+                box-sizing: border-box;
+            }
+            .rbq-pp-btn:active {
+                transform: scale(0.98);
+            }
+            .rbq-pp-btn-primary {
+                background: linear-gradient(135deg, #5e6ad2, #7170ff);
+                color: #ffffff;
+                box-shadow: 0 2px 6px rgba(94, 106, 210, 0.25);
+                border-color: rgba(255, 255, 255, 0.15);
+            }
+            .rbq-pp-btn-primary:hover {
+                background: linear-gradient(135deg, #6c78e0, #8281ff);
+                box-shadow: 0 3px 10px rgba(94, 106, 210, 0.4);
+            }
+            .rbq-pp-btn-secondary {
+                background: var(--linear-bg-subtle, rgba(255, 255, 255, 0.04));
+                border-color: var(--linear-border-standard, rgba(255, 255, 255, 0.08));
+                color: var(--linear-text-primary, #f7f8f8);
+            }
+            .rbq-pp-btn-secondary:hover {
+                background: var(--linear-surface-hover, rgba(255, 255, 255, 0.08));
+                border-color: rgba(255, 255, 255, 0.15);
+            }
+            .rbq-pp-btn-danger-ghost {
+                background: rgba(239, 68, 68, 0.06);
+                border-color: rgba(239, 68, 68, 0.18);
+                color: #fca5a5;
+            }
+            .rbq-pp-btn-danger-ghost:hover {
+                background: rgba(239, 68, 68, 0.12);
+                border-color: rgba(239, 68, 68, 0.35);
+                color: #ef4444;
+            }
+            #rbq-pp-editor {
+                border-top: 2px solid #5e6ad2;
+                animation: rbq-pp-fade-in 0.2s ease-out;
+            }
+            @keyframes rbq-pp-fade-in {
+                from { opacity: 0; transform: translateY(-4px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .rbq-pp-terminal {
+                background: #0d0e11;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            }
+            .rbq-pp-terminal-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 7px 12px;
+                background: rgba(255, 255, 255, 0.02);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .rbq-pp-terminal-left {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .rbq-pp-terminal-dots {
+                display: flex;
+                gap: 5px;
+            }
+            .rbq-pp-dot {
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+            }
+            .rbq-pp-dot-red { background: #ff5f56; }
+            .rbq-pp-dot-yellow { background: #ffbd2e; }
+            .rbq-pp-dot-green { background: #27c93f; }
+            .rbq-pp-terminal-title {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--linear-text-secondary, #d0d6e0);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            }
+            .rbq-pp-beacon {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #38bdf8;
+                box-shadow: 0 0 8px #38bdf8;
+                animation: rbq-pp-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+            }
+            @keyframes rbq-pp-ping {
+                0% { transform: scale(0.95); opacity: 0.8; }
+                50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 10px #38bdf8; }
+                100% { transform: scale(0.95); opacity: 0.8; }
+            }
+            .rbq-pp-copy-group {
+                display: flex;
+                align-items: center;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 6px;
+                padding: 2px;
+                gap: 2px;
+            }
+            .rbq-pp-copy-btn {
+                background: transparent;
+                border: none;
+                color: var(--linear-text-muted, #8a8f98);
+                font-size: 11px;
+                font-weight: 500;
+                padding: 2px 7px;
+                border-radius: 4px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                transition: all 0.15s ease;
+            }
+            .rbq-pp-copy-btn:hover {
+                color: var(--linear-text-primary, #f7f8f8);
+                background: rgba(255, 255, 255, 0.06);
+            }
+            .rbq-pp-copy-btn.copied {
+                color: #10b981 !important;
+                background: rgba(16, 185, 129, 0.15) !important;
+                font-weight: 600;
+            }
+            .rbq-pp-terminal-body {
+                padding: 10px 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .rbq-pp-code-box {
+                background: rgba(0, 0, 0, 0.4);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 6px;
+                padding: 8px 10px;
+                font-size: 11.5px;
+                line-height: 1.6;
+                color: #e2e8f0;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                word-break: break-word;
+                max-height: 110px;
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+            }
+            .rbq-pp-code-box::-webkit-scrollbar {
+                width: 4px;
+            }
+            .rbq-pp-code-box::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.15);
+                border-radius: 4px;
+            }
+            .rbq-pp-token-prefix {
+                background: rgba(56, 189, 248, 0.14);
+                color: #7dd3fc;
+                border: 1px solid rgba(56, 189, 248, 0.3);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-weight: 500;
+                display: inline-block;
+                margin: 1px 0;
+            }
+            .rbq-pp-token-preset {
+                background: rgba(168, 85, 247, 0.14);
+                color: #c084fc;
+                border: 1px solid rgba(168, 85, 247, 0.3);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-weight: 500;
+                display: inline-block;
+                margin: 1px 0;
+            }
+            .rbq-pp-token-dynamic {
+                background: rgba(94, 106, 210, 0.22);
+                color: #a5b4fc;
+                border: 1px dashed rgba(129, 140, 248, 0.6);
+                border-radius: 4px;
+                padding: 1px 7px;
+                font-weight: 600;
+                display: inline-block;
+                margin: 1px 0;
+                letter-spacing: 0.2px;
+            }
+            .rbq-pp-token-suffix {
+                background: rgba(244, 114, 182, 0.14);
+                color: #f472b6;
+                border: 1px solid rgba(244, 114, 182, 0.3);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-weight: 500;
+                display: inline-block;
+                margin: 1px 0;
+            }
+            .rbq-pp-token-neg-global {
+                background: rgba(248, 113, 113, 0.14);
+                color: #fca5a5;
+                border: 1px solid rgba(248, 113, 113, 0.3);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-weight: 500;
+                display: inline-block;
+                margin: 1px 0;
+            }
+            .rbq-pp-token-neg-preset {
+                background: rgba(251, 146, 60, 0.14);
+                color: #fdba74;
+                border: 1px solid rgba(251, 146, 60, 0.3);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-weight: 500;
+                display: inline-block;
+                margin: 1px 0;
+            }
+        `;
+        document.head.appendChild(styleEl);
+
         const container = document.createElement('div');
-        container.className = 'st-scene-trigger-subpanel';
+        container.className = 'st-scene-trigger-subpanel rbq-pp-root';
         container.id = 'rbq-prompt-presets-panel';
         container.innerHTML = `
-            <div class="st-scene-trigger-subpanel-title"><i class="fa-solid fa-bookmark"></i><span>提示词预设 (Prompt Presets)</span></div>
-            <div class="st-scene-trigger-subpanel-hint">保存常用提示词组合为预设，生图时自动拼接到主提示词。</div>
-            
-            <div style="margin-top:8px; padding:10px; background:var(--linear-surface, rgba(255,255,255,0.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,0.08)); border-radius:8px;">
-                <div style="font-size:12px; font-weight:600; color:var(--linear-text-primary, rgba(255,255,255,0.85)); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                    <i class="fa-solid fa-earth-americas" style="color:#38bdf8;"></i>
-                    <span>全局提示词 (无论选择何种预设均生效)</span>
-                </div>
-                <div class="st-scene-trigger-modal-grid" style="display:flex;flex-direction:column;gap:10px;">
-                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局正面提示词 (前置 / Prefix)</span>
-                        <textarea id="rbq-pp-global-pos-prefix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
-                    </label>
-                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局正面提示词 (后置 / Suffix)</span>
-                        <textarea id="rbq-pp-global-pos-suffix" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
-                    </label>
-                    <label class="st-scene-trigger-field wide" style="flex-shrink:0!important;padding:8px 10px;">
-                        <span style="font-size:11px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));font-weight:600;">全局负面提示词</span>
-                        <textarea id="rbq-pp-global-negative" data-action="plugin-ignore" rows="2" style="width:100%;box-sizing:border-box;min-height:50px;resize:vertical;font-size:13px;" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
-                    </label>
+            <div class="rbq-pp-header" style="margin-bottom: 2px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="rbq-pp-header-icon">
+                        <i class="fa-solid fa-bookmark"></i>
+                    </div>
+                    <div>
+                        <div class="rbq-pp-header-title">提示词预设 <span style="font-size: 11px; opacity: 0.6; font-weight: 400; font-family: monospace;">Prompt Presets</span></div>
+                        <div style="font-size: 11.5px; color: var(--linear-text-muted, #8a8f98); margin-top: 1px;">保存常用提示词组合为预设，生图时自动拼接到主提示词</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="st-scene-trigger-modal-grid" style="margin-top:10px;">
-                <div class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center;">
-                    <select id="rbq-pp-select" class="text_pole" data-action="plugin-ignore" style="flex:1; padding: 6px; appearance: auto;"></select>
-                    <select id="rbq-pp-position" class="text_pole" data-action="plugin-ignore" style="width:80px; padding: 6px; appearance: auto;">
-                        <option value="prepend">前置</option>
-                        <option value="append">后置</option>
+            <!-- 全局提示词卡片 (支持折叠收起以节省纵向空间) -->
+            <div class="rbq-pp-card" id="rbq-pp-global-card" style="padding: 10px 12px;">
+                <button type="button" class="rbq-pp-collapsible-btn" id="rbq-pp-global-toggle" title="展开/收起全局提示词">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-earth-americas" style="color: #38bdf8; font-size: 13px;"></i>
+                        <span style="font-size: 12.5px; font-weight: 600; color: var(--linear-text-primary, #f7f8f8);">全局提示词</span>
+                        <span style="font-size: 10.5px; color: var(--linear-text-muted, #8a8f98);">(无论选择何种预设均生效)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="rbq-pp-global-status-badge" class="rbq-pp-header-badge" style="display: none; color: #38bdf8; background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.25);">已生效</span>
+                        <i class="fa-solid fa-chevron-down rbq-pp-chevron"></i>
+                    </div>
+                </button>
+                <div id="rbq-pp-global-content" style="display: none; flex-direction: column; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));">
+                    <div class="rbq-pp-field">
+                        <div class="rbq-pp-field-label">
+                            <span class="rbq-pp-field-tag rbq-pp-tag-prefix">Prefix 前置</span>
+                            <span>全局正面提示词</span>
+                        </div>
+                        <textarea id="rbq-pp-global-pos-prefix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: masterpiece, best quality, photorealistic... (始终拼在最前面)"></textarea>
+                    </div>
+                    <div class="rbq-pp-field">
+                        <div class="rbq-pp-field-label">
+                            <span class="rbq-pp-field-tag rbq-pp-tag-suffix">Suffix 后置</span>
+                            <span>全局正面提示词</span>
+                        </div>
+                        <textarea id="rbq-pp-global-pos-suffix" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: year 2025, cinematic lighting... (始终拼在最后面)"></textarea>
+                    </div>
+                    <div class="rbq-pp-field">
+                        <div class="rbq-pp-field-label">
+                            <span class="rbq-pp-field-tag rbq-pp-tag-neg">Negative</span>
+                            <span>全局负面提示词</span>
+                        </div>
+                        <textarea id="rbq-pp-global-negative" class="rbq-pp-textarea" data-action="plugin-ignore" rows="2" placeholder="例如: lowres, bad anatomy, worst quality... (自动合并生效)"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 预设选择器与插入方位控制栏 -->
+            <div class="rbq-pp-selector-row">
+                <div class="rbq-pp-select-wrap">
+                    <select id="rbq-pp-select" class="rbq-pp-select" data-action="plugin-ignore"></select>
+                    <i class="fa-solid fa-chevron-down rbq-pp-select-arrow"></i>
+                </div>
+                <div style="position: relative; display: flex; align-items: center;">
+                    <select id="rbq-pp-position" class="rbq-pp-pos-select" data-action="plugin-ignore">
+                        <option value="prepend">⬅️ 前置插入</option>
+                        <option value="append">➡️ 后置插入</option>
                     </select>
+                    <i class="fa-solid fa-chevron-down rbq-pp-select-arrow" style="right: 8px;"></i>
                 </div>
             </div>
-            <div id="rbq-pp-editor" style="display:none; margin-top:8px;">
-                <div class="st-scene-trigger-modal-grid">
-                    <label class="st-scene-trigger-field wide"><span>预设名称</span><input id="rbq-pp-name" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用"></label>
-                    <label class="st-scene-trigger-field wide"><span>预设正面提示词</span><textarea id="rbq-pp-positive" data-action="plugin-ignore" rows="3" placeholder="masterpiece, best quality, ..."></textarea></label>
-                    <label class="st-scene-trigger-field wide"><span>预设负面提示词</span><textarea id="rbq-pp-negative" data-action="plugin-ignore" rows="3" placeholder="lowres, bad anatomy, ..."></textarea></label>
+
+            <!-- 当前预设编辑画布 (仅在选中预设时展示) -->
+            <div id="rbq-pp-editor" class="rbq-pp-card" style="display: none; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="font-size: 12px; font-weight: 600; color: #a78bfa; display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>编辑当前预设</span>
+                    </div>
+                    <span style="font-size: 10.5px; color: var(--linear-text-muted, #8a8f98);">保存时自动记录当前 NAI 氛围图 (Vibe) 状态</span>
                 </div>
-                <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
-                    <button id="rbq-pp-save" class="menu_button" style="font-size:12px; padding:4px 12px;"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
-                    <button id="rbq-pp-delete" class="menu_button" style="font-size:12px; padding:4px 12px; color:#ff4444;"><i class="fa-solid fa-trash"></i> 删除</button>
+                <div class="rbq-pp-field">
+                    <div class="rbq-pp-field-label">
+                        <span>预设名称</span>
+                    </div>
+                    <input id="rbq-pp-name" class="rbq-pp-input" data-action="plugin-ignore" type="text" placeholder="例如: 高质量通用">
+                </div>
+                <div class="rbq-pp-field">
+                    <div class="rbq-pp-field-label">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 6px #4ade80;"></span>
+                        <span>预设正面提示词</span>
+                    </div>
+                    <textarea id="rbq-pp-positive" class="rbq-pp-textarea" data-action="plugin-ignore" rows="3" placeholder="例如: masterpiece, best quality, highly detailed..."></textarea>
+                </div>
+                <div class="rbq-pp-field">
+                    <div class="rbq-pp-field-label">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f87171; box-shadow: 0 0 6px #f87171;"></span>
+                        <span>预设负面提示词</span>
+                    </div>
+                    <textarea id="rbq-pp-negative" class="rbq-pp-textarea" data-action="plugin-ignore" rows="3" placeholder="例如: lowres, bad anatomy, worst quality..."></textarea>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--linear-border-subtle, rgba(255, 255, 255, 0.05));">
+                    <button id="rbq-pp-delete" type="button" class="rbq-pp-btn rbq-pp-btn-danger-ghost">
+                        <i class="fa-solid fa-trash"></i> 删除预设
+                    </button>
+                    <button id="rbq-pp-save" type="button" class="rbq-pp-btn rbq-pp-btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> 保存预设
+                    </button>
                 </div>
             </div>
-            <label class="st-scene-trigger-field wide" style="display:flex; gap:6px; align-items:center; flex-direction:row; cursor:pointer; min-height:auto; padding:8px 14px; margin-top:8px;">
-                <input type="checkbox" id="rbq-pp-show-floating" data-action="plugin-ignore" style="width:auto;">
-                <span style="font-size:13px; color:var(--linear-text-secondary, rgba(255,255,255,0.7));">在悬浮球菜单中显示快捷切换</span>
+
+            <!-- 悬浮球快捷切换 (iOS / Linear 风格 Switch Toggle) -->
+            <label class="rbq-pp-toggle-row" for="rbq-pp-show-floating">
+                <div class="rbq-pp-toggle-info">
+                    <span class="rbq-pp-toggle-title">
+                        <i class="fa-solid fa-wand-magic-sparkles" style="color: #a78bfa;"></i>
+                        在悬浮球菜单中显示快捷切换
+                    </span>
+                    <span class="rbq-pp-toggle-sub">生图悬浮球打开后可在子菜单一键切换生效预设</span>
+                </div>
+                <div class="rbq-pp-switch">
+                    <input type="checkbox" id="rbq-pp-show-floating" data-action="plugin-ignore">
+                    <span class="rbq-pp-slider"></span>
+                </div>
             </label>
-            <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                <button id="rbq-pp-new" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-plus"></i> 新建</button>
-                <button id="rbq-pp-export" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-file-export"></i> 导出</button>
-                <button id="rbq-pp-import-btn" class="menu_button" style="font-size:12px; padding:4px 10px; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-file-import"></i> 导入</button>
-                <button id="rbq-pp-batch-delete" class="menu_button" style="font-size:12px; padding:4px 10px; color:#ff4444; flex: 1; min-width: max-content; white-space: nowrap;"><i class="fa-solid fa-trash-can"></i> 批量删除</button>
+
+            <!-- 操作工具栏 -->
+            <div class="rbq-pp-toolbar">
+                <button id="rbq-pp-new" type="button" class="rbq-pp-btn rbq-pp-btn-secondary" style="border-color: rgba(94,106,210,0.35); color: #828fff;">
+                    <i class="fa-solid fa-plus"></i> 新建预设
+                </button>
+                <button id="rbq-pp-export" type="button" class="rbq-pp-btn rbq-pp-btn-secondary">
+                    <i class="fa-solid fa-file-export"></i> 导出预设
+                </button>
+                <button id="rbq-pp-import-btn" type="button" class="rbq-pp-btn rbq-pp-btn-secondary">
+                    <i class="fa-solid fa-file-import"></i> 导入预设
+                </button>
+                <button id="rbq-pp-batch-delete" type="button" class="rbq-pp-btn rbq-pp-btn-danger-ghost">
+                    <i class="fa-solid fa-trash-can"></i> 批量删除
+                </button>
                 <input id="rbq-pp-import-file" type="file" accept=".json" hidden>
             </div>
 
-            <!-- 动态合成实时预览卡片 (替换旧的死板预览) -->
-            <div id="rbq-pp-live-preview-box" style="margin-top:14px; padding:12px; background:var(--linear-surface, rgba(255,255,255,0.03)); border:1px solid var(--linear-border-standard, rgba(255,255,255,0.08)); border-radius:10px; display:flex; flex-direction:column; gap:10px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                    <span style="font-size:12.5px; font-weight:700; color:#38bdf8; display:inline-flex; align-items:center; gap:6px;">
-                        <i class="fa-solid fa-eye"></i> 最终合成提示词实时预览 (Live Preview)
-                    </span>
-                    <div style="display:flex; gap:6px;">
-                        <button id="rbq-pp-copy-pos-preview" class="menu_button" type="button" style="font-size:11px; padding:2px 8px; border-radius:6px; cursor:pointer;" title="复制正面提示词合成模板">
-                            <i class="fa-regular fa-copy"></i> 复制正面
+            <!-- 动态合成实时预览卡片 (Terminal Inspector) -->
+            <div id="rbq-pp-live-preview-box" class="rbq-pp-terminal">
+                <div class="rbq-pp-terminal-bar">
+                    <div class="rbq-pp-terminal-left">
+                        <div class="rbq-pp-terminal-dots">
+                            <span class="rbq-pp-dot rbq-pp-dot-red"></span>
+                            <span class="rbq-pp-dot rbq-pp-dot-yellow"></span>
+                            <span class="rbq-pp-dot rbq-pp-dot-green"></span>
+                        </div>
+                        <div class="rbq-pp-terminal-title">
+                            <span class="rbq-pp-beacon"></span>
+                            <span>LIVE PROMPT PIPELINE</span>
+                        </div>
+                    </div>
+                    <div class="rbq-pp-copy-group">
+                        <button id="rbq-pp-copy-pos-preview" class="rbq-pp-copy-btn" type="button" title="复制正面提示词合成模板">
+                            <i class="fa-regular fa-copy"></i> <span>复制正面</span>
                         </button>
-                        <button id="rbq-pp-copy-neg-preview" class="menu_button" type="button" style="font-size:11px; padding:2px 8px; border-radius:6px; cursor:pointer;" title="复制负面提示词合成模板">
-                            <i class="fa-regular fa-copy"></i> 复制负面
+                        <div style="width: 1px; height: 12px; background: rgba(255,255,255,0.1);"></div>
+                        <button id="rbq-pp-copy-neg-preview" class="rbq-pp-copy-btn" type="button" title="复制负面提示词合成模板">
+                            <i class="fa-regular fa-copy"></i> <span>复制负面</span>
                         </button>
                     </div>
                 </div>
-
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <div style="font-size:11px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:4px;">
-                        <span style="color:#a78bfa; font-weight:600;">[正面提示词]</span> 最终拼接结果 (发给 ComfyUI / NAI)：
+                <div class="rbq-pp-terminal-body">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="font-size: 11px; color: var(--linear-text-muted, #8a8f98); display: flex; align-items: center; gap: 6px;">
+                            <span style="color: #38bdf8; font-weight: 600; font-family: monospace;">[POSITIVE]</span>
+                            <span>发送至 ComfyUI / NAI 的最终正面提示词：</span>
+                        </div>
+                        <div id="rbq-pp-preview-positive" class="rbq-pp-code-box"></div>
                     </div>
-                    <div id="rbq-pp-preview-positive" style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; color:#e2e8f0; word-break:break-word; max-height:120px; overflow-y:auto; font-family:monospace;"></div>
-                </div>
-
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <div style="font-size:11px; color:rgba(255,255,255,0.6); display:flex; align-items:center; gap:4px;">
-                        <span style="color:#f87171; font-weight:600;">[负面提示词]</span> 最终拼接结果：
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="font-size: 11px; color: var(--linear-text-muted, #8a8f98); display: flex; align-items: center; gap: 6px;">
+                            <span style="color: #f87171; font-weight: 600; font-family: monospace;">[NEGATIVE]</span>
+                            <span>最终负面提示词：</span>
+                        </div>
+                        <div id="rbq-pp-preview-negative" class="rbq-pp-code-box" style="max-height: 80px;"></div>
                     </div>
-                    <div id="rbq-pp-preview-negative" style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.6; color:#cbd5e1; word-break:break-word; max-height:80px; overflow-y:auto; font-family:monospace;"></div>
                 </div>
             </div>
         `;
@@ -529,6 +1137,9 @@
         const globalPosPreInput = document.getElementById('rbq-pp-global-pos-prefix');
         const globalPosSufInput = document.getElementById('rbq-pp-global-pos-suffix');
         const globalNegInput = document.getElementById('rbq-pp-global-negative');
+        const globalToggle = document.getElementById('rbq-pp-global-toggle');
+        const globalContent = document.getElementById('rbq-pp-global-content');
+        const globalStatusBadge = document.getElementById('rbq-pp-global-status-badge');
         const select = document.getElementById('rbq-pp-select');
         const posSelect = document.getElementById('rbq-pp-position');
         const floatingCheckbox = document.getElementById('rbq-pp-show-floating');
@@ -536,6 +1147,33 @@
         const nameInput = document.getElementById('rbq-pp-name');
         const posInput = document.getElementById('rbq-pp-positive');
         const negInput = document.getElementById('rbq-pp-negative');
+
+        let isGlobalExpanded = false;
+        function updateGlobalBadge() {
+            const pre = (globalPosPreInput?.value || '').trim();
+            const suf = (globalPosSufInput?.value || '').trim();
+            const neg = (globalNegInput?.value || '').trim();
+            let count = 0;
+            if (pre) count++;
+            if (suf) count++;
+            if (neg) count++;
+            if (globalStatusBadge) {
+                if (count > 0) {
+                    globalStatusBadge.textContent = `已配置 (${count})`;
+                    globalStatusBadge.style.display = 'inline-flex';
+                } else {
+                    globalStatusBadge.style.display = 'none';
+                }
+            }
+        }
+
+        globalToggle?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isGlobalExpanded = !isGlobalExpanded;
+            if (globalContent) globalContent.style.display = isGlobalExpanded ? 'flex' : 'none';
+            globalToggle.classList.toggle('rbq-pp-collapsible-open', isGlobalExpanded);
+        });
 
         function renderLivePreview() {
             const store = getStore();
@@ -549,46 +1187,49 @@
 
             const posContainer = document.getElementById('rbq-pp-preview-positive');
             if (posContainer) {
-                const dummyDynamic = '<span style="background:rgba(56,189,248,0.16);color:#38bdf8;border:1px dashed rgba(56,189,248,0.45);border-radius:4px;padding:1px 6px;font-weight:600;display:inline-block;margin:1px 0;">&lt;剧情/分镜生图提示词&gt;</span>';
+                const dummyDynamic = '<span class="rbq-pp-token-dynamic" title="动态剧情/分镜生图提示词">&lt;剧情/分镜生图提示词&gt;</span>';
                 let parts = [];
-                if (gPre) parts.push(`<span style="color:#93c5fd;font-weight:500;" title="全局前缀">${escapeHtml(gPre)}</span>`);
+                if (gPre) parts.push(`<span class="rbq-pp-token-prefix" title="全局正面前缀">${escapeHtml(gPre)}</span>`);
                 if (pos === 'prepend') {
-                    if (presetPos) parts.push(`<span style="color:#c4b5fd;font-weight:500;" title="当前预设正面词 (前置)">${escapeHtml(presetPos)}</span>`);
+                    if (presetPos) parts.push(`<span class="rbq-pp-token-preset" title="当前预设正面词 (前置)">${escapeHtml(presetPos)}</span>`);
                     parts.push(dummyDynamic);
                 } else {
                     parts.push(dummyDynamic);
-                    if (presetPos) parts.push(`<span style="color:#c4b5fd;font-weight:500;" title="当前预设正面词 (后置)">${escapeHtml(presetPos)}</span>`);
+                    if (presetPos) parts.push(`<span class="rbq-pp-token-preset" title="当前预设正面词 (后置)">${escapeHtml(presetPos)}</span>`);
                 }
-                if (gSuf) parts.push(`<span style="color:#fbcfe8;font-weight:500;" title="全局后缀">${escapeHtml(gSuf)}</span>`);
-                posContainer.innerHTML = parts.join('<span style="color:rgba(255,255,255,0.4);margin:0 4px;font-weight:bold;">, </span>');
+                if (gSuf) parts.push(`<span class="rbq-pp-token-suffix" title="全局正面后缀">${escapeHtml(gSuf)}</span>`);
+                posContainer.innerHTML = parts.join('<span style="color:rgba(255,255,255,0.3);margin:0 4px;font-weight:bold;">, </span>');
             }
 
             const negContainer = document.getElementById('rbq-pp-preview-negative');
             if (negContainer) {
                 let negParts = [];
-                if (gNeg) negParts.push(`<span style="color:#fca5a5;font-weight:500;" title="全局负面词">${escapeHtml(gNeg)}</span>`);
-                if (presetNeg) negParts.push(`<span style="color:#fdba74;font-weight:500;" title="当前预设负面词">${escapeHtml(presetNeg)}</span>`);
+                if (gNeg) negParts.push(`<span class="rbq-pp-token-neg-global" title="全局负面词">${escapeHtml(gNeg)}</span>`);
+                if (presetNeg) negParts.push(`<span class="rbq-pp-token-neg-preset" title="当前预设负面词">${escapeHtml(presetNeg)}</span>`);
                 negContainer.innerHTML = negParts.length
-                    ? negParts.join('<span style="color:rgba(255,255,255,0.4);margin:0 4px;font-weight:bold;">, </span>')
-                    : '<span style="color:rgba(255,255,255,0.3);font-style:italic;">(未设置负面提示词)</span>';
+                    ? negParts.join('<span style="color:rgba(255,255,255,0.3);margin:0 4px;font-weight:bold;">, </span>')
+                    : '<span style="color:rgba(255,255,255,0.25);font-style:italic;">(未设置负面提示词)</span>';
             }
         }
 
         globalPosPreInput?.addEventListener('input', () => {
             getStore().globalPositivePrefix = globalPosPreInput.value;
             save();
+            updateGlobalBadge();
             renderLivePreview();
         });
 
         globalPosSufInput?.addEventListener('input', () => {
             getStore().globalPositiveSuffix = globalPosSufInput.value;
             save();
+            updateGlobalBadge();
             renderLivePreview();
         });
 
         globalNegInput?.addEventListener('input', () => {
             getStore().globalNegative = globalNegInput.value;
             save();
+            updateGlobalBadge();
             renderLivePreview();
         });
 
@@ -600,7 +1241,9 @@
             renderLivePreview();
         });
 
-        document.getElementById('rbq-pp-copy-pos-preview')?.addEventListener('click', () => {
+        let copyPosTimer = null;
+        document.getElementById('rbq-pp-copy-pos-preview')?.addEventListener('click', (e) => {
+            const btn = e.currentTarget;
             const store = getStore();
             const preset = getActivePreset();
             const pos = posSelect?.value || store.position || 'prepend';
@@ -608,9 +1251,25 @@
             const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
             const presetPos = preset ? (posInput?.value ?? preset.positive ?? '').trim() : '';
             const assembled = resolvePositivePrompt('{prompt}', presetPos, gPre, gSuf, pos);
+
+            const showFeedback = () => {
+                const icon = btn.querySelector('i');
+                const textSpan = btn.querySelector('span');
+                if (icon) icon.className = 'fa-solid fa-check';
+                if (textSpan) textSpan.textContent = '已复制!';
+                btn.classList.add('copied');
+                clearTimeout(copyPosTimer);
+                copyPosTimer = setTimeout(() => {
+                    if (icon) icon.className = 'fa-regular fa-copy';
+                    if (textSpan) textSpan.textContent = '复制正面';
+                    btn.classList.remove('copied');
+                }, 1800);
+            };
+
             if (navigator.clipboard?.writeText) {
                 navigator.clipboard.writeText(assembled).then(() => {
-                    toastr.success('已复制正面合成模板: ' + assembled);
+                    showFeedback();
+                    toastr.success('已复制正面合成模板');
                 }).catch(() => {
                     toastr.info('请手动复制: ' + assembled);
                 });
@@ -619,7 +1278,9 @@
             }
         });
 
-        document.getElementById('rbq-pp-copy-neg-preview')?.addEventListener('click', () => {
+        let copyNegTimer = null;
+        document.getElementById('rbq-pp-copy-neg-preview')?.addEventListener('click', (e) => {
+            const btn = e.currentTarget;
             const store = getStore();
             const preset = getActivePreset();
             const gNeg = (globalNegInput?.value ?? store.globalNegative ?? '').trim();
@@ -629,9 +1290,25 @@
                 toastr.warning('当前无负面提示词');
                 return;
             }
+
+            const showFeedback = () => {
+                const icon = btn.querySelector('i');
+                const textSpan = btn.querySelector('span');
+                if (icon) icon.className = 'fa-solid fa-check';
+                if (textSpan) textSpan.textContent = '已复制!';
+                btn.classList.add('copied');
+                clearTimeout(copyNegTimer);
+                copyNegTimer = setTimeout(() => {
+                    if (icon) icon.className = 'fa-regular fa-copy';
+                    if (textSpan) textSpan.textContent = '复制负面';
+                    btn.classList.remove('copied');
+                }, 1800);
+            };
+
             if (navigator.clipboard?.writeText) {
                 navigator.clipboard.writeText(assembled).then(() => {
-                    toastr.success('已复制负面合成结果: ' + assembled);
+                    showFeedback();
+                    toastr.success('已复制负面合成结果');
                 }).catch(() => {
                     toastr.info('请手动复制: ' + assembled);
                 });
@@ -719,6 +1396,7 @@
             if (globalNegInput) {
                 globalNegInput.value = store.globalNegative || '';
             }
+            updateGlobalBadge();
             floatingCheckbox.checked = !!store.showFloating;
             select.innerHTML = '<option value="">-- 不使用预设 --</option>';
             store.presets.forEach(p => {
@@ -740,7 +1418,7 @@
                 nameInput.value = preset.name || '';
                 posInput.value = preset.positive || '';
                 negInput.value = preset.negative || '';
-                editor.style.display = '';
+                editor.style.display = 'flex';
             } else {
                 nameInput.value = '';
                 posInput.value = '';

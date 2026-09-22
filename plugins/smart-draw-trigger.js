@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.36';
+    const PLUGIN_VERSION = '6.0.37';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -8685,7 +8685,7 @@ SCHEMA:
 
         // Only inject message action button once per message batch
         if (rendered.length > 0 && rendered[0]?.wrapper) {
-            injectMessageActionButton(messageId, rendered[0].wrapper, trigger, key);
+            syncMessageActionButton(messageId, rendered[0].wrapper, trigger, key);
         }
 
         return rendered;
@@ -10129,6 +10129,10 @@ SCHEMA:
         }
 
         return -1;
+    }
+
+    function injectMessageActionButton(messageId, wrapper, trigger, key) {
+        return syncMessageActionButton(messageId, wrapper, trigger, key);
     }
 
     function syncMessageActionButton(messageId, wrapper, trigger, key) {

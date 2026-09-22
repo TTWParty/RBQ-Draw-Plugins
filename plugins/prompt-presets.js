@@ -614,26 +614,7 @@
                 color: var(--linear-text-muted, #8a8f98);
                 font-size: 10px;
             }
-            .rbq-pp-pos-select {
-                width: 110px;
-                appearance: none;
-                -webkit-appearance: none;
-                background: var(--linear-surface, #191a1b);
-                border: 1px solid var(--linear-border-standard, rgba(255, 255, 255, 0.1));
-                color: var(--linear-text-secondary, #d0d6e0);
-                font-size: 12px;
-                font-weight: 500;
-                padding: 7px 24px 7px 9px;
-                border-radius: 7px;
-                outline: none;
-                cursor: pointer;
-                transition: all 0.15s ease;
-                box-sizing: border-box;
-            }
-            .rbq-pp-pos-select:hover {
-                border-color: rgba(255, 255, 255, 0.2);
-                color: var(--linear-text-primary, #f7f8f8);
-            }
+
             .rbq-pp-toggle-row {
                 display: flex;
                 align-items: center;
@@ -1188,18 +1169,11 @@
                 </div>
             </div>
 
-            <!-- 预设选择器与插入方位控制栏 -->
+            <!-- 预设选择器 -->
             <div class="rbq-pp-selector-row">
                 <div class="rbq-pp-select-wrap">
                     <select id="rbq-pp-select" class="rbq-pp-select" data-action="plugin-ignore"></select>
                     <i class="fa-solid fa-chevron-down rbq-pp-select-arrow"></i>
-                </div>
-                <div style="position: relative; display: flex; align-items: center;">
-                    <select id="rbq-pp-position" class="rbq-pp-pos-select" data-action="plugin-ignore">
-                        <option value="prepend">⬅️ 前置插入</option>
-                        <option value="append">➡️ 后置插入</option>
-                    </select>
-                    <i class="fa-solid fa-chevron-down rbq-pp-select-arrow" style="right: 8px;"></i>
                 </div>
             </div>
 
@@ -1378,7 +1352,6 @@
         const globalStatusBadge = document.getElementById('rbq-pp-global-status-badge');
         const globalExpandText = document.getElementById('rbq-pp-global-expand-text');
         const select = document.getElementById('rbq-pp-select');
-        const posSelect = document.getElementById('rbq-pp-position');
         const floatingCheckbox = document.getElementById('rbq-pp-show-floating');
         const editor = document.getElementById('rbq-pp-editor');
         const nameInput = document.getElementById('rbq-pp-name');
@@ -1487,9 +1460,6 @@
             activePositiveTab = targetTab === 'append' ? 'append' : 'prepend';
             if (tabPre) tabPre.classList.toggle('active', activePositiveTab === 'prepend');
             if (tabSuf) tabSuf.classList.toggle('active', activePositiveTab === 'append');
-            if (posSelect && posSelect.value !== activePositiveTab) {
-                posSelect.value = activePositiveTab;
-            }
             if (posInput) {
                 if (activePositiveTab === 'prepend') {
                     posInput.value = preset?.positive || '';
@@ -1507,22 +1477,18 @@
             e.preventDefault();
             e.stopPropagation();
             switchPositiveTab('prepend');
-            getStore().position = 'prepend';
-            save();
         });
 
         tabSuf?.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             switchPositiveTab('append');
-            getStore().position = 'append';
-            save();
         });
 
         function renderLivePreview() {
             const store = getStore();
             const preset = getActivePreset();
-            const pos = posSelect?.value || store.position || 'prepend';
+            const pos = store.position || 'prepend';
             const gPre = (globalPosPreInput?.value ?? store.globalPositivePrefix ?? '').trim();
             const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
             const gNeg = (globalNegInput?.value ?? store.globalNegative ?? '').trim();
@@ -1675,7 +1641,7 @@
             const btn = e.currentTarget;
             const store = getStore();
             const preset = getActivePreset();
-            const pos = posSelect?.value || store.position || 'prepend';
+            const pos = store.position || 'prepend';
             const gPre = (globalPosPreInput?.value ?? store.globalPositivePrefix ?? '').trim();
             const gSuf = (globalPosSufInput?.value ?? store.globalPositiveSuffix ?? '').trim();
             let presetPos = '';
@@ -1873,7 +1839,6 @@
                 select.appendChild(opt);
             });
             select.value = store.activeId || '';
-            posSelect.value = store.position || 'prepend';
             loadEditor();
             syncFloatingMenu();
             renderLivePreview();
@@ -1891,7 +1856,6 @@
                 }
                 if (tabPre) tabPre.classList.toggle('active', activePositiveTab === 'prepend');
                 if (tabSuf) tabSuf.classList.toggle('active', activePositiveTab === 'append');
-                if (posSelect) posSelect.value = activePositiveTab;
 
                 if (posInput) {
                     if (activePositiveTab === 'prepend') {
@@ -1917,13 +1881,6 @@
 
         select.addEventListener('change', () => {
             applyPresetSelection(select.value);
-        });
-
-        posSelect.addEventListener('change', () => {
-            const targetPos = posSelect.value;
-            getStore().position = targetPos;
-            save();
-            switchPositiveTab(targetPos);
         });
 
         floatingCheckbox.addEventListener('change', () => {

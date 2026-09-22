@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.33';
+    const PLUGIN_VERSION = '6.0.34';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3217,7 +3217,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                             headers,
                             body: JSON.stringify({ messages: promptMessages })
                         });
-                        jsonRes = await res.json();
+                        jsonRes = await safeReadJsonResponse(res);
                     } else {
                         const url = normalizeBaseUrl(store.openaiBaseUrl);
                         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
@@ -3236,7 +3236,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                             messages: promptMessages,
                             ...buildThinkingParams(store),
                         });
-                        jsonRes = await res.json();
+                        jsonRes = await safeReadJsonResponse(res);
                     }
 
                     const rawContent = jsonRes?.choices?.[0]?.message?.content || jsonRes?.content || '';
@@ -5984,6 +5984,172 @@ Zimage 擅长理解复杂的英文长句和语境。
         return {};
     }
 
+    function processSseLine(line, state) {
+        const trimmed = String(line || '').trim();
+        if (!trimmed || !trimmed.startsWith('data:')) return;
+        const dataStr = trimmed.slice(5).trim();
+        if (!dataStr || dataStr === '[DONE]') return;
+        try {
+            const chunk = JSON.parse(dataStr);
+            if (state.rawDebugChunks && state.rawDebugChunks.length < 5) {
+                state.rawDebugChunks.push(chunk);
+            }
+
+            // 1. 错误拦截
+            if (chunk.error) {
+                throw new Error(`SSE 流返回错误: ${chunk.error.message || JSON.stringify(chunk.error)}`);
+            }
+
+            // 检查模型安全拦截标记
+            const choice = chunk.choices?.[0];
+            const delta = choice?.delta || choice?.message;
+            const candidate = chunk.candidates?.[0];
+
+            const finishReason = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
+            if (finishReason) {
+                const frLower = String(finishReason).toLowerCase();
+                if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
+                    state.hasSafetyBlock = true;
+                    state.safetyReason = `finish_reason: ${finishReason}`;
+                }
+            }
+            const refusal = delta?.refusal || choice?.refusal || candidate?.refusal;
+            if (refusal) {
+                state.hasSafetyBlock = true;
+                state.safetyReason = `refusal: ${typeof refusal === 'string' ? refusal : JSON.stringify(refusal)}`;
+            }
+            if (chunk.promptFeedback?.blockReason) {
+                state.hasSafetyBlock = true;
+                state.safetyReason = `promptFeedback: ${chunk.promptFeedback.blockReason}`;
+            }
+
+            // 2. OpenAI 兼容格式 (delta 或 message)
+            const toolCalls = delta?.tool_calls || choice?.tool_calls;
+            if (Array.isArray(toolCalls)) {
+                for (const tc of toolCalls) {
+                    const rawArg = tc?.function?.arguments ?? tc?.arguments;
+                    if (rawArg !== undefined && rawArg !== null) {
+                        state.accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
+                    }
+                }
+            }
+
+            // Legacy function_call
+            const fc = delta?.function_call || choice?.function_call;
+            if (fc) {
+                const rawArg = fc.arguments;
+                if (rawArg !== undefined && rawArg !== null) {
+                    state.accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
+                }
+            }
+
+            // 3. Google Vertex AI / Gemini Native parts
+            const parts = candidate?.content?.parts;
+            if (Array.isArray(parts)) {
+                for (const p of parts) {
+                    if (p.functionCall) {
+                        const rawArg = p.functionCall.args;
+                        if (rawArg !== undefined && rawArg !== null) {
+                            state.accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
+                        }
+                    }
+                    if (p.thought === true || p.thought) {
+                        if (typeof p.thought === 'string') state.accumulatedReasoning += p.thought;
+                        else if (p.text) state.accumulatedReasoning += p.text;
+                    } else if (p.text) {
+                        state.accumulatedContent += p.text;
+                    }
+                }
+            }
+
+            // 4. 普通正文文本与思维链支持
+            if (delta?.content) {
+                state.accumulatedContent += delta.content;
+            }
+            if (delta?.text) {
+                state.accumulatedContent += delta.text;
+            }
+            if (delta?.reasoning_content) {
+                state.accumulatedReasoning += delta.reasoning_content;
+            }
+            if (delta?.thought) {
+                state.accumulatedReasoning += delta.thought;
+            }
+            if (delta?.reasoning) {
+                state.accumulatedReasoning += delta.reasoning;
+            }
+        } catch (err) {
+            if (err.message?.includes('SSE 流返回错误')) throw err;
+        }
+    }
+
+    function parseSseStringToOpenAiJson(rawText) {
+        const state = {
+            accumulatedArgs: '',
+            accumulatedContent: '',
+            accumulatedReasoning: '',
+            hasSafetyBlock: false,
+            safetyReason: '',
+            rawDebugChunks: []
+        };
+        const lines = String(rawText || '').split('\n');
+        for (const line of lines) {
+            processSseLine(line, state);
+        }
+        if (!state.accumulatedArgs && !state.accumulatedContent && state.accumulatedReasoning) {
+            state.accumulatedContent = state.accumulatedReasoning;
+        }
+        if (state.hasSafetyBlock && !state.accumulatedArgs && !state.accumulatedContent) {
+            const err = new Error(`大模型触发了官方前置内容安全审查 (${state.safetyReason || 'SAFETY'})`);
+            err.debugInfo = { reason: state.safetyReason, chunks: state.rawDebugChunks };
+            throw err;
+        }
+        return {
+            choices: [{
+                message: {
+                    ...(state.accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: state.accumulatedArgs } }] } : {}),
+                    content: state.accumulatedContent,
+                    reasoning_content: state.accumulatedReasoning
+                }
+            }],
+            _rawState: state
+        };
+    }
+
+    async function safeReadJsonResponse(response) {
+        const rawText = await response.text();
+        const trimmed = rawText.trim();
+
+        // 1. 如果原始文本以 data: 开头或者包含多行 data:，说明是未标明 Header 的 SSE 流数据
+        if (trimmed.startsWith('data:') || trimmed.includes('\ndata:')) {
+            console.warn(`[${PLUGIN_NAME}] 响应 Header 未标明 text/event-stream，但报文实际为 SSE 流文本 (含 data:)，已自动按 SSE 流解析`);
+            return parseSseStringToOpenAiJson(rawText);
+        }
+
+        // 2. 尝试常规 JSON 解析
+        try {
+            return JSON.parse(rawText);
+        } catch (parseErr) {
+            // 3. 容错：如果 JSON.parse 失败但文本中包含 data:，再次尝试作为 SSE 解析
+            if (rawText.includes('data:')) {
+                try {
+                    const sseObj = parseSseStringToOpenAiJson(rawText);
+                    if (sseObj?.choices?.[0]?.message?.content || sseObj?.choices?.[0]?.message?.tool_calls) {
+                        return sseObj;
+                    }
+                } catch (sseErr) {
+                    if (sseErr.message?.includes('安全审查')) throw sseErr;
+                }
+            }
+            // 4. 尝试提取嵌入在 Markdown 或非标前缀中的 JSON
+            const extracted = extractJson(rawText);
+            if (extracted && (typeof extracted === 'object') && Object.keys(extracted).length > 0) {
+                return extracted;
+            }
+            throw new Error(`tagger API 返回非有效 JSON (HTTP ${response.status}): ${rawText.slice(0, 300)}`);
+        }
+    }
+
     function normalizeTaggerResult(data, matchedLorebooks = []) {
         // 1. Tool Call extraction (OpenAI tool_calls, legacy function_call, or Gemini functionCall)
         let toolRaw = null;
@@ -6463,7 +6629,7 @@ SCHEMA:
             }
             const response = await smartFetch(customUrl, { method: 'POST', headers, body: JSON.stringify({ messages }) });
             if (!response.ok) throw new Error(`Tagger API 请求失败: HTTP ${response.status}`);
-            json = await response.json();
+            json = await safeReadJsonResponse(response);
         } else {
             const url = normalizeBaseUrl(store.openaiBaseUrl);
             if (!url) throw new Error('请先在设置中填写 OpenAI 兼容接口 Base URL');
@@ -6485,7 +6651,7 @@ SCHEMA:
                 ...buildThinkingParams(store),
             });
             if (!response.ok) throw new Error(`Tagger API 请求失败: HTTP ${response.status}`);
-            json = await response.json();
+            json = await safeReadJsonResponse(response);
         }
 
         const rawContent = json?.choices?.[0]?.message?.content || json?.content || json;
@@ -9347,348 +9513,297 @@ SCHEMA:
 
         let json;
         const ct = response.headers.get('content-type') || '';
-        if (ct.includes('text/event-stream')) {
+        const isSseStream = (ct.includes('text/event-stream') || reqBody.stream === true) && response.body && typeof response.body.getReader === 'function';
+
+        if (isSseStream) {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let sseBuffer = '';
-            let accumulatedArgs = '';
-            let accumulatedContent = '';
-            let accumulatedReasoning = '';
-            let hasSafetyBlock = false;
-            let safetyReason = '';
-            const rawDebugChunks = [];
+            let rawStreamText = '';
+            const sseState = {
+                accumulatedArgs: '',
+                accumulatedContent: '',
+                accumulatedReasoning: '',
+                hasSafetyBlock: false,
+                safetyReason: '',
+                rawDebugChunks: []
+            };
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (value) {
-                    sseBuffer += decoder.decode(value, { stream: !done });
+                    const chunkText = decoder.decode(value, { stream: !done });
+                    sseBuffer += chunkText;
+                    rawStreamText += chunkText;
                 }
                 const lines = sseBuffer.split('\n');
                 sseBuffer = lines.pop() || '';
 
                 for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed || !trimmed.startsWith('data:')) continue;
-                    const dataStr = trimmed.slice(5).trim();
-                    if (dataStr === '[DONE]') continue;
-                    try {
-                        const chunk = JSON.parse(dataStr);
-                        if (rawDebugChunks.length < 5) rawDebugChunks.push(chunk);
-
-                        // 1. 错误拦截
-                        if (chunk.error) {
-                            throw new Error(`SSE 流返回错误: ${chunk.error.message || JSON.stringify(chunk.error)}`);
-                        }
-
-                        // 检查模型安全拦截标记
-                        const choice = chunk.choices?.[0];
-                        const delta = choice?.delta || choice?.message;
-                        const candidate = chunk.candidates?.[0];
-
-                        const finishReason = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
-                        if (finishReason) {
-                            const frLower = String(finishReason).toLowerCase();
-                            if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
-                                hasSafetyBlock = true;
-                                safetyReason = `finish_reason: ${finishReason}`;
-                            }
-                        }
-                        const refusal = delta?.refusal || choice?.refusal || candidate?.refusal;
-                        if (refusal) {
-                            hasSafetyBlock = true;
-                            safetyReason = `refusal: ${typeof refusal === 'string' ? refusal : JSON.stringify(refusal)}`;
-                        }
-                        if (chunk.promptFeedback?.blockReason) {
-                            hasSafetyBlock = true;
-                            safetyReason = `promptFeedback: ${chunk.promptFeedback.blockReason}`;
-                        }
-
-                        // 2. OpenAI 兼容格式 (delta 或 message)
-                        const toolCalls = delta?.tool_calls || choice?.tool_calls;
-                        if (Array.isArray(toolCalls)) {
-                            for (const tc of toolCalls) {
-                                const rawArg = tc?.function?.arguments ?? tc?.arguments;
-                                if (rawArg !== undefined && rawArg !== null) {
-                                    accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
-                                }
-                            }
-                        }
-
-                        // Legacy function_call
-                        const fc = delta?.function_call || choice?.function_call;
-                        if (fc) {
-                            const rawArg = fc.arguments;
-                            if (rawArg !== undefined && rawArg !== null) {
-                                accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
-                            }
-                        }
-
-                        // 3. Google Vertex AI / Gemini Native parts
-                        const parts = candidate?.content?.parts;
-                        if (Array.isArray(parts)) {
-                            for (const p of parts) {
-                                if (p.functionCall) {
-                                    const rawArg = p.functionCall.args;
-                                    if (rawArg !== undefined && rawArg !== null) {
-                                        accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
-                                    }
-                                }
-                                if (p.thought === true || p.thought) {
-                                    if (typeof p.thought === 'string') accumulatedReasoning += p.thought;
-                                    else if (p.text) accumulatedReasoning += p.text;
-                                } else if (p.text) {
-                                    accumulatedContent += p.text;
-                                }
-                            }
-                        }
-
-                        // 4. 普通正文文本与思维链支持
-                        if (delta?.content) {
-                            accumulatedContent += delta.content;
-                        }
-                        if (delta?.text) {
-                            accumulatedContent += delta.text;
-                        }
-                        if (delta?.reasoning_content) {
-                            accumulatedReasoning += delta.reasoning_content;
-                        }
-                        if (delta?.thought) {
-                            accumulatedReasoning += delta.thought;
-                        }
-                        if (delta?.reasoning) {
-                            accumulatedReasoning += delta.reasoning;
-                        }
-                    } catch (err) {
-                        if (err.message?.includes('SSE 流返回错误')) throw err;
-                    }
+                    processSseLine(line, sseState);
                 }
                 if (done) break;
             }
 
-            // 调试信息：输出实际解包结果
-            if (rawDebugChunks.length > 0) {
-                console.info(`[${PLUGIN_NAME}] SSE 流解包统计: 提取工具参数 ${accumulatedArgs.length} 字符, 提取正文 ${accumulatedContent.length} 字符, 提取思维链 ${accumulatedReasoning.length} 字符`, rawDebugChunks);
+            if (sseBuffer && sseBuffer.trim()) {
+                processSseLine(sseBuffer, sseState);
             }
 
-            // 若模型把输出放进了思维链
-            if (!accumulatedArgs && !accumulatedContent && accumulatedReasoning) {
-                accumulatedContent = accumulatedReasoning;
-            }
-
-            // 如果两者都为空，说明流式未产出内容
-            if (!accumulatedArgs && !accumulatedContent) {
-                if (hasSafetyBlock) {
-                    const isInputWafBlock = safetyReason.includes('sensitive words')
-                        || safetyReason.includes('The prompt could not be submitted')
-                        || safetyReason.includes('Prohibited Use policy')
-                        || safetyReason.includes('content_filter')
-                        || safetyReason.includes('SAFETY');
-
-                    // 🛡️ 自动自愈重试：若当前请求携带了世界书/角色卡，且触发了 Google 前置输入审核阻断，自动剥离世界书发起重试
-                    const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
-                    if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
-                        console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
-                        toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                        return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
-                    }
-
-                    const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
-                    err.debugInfo = {
-                        reason: `大模型触发前置安全策略熔断 (${safetyReason})`,
-                        model: modelName,
-                        llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
-                        chunks: rawDebugChunks,
-                    };
-                    throw err;
-                }
-
-                console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并尝试纯文本/标准 JSON 模式重试...`);
-                
-                // 彻底清理 messages 中的工具调用指令，避免模型被 "严禁输出正文" 规则抑制
-                const fallbackMessages = reqBody.messages
-                    .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
-                    .map(m => ({ ...m }));
-
-                fallbackMessages.push({
-                    role: 'system',
-                    content: '\n\n[输出指令]: 请直接以纯文本输出最终 JSON 对象，包含 shouldDraw、reason、segments 字段。严禁调用任何外部工具，直接输出 JSON。'
-                });
-
-                const noToolsBody = {
-                    model: modelName,
-                    temperature: 0.2,
-                    stream: true,
-                    messages: fallbackMessages,
-                    ...buildThinkingParams(store),
-                };
-
-                const fallbackRes = await smartFetch(url, {
-                    method: 'POST',
-                    signal,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
-                    },
-                    body: JSON.stringify(noToolsBody),
-                });
-                if (!fallbackRes.ok) throw new Error(`tagger 降级重试请求失败: HTTP ${fallbackRes.status} ${await fallbackRes.text()}`);
-                
-                const fallbackCt = fallbackRes.headers.get('content-type') || '';
-                let fallbackContent = '';
-                let fallbackReasoning = '';
-                let fallbackFinishReason = '';
-
-                if (fallbackCt.includes('text/event-stream')) {
-                    const fallbackReader = fallbackRes.body.getReader();
-                    const fallbackDecoder = new TextDecoder();
-                    let fallbackBuffer = '';
-                    while (true) {
-                        const { done, value } = await fallbackReader.read();
-                        if (value) {
-                            fallbackBuffer += fallbackDecoder.decode(value, { stream: !done });
-                        }
-                        const lines = fallbackBuffer.split('\n');
-                        fallbackBuffer = lines.pop() || '';
-                        for (const line of lines) {
-                            const trimmed = line.trim();
-                            if (!trimmed || !trimmed.startsWith('data:')) continue;
-                            const dataStr = trimmed.slice(5).trim();
-                            if (dataStr === '[DONE]') continue;
-                            try {
-                                const c = JSON.parse(dataStr);
-                                const choice = c.choices?.[0];
-                                const delta = choice?.delta || choice?.message;
-                                const text = delta?.content || delta?.text || '';
-                                if (text) fallbackContent += text;
-                                const reasoning = delta?.reasoning_content || delta?.thought || delta?.reasoning || '';
-                                if (reasoning) fallbackReasoning += reasoning;
-
-                                const candidate = c.candidates?.[0];
-                                if (Array.isArray(candidate?.content?.parts)) {
-                                    for (const p of candidate.content.parts) {
-                                        if (p.thought === true || p.thought) {
-                                            if (typeof p.thought === 'string') fallbackReasoning += p.thought;
-                                            else if (p.text) fallbackReasoning += p.text;
-                                        } else if (p.text) {
-                                            fallbackContent += p.text;
-                                        }
-                                    }
-                                }
-
-                                const fr = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
-                                if (fr) fallbackFinishReason = String(fr);
-                            } catch (_e) {}
-                        }
-                        if (done) break;
-                    }
-                    // 容错：如果全行都不带 data: 前缀，尝试直接解析缓冲区
-                    if (!fallbackContent && fallbackBuffer) {
-                        try {
-                            const parsedDirect = JSON.parse(fallbackBuffer);
-                            fallbackContent = parsedDirect.choices?.[0]?.message?.content || parsedDirect.choices?.[0]?.text || '';
-                            fallbackReasoning = parsedDirect.choices?.[0]?.message?.reasoning_content || '';
-                            fallbackFinishReason = String(parsedDirect.choices?.[0]?.finish_reason || '');
-                        } catch (_e) {}
-                    }
-                } else {
-                    const fbJson = await fallbackRes.json();
-                    fallbackContent = fbJson.choices?.[0]?.message?.content
-                        || fbJson.choices?.[0]?.text
-                        || (Array.isArray(fbJson.candidates?.[0]?.content?.parts) ? fbJson.candidates[0].content.parts.map(p => p.text).join('') : '')
-                        || '';
-                    fallbackReasoning = fbJson.choices?.[0]?.message?.reasoning_content || '';
-                    fallbackFinishReason = String(fbJson.choices?.[0]?.finish_reason || fbJson.candidates?.[0]?.finishReason || '');
-                }
-
-                if (!fallbackContent.trim() && fallbackReasoning.trim()) {
-                    fallbackContent = fallbackReasoning.trim();
-                }
-
-                if (!fallbackContent.trim()) {
-                    console.warn(`[${PLUGIN_NAME}] 降级流式仍未获得正文，尝试以非流式纯文本发起最终兜底请求...`);
+            // 容错：如果流中未检测到 SSE 格式 (data:)，但实际上返回了完整的单体 JSON（例如反代未走流式包装）
+            if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.hasSafetyBlock && rawStreamText.trim()) {
+                const trimmedRaw = rawStreamText.trim();
+                if (trimmedRaw.startsWith('{') && trimmedRaw.endsWith('}')) {
                     try {
-                        const finalNonStreamBody = {
-                            model: modelName,
-                            temperature: 0.2,
-                            stream: false,
-                            messages: fallbackMessages,
-                            ...buildThinkingParams(store),
-                        };
-                        const finalRes = await smartFetch(url, {
-                            method: 'POST',
-                            signal,
-                            headers: {
-                                'Content-Type': 'application/json',
-                                ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
-                            },
-                            body: JSON.stringify(finalNonStreamBody),
-                        });
-                        if (finalRes.ok) {
-                            const finalJson = await finalRes.json();
-                            fallbackContent = finalJson.choices?.[0]?.message?.content
-                                || finalJson.choices?.[0]?.text
-                                || (Array.isArray(finalJson.candidates?.[0]?.content?.parts) ? finalJson.candidates[0].content.parts.map(p => p.text).join('') : '')
-                                || '';
-                            fallbackReasoning = finalJson.choices?.[0]?.message?.reasoning_content || '';
-                            fallbackFinishReason = String(finalJson.choices?.[0]?.finish_reason || finalJson.candidates?.[0]?.finishReason || fallbackFinishReason);
-                            if (!fallbackContent.trim() && fallbackReasoning.trim()) {
-                                fallbackContent = fallbackReasoning.trim();
-                            }
+                        const parsedDirect = JSON.parse(trimmedRaw);
+                        if (parsedDirect && (parsedDirect.choices || parsedDirect.candidates || parsedDirect.error)) {
+                            console.info(`[${PLUGIN_NAME}] 流式通道接收到了标准非流式 JSON 对象，直接采纳`);
+                            json = parsedDirect;
                         }
-                    } catch (_err) {}
+                    } catch (_e) {}
+                }
+            }
+
+            if (!json) {
+                // 调试信息：输出实际解包结果
+                if (sseState.rawDebugChunks.length > 0) {
+                    console.info(`[${PLUGIN_NAME}] SSE 流解包统计: 提取工具参数 ${sseState.accumulatedArgs.length} 字符, 提取正文 ${sseState.accumulatedContent.length} 字符, 提取思维链 ${sseState.accumulatedReasoning.length} 字符`, sseState.rawDebugChunks);
                 }
 
-                if (!fallbackContent.trim()) {
-                    const frLower = fallbackFinishReason.toLowerCase();
-                    if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
+                // 若模型把输出放进了思维链
+                if (!sseState.accumulatedArgs && !sseState.accumulatedContent && sseState.accumulatedReasoning) {
+                    sseState.accumulatedContent = sseState.accumulatedReasoning;
+                }
+
+                // 如果两者都为空，说明流式未产出内容
+                if (!sseState.accumulatedArgs && !sseState.accumulatedContent) {
+                    if (sseState.hasSafetyBlock) {
+                        const isInputWafBlock = sseState.safetyReason.includes('sensitive words')
+                            || sseState.safetyReason.includes('The prompt could not be submitted')
+                            || sseState.safetyReason.includes('Prohibited Use policy')
+                            || sseState.safetyReason.includes('content_filter')
+                            || sseState.safetyReason.includes('SAFETY');
+
+                        // 🛡️ 自动自愈重试：若当前请求携带了世界书/角色卡，且触发了 Google 前置输入审核阻断，自动剥离世界书发起重试
                         const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
-                        if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
-                            console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
+                        if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
+                            console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${sseState.safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                             return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
                         }
-                        const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
+
+                        const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${sseState.safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
                         err.debugInfo = {
-                            reason: `大模型触发前置安全策略熔断 (${fallbackFinishReason})`,
+                            reason: `大模型触发前置安全策略熔断 (${sseState.safetyReason})`,
                             model: modelName,
                             llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
-                            chunks: rawDebugChunks,
+                            chunks: sseState.rawDebugChunks,
                         };
                         throw err;
                     }
-                    if (frLower === 'length' || frLower === 'max_tokens') {
-                        const err = new Error('Tagger 模型输出达到最大 Token 限制 (MAX_TOKENS) 提前截断。请尝试减少上下文条数。');
-                        err.debugInfo = {
-                            reason: `大模型输出达到最大 Token 限制截断 (${fallbackFinishReason})`,
-                            model: modelName,
-                            llmOutput: fallbackContent || '(未获得完整输出)',
-                            chunks: rawDebugChunks,
-                        };
-                        throw err;
-                    }
-                    const err = new Error('tagger 降级重试完成，但模型未输出任何内容（可能被代理静默拦截或安全策略熔断）。建议检查代理日志或开启破限。');
-                    err.debugInfo = {
-                        reason: '降级重试依然未获得任何有效正文',
+
+                    console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并尝试纯文本/标准 JSON 模式重试...`);
+                    
+                    // 彻底清理 messages 中的工具调用指令，避免模型被 "严禁输出正文" 规则抑制
+                    const fallbackMessages = reqBody.messages
+                        .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
+                        .map(m => ({ ...m }));
+
+                    fallbackMessages.push({
+                        role: 'system',
+                        content: '\n\n[输出指令]: 请直接以纯文本输出最终 JSON 对象，包含 shouldDraw、reason、segments 字段。严禁调用任何外部工具，直接输出 JSON。'
+                    });
+
+                    const noToolsBody = {
                         model: modelName,
-                        llmOutput: '(空)',
-                        chunks: rawDebugChunks,
+                        temperature: 0.2,
+                        stream: true,
+                        messages: fallbackMessages,
+                        ...buildThinkingParams(store),
                     };
-                    throw err;
-                }
-                json = { choices: [{ message: { content: fallbackContent, reasoning_content: fallbackReasoning } }] };
-            } else {
-                json = {
-                    choices: [{
-                        message: {
-                            ...(accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: accumulatedArgs } }] } : {}),
-                            content: accumulatedContent,
-                            reasoning_content: accumulatedReasoning
+
+                    const fallbackRes = await smartFetch(url, {
+                        method: 'POST',
+                        signal,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                        },
+                        body: JSON.stringify(noToolsBody),
+                    });
+                    if (!fallbackRes.ok) throw new Error(`tagger 降级重试请求失败: HTTP ${fallbackRes.status} ${await fallbackRes.text()}`);
+                    
+                    const fallbackCt = fallbackRes.headers.get('content-type') || '';
+                    let fallbackContent = '';
+                    let fallbackReasoning = '';
+                    let fallbackFinishReason = '';
+
+                    const isFallbackStream = (fallbackCt.includes('text/event-stream') || noToolsBody.stream === true) && fallbackRes.body && typeof fallbackRes.body.getReader === 'function';
+
+                    if (isFallbackStream) {
+                        const fallbackReader = fallbackRes.body.getReader();
+                        const fallbackDecoder = new TextDecoder();
+                        let fallbackBuffer = '';
+                        let fallbackRawText = '';
+                        while (true) {
+                            const { done, value } = await fallbackReader.read();
+                            if (value) {
+                                const chunkText = fallbackDecoder.decode(value, { stream: !done });
+                                fallbackBuffer += chunkText;
+                                fallbackRawText += chunkText;
+                            }
+                            const lines = fallbackBuffer.split('\n');
+                            fallbackBuffer = lines.pop() || '';
+                            for (const line of lines) {
+                                const trimmed = line.trim();
+                                if (!trimmed || !trimmed.startsWith('data:')) continue;
+                                const dataStr = trimmed.slice(5).trim();
+                                if (dataStr === '[DONE]') continue;
+                                try {
+                                    const c = JSON.parse(dataStr);
+                                    const choice = c.choices?.[0];
+                                    const delta = choice?.delta || choice?.message;
+                                    const text = delta?.content || delta?.text || '';
+                                    if (text) fallbackContent += text;
+                                    const reasoning = delta?.reasoning_content || delta?.thought || delta?.reasoning || '';
+                                    if (reasoning) fallbackReasoning += reasoning;
+
+                                    const candidate = c.candidates?.[0];
+                                    if (Array.isArray(candidate?.content?.parts)) {
+                                        for (const p of candidate.content.parts) {
+                                            if (p.thought === true || p.thought) {
+                                                if (typeof p.thought === 'string') fallbackReasoning += p.thought;
+                                                else if (p.text) fallbackReasoning += p.text;
+                                            } else if (p.text) {
+                                                fallbackContent += p.text;
+                                            }
+                                        }
+                                    }
+
+                                    const fr = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
+                                    if (fr) fallbackFinishReason = String(fr);
+                                } catch (_e) {}
+                            }
+                            if (done) break;
                         }
-                    }]
-                };
+                        if (fallbackBuffer && fallbackBuffer.trim()) {
+                            const trimmed = fallbackBuffer.trim();
+                            if (trimmed.startsWith('data:')) {
+                                try {
+                                    const c = JSON.parse(trimmed.slice(5).trim());
+                                    const text = c.choices?.[0]?.delta?.content || c.choices?.[0]?.message?.content || '';
+                                    if (text) fallbackContent += text;
+                                } catch (_e) {}
+                            }
+                        }
+                        // 容错：如果全行都不带 data: 前缀，尝试直接解析缓冲区或完整响应
+                        if (!fallbackContent && fallbackRawText.trim()) {
+                            try {
+                                const parsedDirect = JSON.parse(fallbackRawText.trim());
+                                fallbackContent = parsedDirect.choices?.[0]?.message?.content || parsedDirect.choices?.[0]?.text || '';
+                                fallbackReasoning = parsedDirect.choices?.[0]?.message?.reasoning_content || '';
+                                fallbackFinishReason = String(parsedDirect.choices?.[0]?.finish_reason || '');
+                            } catch (_e) {}
+                        }
+                    } else {
+                        const fbJson = await safeReadJsonResponse(fallbackRes);
+                        fallbackContent = fbJson.choices?.[0]?.message?.content
+                            || fbJson.choices?.[0]?.text
+                            || (Array.isArray(fbJson.candidates?.[0]?.content?.parts) ? fbJson.candidates[0].content.parts.map(p => p.text).join('') : '')
+                            || '';
+                        fallbackReasoning = fbJson.choices?.[0]?.message?.reasoning_content || '';
+                        fallbackFinishReason = String(fbJson.choices?.[0]?.finish_reason || fbJson.candidates?.[0]?.finishReason || '');
+                    }
+
+                    if (!fallbackContent.trim() && fallbackReasoning.trim()) {
+                        fallbackContent = fallbackReasoning.trim();
+                    }
+
+                    if (!fallbackContent.trim()) {
+                        console.warn(`[${PLUGIN_NAME}] 降级流式仍未获得正文，尝试以非流式纯文本发起最终兜底请求...`);
+                        try {
+                            const finalNonStreamBody = {
+                                model: modelName,
+                                temperature: 0.2,
+                                stream: false,
+                                messages: fallbackMessages,
+                                ...buildThinkingParams(store),
+                            };
+                            const finalRes = await smartFetch(url, {
+                                method: 'POST',
+                                signal,
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                                },
+                                body: JSON.stringify(finalNonStreamBody),
+                            });
+                            if (finalRes.ok) {
+                                const finalJson = await safeReadJsonResponse(finalRes);
+                                fallbackContent = finalJson.choices?.[0]?.message?.content
+                                    || finalJson.choices?.[0]?.text
+                                    || (Array.isArray(finalJson.candidates?.[0]?.content?.parts) ? finalJson.candidates[0].content.parts.map(p => p.text).join('') : '')
+                                    || '';
+                                fallbackReasoning = finalJson.choices?.[0]?.message?.reasoning_content || '';
+                                fallbackFinishReason = String(finalJson.choices?.[0]?.finish_reason || finalJson.candidates?.[0]?.finishReason || fallbackFinishReason);
+                                if (!fallbackContent.trim() && fallbackReasoning.trim()) {
+                                    fallbackContent = fallbackReasoning.trim();
+                                }
+                            }
+                        } catch (_err) {}
+                    }
+
+                    if (!fallbackContent.trim()) {
+                        const frLower = fallbackFinishReason.toLowerCase();
+                        if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
+                            const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
+                            if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
+                                console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
+                                toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
+                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
+                            }
+                            const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
+                            err.debugInfo = {
+                                reason: `大模型触发前置安全策略熔断 (${fallbackFinishReason})`,
+                                model: modelName,
+                                llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
+                                chunks: sseState.rawDebugChunks,
+                            };
+                            throw err;
+                        }
+                        if (frLower === 'length' || frLower === 'max_tokens') {
+                            const err = new Error('Tagger 模型输出达到最大 Token 限制 (MAX_TOKENS) 提前截断。请尝试减少上下文条数。');
+                            err.debugInfo = {
+                                reason: `大模型输出达到最大 Token 限制截断 (${fallbackFinishReason})`,
+                                model: modelName,
+                                llmOutput: fallbackContent || '(未获得完整输出)',
+                                chunks: sseState.rawDebugChunks,
+                            };
+                            throw err;
+                        }
+                        const err = new Error('tagger 降级重试完成，但模型未输出任何内容（可能被代理静默拦截或安全策略熔断）。建议检查代理日志或开启破限。');
+                        err.debugInfo = {
+                            reason: '降级重试依然未获得任何有效正文',
+                            model: modelName,
+                            llmOutput: '(空)',
+                            chunks: sseState.rawDebugChunks,
+                        };
+                        throw err;
+                    }
+                    json = { choices: [{ message: { content: fallbackContent, reasoning_content: fallbackReasoning } }] };
+                } else {
+                    json = {
+                        choices: [{
+                            message: {
+                                ...(sseState.accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: sseState.accumulatedArgs } }] } : {}),
+                                content: sseState.accumulatedContent,
+                                reasoning_content: sseState.accumulatedReasoning
+                            }
+                        }]
+                    };
+                }
             }
         } else {
-            json = await response.json();
+            json = await safeReadJsonResponse(response);
         }
 
         logTaggerPayload('tagger raw response', json);
@@ -9719,7 +9834,7 @@ SCHEMA:
             body: JSON.stringify(payload),
         });
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
-        const json = await response.json();
+        const json = await safeReadJsonResponse(response);
         logTaggerPayload('tagger raw response', json);
         const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
         logTaggerPayload('tagger normalized result', normalized);
@@ -13083,7 +13198,7 @@ SCHEMA:
                 }
                 const response = await smartFetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
                 if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
-                json = await response.json();
+                json = await safeReadJsonResponse(response);
             } else {
                 const url = normalizeBaseUrl(store.openaiBaseUrl);
                 if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
@@ -13095,7 +13210,7 @@ SCHEMA:
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
                 }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages, ...buildThinkingParams(store) });
                 if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
-                json = await response.json();
+                json = await safeReadJsonResponse(response);
             }
 
             // Normalize with lorebook (same as normal flow — applies character memory)
@@ -14557,7 +14672,7 @@ SCHEMA:
             }
             const response = await smartFetch(customUrl, { method: 'POST', headers, body: JSON.stringify(manualPayload) });
             if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
-            json = await response.json();
+            json = await safeReadJsonResponse(response);
         } else {
             const url = normalizeBaseUrl(store.openaiBaseUrl);
             if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
@@ -14569,7 +14684,7 @@ SCHEMA:
                 headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
             }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages, ...buildThinkingParams(store) });
             if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
-            json = await response.json();
+            json = await safeReadJsonResponse(response);
         }
 
         const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));

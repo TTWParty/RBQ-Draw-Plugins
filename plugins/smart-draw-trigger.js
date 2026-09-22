@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.34';
+    const PLUGIN_VERSION = '6.0.36';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -10409,26 +10409,29 @@ SCHEMA:
         return button;
     }
 
-    /** Generate a short Chinese label for a segment's generate button */
+    /** Generate a descriptive label for a segment's generate button */
     function getSegmentLabel(seg, prefix = '🎨') {
         if (!seg) return `${prefix} 生成图片`;
         // 1. LLM 输出的 label 字段（首选）
         if (seg.label) {
             const l = String(seg.label).trim();
-            return `${prefix} ${l.length > 20 ? l.slice(0, 19) + '…' : l}`;
+            // 保留完整分镜标签（如角色名+所属作品），避免在宽屏电脑端被JS硬截断
+            // 移动端/窄屏通过 CSS (max-width: 100% + text-overflow: ellipsis) 视口自适应省略
+            return `${prefix} ${l.length > 80 ? l.slice(0, 79) + '…' : l}`;
         }
         // 2. 角色名拼接
         if (Array.isArray(seg.characters) && seg.characters.length > 0) {
             const names = seg.characters.map(c => c._rawName).filter(Boolean);
             if (names.length) {
                 const joined = names.join('·');
-                return `${prefix} ${joined.length > 20 ? joined.slice(0, 19) + '…' : joined}`;
+                return `${prefix} ${joined.length > 80 ? joined.slice(0, 79) + '…' : joined}`;
             }
         }
         // 3. reason
         if (seg.reason) {
             const r = String(seg.reason).trim();
-            return `${prefix} ${r.length > 14 ? r.slice(0, 13) + '…' : r}`;
+            // 理由若偏长，保留合理长度（50字），多余部分交给 CSS 视口自适应
+            return `${prefix} ${r.length > 50 ? r.slice(0, 49) + '…' : r}`;
         }
         return `${prefix} 生成图片`;
     }
@@ -10438,6 +10441,7 @@ SCHEMA:
         if (!(button instanceof HTMLButtonElement)) return null;
         button.style.display = visible ? '' : 'none';
         button.textContent = text;
+        button.title = text; // 设置原生提示框，鼠标悬停或长按即可查看完整分镜/角色文本
         // Save non-transient labels so getRegenLabel can read the original label
         const TRANSIENT_LABELS = ['生成中...', '自动生成中...', '等待自动生图...'];
         if (!TRANSIENT_LABELS.includes(text) && !disabled) {

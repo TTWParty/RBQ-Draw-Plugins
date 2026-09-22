@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.4
+ * Version: 1.0.6
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
@@ -78,9 +78,8 @@
             }
             .rbq-privacy-bar .rbq-privacy-view-btn,
             .rbq-privacy-bar .rbq-privacy-collapse-toggle {
-                flex: 1 1 auto;
+                flex: 0 1 auto;
                 min-width: 0 !important;
-                max-width: calc(100% - 44px);
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
                 white-space: nowrap !important;
@@ -92,6 +91,8 @@
                 box-sizing: border-box;
             }
             .rbq-privacy-regen-btn {
+                flex: 0 0 34px !important;
+                flex-shrink: 0 !important;
                 min-width: 34px !important;
                 width: 34px !important;
                 height: 34px !important;
@@ -310,7 +311,7 @@
                 ? (label ? `👁️ 展开: ${label}` : '👁️ 展开图片')
                 : (label ? `🙈 收起: ${label}` : '🙈 收起');
             bar.innerHTML = `
-              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-collapse-toggle" title="${isCollapsed ? '展开图片' : '收起图片'}">
+              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-collapse-toggle" title="${escapeHtml(toggleText)}">
                 ${escapeHtml(toggleText)}
               </button>
               <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-regen-btn" title="重新生成该图片">
@@ -560,14 +561,18 @@
                         wrapper.dataset.rbqPrivacyAppliedCollapsed = 'false';
                         const bar = wrapper.querySelector('.rbq-privacy-bar');
                         if (bar) bar.dataset.collapsed = 'false';
-                        collapseBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${escapeHtml(label ? `收起: ${label}` : '收起')}`;
+                        const collapseText = label ? `收起: ${label}` : '收起';
+                        collapseBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${escapeHtml(collapseText)}`;
+                        collapseBtn.title = collapseText;
                     } else {
                         container.classList.add('rbq-privacy-collapsed');
                         delete wrapper.dataset.rbqManualExpanded;
                         wrapper.dataset.rbqPrivacyAppliedCollapsed = 'true';
                         const bar = wrapper.querySelector('.rbq-privacy-bar');
                         if (bar) bar.dataset.collapsed = 'true';
-                        collapseBtn.innerHTML = `<i class="fa-solid fa-eye"></i> ${escapeHtml(label ? `展开: ${label}` : '展开图片')}`;
+                        const expandText = label ? `展开: ${label}` : '展开图片';
+                        collapseBtn.innerHTML = `<i class="fa-solid fa-eye"></i> ${escapeHtml(expandText)}`;
+                        collapseBtn.title = expandText;
                     }
                 }
             }

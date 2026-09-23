@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.45';
+    const PLUGIN_VERSION = '6.0.46';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -4089,16 +4089,22 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function getSillyTavernHeaders() {
+        let headers = {};
+        const getHeaders = window.RBQ?.api?.getStRequestHeaders || window.RBQ?.api?.getRequestHeaders;
+        if (typeof getHeaders === 'function') {
+            try { Object.assign(headers, getHeaders()); } catch (_e) {}
+        }
         if (typeof window.getRequestHeaders === 'function') {
-            try { return window.getRequestHeaders(); } catch (_e) {}
+            try { Object.assign(headers, window.getRequestHeaders()); } catch (_e) {}
         }
         const ctx = (window.RBQ?.api?.getContext?.()) || (window.SillyTavern?.getContext?.());
         if (typeof ctx?.getRequestHeaders === 'function') {
-            try { return ctx.getRequestHeaders(); } catch (_e) {}
+            try { Object.assign(headers, ctx.getRequestHeaders()); } catch (_e) {}
         }
         return {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
+            ...headers,
         };
     }
 
@@ -4129,6 +4135,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 if (data && (data.entries || typeof data === 'object')) return data;
             } catch (_e) {}
         }
+        // 尝试通过 POST /api/worldinfo/get 读取（注入 X-CSRF-Token 鉴权头）
         try {
             const resp = await fetch('/api/worldinfo/get', {
                 method: 'POST',
@@ -4142,6 +4149,18 @@ Zimage 擅长理解复杂的英文长句和语境。
         } catch (e) {
             console.warn(`[${PLUGIN_NAME}] 从酒馆加载世界书 ${cleanName} 失败:`, e);
         }
+        // 若无后缀尝试失败，追加 .json 再次尝试
+        try {
+            const resp = await fetch('/api/worldinfo/get', {
+                method: 'POST',
+                headers: getSillyTavernHeaders(),
+                body: JSON.stringify({ name: `${cleanName}.json` }),
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && (data.entries || typeof data === 'object')) return data;
+            }
+        } catch (_e) {}
         return null;
     }
 
@@ -4257,7 +4276,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             comment: String(entry?.comment || ''),
             content: String(entry?.content || '').trim(),
             constant: !!entry?.constant,
-            disabled: !!entry?.disable,
+            disabled: !!(entry?.disable ?? entry?.disabled),
             key: Array.isArray(entry?.key) ? entry.key.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean) : [],
             keysecondary: Array.isArray(entry?.keysecondary) ? entry.keysecondary.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean) : [],
             order: Number(entry?.order || 0),
@@ -4301,7 +4320,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         const normalizedEntries = Object.entries(entries)
             .map(([entryKey, entry]) => normalizeLorebookEntry(effectiveSource, entryKey, entry))
             .filter((entry) => {
-                if (entry.disabled || !entry.content) return false;
+                if (!entry.content) return false;
                 const content = entry.content.trim();
                 // 过滤纯 markdown 分隔符或空章节标头（如 `### 全局`, `---`），节省无用 Token
                 if (/^[-#\s\n\r*`_~]+$/.test(content)) return false;
@@ -4318,26 +4337,32 @@ Zimage 擅长理解复杂的英文长句和语境。
         return parseLorebookData(rawJson, fallbackName);
     }
 
-    async function warmLorebookMemoryCache() {
+    async function warmLorebookMemoryCache(targetSourceId = null, includeDisabled = false) {
         const sources = ensureLorebookStore();
         const promises = [];
         for (const source of sources) {
-            if (!source || source.enabled === false) continue;
-            if (lorebookMemoryCache.has(source.id)) continue;
+            if (!source) continue;
+            if (targetSourceId && source.id !== targetSourceId) continue;
+            if (!targetSourceId && !includeDisabled && source.enabled === false) continue;
+            if (lorebookMemoryCache.has(source.id) && lorebookMemoryCache.get(source.id)?.length > 0) continue;
 
             promises.push((async () => {
                 // 1. Try SillyTavern native storage
                 let stData = await loadWorldInfoFromST(source.name);
                 if (stData) {
                     const parsed = parseLorebookData(stData, source.name, source);
-                    lorebookMemoryCache.set(source.id, parsed.entries);
-                    saveLorebookToIDB(source.id, parsed.entries);
-                    return;
+                    if (Array.isArray(parsed?.entries) && parsed.entries.length > 0) {
+                        lorebookMemoryCache.set(source.id, parsed.entries);
+                        saveLorebookToIDB(source.id, parsed.entries);
+                        source.entryCount = parsed.entries.length;
+                        return;
+                    }
                 }
                 // 2. Try IndexedDB offline fallback
                 let idbEntries = await loadLorebookFromIDB(source.id);
                 if (Array.isArray(idbEntries) && idbEntries.length > 0) {
                     lorebookMemoryCache.set(source.id, idbEntries);
+                    source.entryCount = idbEntries.length;
                     return;
                 }
             })());
@@ -4354,7 +4379,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             .filter((source) => source && source.enabled !== false)
             .flatMap((source) => {
                 const cached = lorebookMemoryCache.get(source.id);
-                if (Array.isArray(cached)) return cached;
+                if (Array.isArray(cached)) return cached.filter(e => !e.disabled);
                 return [];
             });
     }
@@ -5129,7 +5154,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             return;
         }
 
-        await warmLorebookMemoryCache();
+        await warmLorebookMemoryCache(initialSourceId && initialSourceId !== 'all' ? initialSourceId : null, true);
 
         let selectedSourceId = initialSourceId || 'all';
         let selectedMainCategory = initialMainCategory || 'all';
@@ -5397,6 +5422,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                                 ${nativeTopic ? `
                                     <span style="font-size: 10px !important; background: rgba(255,184,108,0.12) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.25) !important; padding: 1px 5px !important; border-radius: 4px !important;">🏷️ ${escapeHtml(nativeTopic)}</span>
                                 ` : ''}
+                                ${e.disabled ? `
+                                    <span style="font-size: 10px !important; background: rgba(239,68,68,0.15) !important; color: #f87171 !important; border: 1px solid rgba(239,68,68,0.3) !important; padding: 1px 5px !important; border-radius: 4px !important;">⛔ 已禁用</span>
+                                ` : ''}
                                 ${hasMultiple ? `
                                     <span style="font-size: 11px !important; background: rgba(255,184,108,0.15) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.3) !important; padding: 1px 6px !important; border-radius: 4px !important; font-weight: bold !important;"><i class="fa-solid fa-layer-group"></i> ${subVariants.length} 种动作变体</span>
                                 ` : ''}
@@ -5516,11 +5544,14 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         const sourceSelect = modal.querySelector('#rbq-sdt-lb-search-source');
         if (sourceSelect) {
-            sourceSelect.addEventListener('change', (e) => {
+            sourceSelect.addEventListener('change', async (e) => {
                 selectedSourceId = e.target.value;
                 selectedMainCategory = 'all';
                 selectedSubCategory = 'all';
                 selectedNativeTopic = 'all';
+                if (selectedSourceId !== 'all' && (!lorebookMemoryCache.has(selectedSourceId) || !lorebookMemoryCache.get(selectedSourceId)?.length)) {
+                    await warmLorebookMemoryCache(selectedSourceId, true);
+                }
                 refreshUI();
             });
         }
@@ -11342,9 +11373,18 @@ SCHEMA:
             #rbq-smart-draw-panel textarea { min-height: 70px; }
             #rbq-smart-draw-panel .rbq-sdt-note { font-size:12px; opacity:.72; line-height:1.45; }
             .rbq-sdt-card { display:block; margin: 10px 0; max-width: 100%; box-sizing: border-box; }
-            .rbq-sdt-card .st-scene-trigger-inline-ui { max-width: 100%; box-sizing: border-box; display: inline-flex; align-items: center; }
+            .rbq-sdt-card .st-scene-trigger-inline-ui {
+                max-width: 100%;
+                box-sizing: border-box;
+                display: inline-flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 6px;
+            }
             .rbq-sdt-card .st-scene-trigger-inline-button {
                 max-width: 100% !important;
+                min-width: 0 !important;
+                flex: 0 1 auto;
                 box-sizing: border-box !important;
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
@@ -11438,12 +11478,65 @@ SCHEMA:
                 width:auto !important;
                 min-width:unset !important;
             }
+            .rbq-sdt-lorebook-actions [data-action="browse-lorebook"] {
+                color:#79e4ff !important;
+                background:rgba(121,228,255,0.1) !important;
+                border:1px solid rgba(121,228,255,0.28) !important;
+            }
+            .rbq-sdt-lorebook-actions [data-action="browse-lorebook"]:hover {
+                background:rgba(121,228,255,0.2) !important;
+                border-color:rgba(121,228,255,0.5) !important;
+            }
+            .rbq-sdt-lorebook-actions [data-action="toggle-lorebook"] {
+                color:#e4e4e7 !important;
+                background:rgba(255,255,255,0.06) !important;
+                border:1px solid rgba(255,255,255,0.14) !important;
+            }
+            .rbq-sdt-lorebook-actions [data-action="toggle-lorebook"]:hover {
+                background:rgba(255,255,255,0.12) !important;
+            }
             .rbq-sdt-lorebook-actions .menu_button.redWarning {
                 color:rgba(248,113,113,0.95) !important;
             }
             .rbq-sdt-lorebook-actions .menu_button.redWarning:hover {
                 background:rgba(239,68,68,0.15) !important;
                 border-color:rgba(239,68,68,0.4) !important;
+            }
+            @media (max-width: 600px) {
+                .rbq-sdt-lorebook-item {
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                    gap: 8px !important;
+                    padding: 10px 12px !important;
+                }
+                .rbq-sdt-lorebook-meta {
+                    width: 100% !important;
+                }
+                .rbq-sdt-lorebook-meta strong {
+                    white-space: normal !important;
+                    word-break: break-all !important;
+                    line-height: 1.35 !important;
+                    font-size: 13px !important;
+                }
+                .rbq-sdt-lorebook-meta small {
+                    white-space: normal !important;
+                    word-break: break-all !important;
+                    font-size: 11px !important;
+                }
+                .rbq-sdt-lorebook-actions {
+                    width: 100% !important;
+                    display: flex !important;
+                    justify-content: flex-end !important;
+                    gap: 8px !important;
+                }
+                .rbq-sdt-lorebook-actions .menu_button {
+                    flex: 1 1 auto !important;
+                    height: 32px !important;
+                    line-height: 32px !important;
+                    font-size: 12px !important;
+                    padding: 0 8px !important;
+                    justify-content: center !important;
+                }
             }
             .rbq-sdt-sticky-save { position:sticky; top:0; z-index:10; padding:10px 0; background:var(--linear-bg-subtle, #181920); backdrop-filter:blur(8px); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
             .rbq-sdt-master-toggle { margin:0!important; padding:0 16px!important; height:42px!important; display:flex!important; align-items:center!important; gap:12px!important; background:var(--linear-surface, rgba(255,255,255,0.04))!important; border:1px solid var(--linear-border-standard, rgba(255,255,255,0.12))!important; border-radius:10px!important; cursor:pointer; flex-shrink:0; box-sizing:border-box; transition:all .2s ease; }

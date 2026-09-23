@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.6
+ * Version: 1.0.7
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
@@ -71,15 +71,17 @@
             .rbq-privacy-bar {
                 display: inline-flex;
                 align-items: center;
-                gap: 8px;
+                gap: 6px;
                 vertical-align: middle;
                 max-width: 100%;
                 box-sizing: border-box;
+                flex-wrap: nowrap;
             }
             .rbq-privacy-bar .rbq-privacy-view-btn,
             .rbq-privacy-bar .rbq-privacy-collapse-toggle {
-                flex: 0 1 auto;
+                flex: 1 1 auto;
                 min-width: 0 !important;
+                max-width: calc(100% - 42px) !important;
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
                 white-space: nowrap !important;
@@ -97,6 +99,7 @@
                 width: 34px !important;
                 height: 34px !important;
                 padding: 0 !important;
+                box-sizing: border-box !important;
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;

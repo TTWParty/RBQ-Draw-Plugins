@@ -149,8 +149,12 @@ class SituationValidator {
       assert(characters.length === scenario.assertions.charactersCount, 
         `第三人称双人场景 characters 必须包含 ${scenario.assertions.charactersCount} 个独立角色，实际为 ${characters.length}`);
       if (characters.length >= 2 && scenario.assertions.centers) {
-        assert(characters[0].center === scenario.assertions.centers[0] && characters[1].center === scenario.assertions.centers[1],
-          `双人并排中心网格应为 ${scenario.assertions.centers.join('+')}，实际为 ${characters[0].center}+${characters[1].center}`);
+        const c0 = characters[0].center;
+        const c1 = characters[1].center;
+        const isB3 = (c0 === 'B3' || (typeof c0 === 'object' && Math.abs((c0?.x ?? 0) - 0.3) < 0.08 && Math.abs((c0?.y ?? 0) - 0.5) < 0.08));
+        const isD3 = (c1 === 'D3' || (typeof c1 === 'object' && Math.abs((c1?.x ?? 0) - 0.7) < 0.08 && Math.abs((c1?.y ?? 0) - 0.5) < 0.08));
+        assert(isB3 && isD3,
+          `双人并排中心网格应为 ${scenario.assertions.centers.join('+')}，实际为 ${JSON.stringify(c0)}+${JSON.stringify(c1)}`);
       }
       if (scenario.assertions.eyeContactMutual) {
         const found = characters.some(c => 

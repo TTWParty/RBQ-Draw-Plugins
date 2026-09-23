@@ -7,25 +7,29 @@
     const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
 
     function getGridCoord(x, y) {
-        let closestCol = 'C';
-        let minColDist = Infinity;
+        if (x === undefined || y === undefined || Number.isNaN(Number(x)) || Number.isNaN(Number(y))) return 'C3';
+        const nx = Number(x);
+        const ny = Number(y);
+        // 若接近标准 5×5 网格点 (0.1, 0.3, 0.5, 0.7, 0.9) 则保持 C3/B3 简写
+        let matchedCol = null;
         for (const [col, val] of Object.entries(COL_MAP)) {
-            const dist = Math.abs(x - val);
-            if (dist < minColDist) {
-                minColDist = dist;
-                closestCol = col;
+            if (Math.abs(nx - val) < 0.015) {
+                matchedCol = col;
+                break;
             }
         }
-        let closestRow = '3';
-        let minRowDist = Infinity;
+        let matchedRow = null;
         for (const [row, val] of Object.entries(ROW_MAP)) {
-            const dist = Math.abs(y - val);
-            if (dist < minRowDist) {
-                minRowDist = dist;
-                closestRow = row;
+            if (Math.abs(ny - val) < 0.015) {
+                matchedRow = row;
+                break;
             }
         }
-        return `${closestCol}${closestRow}`;
+        if (matchedCol && matchedRow) {
+            return `${matchedCol}${matchedRow}`;
+        }
+        // 否则保留无级浮点坐标原值，如 0.65,0.41
+        return `${Number(nx.toFixed(2))},${Number(ny.toFixed(2))}`;
     }
 
     function reconstructV4Prompt(v4Prompt) {

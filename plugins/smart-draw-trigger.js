@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.41';
+    const PLUGIN_VERSION = '6.0.42';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -15074,42 +15074,33 @@ SCHEMA:
 
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = `你是一个二次元图片生成提示词专家。你的核心任务是将用户输入的画面描述精准转化为结构化的英文 Danbooru 分镜 JSON。
+        const systemPrompt = `你是一个二次元图片生成提示词专家。你的任务是将用户输入的画面描述精准转化为结构化的英文 Danbooru 分镜 JSON。
 
 请分析用户的场景描述，并将其转化为如下 JSON 结构：
 {
   "shouldDraw": true,
-  "reason": "测试生成描述解析",
+  "reason": "ok",
   "segments": [
     {
       "anchor": { "type": "sentence", "index": 1, "text": "用户输入的描述文本" },
-      "scene": "用逗号分隔的英文场景与镜头提示词 (例如: outdoors, winter, snow, night, cinematic lighting, close-up)",
+      "scene": "英文场景与镜头提示词 (例如: outdoors, night, cinematic lighting, close-up)",
       "characters": [
         {
-          "name": "角色的英文名或代表称呼 (如 frieren, 1girl)",
-          "base": "描述角色基本外貌特征，发色、发型、眼睛、体态、固有特征 (例如: 1girl, green eyes, white hair, twintails, pointy ears)",
-          "outfit": "描述角色衣着服装与随身配饰 (例如: striped dress, black cape, boots)",
-          "action": "描述角色动作、姿态、手部动作、表情神态、视线 (例如: holding staff, looking at viewer, gentle smile, blush)",
-          "center": { "x": 0.5, "y": 0.5 },
-          "uc": "可选，该角色特定的独立负面提示词"
+          "name": "角色的英文名或称呼 (如 1girl)",
+          "base": "外貌特征 Tag (如 1girl, white hair, blue eyes)",
+          "outfit": "服装配饰 Tag (如 school uniform, white shirt)",
+          "action": "动作姿势与表情 Tag (如 looking at viewer, gentle smile)",
+          "center": { "x": 0.5, "y": 0.5 }
         }
       ]
     }
   ]
 }
 
-精准拆解要求：
-1. 【镜头景别入 scene】：描述中的特写、全身、半身、俯视、仰视等镜头词，转换为标准 Danbooru 词（如 close-up, cowboy shot, full body, from above, from below, looking at viewer）置入 scene 中。
-2. 【严格四层分离】：
-   - scene：背景、环境、光影、时间与镜头景别。
-   - base：纯粹的人物外貌（发型发色/瞳色/体态），严禁混入衣服或动作。
-   - outfit：纯粹的服装配饰，严禁混入外貌或动作。
-   - action：动作姿势、手部持物、面部表情、眼神视线。
-3. 【坐标空间自然分配】：
-   - 单人默认画面居中 {"x": 0.5, "y": 0.5}；上半身/面部特写可略微上提 {"x": 0.5, "y": 0.4}。
-   - 双人互动默认水平错开站位：角色1 为 {"x": 0.3, "y": 0.5}，角色2 为 {"x": 0.7, "y": 0.5}。
-4. 【标签规范】：所有提示词标签全部使用高质量英文 Danbooru 风格 Tag，全小写，半角逗号分隔。
-5. 仅输出符合 schema 格式的纯 JSON，严禁输出 Markdown 代码块标记（如 \`\`\`json ）或多余说明。`;
+要求：
+1. 所有提示词必须为英文 Danbooru 风格 Tag，全小写，半角逗号分隔。
+2. 镜头景别 (如 close-up, full body, looking at viewer) 置入 scene；人物拆分为外貌 (base)、服装 (outfit)、动作表情 (action)。
+3. 仅输出符合 schema 格式的纯 JSON，严禁输出任何 Markdown 标记或多余说明。`;
 
         const jailbreakPrompt = getActiveJailbreakPrompt(store);
         const rawMessages = (store.geminiJailbreak && jailbreakPrompt)

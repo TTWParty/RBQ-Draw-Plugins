@@ -11,11 +11,11 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.37';
+    const PLUGIN_VERSION = '6.0.38';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
-    const DEFAULT_SYSTEM_PROMPT_VERSION = 45;
+    const DEFAULT_SYSTEM_PROMPT_VERSION = 46;
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若正文包含显式图组或媒介标记，必须按其实际数量 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -244,7 +244,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
     - base: 7维外貌防伪特征（纯净无服装动作）
     - outfit: 签名服装部件与穿着状态
     - action: 碎化肢体动作 + 动作权重 + 微表情
-    - center: 5×5 坐标网格（A-E × 1-5，单人默认 C3，双人并排 B3+D3，纵深 C2+C4，群像 auto）
+    - center: 角色空间无级连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或 "X, Y"（X轴 0.0左~1.0右，Y轴 0.0顶~1.0底；单人默认 {"x": 0.5, "y": 0.5}；双人并排推荐左 {"x": 0.3, "y": 0.5} 与右 {"x": 0.7, "y": 0.5}；纵深/体位推荐上 {"x": 0.5, "y": 0.3} 与下 {"x": 0.5, "y": 0.7}；支持如 {"x": 0.65, "y": 0.41} 等任意无级微调）
     - uc: 该角色专属负面词（可见性裁切下放 + 状态互斥 + 防污染 + 防构图漂移）
 
 ══ 经典实战分镜示例 ══
@@ -265,7 +265,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
           "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, white skin, black round-frame glasses, yellow star hairpin",
           "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, buttons, wet clothes, white knee socks",
           "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent plastic umbrella, umbrella over shoulder::, 1.4::right hand, arm extended, holding love letter, a white envelope with a pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, parted lips, not daring to look up at him, 2::speech bubble::, text\\\"请和我交往吧\\\"",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "feet, shoes, full body, large breasts, short hair, black hair, looking at viewer, wide shot"
         }
       ]
@@ -289,7 +289,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
           "base": "girl, long hair, 1.2::blonde hair::, blue eyes, small breasts, silver circlet, purple flower hair ornament, fair skin",
           "outfit": "white camisole, blue-and-white striped panties, barefoot",
           "action": "sitting on floor, leaning back against couch, legs stretched out, 1.3::right hand, holding popsicle, green popsicle in mouth, eating::, left hand supporting herself on the floor, looking at viewer, relaxed expression",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "dress, shoes, socks, dark hair, short hair, large breasts, male, multiple girls, standing, close-up"
         }
       ]
@@ -305,7 +305,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
           "base": "girl, long hair, 1.2::blonde hair::, blue eyes, small breasts, silver circlet, purple flower hair ornament, fair skin",
           "outfit": "white camisole, blue-and-white striped panties",
           "action": "sitting, leaning against couch, 1.4::right hand, holding popsicle, licking popsicle::, looking at viewer, content smile, light blush, parted lips, relaxed eyes",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "feet, shoes, full body, dark hair, short hair, large breasts, male, multiple girls"
         }
       ]
@@ -329,7 +329,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
           "base": "girl, japanese, delicate_face, teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin",
           "outfit": "white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs",
           "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, head lowered, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "close-up, eye level, from above, nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
         }
       ]
@@ -471,15 +471,16 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
 - 全景 (full body)：全身造型与动作体位为主，表情压缩为 1~2 核心词，必须带环境定位；
 - 远景 (wide shot)：环境细节拉满，人物从简仅留外貌特征/服装色块/体态，表情省略。
 
-══ 多角色 5×5 坐标调度与防裁切 (Center Grid) ══
+══ 多角色空间连续浮点坐标调度与防裁切 (Center Float Coordinates) ══
 characters[i].center 负责在画面中给角色精准定位，实现受控布局与视觉秩序：
-- 网格体系：A-E 横轴、1-5 纵轴（A1 左上，E5 右下，C3 中心）。
-- 边缘裁切预警：A2、C5、E1 等边缘坐标会导致主体显示不全或严重裁切，仅适合局部出框人物或次要客体；主要角色必须稳在中央区（B-D × 2-4）。
+- 坐标规范：连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或 "X, Y" 字符串（X轴 0.0左~1.0右，Y轴 0.0顶~1.0底）。
+- 边缘裁切预警：X ≤ 0.15 或 X ≥ 0.85、Y ≤ 0.15 或 Y ≥ 0.85 等边缘坐标会导致主体显示不全或严重裁切，仅适合局部出框人物或次要客体；主要角色必须稳在安全区域（X: 0.2~0.8, Y: 0.2~0.8）。
 - 经典站位推荐：
-  · 单人构图：默认 C3（正中），特写/近景按视线偏向可用 C2 或 C3
-  · 双人并排平视：B3 + D3（左右对视/并排）
-  · 双人纵深对话/互动：B2 + C4 或 C2 + C4（前深后浅，形成视觉主次）
-  · 三人构图：A3 + C3 + E3（三人并排）或 B4 + C2 + D4（三角站位）
+  · 单人构图：默认 {"x": 0.5, "y": 0.5}（正中），特写/近景按视线偏向可用 {"x": 0.5, "y": 0.3} 或 {"x": 0.5, "y": 0.5}
+  · 双人并排平视：{"x": 0.3, "y": 0.5} 与 {"x": 0.7, "y": 0.5}（左右对视/并排）
+  · 双人纵深对话/互动：{"x": 0.35, "y": 0.35} 与 {"x": 0.65, "y": 0.65} 或 {"x": 0.5, "y": 0.3} 与 {"x": 0.5, "y": 0.7}（前深后浅，形成视觉主次）
+  · 三人构图：{"x": 0.2, "y": 0.5} + {"x": 0.5, "y": 0.5} + {"x": 0.8, "y": 0.5}（三人并排）或 三角站位
+  · 任意无级微调：完全支持任意浮点数如 {"x": 0.65, "y": 0.41} 实现毫米级精准站位与微调
   · 复杂群像/多客体共用/仅局部出镜：使用 auto 自动交由扩散模型排布
 
 ══ 可见性规则与 UC 隔离判定表 ══
@@ -518,7 +519,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
   · base: 7维外貌防伪特征（纯净无服装动作）
   · outfit: 签名服装部件与穿着状态
   · action: 碎化肢体动作 + 动作权重 + 微表情
-  · center: 5×5 坐标网格（A-E × 1-5，单人默认 C3，双人并排 B3+D3，纵深 C2+C4，群像 auto）
+  · center: 角色空间无级连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或 "X, Y"（X轴 0.0左~1.0右，Y轴 0.0顶~1.0底；单人默认 {"x": 0.5, "y": 0.5}；双人并排推荐左 {"x": 0.3, "y": 0.5} 与右 {"x": 0.7, "y": 0.5}；纵深/体位推荐上 {"x": 0.5, "y": 0.3} 与下 {"x": 0.5, "y": 0.7}；支持如 {"x": 0.65, "y": 0.41} 等任意无级微调）
   · uc: 该角色专属负面词（可见性裁切下放 + 状态互斥 + 防污染 + 防构图漂移）
 
 ══ 经典实战分镜示例 ══
@@ -538,8 +539,8 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
           "name": "Mira (original)",
           "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, white skin, black round-frame glasses, yellow star hairpin",
           "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, buttons, wet clothes, white knee socks",
-          "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent plastic umbrella, umbrella over shoulder::, 1.4::right hand, arm extended, holding love letter, a white envelope with a pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, parted lips, not daring to look up at him, 2::speech bubble::, text\\"请和我交往吧\\"",
-          "center": "C3",
+          "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent plastic umbrella, umbrella over shoulder::, 1.4::right hand, arm extended, holding love letter, a white envelope with a pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, parted lips, not daring to look up at him, 2::speech bubble::, text\\\"请和我交往吧\\\"",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "feet, shoes, full body, large breasts, short hair, black hair, looking at viewer, wide shot"
         }
       ]
@@ -563,7 +564,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
           "base": "girl, long hair, 1.2::blonde hair::, blue eyes, small breasts, silver circlet, purple flower hair ornament, fair skin",
           "outfit": "white camisole, blue-and-white striped panties, barefoot",
           "action": "sitting on floor, leaning back against couch, legs stretched out, 1.3::right hand, holding popsicle, green popsicle in mouth, eating::, left hand supporting herself on the floor, looking at viewer, relaxed expression",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "dress, shoes, socks, dark hair, short hair, large breasts, male, multiple girls, standing, close-up"
         }
       ]
@@ -587,7 +588,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
           "base": "girl, japanese, delicate_face, teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin",
           "outfit": "white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs",
           "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
         }
       ]
@@ -1978,7 +1979,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
 4. 【实体解耦公理与多角色同框 (Entity Decoupling & Multi-Character)】：
    - POV 观察者绝对不出镜、严禁创建为 Character！其所有身体部位与探入实体 100% 写入 Scene 前景，characters 数组严格只保留目标角色；Scene 负面词底线必补 boy, male，阻断多骨骼分裂。
-   - 第三人称双人同框：仅客观第三人称双人完整出镜时，才分别建 Char1 与 Char2 分配各自网格坐标（如 B3+D3）；视线必须包含 facing_another, eye_contact 互视，动作使用 source#action / target#action / mutual#action 标注互动归属。
+   - 第三人称双人同框：仅客观第三人称双人完整出镜时，才分别建 Char1 与 Char2 分配各自空间连续浮点坐标（如左 {"x": 0.3, "y": 0.5} 与 右 {"x": 0.7, "y": 0.5}）；视线必须包含 facing_another, eye_contact 互视，动作使用 source#action / target#action / mutual#action 标注互动归属。
 
 ══ 模块二：角色规格、服装签名与微观动作 (Character & Action) ══
 1. 【角色外貌 7 维防伪矩阵与同人皮肤】：
@@ -2007,9 +2008,15 @@ Zimage 擅长理解复杂的英文长句和语境。
    - 动作加权：核心动作与交互关键动词使用 1.2~1.4::动作:: 加权。
    - 复合微表情：视线（未直视镜头必须标注如 looking down, looking to the side）+ 嘴型 + 情绪生理反应。
 
-4. 【多角色 5×5 坐标调度 (Center Grid)】：
-   - A-E 横轴、1-5 纵轴（A1 左上，E5 右下，C3 中心）。
-   - 单人默认 C3；双人并排 B3+D3；双人纵深 B2+C4 或 C2+C4；三人并排 A3+C3+E3 或三角 B4+C2+D4；复杂群像/局部出镜用 auto。
+4. 【多角色空间无级连续坐标调度 (Center Continuous Coordinates)】：
+   - 采用 NovelAI V5 / V4.5 原生标准连续浮点坐标：X 轴（0.0 最左 ~ 1.0 最右），Y 轴（0.0 最顶 ~ 1.0 最底），正中为 {"x": 0.5, "y": 0.5}。
+   - center 必须输出为合法对象 {"x": 0.5, "y": 0.5}（或浮点字符串 "0.5, 0.5"）。
+   - 经典机位推荐：
+     * 单人居中：{"x": 0.5, "y": 0.5}
+     * 双人并排对话：左侧 {"x": 0.3, "y": 0.5}，右侧 {"x": 0.7, "y": 0.5}
+     * 亲密/前后纵深/骑乘体位：上方/后方 {"x": 0.5, "y": 0.3}，下方/前方 {"x": 0.5, "y": 0.7}
+     * 三人构图：左 {"x": 0.2, "y": 0.5}，中 {"x": 0.5, "y": 0.5}，右 {"x": 0.8, "y": 0.5}
+     * 可根据剧情动作自洽微调（如偏右侧倾写为 {"x": 0.65, "y": 0.41} 等精确数值）
 
 ══ 模块三：连贯性控制、可见性下放与反冲突 (Consistency & Conflicts) ══
 1. 【L0~L2 一致性控制体系】：
@@ -2061,7 +2068,7 @@ Zimage 擅长理解复杂的英文长句和语境。
      · anchor: {"text": "逐字原样摘自正文该分镜所在段落的10~40字原文"}
      · scene: 分层空间结构与环境总览字符串
      · negative: 全场通用负面排除词（Scene UC）
-     · characters[j]: 数组。name（名称与作品）, base（7维外貌防伪）, outfit（四要素签名服装）, action（碎化动作+权重+表情）, center（5×5网格）, uc（该角色专属负面）
+     · characters[j]: 数组。name（名称与作品）, base（7维外貌防伪）, outfit（四要素签名服装）, action（碎化动作+权重+表情）, center（空间连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或 "X, Y"）, uc（该角色专属负面）
 
 ══ 经典实战分镜示例 ══
 
@@ -2081,7 +2088,7 @@ Zimage 擅长理解复杂的英文长句和语境。
           "base": "girl, japanese, delicate_face, long hair, 1.2::brown hair::, brown eyes, flat chest, low braided twintails, blue hair ribbon, blunt bangs, ahoge, adolescent, petite, fair skin, black round-frame glasses, yellow star hairpin",
           "outfit": "blue knee-length pleated skirt, blue serafuku, white sailor collar, blue neckerchief, wet clothes, white knee socks",
           "action": "standing, leaning forward, 1.3::left hand, holding umbrella, transparent plastic umbrella, umbrella over shoulder::, 1.4::right hand, arm extended, holding love letter, a white envelope with a pink heart seal::, looking down, shy, full face blush, wavy mouth, slightly teary, parted lips, not daring to look up at him, 2::speech bubble::, text\\\"请和我交往吧\\\"",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "feet, shoes, full body, large breasts, short hair, black hair, looking at viewer, wide shot"
         }
       ]
@@ -2105,7 +2112,7 @@ Zimage 擅长理解复杂的英文长句和语境。
           "base": "girl, long hair, 1.2::blonde hair::, blue eyes, small breasts, silver circlet, purple flower hair ornament, fair skin",
           "outfit": "white camisole, blue-and-white striped panties, barefoot",
           "action": "sitting on floor, leaning back against couch, legs stretched out, 1.3::right hand, holding popsicle, green popsicle in mouth, eating::, left hand supporting herself on the floor, looking at viewer, relaxed expression",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "dress, shoes, socks, dark hair, short hair, large breasts, male, multiple girls, standing, close-up"
         }
       ]
@@ -2121,7 +2128,7 @@ Zimage 擅长理解复杂的英文长句和语境。
           "base": "girl, long hair, 1.2::blonde hair::, blue eyes, small breasts, silver circlet, purple flower hair ornament, fair skin",
           "outfit": "white camisole, blue-and-white striped panties",
           "action": "sitting, leaning against couch, 1.4::right hand, holding popsicle, licking popsicle::, looking at viewer, content smile, light blush, parted lips, relaxed eyes",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
           "uc": "feet, shoes, full body, dark hair, short hair, large breasts, male, multiple girls"
         }
       ]
@@ -2145,7 +2152,13 @@ Zimage 擅长理解复杂的英文长句和语境。
           "base": "girl, japanese, delicate_face, teenager, gyaru, long blonde hair, twintails, blue eyes, small breasts, petite, fair skin",
           "outfit": "white sailor serafuku, unbuttoned, open collar, bottomless, black thighhighs",
           "action": "straddling viewer, 1.4::lowering hips, imminent penetration, spreading labia::, looking down at viewer, head lowered, disgusted expression, heavy blush, condescending gaze, parted lips, heavy breathing",
-          "center": "C3",
+          "center": { "x": 0.5, "y": 0.5 },
+          "uc": "close-up, eye level, from above, nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
+        }
+      ]
+    }
+  ]
+}
           "uc": "close-up, eye level, from above, nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
         }
       ]
@@ -6315,7 +6328,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                         outfit: llmOutfit,
                         action: llmAction,
                         caption: finalCaption,
-                        center: String(char?.center || 'C3').trim().toUpperCase(),
+                        center: (char?.center && typeof char.center === 'object') ? char.center : String(char?.center || 'C3').trim(),
                         uc: String(char?.uc || '').trim(),
                         _rawName: name,
                         _rawBase: llmBase,
@@ -6415,30 +6428,71 @@ Zimage 擅长理解复杂的英文长句和语境。
         return true;
     }
 
-    /* ── NAI V4 coordinate grid (A-E × 1-5 → 0.0-1.0) ── */
+    /* ── NAI V4/V5 coordinate parser (Continuous Float & Grid A-E × 1-5 → 0.0-1.0) ── */
     const SDT_COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
     const SDT_ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
-    function sdtParseCoord(coordStr) {
-        const s = String(coordStr || '').trim().toUpperCase();
-        const match = s.match(/([A-E])([1-5])/);
-        if (match) {
-            const col = match[1];
-            const row = match[2];
-            return { x: SDT_COL_MAP[col], y: SDT_ROW_MAP[row] };
+
+    function sdtParseCoord(coord) {
+        if (!coord) return { x: 0.5, y: 0.5 };
+        if (typeof coord === 'object' && coord !== null) {
+            const x = Number(coord.x !== undefined ? coord.x : (coord.X !== undefined ? coord.X : NaN));
+            const y = Number(coord.y !== undefined ? coord.y : (coord.Y !== undefined ? coord.Y : NaN));
+            if (!Number.isNaN(x) && !Number.isNaN(y)) {
+                return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+            }
+            if (Array.isArray(coord) && coord.length >= 2) {
+                const ax = Number(coord[0]);
+                const ay = Number(coord[1]);
+                if (!Number.isNaN(ax) && !Number.isNaN(ay)) {
+                    return { x: Math.max(0, Math.min(1, ax)), y: Math.max(0, Math.min(1, ay)) };
+                }
+            }
+        }
+        const s = String(coord).trim();
+        const numMatch = s.match(/(?:x\s*[:=]\s*)?([0-1]?(?:\.\d+)?|\d+)(?:[,\s:x/|]+)(?:y\s*[:=]\s*)?([0-1]?(?:\.\d+)?|\d+)/i);
+        if (numMatch) {
+            const x = parseFloat(numMatch[1]);
+            const y = parseFloat(numMatch[2]);
+            if (!Number.isNaN(x) && !Number.isNaN(y)) {
+                return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+            }
+        }
+        const gridMatch = s.toUpperCase().match(/([A-E])([1-5])/);
+        if (gridMatch) {
+            const col = gridMatch[1];
+            const row = gridMatch[2];
+            return { x: SDT_COL_MAP[col] ?? 0.5, y: SDT_ROW_MAP[row] ?? 0.5 };
         }
         return { x: 0.5, y: 0.5 };
     }
 
     function formatCoordLabel(coord) {
-        const s = String(coord || '').trim().toUpperCase();
-        const col = s.charAt(0);
-        const row = s.charAt(1);
-        const colLabels = { A: '最左', B: '左侧', C: '居中', D: '右侧', E: '最右' };
-        const rowLabels = { '1': '顶部', '2': '上部', '3': '中/站姿', '4': '下/坐卧', '5': '底部' };
-        const colText = colLabels[col] || '';
-        const rowText = rowLabels[row] || '';
-        if (colText && rowText) return `${colText}·${rowText}`;
-        return colText || rowText || '居中';
+        const pt = sdtParseCoord(coord);
+        const x = pt.x;
+        const y = pt.y;
+        let colText = '居中';
+        if (x <= 0.2) colText = '最左';
+        else if (x <= 0.4) colText = '左侧';
+        else if (x >= 0.8) colText = '最右';
+        else if (x >= 0.6) colText = '右侧';
+
+        let rowText = '站姿中线';
+        if (y <= 0.2) rowText = '顶部/悬空';
+        else if (y <= 0.4) rowText = '上部/头胸';
+        else if (y >= 0.8) rowText = '底部/地面';
+        else if (y >= 0.6) rowText = '下部/坐卧';
+
+        return `${colText}·${rowText}`;
+    }
+
+    function formatCenterDisplay(coord) {
+        if (!coord) return 'X:0.50, Y:0.50';
+        if (typeof coord === 'string') {
+            const s = coord.trim().toUpperCase();
+            if (/^[A-E][1-5]$/.test(s)) return s;
+        }
+        const pt = sdtParseCoord(coord);
+        return `X:${pt.x.toFixed(2)}, Y:${pt.y.toFixed(2)}`;
     }
 
     function getAdoptedTagDetails(entry, finalPrompt) {
@@ -6632,7 +6686,7 @@ SCHEMA:
       "base": "string character base appearance tags",
       "outfit": "string clothing tags",
       "action": "string action, pose, expression tags",
-      "center": "string grid coordinate e.g. C3, B3, D3"
+      "center": "object continuous float coordinate e.g. {\"x\": 0.5, \"y\": 0.5}"
     }
   ]
 }`;
@@ -6710,7 +6764,7 @@ SCHEMA:
                 const base = String(c.base || c._rawBase || '').trim();
                 const outfit = String(c.outfit || c._rawOutfit || '').trim();
                 const action = String(c.action || c._rawAction || '').trim();
-                const center = String(c.center || 'C3').trim().toUpperCase();
+                const center = (c.center && typeof c.center === 'object') ? c.center : String(c.center || 'C3').trim();
                 const uc = String(c.uc || '').trim();
                 const weightedName = weightCharacterName(name);
                 const profile = getCharacterProfile(name);
@@ -6988,11 +7042,25 @@ SCHEMA:
 
         const charItemsHtml = characters.map((c, idx) => {
             const charName = c._rawName || c.name || `角色 ${idx + 1}`;
-            const currentCenter = String(c.center || 'C3').trim().toUpperCase();
-            const hasOption = COORD_OPTIONS.some(opt => opt.val === currentCenter);
-            const optionsToRender = hasOption ? COORD_OPTIONS : [{ val: currentCenter, label: `${currentCenter} (自定义)` }, ...COORD_OPTIONS];
+            const centerDisplay = formatCenterDisplay(c.center);
+            const pt = sdtParseCoord(c.center);
+            let matchedOptVal = null;
+            if (typeof c.center === 'string') {
+                const s = c.center.trim().toUpperCase();
+                if (COORD_OPTIONS.some(opt => opt.val === s)) matchedOptVal = s;
+            }
+            if (!matchedOptVal) {
+                const gridOpt = COORD_OPTIONS.find(opt => {
+                    const optPt = sdtParseCoord(opt.val);
+                    return Math.abs(optPt.x - pt.x) < 0.01 && Math.abs(optPt.y - pt.y) < 0.01;
+                });
+                if (gridOpt) matchedOptVal = gridOpt.val;
+            }
+            const currentVal = matchedOptVal || centerDisplay;
+            const hasOption = COORD_OPTIONS.some(opt => opt.val === currentVal);
+            const optionsToRender = hasOption ? COORD_OPTIONS : [{ val: currentVal, label: `${centerDisplay} (${formatCoordLabel(c.center)})` }, ...COORD_OPTIONS];
             const coordOpts = optionsToRender.map(opt => `
-                <option value="${escapeHtml(opt.val)}"${opt.val === currentCenter ? ' selected' : ''}>${escapeHtml(opt.label)}</option>
+                <option value="${escapeHtml(opt.val)}"${opt.val === currentVal ? ' selected' : ''}>${escapeHtml(opt.label)}</option>
             `).join('');
 
             const charCaption = c.caption || [c.base, c.outfit, c.action].filter(Boolean).join(', ') || [c._rawBase, c._rawOutfit, c._rawAction].filter(Boolean).join(', ');
@@ -7182,7 +7250,7 @@ SCHEMA:
                     const idx = parseInt(card.dataset.index, 10);
                     if (updatedSeg.characters && updatedSeg.characters[idx]) {
                         const charObj = updatedSeg.characters[idx];
-                        const centerVal = String(card.querySelector('.rbq-sdt-manual-char-center')?.value || 'C3').trim().toUpperCase();
+                        const centerVal = String(card.querySelector('.rbq-sdt-manual-char-center')?.value || 'C3').trim();
                         const captionVal = String(card.querySelector('.rbq-sdt-manual-char-caption')?.value || '').trim();
                         const ucVal = String(card.querySelector('.rbq-sdt-manual-char-uc')?.value || '').trim();
                         charObj.center = centerVal;
@@ -7861,13 +7929,11 @@ SCHEMA:
     }
 
     function renderMiniCoordGrid(center) {
-        const s = String(center || 'C3').trim().toUpperCase();
-        const colChar = s.charAt(0);
-        const rowChar = s.charAt(1);
+        const pt = sdtParseCoord(center);
+        const targetCol = Math.max(0, Math.min(4, Math.round(pt.x * 5 - 0.5)));
+        const targetRow = Math.max(0, Math.min(4, Math.round(pt.y * 5 - 0.5)));
         const cols = ['A', 'B', 'C', 'D', 'E'];
         const rows = ['1', '2', '3', '4', '5'];
-        const targetCol = cols.indexOf(colChar) >= 0 ? cols.indexOf(colChar) : 2;
-        const targetRow = rows.indexOf(rowChar) >= 0 ? rows.indexOf(rowChar) : 2;
 
         let cells = '';
         for (let r = 0; r < 5; r++) {
@@ -7877,7 +7943,7 @@ SCHEMA:
             }
         }
         return `
-            <div title="机位空间坐标: ${escapeHtml(s)} (${cols[targetCol]}列·${rows[targetRow]}行)" style="display: inline-grid; grid-template-columns: repeat(5, 4.5px); grid-gap: 2.5px; padding: 3px 4px; background: rgba(0,0,0,0.4); border: 1px solid rgba(121,228,255,0.3); border-radius: 6px; flex-shrink: 0; vertical-align: middle;">
+            <div title="空间坐标: X:${pt.x.toFixed(2)}, Y:${pt.y.toFixed(2)} (${cols[targetCol]}列·${rows[targetRow]}行)" style="display: inline-grid; grid-template-columns: repeat(5, 4.5px); grid-gap: 2.5px; padding: 3px 4px; background: rgba(0,0,0,0.4); border: 1px solid rgba(121,228,255,0.3); border-radius: 6px; flex-shrink: 0; vertical-align: middle;">
                 ${cells}
             </div>
         `;
@@ -7969,7 +8035,7 @@ SCHEMA:
 
         const itemsHtml = charList.map((c, i) => {
             const charName = c._rawName || c.name || (charList.length === 1 ? '主角 / 出镜角色' : `角色 #${i + 1}`);
-            const center = c.center || 'C3';
+            const center = c.center || { x: 0.5, y: 0.5 };
             const posName = formatCoordLabel(center);
             const miniGrid = renderMiniCoordGrid(center);
 
@@ -8097,7 +8163,7 @@ SCHEMA:
                         <div style="display: inline-flex; align-items: center; gap: 8px;">
                             ${miniGrid}
                             <span style="background: rgba(121,228,255,0.16); color: #79e4ff; border: 1px solid rgba(121,228,255,0.35); border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;">
-                                机位: ${escapeHtml(center)} (${posName})
+                                机位: ${escapeHtml(formatCenterDisplay(center))} (${posName})
                             </span>
                         </div>
                     </div>
@@ -8113,7 +8179,7 @@ SCHEMA:
                         <i class="fa-solid fa-users" style="color: #79e4ff;"></i> 分镜角色与机位信息 (${charList.length}位)
                     </span>
                     <span style="font-size: 11px; color: #94a3b8; font-weight: normal;">
-                        构图网格机位 (A-E×1-5) 与该分镜的角色动作/服装/外貌设定
+                        角色空间坐标 / 构图机位 与该分镜的角色动作/服装/外貌设定
                     </span>
                 </div>
                 <button type="button" class="rbq-sdt-coord-close" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; font-size: 14px; cursor: pointer; border-radius: 8px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -8442,7 +8508,7 @@ SCHEMA:
             scene: deduplicateQualityTags(segmentResult.scene || ''),
             characters: segmentResult.characters.map(c => ({
                 caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
-                center: c.center || 'C3',
+                center: c.center || { x: 0.5, y: 0.5 },
                 uc: c.uc || '',
             })),
         };
@@ -14765,7 +14831,7 @@ SCHEMA:
             outputSchema: {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
-                    characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'string', uc: 'string' }]
+                    characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'object | string', uc: 'string' }]
                 }]
             },
         };
@@ -14788,7 +14854,7 @@ SCHEMA:
           "base": "描述角色基本外貌的英文提示词，如发色、发型、眼睛、体型等 (例如: 1girl, red hair, short hair, blue eyes)",
           "outfit": "描述角色衣着服装的英文提示词 (例如: school uniform, white shirt, pleated skirt)",
           "action": "描述角色动作、姿势、表情、视线的英文提示词 (例如: holding a cup, sitting on bed, looking at viewer, blush)",
-          "center": "角色的画面位置及相对重心坐标，如 A3, B2 等"
+          "center": "角色的画面空间连续浮点坐标对象，如 {\"x\": 0.5, \"y\": 0.5}"
         }
       ]
     }

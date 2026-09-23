@@ -4,7 +4,7 @@
     const PLUGIN_NAME = 'Multi-Char Composer';
     const STORAGE_KEY = '_multiCharComposer';
 
-    const VERSION = '1.0.8';
+    const VERSION = '1.0.9';
 
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
@@ -20,11 +20,28 @@
     const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
 
     function parseCoord(coordStr) {
-        const s = (coordStr || '').trim().toUpperCase();
-        const col = s.charAt(0);
-        const row = s.charAt(1);
-        if (COL_MAP[col] != null && ROW_MAP[row] != null) {
-            return { x: COL_MAP[col], y: ROW_MAP[row] };
+        if (!coordStr) return { x: 0.5, y: 0.5 };
+        if (typeof coordStr === 'object' && coordStr !== null) {
+            const x = Number(coordStr.x !== undefined ? coordStr.x : coordStr.X);
+            const y = Number(coordStr.y !== undefined ? coordStr.y : coordStr.Y);
+            if (!Number.isNaN(x) && !Number.isNaN(y)) {
+                return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+            }
+        }
+        const s = String(coordStr || '').trim();
+        // 浮点数解析: "0.65, 0.41", "0.65,0.41", "0.65 0.41", "X:0.65, Y:0.41", "0.65:0.41"
+        const numMatch = s.match(/(?:x\s*[:=]\s*)?([0-1]?(?:\.\d+)?|\d+)(?:[,\s:x/|]+)(?:y\s*[:=]\s*)?([0-1]?(?:\.\d+)?|\d+)/i);
+        if (numMatch) {
+            const x = parseFloat(numMatch[1]);
+            const y = parseFloat(numMatch[2]);
+            if (!Number.isNaN(x) && !Number.isNaN(y)) {
+                return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+            }
+        }
+        // 经典网格 A-E 1-5
+        const grid = s.toUpperCase().match(/([A-E])([1-5])/);
+        if (grid && COL_MAP[grid[1]] != null && ROW_MAP[grid[2]] != null) {
+            return { x: COL_MAP[grid[1]], y: ROW_MAP[grid[2]] };
         }
         return { x: 0.5, y: 0.5 };
     }
@@ -58,14 +75,14 @@
             return ''; // remove from remaining
         });
 
-        // 2. Extract "Char{N}:content" segments (with optional |centers:XY)
-        //    Pattern: Char1:content|centers:C3; or Char1:content; (terminated by semicolon or end of string)
+        // 2. Extract "Char{N}:content" segments (with optional |centers:XY or |centers:0.65,0.41)
+        //    Pattern: Char1:content|centers:C3; or Char1:content|centers:0.65,0.41; (terminated by semicolon or end of string)
         remaining = remaining.replace(/Char(\d+)\s*:\s*([^;]+)(?:;|$)/gi, (match, idx, content) => {
             let caption = content.trim();
             let coord = { x: 0.5, y: 0.5 };
             let hasCoord = false;
 
-            const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5])\s*$/i);
+            const centersMatch = caption.match(/\|centers:([A-Ea-e][1-5]|(?:[0-1]?(?:\.\d+)?|\d+)[,\s:x/]+(?:[0-1]?(?:\.\d+)?|\d+))\s*$/i);
             if (centersMatch) {
                 coord = parseCoord(centersMatch[1]);
                 caption = caption.slice(0, centersMatch.index).trim();

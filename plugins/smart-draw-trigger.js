@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.44';
+    const PLUGIN_VERSION = '6.0.45';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -15252,6 +15252,7 @@ SCHEMA:
         }
         if (typeof RBQ?.ui?.unregisterTestAction === 'function') {
             RBQ.ui.unregisterTestAction('sdt-smart-generate');
+            RBQ.ui.unregisterTestAction('sdt-parse-tags');
         }
     }
 
@@ -15266,15 +15267,207 @@ SCHEMA:
     observeMessages();
     watchForFloatingBall();
 
-    // 注册测试面板动作按钮（智能测试生成）
+    // 智能测试结果卡片渲染器
+    function renderSdtTestResultCard({ result, segment, prompt, finalPrompt, isGenerated, container, onRedrawPrompt }) {
+        if (!container) return;
+        const currentPrompt = finalPrompt || prompt || '';
+        const hasImage = !!result?.url;
+        const sceneText = segment?.scene || '';
+        const characters = Array.isArray(segment?.characters) ? segment.characters : [];
+        const hasChars = characters.length > 0;
+        const tagCount = currentPrompt ? currentPrompt.split(',').map(s => s.trim()).filter(Boolean).length : 0;
+        const charLength = currentPrompt.length;
+
+        const card = document.createElement('div');
+        card.id = 'rbq-sdt-test-result-card';
+        card.style.cssText = `
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            text-align: left;
+        `;
+
+        // 1. 图像区域（若已生图）
+        if (hasImage) {
+            const imgWrap = document.createElement('div');
+            imgWrap.style.cssText = 'text-align: center; width: 100%;';
+            imgWrap.innerHTML = `
+                <img src="${escapeHtml(result.url)}" class="st-scene-trigger-test-img" style="max-width: 100%; max-height: 420px; border-radius: 8px; box-shadow: rgba(0,0,0,0.5) 0px 4px 14px; cursor: pointer; object-fit: contain; margin: 0 auto; display: block;" data-url="${escapeHtml(result.url)}" data-prompt="${escapeHtml(currentPrompt)}" data-cache-id="${escapeHtml(result.cacheId || '')}">
+            `;
+            card.appendChild(imgWrap);
+        } else if (!isGenerated) {
+            const badge = document.createElement('div');
+            badge.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; color: #c084fc; font-size: 13px; font-weight: 600; padding: 5px 12px; background: rgba(192, 132, 252, 0.12); border-radius: 6px; border: 1px solid rgba(192, 132, 252, 0.3); align-self: flex-start;';
+            badge.innerHTML = '<i class="fa-solid fa-tags"></i> <span>Tag 预审就绪（未消耗绘图通道）</span>';
+            card.appendChild(badge);
+        }
+
+        // 2. 提炼结果详情盒
+        const tagBox = document.createElement('div');
+        tagBox.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            font-size: 12px;
+        `;
+
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center;';
+        headerRow.innerHTML = `
+            <span style="font-weight: 600; color: var(--linear-brand, #79e4ff);"><i class="fa-solid fa-layer-group"></i> 提炼结果</span>
+            <span style="font-size: 11px; color: var(--linear-text-muted, #a1a1aa);">${tagCount} 个 Tag · ${charLength} 字符</span>
+        `;
+        tagBox.appendChild(headerRow);
+
+        if (sceneText) {
+            const sceneRow = document.createElement('div');
+            sceneRow.innerHTML = `
+                <div style="font-size: 11px; color: var(--linear-text-muted, #a1a1aa); margin-bottom: 2px;"><i class="fa-solid fa-mountain-sun"></i> 场景环境:</div>
+                <div style="font-family: monospace; font-size: 11.5px; color: #e4e4e7; line-height: 1.4; word-break: break-all; background: rgba(0,0,0,0.2); padding: 5px 8px; border-radius: 5px;">${escapeHtml(sceneText)}</div>
+            `;
+            tagBox.appendChild(sceneRow);
+        }
+
+        if (hasChars) {
+            const charsRow = document.createElement('div');
+            charsRow.innerHTML = `<div style="font-size: 11px; color: var(--linear-text-muted, #a1a1aa); margin-bottom: 2px;"><i class="fa-solid fa-users"></i> 角色与构图 (${characters.length}人):</div>`;
+            const charList = document.createElement('div');
+            charList.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+            characters.forEach((c, idx) => {
+                const charName = c._rawName || c.name || `角色 ${idx + 1}`;
+                const centerDisplay = formatCenterDisplay(c.center);
+                const caption = c.caption || '';
+                const item = document.createElement('div');
+                item.style.cssText = 'font-family: monospace; font-size: 11.5px; color: #cbd5e1; line-height: 1.35; word-break: break-all; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 5px;';
+                item.innerHTML = `
+                    <span style="color: #79e4ff; font-weight: bold;">👤 ${escapeHtml(charName)}</span>
+                    <span style="display: inline-block; padding: 0 4px; font-size: 10px; border-radius: 3px; background: rgba(100,255,100,0.15); color: #a3ffa3; border: 1px solid rgba(100,255,100,0.3); margin: 0 4px;">${escapeHtml(centerDisplay)}</span>
+                    <span>${escapeHtml(caption)}</span>
+                `;
+                charList.appendChild(item);
+            });
+            charsRow.appendChild(charList);
+            tagBox.appendChild(charsRow);
+        }
+
+        card.appendChild(tagBox);
+
+        // 3. 操作按钮行
+        const actionRow = document.createElement('div');
+        actionRow.style.cssText = `
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin-top: 4px !important;
+        `;
+
+        const btnBaseStyle = 'display: inline-flex !important; flex-direction: row !important; align-items: center !important; justify-content: center !important; gap: 6px !important; white-space: nowrap !important; padding: 6px 14px !important; font-size: 12px !important; border-radius: 6px !important; cursor: pointer !important; font-weight: 500 !important; box-sizing: border-box !important;';
+
+        const adjustBtn = document.createElement('button');
+        adjustBtn.type = 'button';
+        adjustBtn.style.cssText = btnBaseStyle + ' background: rgba(100,180,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(100,180,255,0.4) !important;';
+        adjustBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i><span>调整 Tag 并重新生图</span>';
+        adjustBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openSegmentManualTagModal(null, segment, {
+                isTestMode: true,
+                onSave: (newSeg, newPrompt) => {
+                    Object.assign(segment, newSeg);
+                    renderSdtTestResultCard({
+                        result,
+                        segment,
+                        prompt,
+                        finalPrompt: newPrompt,
+                        isGenerated,
+                        container,
+                        onRedrawPrompt
+                    });
+                },
+                onRedraw: async (newSeg, newPrompt) => {
+                    Object.assign(segment, newSeg);
+                    if (typeof onRedrawPrompt === 'function') {
+                        await onRedrawPrompt(newSeg, newPrompt);
+                    }
+                }
+            });
+        });
+        actionRow.appendChild(adjustBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.style.cssText = btnBaseStyle + ' background: rgba(255,255,255,0.08) !important; color: #e4e4e7 !important; border: 1px solid rgba(255,255,255,0.15) !important;';
+        copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>复制 Tag</span>';
+        copyBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigator.clipboard.writeText(currentPrompt).then(() => {
+                toastr.success('Tag 已成功复制到剪贴板', PLUGIN_NAME);
+            }).catch(() => {
+                toastr.info(currentPrompt, '复制 Tag');
+            });
+        });
+        actionRow.appendChild(copyBtn);
+
+        const backfillBtn = document.createElement('button');
+        backfillBtn.type = 'button';
+        backfillBtn.style.cssText = btnBaseStyle + ' background: rgba(255,255,255,0.08) !important; color: #e4e4e7 !important; border: 1px solid rgba(255,255,255,0.15) !important;';
+        backfillBtn.innerHTML = '<i class="fa-solid fa-arrow-up-from-bracket"></i><span>回填到输入框</span>';
+        backfillBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof RBQ?.ui?.setTestPrompt === 'function') {
+                RBQ.ui.setTestPrompt(currentPrompt);
+            }
+            toastr.success('已回填至测试提示词输入框', PLUGIN_NAME);
+        });
+        actionRow.appendChild(backfillBtn);
+
+        card.appendChild(actionRow);
+        container.replaceChildren(card);
+    }
+
+    const handleSdtTestRedraw = async (newSeg, newPrompt) => {
+        prepareNaiCharData(newSeg);
+        RBQ?.ui?.setTestResult?.('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在按微调后的 Tag 重新生图...</span>');
+        toastr.info('开始按微调后的 Tag 重新生图...', PLUGIN_NAME);
+        try {
+            const newResult = await RBQ.api.generateImage(newPrompt, 'sdt-test-redraw');
+            toastr.success('重新生图完成', PLUGIN_NAME);
+            renderSdtTestResultCard({
+                result: newResult,
+                segment: newSeg,
+                prompt: newPrompt,
+                finalPrompt: newPrompt,
+                isGenerated: true,
+                container: RBQ?.ui?.getTestResultContainer?.(),
+                onRedrawPrompt: handleSdtTestRedraw
+            });
+        } catch (err) {
+            toastr.error(err.message || String(err), PLUGIN_NAME);
+            RBQ?.ui?.setTestResult?.(`<span style="color: #e05252; font-size: 14px;">重新生图失败: ${escapeHtml(err.message || String(err))}</span>`);
+        }
+    };
+
+    // 注册测试面板动作按钮（智能测试生成 & 智能解析 Tag）
     if (typeof RBQ?.ui?.registerTestAction === 'function') {
         RBQ.ui.registerTestAction({
             id: 'sdt-smart-generate',
             label: '智能测试生成',
             icon: 'fa-solid fa-wand-magic-sparkles',
-            priority: 10,
+            priority: 20,
             style: 'background: rgba(100,180,255,0.12); border: 1px solid rgba(100,180,255,0.3); font-weight: 600;',
-            onClick: async ({ getPrompt, setResult, renderResultImage, setLoading }) => {
+            onClick: async ({ getPrompt, setResult, setLoading }) => {
                 const prompt = (getPrompt?.() || '').trim();
                 if (!prompt) {
                     toastr.warning('请先输入测试提示词', PLUGIN_NAME);
@@ -15284,18 +15477,66 @@ SCHEMA:
                     setLoading(true, '<i class="fa-solid fa-spinner fa-spin"></i> tagger 分析中...');
                     setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用 Tagger API 分析...</span>');
 
-                    const result = await RBQ.api.generateWithTagger(prompt, (progressText) => {
+                    const { segment: seg, finalPrompt } = await parseTaggerSegment(prompt, (progressText) => {
                         setResult(`<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText)}</span>`);
                     });
+
+                    prepareNaiCharData(seg);
+                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> Tagger 分析成功，开始生成图像...</span>');
+
+                    const result = await RBQ.api.generateImage(finalPrompt, 'sdt-test', {});
                     toastr.success('智能测试生成完成', PLUGIN_NAME);
 
-                    if (typeof renderResultImage === 'function') {
-                        renderResultImage(result, prompt);
-                    } else if (result && result.url) {
-                        setResult(`<img src="${escapeHtml(result.url)}" style="max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: rgba(0,0,0,0.5) 0px 4px 12px; cursor: pointer;" class="st-scene-trigger-test-img" data-url="${escapeHtml(result.url)}" data-prompt="${escapeHtml(result.prompt || prompt)}" data-cache-id="${escapeHtml(result.cacheId || '')}">`);
-                    } else {
-                        setResult('<span style="color: #e05252; font-size: 14px;">生成失败: 未返回图像 URL</span>');
-                    }
+                    renderSdtTestResultCard({
+                        result,
+                        segment: seg,
+                        prompt,
+                        finalPrompt,
+                        isGenerated: true,
+                        container: RBQ?.ui?.getTestResultContainer?.(),
+                        onRedrawPrompt: handleSdtTestRedraw
+                    });
+                } catch (error) {
+                    toastr.error(error.message || String(error), PLUGIN_NAME);
+                    setResult(`<span style="color: #e05252; font-size: 14px;">错误: ${escapeHtml(error.message || String(error))}</span>`);
+                } finally {
+                    setLoading(false);
+                }
+            }
+        });
+
+        RBQ.ui.registerTestAction({
+            id: 'sdt-parse-tags',
+            label: '🏷️ 智能解析 Tag',
+            icon: 'fa-solid fa-tags',
+            priority: 10,
+            style: 'background: rgba(180,130,255,0.12); border: 1px solid rgba(180,130,255,0.3); font-weight: 500;',
+            onClick: async ({ getPrompt, setResult, setLoading }) => {
+                const prompt = (getPrompt?.() || '').trim();
+                if (!prompt) {
+                    toastr.warning('请先输入测试提示词', PLUGIN_NAME);
+                    return;
+                }
+                try {
+                    setLoading(true, '<i class="fa-solid fa-spinner fa-spin"></i> tagger 分析中...');
+                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用 Tagger API 分析...</span>');
+
+                    const { segment: seg, finalPrompt } = await parseTaggerSegment(prompt, (progressText) => {
+                        setResult(`<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText)}</span>`);
+                    });
+
+                    prepareNaiCharData(seg);
+                    toastr.success('Tag 解析完成（未消耗出图配额）', PLUGIN_NAME);
+
+                    renderSdtTestResultCard({
+                        result: null,
+                        segment: seg,
+                        prompt,
+                        finalPrompt,
+                        isGenerated: false,
+                        container: RBQ?.ui?.getTestResultContainer?.(),
+                        onRedrawPrompt: handleSdtTestRedraw
+                    });
                 } catch (error) {
                     toastr.error(error.message || String(error), PLUGIN_NAME);
                     setResult(`<span style="color: #e05252; font-size: 14px;">错误: ${escapeHtml(error.message || String(error))}</span>`);

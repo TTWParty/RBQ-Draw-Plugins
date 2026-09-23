@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.42';
+    const PLUGIN_VERSION = '6.0.43';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -15063,7 +15063,7 @@ SCHEMA:
             lorebook,
             contextCount: 1,
             manualMode: true,
-            manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其精准转化为结构化的英文 Danbooru 分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
+            manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
             outputSchema: {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -15074,23 +15074,23 @@ SCHEMA:
 
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = `你是一个二次元图片生成提示词专家。你的任务是将用户输入的画面描述精准转化为结构化的英文 Danbooru 分镜 JSON。
+        const systemPrompt = `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
 
 请分析用户的场景描述，并将其转化为如下 JSON 结构：
 {
   "shouldDraw": true,
-  "reason": "ok",
+  "reason": "测试生成描述解析",
   "segments": [
     {
       "anchor": { "type": "sentence", "index": 1, "text": "用户输入的描述文本" },
-      "scene": "英文场景与镜头提示词 (例如: outdoors, night, cinematic lighting, close-up)",
+      "scene": "用逗号分隔的英文场景提示词，描述背景、环境、灯光、氛围等 (例如: 1room, night, bed, window, dramatic lighting)",
       "characters": [
         {
-          "name": "角色的英文名或称呼 (如 1girl)",
-          "base": "外貌特征 Tag (如 1girl, white hair, blue eyes)",
-          "outfit": "服装配饰 Tag (如 school uniform, white shirt)",
-          "action": "动作姿势与表情 Tag (如 looking at viewer, gentle smile)",
-          "center": { "x": 0.5, "y": 0.5 }
+          "name": "角色的英文名或代表称呼",
+          "base": "描述角色基本外貌的英文提示词，如发色、发型、眼睛、体型等 (例如: 1girl, red hair, short hair, blue eyes)",
+          "outfit": "描述角色衣着服装的英文提示词 (例如: school uniform, white shirt, pleated skirt)",
+          "action": "描述角色动作、姿势、表情、视线的英文提示词 (例如: holding a cup, sitting on bed, looking at viewer, blush)",
+          "center": "角色的画面空间连续浮点坐标对象，如 {\"x\": 0.5, \"y\": 0.5}"
         }
       ]
     }
@@ -15098,9 +15098,10 @@ SCHEMA:
 }
 
 要求：
-1. 所有提示词必须为英文 Danbooru 风格 Tag，全小写，半角逗号分隔。
-2. 镜头景别 (如 close-up, full body, looking at viewer) 置入 scene；人物拆分为外貌 (base)、服装 (outfit)、动作表情 (action)。
-3. 仅输出符合 schema 格式的纯 JSON，严禁输出任何 Markdown 标记或多余说明。`;
+1. 所有的提示词（scene, base, outfit, action）必须为高质量的英文 Danbooru 风格 Tag，使用小写且用半角逗号分隔。
+2. 精准拆分出人物的“外貌基础 (base)”、“服装 (outfit)”和“当前动作与表情 (action)”。
+3. 即使只有一个角色，也请使用 characters 数组。如果是多人场景，请分别为每个角色输出对应的配置。
+4. 仅输出符合 schema 格式的纯 JSON，绝对禁止在 JSON 外输出任何分析文字或 Markdown 代码块标记（如 \`\`\`json ）。`;
 
         const jailbreakPrompt = getActiveJailbreakPrompt(store);
         const rawMessages = (store.geminiJailbreak && jailbreakPrompt)

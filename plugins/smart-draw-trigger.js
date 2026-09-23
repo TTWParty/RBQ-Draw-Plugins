@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.39';
+    const PLUGIN_VERSION = '6.0.40';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7058,12 +7058,11 @@ SCHEMA:
                             <input class="rbq-sdt-manual-char-name" type="hidden" value="${escapeHtml(charName)}">
                         </div>
                         <div style="display: flex !important; align-items: center !important; gap: 6px !important;">
-                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: 500 !important;">
-                                <i class="fa-solid fa-crosshairs" style="color: #79e4ff !important;"></i> 构图坐标:
-                            </span>
-                            <span class="rbq-sdt-char-coord-badge" style="background: rgba(104,215,255,0.12) !important; border: 1px solid rgba(104,215,255,0.3) !important; color: #79e4ff !important; border-radius: 4px !important; padding: 2px 8px !important; font-size: 11px !important; font-weight: bold !important;">
-                                ${centerDisplay} (${formatCoordLabel(c.center)})
-                            </span>
+                            <button type="button" class="rbq-sdt-pad-toggle-btn" style="background: rgba(104,215,255,0.12) !important; border: 1px solid rgba(104,215,255,0.3) !important; color: #79e4ff !important; border-radius: 6px !important; padding: 3px 10px !important; font-size: 11px !important; font-weight: bold !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; white-space: nowrap !important; transition: all 0.15s !important;" title="点击收起或展开 2D 连续坐标定位盘">
+                                <i class="fa-solid fa-crosshairs" style="color: #79e4ff !important;"></i>
+                                <span class="rbq-sdt-char-coord-badge">${centerDisplay} (${formatCoordLabel(c.center)})</span>
+                                <i class="fa-solid fa-chevron-up rbq-sdt-pad-toggle-arrow" style="font-size: 10px !important; opacity: 0.8 !important; transition: transform 0.2s !important;"></i>
+                            </button>
                             <input type="hidden" class="rbq-sdt-manual-char-center" value="${escapeHtml(typeof c.center === 'string' ? c.center : `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`)}">
                         </div>
                     </div>
@@ -7072,12 +7071,9 @@ SCHEMA:
                     <div class="rbq-sdt-coord-pad-box" style="background: rgba(0,0,0,0.28) !important; border: 1px solid rgba(104,215,255,0.18) !important; border-radius: 8px !important; padding: 10px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
                         <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 6px !important;">
                             <span style="font-size: 11px !important; font-weight: bold !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
-                                <i class="fa-solid fa-gamepad"></i> V5 连续位置调节
-                                <span class="rbq-sdt-pad-status" style="font-weight: normal !important; color: #a6e3a1 !important; font-size: 11px !important;">
-                                    X: ${pt.x.toFixed(2)} · Y: ${pt.y.toFixed(2)} (${formatCoordLabel(pt)})
-                                </span>
+                                <i class="fa-solid fa-gamepad"></i> V5 连续位置调节盘
                             </span>
-                            <button type="button" class="rbq-sdt-snap-btn" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #ccc !important; border-radius: 4px !important; padding: 2px 8px !important; font-size: 10.5px !important; cursor: pointer !important; transition: all 0.2s !important;" title="开启后拖动时自动对齐到 5×5 网格点">
+                            <button type="button" class="rbq-sdt-snap-btn" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #ccc !important; border-radius: 4px !important; padding: 2px 8px !important; font-size: 10.5px !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important; transition: all 0.2s !important;" title="开启后拖动时自动对齐到 5×5 网格点">
                                 <i class="fa-solid fa-magnet"></i> 网格吸附: 关
                             </button>
                         </div>
@@ -7086,8 +7082,8 @@ SCHEMA:
                             <!-- 2D Pad Surface -->
                             <div class="rbq-sdt-pad-surface" style="
                                 position: relative !important;
-                                width: 140px !important;
-                                height: 140px !important;
+                                width: 120px !important;
+                                height: 120px !important;
                                 flex-shrink: 0 !important;
                                 background: #111216 !important;
                                 border: 1.5px solid rgba(104,215,255,0.35) !important;
@@ -7117,8 +7113,8 @@ SCHEMA:
                                     left: ${pt.x * 100}% !important;
                                     top: ${pt.y * 100}% !important;
                                     transform: translate(-50%, -50%) !important;
-                                    width: 24px !important;
-                                    height: 24px !important;
+                                    width: 22px !important;
+                                    height: 22px !important;
                                     border-radius: 50% !important;
                                     background: linear-gradient(135deg, #79e4ff 0%, #0099ff 100%) !important;
                                     border: 2px solid #ffffff !important;
@@ -7127,7 +7123,7 @@ SCHEMA:
                                     display: flex !important;
                                     align-items: center !important;
                                     justify-content: center !important;
-                                    font-size: 11px !important;
+                                    font-size: 10.5px !important;
                                     font-weight: bold !important;
                                     color: #000000 !important;
                                     touch-action: none !important;
@@ -7139,24 +7135,24 @@ SCHEMA:
                             <!-- Numeric Inputs & Quick Alignment -->
                             <div style="flex: 1 !important; min-width: 190px !important; display: flex !important; flex-direction: column !important; gap: 7px !important;">
                                 <div style="display: flex !important; gap: 8px !important;">
-                                    <div style="flex: 1 !important; display: flex !important; flex-direction: column !important; gap: 3px !important;">
-                                        <span style="font-size: 10.5px !important; color: rgba(255,255,255,0.65) !important;">X (左0 → 右1):</span>
-                                        <input type="number" step="0.01" min="0" max="1" class="rbq-sdt-pad-x" value="${pt.x.toFixed(2)}" style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 4px !important; padding: 4px 7px !important; font-size: 12px !important; color: #fff !important; width: 100% !important; box-sizing: border-box !important;">
+                                    <div style="flex: 1 !important; display: flex !important; flex-direction: column !important; gap: 2px !important;">
+                                        <span style="font-size: 10.5px !important; color: #79e4ff !important; font-weight: 500 !important;">X (左0 → 右1):</span>
+                                        <input type="number" step="0.01" min="0" max="1" class="rbq-sdt-pad-x" value="${pt.x.toFixed(2)}" style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(104,215,255,0.3) !important; border-radius: 4px !important; padding: 4px 7px !important; font-size: 12px !important; color: #fff !important; width: 100% !important; box-sizing: border-box !important;">
                                     </div>
-                                    <div style="flex: 1 !important; display: flex !important; flex-direction: column !important; gap: 3px !important;">
-                                        <span style="font-size: 10.5px !important; color: rgba(255,255,255,0.65) !important;">Y (上0 → 下1):</span>
-                                        <input type="number" step="0.01" min="0" max="1" class="rbq-sdt-pad-y" value="${pt.y.toFixed(2)}" style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 4px !important; padding: 4px 7px !important; font-size: 12px !important; color: #fff !important; width: 100% !important; box-sizing: border-box !important;">
+                                    <div style="flex: 1 !important; display: flex !important; flex-direction: column !important; gap: 2px !important;">
+                                        <span style="font-size: 10.5px !important; color: #ffb86c !important; font-weight: 500 !important;">Y (上0 → 下1):</span>
+                                        <input type="number" step="0.01" min="0" max="1" class="rbq-sdt-pad-y" value="${pt.y.toFixed(2)}" style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,184,108,0.3) !important; border-radius: 4px !important; padding: 4px 7px !important; font-size: 12px !important; color: #fff !important; width: 100% !important; box-sizing: border-box !important;">
                                     </div>
                                 </div>
 
-                                <div style="display: flex !important; flex-direction: column !important; gap: 4px !important; margin-top: 2px !important;">
-                                    <span style="font-size: 10px !important; color: rgba(255,255,255,0.45) !important;">快速对齐预设:</span>
+                                <div style="display: flex !important; flex-direction: column !important; gap: 3px !important; margin-top: 2px !important;">
+                                    <span style="font-size: 10px !important; color: rgba(255,255,255,0.45) !important;">快捷对齐网格:</span>
                                     <div style="display: flex !important; flex-wrap: wrap !important; gap: 4px !important;">
-                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">正中 (C3)</button>
-                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.30" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">左侧 (B3)</button>
-                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.70" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">右侧 (D3)</button>
-                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.30" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">后方 (C2)</button>
-                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.70" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">前方 (C4)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10.5px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; transition: all 0.15s !important;">正中 (C3)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.30" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10.5px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; transition: all 0.15s !important;">左侧 (B3)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.70" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10.5px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; transition: all 0.15s !important;">右侧 (D3)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.30" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10.5px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; transition: all 0.15s !important;">后方 (C2)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.70" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10.5px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; transition: all 0.15s !important;">前方 (C4)</button>
                                     </div>
                                 </div>
                             </div>
@@ -7192,23 +7188,24 @@ SCHEMA:
                     display: flex !important;
                     align-items: center !important;
                     justify-content: space-between !important;
-                    padding: 14px 18px !important;
+                    padding: 12px 18px !important;
                     border-bottom: 1px solid rgba(255,255,255,0.08) !important;
                     background: rgba(104,215,255,0.08) !important;
+                    flex-shrink: 0 !important;
                 ">
                     <strong style="font-size: 15px !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 8px !important;">
                         <i class="fa-solid fa-tags"></i> 🏷️ 手动调整分镜 Tag
                     </strong>
-                    <button class="menu_button" id="rbq-sdt-manual-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
+                    <button id="rbq-sdt-manual-close" type="button" style="width: 28px !important; height: 28px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; margin: 0 !important; font-size: 13px !important; background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ccc !important; border-radius: 6px !important; cursor: pointer !important; transition: all 0.15s !important;">✕</button>
                 </div>
 
                 ${isMultiChar ? `
-                <div style="display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; padding: 8px 18px !important; background: rgba(0,0,0,0.2) !important;">
-                    <button id="rbq-sdt-tab-btn-structured" type="button" class="menu_button" style="font-size: 12px !important; padding: 4px 12px !important; margin: 0 !important; background: rgba(104,215,255,0.2) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.4) !important; border-radius: 6px !important; cursor: pointer !important; font-weight: bold !important;">
-                        📑 分场景与角色结构化编辑
+                <div style="display: flex !important; gap: 8px !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; padding: 8px 18px !important; background: rgba(0,0,0,0.2) !important; flex-shrink: 0 !important;">
+                    <button id="rbq-sdt-tab-btn-structured" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; font-size: 12px !important; height: 32px !important; padding: 0 14px !important; margin: 0 !important; background: rgba(104,215,255,0.2) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; border-radius: 6px !important; cursor: pointer !important; font-weight: bold !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;">
+                        <i class="fa-solid fa-layer-group"></i> 分场景与角色结构化编辑
                     </button>
-                    <button id="rbq-sdt-tab-btn-raw" type="button" class="menu_button" style="font-size: 12px !important; padding: 4px 12px !important; margin: 0 !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; cursor: pointer !important;">
-                        📝 整体合并文本直接编辑
+                    <button id="rbq-sdt-tab-btn-raw" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; font-size: 12px !important; height: 32px !important; padding: 0 14px !important; margin: 0 !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important; cursor: pointer !important; font-weight: normal !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;">
+                        <i class="fa-solid fa-pen-to-square"></i> 整体合并文本直接编辑
                     </button>
                 </div>
                 ` : ''}
@@ -7249,14 +7246,14 @@ SCHEMA:
                     </div>
                 </div>
 
-                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; padding: 12px 18px !important; border-top: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.2) !important; flex-shrink: 0 !important; box-sizing: border-box !important;">
-                    <div style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important;">
-                        💡 支持保存后直接出图，或仅更新卡片记录
+                <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; padding: 12px 18px !important; border-top: 1px solid rgba(255,255,255,0.08) !important; background: rgba(0,0,0,0.25) !important; flex-shrink: 0 !important; box-sizing: border-box !important;">
+                    <div style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important; display: flex !important; align-items: center !important; gap: 5px !important;">
+                        <i class="fa-regular fa-lightbulb" style="color: #f1fa8c !important;"></i> 支持保存后直接出图，或仅更新卡片记录
                     </div>
                     <div style="display: flex !important; align-items: center !important; gap: 10px !important;">
-                        <button class="menu_button" id="rbq-sdt-manual-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important; margin: 0 !important; cursor: pointer !important;">取消</button>
-                        <button class="menu_button" id="rbq-sdt-manual-save-only" type="button" style="padding: 6px 14px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.08) !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.2) !important; cursor: pointer !important; white-space: nowrap !important;"><i class="fa-solid fa-floppy-disk"></i> 仅更新 Tag</button>
-                        <button class="menu_button" id="rbq-sdt-manual-submit" type="button" style="padding: 6px 18px !important; font-size: 12px !important; margin: 0 !important; background: rgba(104,215,255,0.25) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.45) !important; font-weight: bold !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; white-space: nowrap !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 保存并重新生图</button>
+                        <button id="rbq-sdt-manual-cancel" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; height: 32px !important; padding: 0 16px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.8) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 6px !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;">取消</button>
+                        <button id="rbq-sdt-manual-save-only" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; height: 32px !important; padding: 0 16px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.08) !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.2) !important; border-radius: 6px !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;"><i class="fa-solid fa-floppy-disk"></i> 仅更新 Tag</button>
+                        <button id="rbq-sdt-manual-submit" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; height: 32px !important; padding: 0 18px !important; font-size: 12px !important; margin: 0 !important; background: linear-gradient(135deg, rgba(2,132,199,0.35), rgba(56,189,248,0.25)) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.5) !important; border-radius: 6px !important; font-weight: bold !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 保存并重新生图</button>
                     </div>
                 </div>
             </div>
@@ -7279,14 +7276,14 @@ SCHEMA:
                 activeTab = 'structured';
                 panelStructured.style.setProperty('display', 'flex', 'important');
                 panelRaw.style.setProperty('display', 'none', 'important');
-                tabBtnStructured.style.background = 'rgba(104,215,255,0.2)';
-                tabBtnStructured.style.color = '#79e4ff';
-                tabBtnStructured.style.borderColor = 'rgba(104,215,255,0.4)';
-                tabBtnStructured.style.fontWeight = 'bold';
-                tabBtnRaw.style.background = 'rgba(255,255,255,0.06)';
-                tabBtnRaw.style.color = 'rgba(255,255,255,0.7)';
-                tabBtnRaw.style.borderColor = 'rgba(255,255,255,0.12)';
-                tabBtnRaw.style.fontWeight = 'normal';
+                tabBtnStructured.style.setProperty('background', 'rgba(104,215,255,0.2)', 'important');
+                tabBtnStructured.style.setProperty('color', '#79e4ff', 'important');
+                tabBtnStructured.style.setProperty('border-color', 'rgba(104,215,255,0.45)', 'important');
+                tabBtnStructured.style.setProperty('font-weight', 'bold', 'important');
+                tabBtnRaw.style.setProperty('background', 'rgba(255,255,255,0.06)', 'important');
+                tabBtnRaw.style.setProperty('color', 'rgba(255,255,255,0.7)', 'important');
+                tabBtnRaw.style.setProperty('border-color', 'rgba(255,255,255,0.12)', 'important');
+                tabBtnRaw.style.setProperty('font-weight', 'normal', 'important');
             });
 
             tabBtnRaw?.addEventListener('click', () => {
@@ -7298,30 +7295,43 @@ SCHEMA:
                 const rawInput = modal.querySelector('#rbq-sdt-manual-raw-prompt');
                 if (rawInput && combined) rawInput.value = combined;
 
-                tabBtnRaw.style.background = 'rgba(104,215,255,0.2)';
-                tabBtnRaw.style.color = '#79e4ff';
-                tabBtnRaw.style.borderColor = 'rgba(104,215,255,0.4)';
-                tabBtnRaw.style.fontWeight = 'bold';
-                tabBtnStructured.style.background = 'rgba(255,255,255,0.06)';
-                tabBtnStructured.style.color = 'rgba(255,255,255,0.7)';
-                tabBtnStructured.style.borderColor = 'rgba(255,255,255,0.12)';
-                tabBtnStructured.style.fontWeight = 'normal';
+                tabBtnRaw.style.setProperty('background', 'rgba(104,215,255,0.2)', 'important');
+                tabBtnRaw.style.setProperty('color', '#79e4ff', 'important');
+                tabBtnRaw.style.setProperty('border-color', 'rgba(104,215,255,0.45)', 'important');
+                tabBtnRaw.style.setProperty('font-weight', 'bold', 'important');
+                tabBtnStructured.style.setProperty('background', 'rgba(255,255,255,0.06)', 'important');
+                tabBtnStructured.style.setProperty('color', 'rgba(255,255,255,0.7)', 'important');
+                tabBtnStructured.style.setProperty('border-color', 'rgba(255,255,255,0.12)', 'important');
+                tabBtnStructured.style.setProperty('font-weight', 'normal', 'important');
             });
         }
 
         // Bind 2D Continuous Position Pad for each character card
         modal.querySelectorAll('.rbq-sdt-manual-char-card').forEach(card => {
+            const padToggleBtn = card.querySelector('.rbq-sdt-pad-toggle-btn');
+            const padBox = card.querySelector('.rbq-sdt-coord-pad-box');
+            const toggleArrow = card.querySelector('.rbq-sdt-pad-toggle-arrow');
             const padSurface = card.querySelector('.rbq-sdt-pad-surface');
             const padThumb = card.querySelector('.rbq-sdt-pad-thumb');
             const inputX = card.querySelector('.rbq-sdt-pad-x');
             const inputY = card.querySelector('.rbq-sdt-pad-y');
-            const statusEl = card.querySelector('.rbq-sdt-pad-status');
             const snapBtn = card.querySelector('.rbq-sdt-snap-btn');
             const badgeEl = card.querySelector('.rbq-sdt-char-coord-badge');
             const hiddenCenter = card.querySelector('.rbq-sdt-manual-char-center');
             const presetBtns = card.querySelectorAll('.rbq-sdt-preset-btn');
 
             let isSnapping = false;
+
+            if (padToggleBtn && padBox) {
+                padToggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const isHidden = padBox.style.display === 'none';
+                    padBox.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
+                    if (toggleArrow) {
+                        toggleArrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+                    }
+                });
+            }
 
             const snapValue = (val) => {
                 return Math.max(0.1, Math.min(0.9, Math.round((val - 0.1) / 0.2) * 0.2 + 0.1));
@@ -7345,10 +7355,6 @@ SCHEMA:
                 if (triggerInputs) {
                     if (inputX) inputX.value = fx.toFixed(2);
                     if (inputY) inputY.value = fy.toFixed(2);
-                }
-                const coordText = `X: ${fx.toFixed(2)} · Y: ${fy.toFixed(2)} (${formatCoordLabel(coordObj)})`;
-                if (statusEl) {
-                    statusEl.textContent = coordText;
                 }
                 if (badgeEl) {
                     badgeEl.textContent = `${formatCenterDisplay(coordObj)} (${formatCoordLabel(coordObj)})`;

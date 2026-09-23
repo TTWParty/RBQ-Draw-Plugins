@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.40';
+    const PLUGIN_VERSION = '6.0.41';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6991,6 +6991,9 @@ SCHEMA:
         const existing = document.getElementById('rbq-sdt-manual-tag-modal');
         if (existing) existing.remove();
 
+        const opts = (viewerContext && typeof viewerContext === 'object') ? viewerContext : {};
+        const isTestMode = opts.isTestMode === true;
+
         const hasRealCharacters = Array.isArray(segResult?.characters) && segResult.characters.length > 0
             && segResult.characters.some(c => (c.name && c.name !== '角色') || c.caption || c.outfit || c.base || c.action);
         const isMultiChar = hasRealCharacters;
@@ -7252,8 +7255,8 @@ SCHEMA:
                     </div>
                     <div style="display: flex !important; align-items: center !important; gap: 10px !important;">
                         <button id="rbq-sdt-manual-cancel" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; height: 32px !important; padding: 0 16px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.06) !important; color: rgba(255,255,255,0.8) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 6px !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;">取消</button>
-                        <button id="rbq-sdt-manual-save-only" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; height: 32px !important; padding: 0 16px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.08) !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.2) !important; border-radius: 6px !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;"><i class="fa-solid fa-floppy-disk"></i> 仅更新 Tag</button>
-                        <button id="rbq-sdt-manual-submit" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; height: 32px !important; padding: 0 18px !important; font-size: 12px !important; margin: 0 !important; background: linear-gradient(135deg, rgba(2,132,199,0.35), rgba(56,189,248,0.25)) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.5) !important; border-radius: 6px !important; font-weight: bold !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 保存并重新生图</button>
+                        <button id="rbq-sdt-manual-save-only" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; height: 32px !important; padding: 0 16px !important; font-size: 12px !important; margin: 0 !important; background: rgba(255,255,255,0.08) !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.2) !important; border-radius: 6px !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;"><i class="fa-solid fa-floppy-disk"></i> ${isTestMode ? (opts.saveBtnText || '仅回填 Tag') : '仅更新 Tag'}</button>
+                        <button id="rbq-sdt-manual-submit" type="button" style="display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; height: 32px !important; padding: 0 18px !important; font-size: 12px !important; margin: 0 !important; background: linear-gradient(135deg, rgba(2,132,199,0.35), rgba(56,189,248,0.25)) !important; color: #79e4ff !important; border: 1px solid rgba(104,215,255,0.5) !important; border-radius: 6px !important; font-weight: bold !important; cursor: pointer !important; white-space: nowrap !important; width: auto !important; box-sizing: border-box !important; transition: all 0.15s !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${isTestMode ? (opts.submitBtnText || '保存并开始生图') : '保存并重新生图'}</button>
                     </div>
                 </div>
             </div>
@@ -7531,6 +7534,13 @@ SCHEMA:
                 return;
             }
 
+            if (isTestMode && typeof opts.onSave === 'function') {
+                opts.onSave(updatedSeg, newFinalPrompt);
+                toastr.success('分镜 Tag 已回填！', PLUGIN_NAME);
+                close();
+                return;
+            }
+
             syncUpdatedSegmentState(updatedSeg, newFinalPrompt);
             toastr.success('分镜 Tag 已成功更新！', PLUGIN_NAME);
             close();
@@ -7544,6 +7554,16 @@ SCHEMA:
             const newFinalPrompt = getFinalPrompt(updatedSeg);
             if (!newFinalPrompt) {
                 toastr.warning('提示词不能为空', PLUGIN_NAME);
+                return;
+            }
+
+            if (isTestMode && typeof opts.onRedraw === 'function') {
+                close();
+                try {
+                    await opts.onRedraw(updatedSeg, newFinalPrompt);
+                } catch (err) {
+                    console.error('[Smart Draw] test redraw failed:', err);
+                }
                 return;
             }
 
@@ -15018,9 +15038,9 @@ SCHEMA:
         };
     }
 
-    RBQ.api.generateWithTagger = async (description, onProgress) => {
+    async function parseTaggerSegment(description, onProgress) {
         const store = getStore();
-        if (onProgress) onProgress('正在调用 tagger API 解析场景描述...');
+        if (onProgress) onProgress('正在调用 Tagger API 分析场景描述...');
 
         let rawLorebooks = [];
         try {
@@ -15043,7 +15063,7 @@ SCHEMA:
             lorebook,
             contextCount: 1,
             manualMode: true,
-            manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
+            manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其精准转化为结构化的英文 Danbooru 分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
             outputSchema: {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -15054,7 +15074,7 @@ SCHEMA:
 
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
+        const systemPrompt = `你是一个二次元图片生成提示词专家。你的核心任务是将用户输入的画面描述精准转化为结构化的英文 Danbooru 分镜 JSON。
 
 请分析用户的场景描述，并将其转化为如下 JSON 结构：
 {
@@ -15063,25 +15083,33 @@ SCHEMA:
   "segments": [
     {
       "anchor": { "type": "sentence", "index": 1, "text": "用户输入的描述文本" },
-      "scene": "用逗号分隔的英文场景提示词，描述背景、环境、灯光、氛围等 (例如: 1room, night, bed, window, dramatic lighting)",
+      "scene": "用逗号分隔的英文场景与镜头提示词 (例如: outdoors, winter, snow, night, cinematic lighting, close-up)",
       "characters": [
         {
-          "name": "角色的英文名或代表称呼",
-          "base": "描述角色基本外貌的英文提示词，如发色、发型、眼睛、体型等 (例如: 1girl, red hair, short hair, blue eyes)",
-          "outfit": "描述角色衣着服装的英文提示词 (例如: school uniform, white shirt, pleated skirt)",
-          "action": "描述角色动作、姿势、表情、视线的英文提示词 (例如: holding a cup, sitting on bed, looking at viewer, blush)",
-          "center": "角色的画面空间连续浮点坐标对象，如 {\"x\": 0.5, \"y\": 0.5}"
+          "name": "角色的英文名或代表称呼 (如 frieren, 1girl)",
+          "base": "描述角色基本外貌特征，发色、发型、眼睛、体态、固有特征 (例如: 1girl, green eyes, white hair, twintails, pointy ears)",
+          "outfit": "描述角色衣着服装与随身配饰 (例如: striped dress, black cape, boots)",
+          "action": "描述角色动作、姿态、手部动作、表情神态、视线 (例如: holding staff, looking at viewer, gentle smile, blush)",
+          "center": { "x": 0.5, "y": 0.5 },
+          "uc": "可选，该角色特定的独立负面提示词"
         }
       ]
     }
   ]
 }
 
-要求：
-1. 所有的提示词（scene, base, outfit, action）必须为高质量的英文 Danbooru 风格 Tag，使用小写且用半角逗号分隔。
-2. 精准拆分出人物的“外貌基础 (base)”、“服装 (outfit)”和“当前动作与表情 (action)”。
-3. 即使只有一个角色，也请使用 characters 数组。如果是多人场景，请分别为每个角色输出对应的配置。
-4. 仅输出符合 schema 格式的纯 JSON，绝对禁止在 JSON 外输出任何分析文字或 Markdown 代码块标记（如 \`\`\`json ）。`;
+精准拆解要求：
+1. 【镜头景别入 scene】：描述中的特写、全身、半身、俯视、仰视等镜头词，转换为标准 Danbooru 词（如 close-up, cowboy shot, full body, from above, from below, looking at viewer）置入 scene 中。
+2. 【严格四层分离】：
+   - scene：背景、环境、光影、时间与镜头景别。
+   - base：纯粹的人物外貌（发型发色/瞳色/体态），严禁混入衣服或动作。
+   - outfit：纯粹的服装配饰，严禁混入外貌或动作。
+   - action：动作姿势、手部持物、面部表情、眼神视线。
+3. 【坐标空间自然分配】：
+   - 单人默认画面居中 {"x": 0.5, "y": 0.5}；上半身/面部特写可略微上提 {"x": 0.5, "y": 0.4}。
+   - 双人互动默认水平错开站位：角色1 为 {"x": 0.3, "y": 0.5}，角色2 为 {"x": 0.7, "y": 0.5}。
+4. 【标签规范】：所有提示词标签全部使用高质量英文 Danbooru 风格 Tag，全小写，半角逗号分隔。
+5. 仅输出符合 schema 格式的纯 JSON，严禁输出 Markdown 代码块标记（如 \`\`\`json ）或多余说明。`;
 
         const jailbreakPrompt = getActiveJailbreakPrompt(store);
         const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
@@ -15130,13 +15158,31 @@ SCHEMA:
         }
 
         const seg = normalized.segments[0];
-        if (onProgress) onProgress('Tagger 分析成功，开始生成图像...');
-
         prepareNaiCharData(seg);
         const finalPrompt = getFinalPrompt(seg);
 
-        return RBQ.api.generateImage(finalPrompt, 'sdt-test', {}, onProgress);
+        return { segment: seg, finalPrompt };
+    }
+
+    RBQ.api.parseWithTagger = async (description, onProgress) => {
+        return parseTaggerSegment(description, onProgress);
     };
+
+    RBQ.api.generateWithTagger = async (description, onProgress) => {
+        const { segment: seg, finalPrompt } = await parseTaggerSegment(description, onProgress);
+        if (onProgress) onProgress('Tagger 分析成功，开始生成图像...');
+
+        prepareNaiCharData(seg);
+        const result = await RBQ.api.generateImage(finalPrompt, 'sdt-test', {}, onProgress);
+        if (result && typeof result === 'object') {
+            result.segment = seg;
+            result.finalPrompt = finalPrompt;
+            result.prompt = finalPrompt;
+        }
+        return result;
+    };
+
+    RBQ.api.openSegmentManualTagModal = openSegmentManualTagModal;
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);

@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.49';
+    const PLUGIN_VERSION = '6.0.50';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -4566,8 +4566,6 @@ Zimage 擅长理解复杂的英文长句和语境。
                 border-radius: 14px !important;
                 width: 580px !important;
                 max-width: 95vw !important;
-                max-height: 90vh !important;
-                max-height: 90dvh !important;
                 display: flex !important;
                 flex-direction: column !important;
                 overflow: hidden !important;
@@ -4588,13 +4586,13 @@ Zimage 擅长理解复杂的英文长句和语境。
                     <button class="menu_button" id="rbq-sdt-wb-test-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                 </div>
 
-                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;">
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important;">
                     <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
                         <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
                             <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">生图提示词 (Prompt)：</span>
                             <span style="font-size: 11px !important; color: rgba(255,255,255,0.5) !important;">可在此直接微调</span>
                         </div>
-                        <textarea id="rbq-sdt-wb-test-prompt" style="width: 100% !important; min-height: 110px !important; padding: 8px 10px !important; font-size: 12px !important; font-family: monospace !important; border-radius: 8px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important; box-sizing: border-box !important;">${escapeHtml(initialPrompt)}</textarea>
+                        <textarea id="rbq-sdt-wb-test-prompt" style="width: 100% !important; min-height: 110px !important; padding: 8px 10px !important; font-size: 12px !important; font-family: monospace !important; border-radius: 8px !important; background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #fff !important; line-height: 1.4 !important; box-sizing: border-box !important; resize: vertical !important;">${escapeHtml(initialPrompt)}</textarea>
                     </div>
 
                     <div style="display: flex !important; flex-direction: column !important; gap: 6px !important; background: rgba(0,0,0,0.2) !important; padding: 10px 12px !important; border-radius: 8px !important; border: 1px solid rgba(255,255,255,0.06) !important;">

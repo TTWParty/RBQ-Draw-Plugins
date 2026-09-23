@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.48';
+    const PLUGIN_VERSION = '6.0.49';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3399,7 +3399,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000095 !important;
+            z-index: 2147483635 !important;
             background: rgba(0,0,0,0.75) !important;
             display: flex !important;
             align-items: center !important;
@@ -3725,7 +3725,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000100 !important;
+            z-index: 2147483640 !important;
             background: rgba(0,0,0,0.8) !important;
             display: flex !important;
             align-items: center !important;
@@ -4548,7 +4548,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 bottom: 0 !important;
                 width: 100vw !important;
                 height: 100vh !important;
-                z-index: 100000090 !important;
+                z-index: 2147483630 !important;
                 background: rgba(0,0,0,0.82) !important;
                 display: flex !important;
                 align-items: center !important;
@@ -4566,6 +4566,8 @@ Zimage 擅长理解复杂的英文长句和语境。
                 border-radius: 14px !important;
                 width: 580px !important;
                 max-width: 95vw !important;
+                max-height: 90vh !important;
+                max-height: 90dvh !important;
                 display: flex !important;
                 flex-direction: column !important;
                 overflow: hidden !important;
@@ -4586,7 +4588,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     <button class="menu_button" id="rbq-sdt-wb-test-close" style="padding: 2px 8px !important; margin: 0 !important; font-size: 13px !important; cursor: pointer !important;">✕</button>
                 </div>
 
-                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important;">
+                <div style="padding: 16px 18px !important; display: flex !important; flex-direction: column !important; gap: 12px !important; box-sizing: border-box !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important;">
                     <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
                         <div style="display: flex !important; justify-content: space-between !important; align-items: center !important;">
                             <span style="font-size: 12px !important; color: rgba(255,255,255,0.85) !important;">生图提示词 (Prompt)：</span>
@@ -4724,7 +4726,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 100000085 !important;
+            z-index: 2147483620 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;
@@ -5244,7 +5246,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 2147483647 !important;
+            z-index: 2147483610 !important;
             background: rgba(0,0,0,0.85) !important;
             display: flex !important;
             align-items: center !important;

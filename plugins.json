@@ -27,9 +27,9 @@
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "基于 LLM 深度分镜理解的多角色自动绘图触发器，支持 2D 连续坐标触控调节、分镜 Tag 可视化调整、NAI V4.5/V5 连续坐标生成与多角色精确构图控制。",
-    "version": "6.0.48",
+    "version": "6.0.49",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=6.0.48"
+    "main": "plugins/smart-draw-trigger.js?v=6.0.49"
   },
   {
     "id": "rbq-multi-char",
@@ -59,9 +59,9 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集角色7维外貌档案、差分衣柜、世界书动作智能适配与多角色同框演练于一体的智能工作台。支持 V5 连续坐标无级拖拽平移与 5×5 网格吸附、单双人自适应模板合成与一键头像立绘演练。",
-    "version": "2.2.23",
+    "version": "2.2.24",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.2.23"
+    "main": "plugins/character-workshop.js?v=2.2.24"
   },
   {
     "id": "rbq-image-privacy",

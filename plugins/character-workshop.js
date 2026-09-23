@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.23';
+    const VERSION = '2.2.24';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1637,7 +1637,11 @@
 #cw-image-viewer-modal{z-index:2147483647!important}
 #cw-test-mode-modal{z-index:2147483647!important}
 #cw-character-editor-modal{z-index:2147483600!important}
-#rbq-sdt-lorebook-search-modal{z-index:2147483647!important}
+#rbq-sdt-lorebook-search-modal{z-index:2147483610!important}
+#rbq-sdt-variant-picker-modal{z-index:2147483620!important}
+#rbq-sdt-wb-test-modal{z-index:2147483630!important}
+#rbq-sdt-test-mode-modal{z-index:2147483635!important}
+#rbq-sdt-test-preview-modal{z-index:2147483640!important}
 body.cw-viewer-open #cw-character-editor-modal,
 body.cw-viewer-open #cw-test-mode-modal,
 body.cw-lorebook-picker-open #cw-character-editor-modal,
@@ -1727,11 +1731,11 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 }
             }, initialCategory);
 
-            // 持续确保世界书搜索弹窗的 z-index 处于最顶层，且在弹窗关闭时自动恢复背景
+            // 持续确保世界书搜索弹窗的 z-index 处于合适层级，且在弹窗关闭时自动恢复背景
             const checkPicker = () => {
                 const sdtModal = document.getElementById('rbq-sdt-lorebook-search-modal');
                 if (sdtModal && sdtModal.isConnected) {
-                    sdtModal.style.setProperty('z-index', '2147483647', 'important');
+                    sdtModal.style.setProperty('z-index', '2147483610', 'important');
                     requestAnimationFrame(checkPicker);
                 } else {
                     handleClose();

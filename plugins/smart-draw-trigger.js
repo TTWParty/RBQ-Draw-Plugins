@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.47';
+    const PLUGIN_VERSION = '6.0.46';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -4110,12 +4110,6 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function getSTWorldNames() {
         const ctx = (window.RBQ?.api?.getContext?.()) || (window.SillyTavern?.getContext?.());
-        if (typeof ctx?.getWorldInfoNames === 'function') {
-            try {
-                const names = ctx.getWorldInfoNames();
-                if (Array.isArray(names) && names.length > 0) return names;
-            } catch (_e) {}
-        }
         if (Array.isArray(ctx?.world_names) && ctx.world_names.length > 0) {
             return ctx.world_names;
         }
@@ -4125,119 +4119,48 @@ Zimage 擅长理解复杂的英文长句和语境。
         return [];
     }
 
-    function isNonEmptyWorldData(data) {
-        if (!data || typeof data !== 'object') return false;
-        let entries = data.entries;
-        if (!entries && data.character_book?.entries) entries = data.character_book.entries;
-        if (!entries && data.data?.character_book?.entries) entries = data.data.character_book.entries;
-        if (!entries) return false;
-        if (Array.isArray(entries)) return entries.length > 0;
-        if (typeof entries === 'object') return Object.keys(entries).length > 0;
-        return false;
-    }
-
     async function loadWorldInfoFromST(worldName) {
         if (!worldName) return null;
-        const rawName = String(worldName).trim();
-        const cleanName = rawName.replace(/\.json$/i, '').trim();
-        const strippedName = cleanName.replace(/\s*[\(\[]\d+[\)\]]\s*$/, '').trim();
+        const cleanName = String(worldName).replace(/\.json$/i, '').trim();
         const ctx = (window.RBQ?.api?.getContext?.()) || (window.SillyTavern?.getContext?.());
-
-        const trySingle = async (name) => {
-            if (!name) return null;
-            if (typeof ctx?.loadWorldInfo === 'function') {
-                try {
-                    const data = await ctx.loadWorldInfo(name);
-                    if (isNonEmptyWorldData(data)) return data;
-                } catch (_e) {}
-            }
-            if (typeof window.loadWorldInfo === 'function') {
-                try {
-                    const data = await window.loadWorldInfo(name);
-                    if (isNonEmptyWorldData(data)) return data;
-                } catch (_e) {}
-            }
+        if (typeof ctx?.loadWorldInfo === 'function') {
             try {
-                const resp = await fetch('/api/worldinfo/get', {
-                    method: 'POST',
-                    headers: getSillyTavernHeaders(),
-                    body: JSON.stringify({ name }),
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (isNonEmptyWorldData(data)) return data;
-                }
+                const data = await ctx.loadWorldInfo(cleanName);
+                if (data && (data.entries || typeof data === 'object')) return data;
             } catch (_e) {}
-            try {
-                const resp = await fetch('/api/worldinfo/get', {
-                    method: 'POST',
-                    headers: getSillyTavernHeaders(),
-                    body: JSON.stringify({ name: `${name}.json` }),
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (isNonEmptyWorldData(data)) return data;
-                }
-            } catch (_e) {}
-            return null;
-        };
-
-        // 1. Direct try with full name
-        let res = await trySingle(cleanName);
-        if (res) return res;
-
-        // 2. Try stripped name (remove duplicate download suffixes like [1] or (1))
-        if (strippedName && strippedName !== cleanName) {
-            res = await trySingle(strippedName);
-            if (res) return res;
         }
-
-        // 3. Query SillyTavern's world list (/api/worldinfo/list) and context names
-        let serverWorlds = [];
+        if (typeof window.loadWorldInfo === 'function') {
+            try {
+                const data = await window.loadWorldInfo(cleanName);
+                if (data && (data.entries || typeof data === 'object')) return data;
+            } catch (_e) {}
+        }
+        // 尝试通过 POST /api/worldinfo/get 读取（注入 X-CSRF-Token 鉴权头）
         try {
-            const listResp = await fetch('/api/worldinfo/list', {
+            const resp = await fetch('/api/worldinfo/get', {
                 method: 'POST',
                 headers: getSillyTavernHeaders(),
-                body: JSON.stringify({}),
+                body: JSON.stringify({ name: cleanName }),
             });
-            if (listResp.ok) {
-                const listData = await listResp.json();
-                if (Array.isArray(listData)) serverWorlds = listData;
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && (data.entries || typeof data === 'object')) return data;
+            }
+        } catch (e) {
+            console.warn(`[${PLUGIN_NAME}] 从酒馆加载世界书 ${cleanName} 失败:`, e);
+        }
+        // 若无后缀尝试失败，追加 .json 再次尝试
+        try {
+            const resp = await fetch('/api/worldinfo/get', {
+                method: 'POST',
+                headers: getSillyTavernHeaders(),
+                body: JSON.stringify({ name: `${cleanName}.json` }),
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && (data.entries || typeof data === 'object')) return data;
             }
         } catch (_e) {}
-
-        const namesPool = new Set();
-        for (const w of serverWorlds) {
-            if (w.file_id) namesPool.add(w.file_id);
-            if (w.name) namesPool.add(w.name);
-        }
-        for (const n of getSTWorldNames()) {
-            if (n) namesPool.add(n);
-        }
-
-        const cleanLower = cleanName.toLowerCase();
-        const strippedLower = strippedName.toLowerCase();
-
-        for (const cand of namesPool) {
-            const candClean = String(cand).replace(/\.json$/i, '').trim();
-            const candLower = candClean.toLowerCase();
-            const candStripped = candLower.replace(/\s*[\(\[]\d+[\)\]]\s*$/, '').trim();
-            if (candLower === cleanLower || candStripped === strippedLower || candLower === strippedLower || candStripped === cleanLower) {
-                res = await trySingle(candClean);
-                if (res) return res;
-            }
-        }
-
-        // 4. Fuzzy / substring match across pool
-        for (const cand of namesPool) {
-            const candClean = String(cand).replace(/\.json$/i, '').trim();
-            const candLower = candClean.toLowerCase();
-            if (candLower.includes(strippedLower) || (strippedLower.length >= 4 && strippedLower.includes(candLower))) {
-                res = await trySingle(candClean);
-                if (res) return res;
-            }
-        }
-
         return null;
     }
 
@@ -4257,14 +4180,6 @@ Zimage 擅长理解复杂的英文长句和语境。
                 return true;
             } catch (_e) {}
         }
-        try {
-            const resp = await fetch('/api/worldinfo/edit', {
-                method: 'POST',
-                headers: getSillyTavernHeaders(),
-                body: JSON.stringify({ name: cleanName, data }),
-            });
-            if (resp.ok) return true;
-        } catch (_e) {}
         try {
             const resp = await fetch('/api/worldinfo/post', {
                 method: 'POST',
@@ -4319,44 +4234,16 @@ Zimage 擅长理解复杂的英文长句和语境。
         } catch (_e) {}
     }
 
-    async function loadLorebookFromIDB(sourceId, fallbackName = '') {
-        if (!sourceId && !fallbackName) return null;
+    async function loadLorebookFromIDB(sourceId) {
+        if (!sourceId) return null;
         try {
             const db = await getSdtIdb();
             if (!db) return null;
             return new Promise((resolve) => {
                 const tx = db.transaction(SDT_IDB_STORE, 'readonly');
-                const store = tx.objectStore(SDT_IDB_STORE);
-                const checkFallback = () => {
-                    const allReq = store.getAll();
-                    allReq.onsuccess = () => {
-                        const items = allReq.result || [];
-                        const cleanTarget = String(fallbackName || sourceId || '').replace(/\.json$/i, '').replace(/\s*[\(\[]\d+[\)\]]\s*$/, '').trim().toLowerCase();
-                        for (const item of items) {
-                            if (!item?.entries?.length) continue;
-                            const first = item.entries[0];
-                            const sName = String(first?.sourceName || item.name || item.id || '').replace(/\.json$/i, '').replace(/\s*[\(\[]\d+[\)\]]\s*$/, '').trim().toLowerCase();
-                            if (sName && cleanTarget && (sName === cleanTarget || sName.includes(cleanTarget) || cleanTarget.includes(sName))) {
-                                return resolve(item.entries);
-                            }
-                        }
-                        resolve(null);
-                    };
-                    allReq.onerror = () => resolve(null);
-                };
-
-                if (sourceId) {
-                    const req = store.get(sourceId);
-                    req.onsuccess = () => {
-                        if (Array.isArray(req.result?.entries) && req.result.entries.length > 0) {
-                            return resolve(req.result.entries);
-                        }
-                        checkFallback();
-                    };
-                    req.onerror = () => checkFallback();
-                } else {
-                    checkFallback();
-                }
+                const req = tx.objectStore(SDT_IDB_STORE).get(sourceId);
+                req.onsuccess = () => resolve(req.result?.entries || null);
+                req.onerror = () => resolve(null);
             });
         } catch (_e) {
             return null;
@@ -4364,10 +4251,7 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function normalizeLorebookSource(raw, fallbackName = '未命名世界书') {
-        let entries = raw?.entries;
-        if (!entries && raw?.character_book?.entries) entries = raw.character_book.entries;
-        if (!entries && raw?.data?.character_book?.entries) entries = raw.data.character_book.entries;
-        const count = Array.isArray(entries) ? entries.length : (entries && typeof entries === 'object' ? Object.keys(entries).length : 0);
+        const entries = raw?.entries && typeof raw.entries === 'object' ? raw.entries : {};
         return {
             id: String(raw?.id || `sdt-lb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`),
             name: String(raw?.name || fallbackName),
@@ -4375,7 +4259,7 @@ Zimage 擅长理解复杂的英文长句和语境。
             type: String(raw?.type || inferLorebookType(raw?.name || fallbackName)),
             sourcePath: String(raw?.sourcePath || ''),
             importedAt: Number(raw?.importedAt || Date.now()),
-            entryCount: raw?.entryCount != null ? Number(raw.entryCount) : count,
+            entryCount: raw?.entryCount != null ? Number(raw.entryCount) : Object.keys(entries).length,
             isNativeST: raw?.isNativeST !== false,
         };
     }
@@ -4384,30 +4268,17 @@ Zimage 擅长理解复杂的英文长句和语境。
         const characterFilter = entry?.characterFilter && typeof entry.characterFilter === 'object'
             ? entry.characterFilter
             : {};
-        // Support content from multiple formats: content / text / entry / value
-        const rawContent = entry?.content ?? entry?.entry ?? entry?.text ?? entry?.value ?? '';
-        // Support keys from key (array or string) or keys
-        let rawKeys = entry?.key ?? entry?.keys ?? [];
-        if (typeof rawKeys === 'string') rawKeys = rawKeys.split(/[,，\n]/);
-        if (!Array.isArray(rawKeys)) rawKeys = [];
-
-        let rawSecKeys = entry?.keysecondary ?? entry?.secondary_keys ?? [];
-        if (typeof rawSecKeys === 'string') rawSecKeys = rawSecKeys.split(/[,，\n]/);
-        if (!Array.isArray(rawSecKeys)) rawSecKeys = [];
-
-        const comment = String(entry?.comment ?? entry?.displayName ?? entry?.title ?? entry?.name ?? '');
-
         return {
             sourceId: source.id,
             sourceName: source.name,
             sourceType: source.type,
-            uid: entry?.uid ?? entry?.id ?? entryKey,
-            comment: comment,
-            content: String(rawContent).trim(),
+            uid: entry?.uid ?? entryKey,
+            comment: String(entry?.comment || ''),
+            content: String(entry?.content || '').trim(),
             constant: !!entry?.constant,
             disabled: !!(entry?.disable ?? entry?.disabled),
-            key: rawKeys.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean),
-            keysecondary: rawSecKeys.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean),
+            key: Array.isArray(entry?.key) ? entry.key.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean) : [],
+            keysecondary: Array.isArray(entry?.keysecondary) ? entry.keysecondary.map(k => String(k || '').trim().replace(/^[,，\s]+|[,，\s]+$/g, '')).filter(Boolean) : [],
             order: Number(entry?.order || 0),
             selective: entry?.selective !== false,
             selectiveLogic: Number(entry?.selectiveLogic || 0),
@@ -4445,21 +4316,14 @@ Zimage 擅长理解复杂的英文长句和语境。
             parsed = rawOrObj;
         }
         const effectiveSource = source || normalizeLorebookSource(parsed, fallbackName);
-        let entries = parsed?.entries;
-        if (!entries && parsed?.character_book?.entries) entries = parsed.character_book.entries;
-        if (!entries && parsed?.data?.character_book?.entries) entries = parsed.data.character_book.entries;
-        if (!entries && typeof parsed === 'object') entries = parsed;
-        if (!entries || typeof entries !== 'object') entries = {};
-
+        const entries = parsed?.entries && typeof parsed.entries === 'object' ? parsed.entries : {};
         const normalizedEntries = Object.entries(entries)
             .map(([entryKey, entry]) => normalizeLorebookEntry(effectiveSource, entryKey, entry))
             .filter((entry) => {
-                const content = (entry.content || '').trim();
-                const comment = (entry.comment || '').trim();
-                const hasKeys = (entry.key && entry.key.length > 0) || (entry.keysecondary && entry.keysecondary.length > 0);
-                if (!content && !comment && !hasKeys) return false;
+                if (!entry.content) return false;
+                const content = entry.content.trim();
                 // 过滤纯 markdown 分隔符或空章节标头（如 `### 全局`, `---`），节省无用 Token
-                if (content && /^[-#\s\n\r*`_~]+$/.test(content) && !comment) return false;
+                if (/^[-#\s\n\r*`_~]+$/.test(content)) return false;
                 return true;
             });
         return {
@@ -4495,7 +4359,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                     }
                 }
                 // 2. Try IndexedDB offline fallback
-                let idbEntries = await loadLorebookFromIDB(source.id, source.name);
+                let idbEntries = await loadLorebookFromIDB(source.id);
                 if (Array.isArray(idbEntries) && idbEntries.length > 0) {
                     lorebookMemoryCache.set(source.id, idbEntries);
                     source.entryCount = idbEntries.length;
@@ -5539,66 +5403,9 @@ Zimage 擅长理解复杂的英文长句和语境。
             // Render Results List
             const resultsContainer = modal.querySelector('#rbq-sdt-lb-search-results');
             if (resultsContainer) {
-                if (allEntries.length === 0) {
-                    const curSource = sources.find(s => s.id === selectedSourceId);
-                    resultsContainer.innerHTML = `
-                        <div style="text-align: center !important; color: rgba(255,255,255,0.7) !important; padding: 40px 16px !important; display: flex !important; flex-direction: column !important; align-items: center !important; gap: 12px !important;">
-                            <div style="font-size: 32px !important;">📭</div>
-                            <div style="font-size: 14px !important; font-weight: bold !important; color: #fff !important;">当前世界书未加载到词条内容</div>
-                            <div style="font-size: 12px !important; color: rgba(255,255,255,0.5) !important; max-width: 460px !important; line-height: 1.6 !important;">
-                                ${curSource ? `世界书「${escapeHtml(curSource.name)}」在酒馆中可能被重命名、移动，或此前未完成同步。` : '当前尚未加载到任何世界书词条。'}<br/>
-                                您可以点击下方按钮直接选择原始 JSON 文件重新导入并立即恢复浏览。
-                            </div>
-                            <button id="rbq-sdt-modal-reimport-lb" type="button" class="menu_button" style="margin-top: 6px !important; padding: 6px 16px !important; font-size: 12.5px !important; background: rgba(121,228,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(121,228,255,0.4) !important; border-radius: 8px !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 6px !important;">
-                                <i class="fa-solid fa-file-import"></i> 重新导入此世界书 (.json)
-                            </button>
-                        </div>
-                    `;
-                    resultsContainer.querySelector('#rbq-sdt-modal-reimport-lb')?.addEventListener('click', () => {
-                        let input = document.getElementById('rbq-sdt-lorebook-file-input');
-                        if (!input) {
-                            input = document.createElement('input');
-                            input.type = 'file';
-                            input.accept = '.json,application/json';
-                            input.id = 'rbq-sdt-lorebook-file-input';
-                            input.style.display = 'none';
-                            document.body.append(input);
-                        }
-                        input.onchange = async () => {
-                            const file = input.files?.[0];
-                            input.value = '';
-                            if (!file) return;
-                            try {
-                                const raw = await file.text();
-                                const worldName = file.name.replace(/\.json$/i, '') || file.name;
-                                const parsed = parseLorebookData(raw, worldName);
-                                await saveWorldInfoToST(worldName, parsed.rawObj);
-                                lorebookMemoryCache.set(parsed.source.id, parsed.entries);
-                                saveLorebookToIDB(parsed.source.id, parsed.entries);
-                                const next = ensureLorebookStore();
-                                if (curSource) {
-                                    curSource.name = parsed.source.name;
-                                    curSource.entryCount = parsed.entries.length;
-                                    lorebookMemoryCache.set(curSource.id, parsed.entries);
-                                    saveLorebookToIDB(curSource.id, parsed.entries);
-                                } else {
-                                    next.push(parsed.source);
-                                }
-                                save();
-                                toastr.success(`已恢复导入世界书「${parsed.source.name}」(${parsed.entries.length}条)！`, PLUGIN_NAME);
-                                refreshUI();
-                            } catch (err) {
-                                toastr.error(`导入失败: ${err.message || err}`, PLUGIN_NAME);
-                            }
-                        };
-                        input.click();
-                    });
-                } else if (filtered.length === 0) {
-                    resultsContainer.innerHTML = `
-                        <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
-                    `;
-                } else {
-                    resultsContainer.innerHTML = filtered.slice(0, 100).map((e, idx) => {
+                resultsContainer.innerHTML = filtered.length === 0 ? `
+                    <div style="text-align: center !important; color: rgba(255,255,255,0.5) !important; padding: 40px 0 !important; font-size: 13px !important;">没有找到匹配的词条</div>
+                ` : filtered.slice(0, 100).map((e, idx) => {
                     const subVariants = extractLorebookSubVariants(e.content);
                     const hasMultiple = subVariants.length > 1;
                     const badgeColor = e.classification?.color || '#79e4ff';
@@ -5709,7 +5516,6 @@ Zimage 擅长理解复杂的英文长句和语境。
                         }
                     });
                 });
-                }
             }
         };
 
@@ -5744,8 +5550,6 @@ Zimage 擅长理解复杂的英文长句和语境。
                 selectedSubCategory = 'all';
                 selectedNativeTopic = 'all';
                 if (selectedSourceId !== 'all' && (!lorebookMemoryCache.has(selectedSourceId) || !lorebookMemoryCache.get(selectedSourceId)?.length)) {
-                    const countBadge = modal.querySelector('#rbq-sdt-lb-count-badge');
-                    if (countBadge) countBadge.textContent = ' (⏳ 正在读取词条...)';
                     await warmLorebookMemoryCache(selectedSourceId, true);
                 }
                 refreshUI();

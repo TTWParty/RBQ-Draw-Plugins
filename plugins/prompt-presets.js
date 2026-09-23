@@ -3,6 +3,62 @@
 
     const STORAGE_KEY = '_promptPresets';
 
+    const copyToClipboard = async (text) => {
+        if (typeof RBQ?.utils?.copyToClipboard === 'function') {
+            return RBQ.utils.copyToClipboard(text);
+        }
+        if (text === null || text === undefined) return false;
+        const str = String(text);
+        const isSecure = Boolean(window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (isSecure && navigator?.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(str);
+                return true;
+            } catch (err) {
+                console.warn('[Prompt Presets] navigator.clipboard.writeText 失败，尝试降级:', err);
+            }
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = 'none';
+            textarea.style.outline = 'none';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.opacity = '0.01';
+            textarea.style.zIndex = '-9999';
+            textarea.style.fontSize = '16px';
+            document.body.appendChild(textarea);
+            if (navigator.userAgent.match(/ipad|iphone|ipod/i)) {
+                textarea.contentEditable = 'true';
+                textarea.readOnly = false;
+                const range = document.createRange();
+                range.selectNodeContents(textarea);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                textarea.setSelectionRange(0, 999999);
+            } else {
+                textarea.focus({ preventScroll: true });
+                textarea.select();
+            }
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            if (success) return true;
+        } catch (fallbackErr) {
+            console.warn('[Prompt Presets] execCommand 复制降级失败:', fallbackErr);
+        }
+        return false;
+    };
+
     // ── Storage ──
     function getStore() {
         const s = RBQ.api.getSettings();
@@ -1637,7 +1693,7 @@
         });
 
         let copyPosTimer = null;
-        document.getElementById('rbq-pp-copy-pos-preview')?.addEventListener('click', (e) => {
+        document.getElementById('rbq-pp-copy-pos-preview')?.addEventListener('click', async (e) => {
             const btn = e.currentTarget;
             const store = getStore();
             const preset = getActivePreset();
@@ -1671,20 +1727,17 @@
                 }, 1800);
             };
 
-            if (navigator.clipboard?.writeText) {
-                navigator.clipboard.writeText(assembled).then(() => {
-                    showFeedback();
-                    toastr.success('已复制正面合成模板');
-                }).catch(() => {
-                    toastr.info('请手动复制: ' + assembled);
-                });
+            const ok = await copyToClipboard(assembled);
+            if (ok) {
+                showFeedback();
+                toastr.success('已复制正面合成模板');
             } else {
-                toastr.info('请手动复制: ' + assembled);
+                toastr.warning('复制失败，请手动选取', '提示词预设');
             }
         });
 
         let copyNegTimer = null;
-        document.getElementById('rbq-pp-copy-neg-preview')?.addEventListener('click', (e) => {
+        document.getElementById('rbq-pp-copy-neg-preview')?.addEventListener('click', async (e) => {
             const btn = e.currentTarget;
             const store = getStore();
             const preset = getActivePreset();
@@ -1710,15 +1763,12 @@
                 }, 1800);
             };
 
-            if (navigator.clipboard?.writeText) {
-                navigator.clipboard.writeText(assembled).then(() => {
-                    showFeedback();
-                    toastr.success('已复制负面合成结果');
-                }).catch(() => {
-                    toastr.info('请手动复制: ' + assembled);
-                });
+            const ok = await copyToClipboard(assembled);
+            if (ok) {
+                showFeedback();
+                toastr.success('已复制负面合成结果');
             } else {
-                toastr.info('请手动复制: ' + assembled);
+                toastr.warning('复制失败，请手动选取', '提示词预设');
             }
         });
 

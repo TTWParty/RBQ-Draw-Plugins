@@ -3,6 +3,62 @@
 
     const PLUGIN_NAME = 'PNG Metadata Extractor';
 
+    const copyToClipboard = async (text) => {
+        if (typeof RBQ?.utils?.copyToClipboard === 'function') {
+            return RBQ.utils.copyToClipboard(text);
+        }
+        if (text === null || text === undefined) return false;
+        const str = String(text);
+        const isSecure = Boolean(window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (isSecure && navigator?.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(str);
+                return true;
+            } catch (err) {
+                console.warn(`[${PLUGIN_NAME}] navigator.clipboard.writeText 失败，尝试降级:`, err);
+            }
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = 'none';
+            textarea.style.outline = 'none';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.opacity = '0.01';
+            textarea.style.zIndex = '-9999';
+            textarea.style.fontSize = '16px';
+            document.body.appendChild(textarea);
+            if (navigator.userAgent.match(/ipad|iphone|ipod/i)) {
+                textarea.contentEditable = 'true';
+                textarea.readOnly = false;
+                const range = document.createRange();
+                range.selectNodeContents(textarea);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                textarea.setSelectionRange(0, 999999);
+            } else {
+                textarea.focus({ preventScroll: true });
+                textarea.select();
+            }
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            if (success) return true;
+        } catch (fallbackErr) {
+            console.warn(`[${PLUGIN_NAME}] execCommand 复制降级失败:`, fallbackErr);
+        }
+        return false;
+    };
+
     const COL_MAP = { A: 0.1, B: 0.3, C: 0.5, D: 0.7, E: 0.9 };
     const ROW_MAP = { '1': 0.1, '2': 0.3, '3': 0.5, '4': 0.7, '5': 0.9 };
 
@@ -631,13 +687,16 @@
             btn.className = 'menu_button rbq-extractor-copy-btn';
             btn.innerHTML = '<i class="fa-regular fa-copy"></i> 复制';
 
-            btn.onclick = () => {
-                navigator.clipboard.writeText(content).then(() => {
+            btn.onclick = async () => {
+                const ok = await copyToClipboard(content);
+                if (ok) {
                     const old = btn.innerHTML;
                     btn.innerHTML = '<i class="fa-solid fa-check"></i> 成功';
                     btn.style.color = '#88ff88';
                     setTimeout(() => { btn.innerHTML = old; btn.style.color = '#fff'; }, 2000);
-                });
+                } else {
+                    toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+                }
             };
 
             header.append(titleSpan, btn);
@@ -752,15 +811,18 @@
             };
 
             container.querySelectorAll('.sub-copy').forEach(copyBtn => {
-                copyBtn.onclick = (e) => {
+                copyBtn.onclick = async (e) => {
                     e.stopPropagation();
                     const text = copyBtn.getAttribute('data-text');
-                    navigator.clipboard.writeText(text).then(() => {
+                    const ok = await copyToClipboard(text);
+                    if (ok) {
                         const old = copyBtn.innerHTML;
                         copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> 成功';
                         copyBtn.style.color = '#88ff88';
                         setTimeout(() => { copyBtn.innerHTML = old; copyBtn.style.color = '#fff'; }, 2000);
-                    });
+                    } else {
+                        toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+                    }
                 };
             });
 
@@ -1147,15 +1209,18 @@
 
         // Bind copy events
         container.querySelectorAll('.btn-copy').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const text = btn.getAttribute('data-text');
-                navigator.clipboard.writeText(text).then(() => {
+                const ok = await copyToClipboard(text);
+                if (ok) {
                     const oldHTML = btn.innerHTML;
                     btn.innerHTML = '<i class="fa-solid fa-check"></i>';
                     btn.style.color = '#88ff88';
                     setTimeout(() => { btn.innerHTML = oldHTML; btn.style.color = ''; }, 1500);
-                });
+                } else {
+                    toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+                }
             });
         });
 

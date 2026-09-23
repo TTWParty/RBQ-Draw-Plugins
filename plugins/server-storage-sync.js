@@ -13,8 +13,64 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.17';
+    const PLUGIN_VERSION = '1.1.18';
     const STORAGE_KEY = '_gallerySyncSettings';
+
+    const copyToClipboard = async (text) => {
+        if (typeof RBQ?.utils?.copyToClipboard === 'function') {
+            return RBQ.utils.copyToClipboard(text);
+        }
+        if (text === null || text === undefined) return false;
+        const str = String(text);
+        const isSecure = Boolean(window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (isSecure && navigator?.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(str);
+                return true;
+            } catch (err) {
+                console.warn(`[${PLUGIN_NAME}] navigator.clipboard.writeText 失败，尝试降级:`, err);
+            }
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = 'none';
+            textarea.style.outline = 'none';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.opacity = '0.01';
+            textarea.style.zIndex = '-9999';
+            textarea.style.fontSize = '16px';
+            document.body.appendChild(textarea);
+            if (navigator.userAgent.match(/ipad|iphone|ipod/i)) {
+                textarea.contentEditable = 'true';
+                textarea.readOnly = false;
+                const range = document.createRange();
+                range.selectNodeContents(textarea);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                textarea.setSelectionRange(0, 999999);
+            } else {
+                textarea.focus({ preventScroll: true });
+                textarea.select();
+            }
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            if (success) return true;
+        } catch (fallbackErr) {
+            console.warn(`[${PLUGIN_NAME}] execCommand 复制降级失败:`, fallbackErr);
+        }
+        return false;
+    };
 
     const DEFAULT_SETTINGS = {
         enabled: true,
@@ -1575,15 +1631,16 @@
         }
 
         // 复制路径
-        dialog.querySelector('#rbq-action-copy-path')?.addEventListener('click', (e) => {
+        dialog.querySelector('#rbq-action-copy-path')?.addEventListener('click', async (e) => {
             e.stopPropagation();
             const textToCopy = info.path || current.url || '';
             if (!textToCopy) return toastr.warning('没有可复制的有效路径', PLUGIN_NAME);
-            navigator.clipboard.writeText(textToCopy).then(() => {
+            const ok = await copyToClipboard(textToCopy);
+            if (ok) {
                 toastr.success('路径已成功复制到剪贴板', PLUGIN_NAME);
-            }).catch(() => {
-                toastr.info(textToCopy, '路径复制');
-            });
+            } else {
+                toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+            }
         });
 
         // 打开设置

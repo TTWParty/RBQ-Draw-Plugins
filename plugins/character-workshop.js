@@ -2,10 +2,66 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.22';
+    const VERSION = '2.2.23';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
+
+    const copyToClipboard = async (text) => {
+        if (typeof RBQ?.utils?.copyToClipboard === 'function') {
+            return RBQ.utils.copyToClipboard(text);
+        }
+        if (text === null || text === undefined) return false;
+        const str = String(text);
+        const isSecure = Boolean(window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (isSecure && navigator?.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(str);
+                return true;
+            } catch (err) {
+                console.warn(`[${PLUGIN_NAME}] navigator.clipboard.writeText 失败，尝试降级:`, err);
+            }
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = 'none';
+            textarea.style.outline = 'none';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.opacity = '0.01';
+            textarea.style.zIndex = '-9999';
+            textarea.style.fontSize = '16px';
+            document.body.appendChild(textarea);
+            if (navigator.userAgent.match(/ipad|iphone|ipod/i)) {
+                textarea.contentEditable = 'true';
+                textarea.readOnly = false;
+                const range = document.createRange();
+                range.selectNodeContents(textarea);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                textarea.setSelectionRange(0, 999999);
+            } else {
+                textarea.focus({ preventScroll: true });
+                textarea.select();
+            }
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            if (success) return true;
+        } catch (fallbackErr) {
+            console.warn(`[${PLUGIN_NAME}] execCommand 复制降级失败:`, fallbackErr);
+        }
+        return false;
+    };
 
     // ══════════════════════════════════════════════════════════
     //  Utilities
@@ -1449,10 +1505,10 @@
 
             modal.querySelector('#cw-gal-close')?.addEventListener('click', () => modal.remove());
             modal.querySelector('#cw-gal-done')?.addEventListener('click', () => modal.remove());
-            modal.querySelector('#cw-gal-copy-prompt')?.addEventListener('click', () => {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(currentItem.prompt).then(() => toastr.success('已复制提示词', PLUGIN_NAME));
-                }
+            modal.querySelector('#cw-gal-copy-prompt')?.addEventListener('click', async () => {
+                const ok = await copyToClipboard(currentItem.prompt);
+                if (ok) toastr.success('已复制提示词', PLUGIN_NAME);
+                else toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
             });
             if (onSetAvatar) {
                 modal.querySelector('#cw-gal-set-avatar')?.addEventListener('click', () => {
@@ -1512,10 +1568,10 @@
 
         modal.querySelector('#cw-img-close')?.addEventListener('click', () => modal.remove());
         modal.querySelector('#cw-img-ok')?.addEventListener('click', () => modal.remove());
-        modal.querySelector('#cw-img-copy-prompt')?.addEventListener('click', () => {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(prompt).then(() => toastr.success('已复制提示词', PLUGIN_NAME));
-            }
+        modal.querySelector('#cw-img-copy-prompt')?.addEventListener('click', async () => {
+            const ok = await copyToClipboard(prompt);
+            if (ok) toastr.success('已复制提示词', PLUGIN_NAME);
+            else toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
         });
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
         document.body.appendChild(modal);
@@ -3266,11 +3322,11 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
         }
 
         // Copy prompt
-        container.querySelector('#cw-copy-prompt')?.addEventListener('click', () => {
+        container.querySelector('#cw-copy-prompt')?.addEventListener('click', async () => {
             const p = composeFinalPrompt(comp);
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(p).then(() => toastr.success('已复制合成提示词', PLUGIN_NAME));
-            }
+            const ok = await copyToClipboard(p);
+            if (ok) toastr.success('已复制合成提示词', PLUGIN_NAME);
+            else toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
         });
 
         // Save preset

@@ -11,11 +11,72 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.47';
+    const PLUGIN_VERSION = '6.0.48';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
     const DEFAULT_SYSTEM_PROMPT_VERSION = 46;
+
+    /**
+     * 跨平台/跨环境（HTTP / HTTPS / 局域网 / 移动端 / Termux）高可靠剪贴板复制工具
+     * @param {string} text 要复制的文本
+     * @returns {Promise<boolean>} 是否复制成功
+     */
+    const copyToClipboard = async (text) => {
+        if (typeof RBQ?.utils?.copyToClipboard === 'function') {
+            return RBQ.utils.copyToClipboard(text);
+        }
+        if (text === null || text === undefined) return false;
+        const str = String(text);
+        const isSecure = Boolean(window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (isSecure && navigator?.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(str);
+                return true;
+            } catch (err) {
+                console.warn(`[${PLUGIN_NAME}] navigator.clipboard.writeText 失败，尝试降级:`, err);
+            }
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = str;
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = 'none';
+            textarea.style.outline = 'none';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.opacity = '0.01';
+            textarea.style.zIndex = '-9999';
+            textarea.style.fontSize = '16px';
+            document.body.appendChild(textarea);
+            if (navigator.userAgent.match(/ipad|iphone|ipod/i)) {
+                textarea.contentEditable = 'true';
+                textarea.readOnly = false;
+                const range = document.createRange();
+                range.selectNodeContents(textarea);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                textarea.setSelectionRange(0, 999999);
+            } else {
+                textarea.focus({ preventScroll: true });
+                textarea.select();
+            }
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            if (success) return true;
+        } catch (fallbackErr) {
+            console.warn(`[${PLUGIN_NAME}] execCommand 复制降级失败:`, fallbackErr);
+        }
+        return false;
+    };
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
 任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若正文包含显式图组或媒介标记，必须按其实际数量 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。
@@ -3779,15 +3840,12 @@ Zimage 擅长理解复杂的英文长句和语境。
 
             modal.querySelector('#rbq-sdt-preview-close')?.addEventListener('click', () => modal.remove());
             modal.querySelector('#rbq-sdt-preview-done')?.addEventListener('click', () => modal.remove());
-            modal.querySelector('#rbq-sdt-preview-copy-prompt')?.addEventListener('click', () => {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(currentItem.prompt).then(() => {
-                        toastr.success('已复制测试提示词到剪贴板！', PLUGIN_NAME);
-                    }).catch(() => {
-                        toastr.info(currentItem.prompt.slice(0, 100), '测试提示词');
-                    });
+            modal.querySelector('#rbq-sdt-preview-copy-prompt')?.addEventListener('click', async () => {
+                const ok = await copyToClipboard(currentItem.prompt);
+                if (ok) {
+                    toastr.success('已复制测试提示词到剪贴板！', PLUGIN_NAME);
                 } else {
-                    toastr.info(currentItem.prompt.slice(0, 100), '测试提示词');
+                    toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
                 }
             });
             modal.querySelector('#rbq-sdt-preview-set-avatar')?.addEventListener('click', () => {
@@ -4758,18 +4816,15 @@ Zimage 擅长理解复杂的英文长句和语境。
         });
 
         modal.querySelectorAll('.rbq-sdt-copy-variant-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const idx = Number(btn.dataset.index);
                 const v = variants[idx];
                 if (v) {
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(v.tags).then(() => {
-                            toastr.success(`已复制变体「${v.title}」Tags 到剪贴板`, PLUGIN_NAME);
-                        }).catch(() => {
-                            toastr.info(v.tags.slice(0, 100), v.title);
-                        });
+                    const ok = await copyToClipboard(v.tags);
+                    if (ok) {
+                        toastr.success(`已复制变体「${v.title}」Tags 到剪贴板`, PLUGIN_NAME);
                     } else {
-                        toastr.info(v.tags.slice(0, 100), v.title);
+                        toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
                     }
                 }
             });
@@ -5495,7 +5550,7 @@ Zimage 擅长理解复杂的英文长句和语境。
                 });
 
                 resultsContainer.querySelectorAll('.rbq-sdt-copy-entry-tags').forEach(btn => {
-                    btn.addEventListener('click', () => {
+                    btn.addEventListener('click', async () => {
                         const idx = Number(btn.dataset.index);
                         const targetEntry = filtered[idx];
                         if (!targetEntry) return;
@@ -5504,14 +5559,11 @@ Zimage 擅长理解复杂的英文长句和语境。
                             openSubVariantPickerModal(targetEntry, null, false);
                         } else {
                             const tags = targetEntry.content || '';
-                            if (navigator.clipboard && navigator.clipboard.writeText) {
-                                navigator.clipboard.writeText(tags).then(() => {
-                                    toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
-                                }).catch(() => {
-                                    toastr.info(tags.slice(0, 100), '词条内容');
-                                });
+                            const ok = await copyToClipboard(tags);
+                            if (ok) {
+                                toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
                             } else {
-                                toastr.info(tags.slice(0, 100), '词条内容');
+                                toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
                             }
                         }
                     });
@@ -6679,16 +6731,13 @@ Zimage 擅长理解复杂的英文长句和语境。
             if (e.target === modal) modal.remove();
         });
         modal.querySelectorAll('.rbq-sdt-copy-hit-tags').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const tags = btn.dataset.tags || '';
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(tags).then(() => {
-                        toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
-                    }).catch(() => {
-                        toastr.info(tags.slice(0, 100), '词条内容');
-                    });
+                const ok = await copyToClipboard(tags);
+                if (ok) {
+                    toastr.success('已复制词条 Tags 到剪贴板', PLUGIN_NAME);
                 } else {
-                    toastr.info(tags.slice(0, 100), '词条内容');
+                    toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
                 }
             });
         });
@@ -8013,14 +8062,15 @@ SCHEMA:
             copyBtn.className = 'menu_button';
             copyBtn.style.cssText = 'font-size: 11px !important; padding: 1px 8px !important; margin: 0 !important; cursor: pointer; white-space: nowrap !important; flex-shrink: 0 !important; line-height: normal !important;';
             copyBtn.textContent = '📋 复制';
-            copyBtn.onclick = (e) => {
+            copyBtn.onclick = async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                navigator.clipboard.writeText(rawOutput).then(() => {
+                const ok = await copyToClipboard(rawOutput);
+                if (ok) {
                     toastr.success('已复制内容到剪贴板', PLUGIN_NAME);
-                }).catch(() => {
+                } else {
                     toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
-                });
+                }
             };
             summary.append(copyBtn);
 
@@ -8186,12 +8236,13 @@ SCHEMA:
             if (e.target === modal) closeModal();
         });
 
-        outputSection.querySelector('.rbq-sdt-copy-raw-btn')?.addEventListener('click', () => {
-            navigator.clipboard.writeText(rawOutput).then(() => {
+        outputSection.querySelector('.rbq-sdt-copy-raw-btn')?.addEventListener('click', async () => {
+            const ok = await copyToClipboard(rawOutput);
+            if (ok) {
                 toastr.success('已复制 LLM 原始响应', PLUGIN_NAME);
-            }).catch(() => {
+            } else {
                 toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
-            });
+            }
         });
     }
 
@@ -8464,15 +8515,16 @@ SCHEMA:
         });
 
         dialog.querySelectorAll('.rbq-sdt-copy-char-caption-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const text = btn.getAttribute('data-caption') || '';
                 if (text) {
-                    navigator.clipboard.writeText(text).then(() => {
+                    const ok = await copyToClipboard(text);
+                    if (ok) {
                         toastr.success('已复制角色生图词', PLUGIN_NAME);
-                    }).catch(() => {
-                        toastr.info(text.slice(0, 100), '角色生图词');
-                    });
+                    } else {
+                        toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+                    }
                 }
             });
         });
@@ -14911,7 +14963,7 @@ SCHEMA:
 
         // Tool buttons
         container.querySelectorAll('.rbq-comic-tool-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const action = btn.dataset.action;
                 const pId = btn.dataset.panelId;
@@ -14923,11 +14975,12 @@ SCHEMA:
                 } else if (action === 'copy-prompt') {
                     const promptToCopy = targetItem.prompt;
                     if (promptToCopy) {
-                        navigator.clipboard.writeText(promptToCopy).then(() => {
+                        const ok = await copyToClipboard(promptToCopy);
+                        if (ok) {
                             toastr.success('分镜提示词已复制到剪贴板！', PLUGIN_NAME);
-                        }).catch(() => {
+                        } else {
                             toastr.warning('复制失败，请手动选择复制', PLUGIN_NAME);
-                        });
+                        }
                     } else {
                         toastr.info('该分镜无记录提示词', PLUGIN_NAME);
                     }
@@ -15565,13 +15618,17 @@ SCHEMA:
         copyBtn.type = 'button';
         copyBtn.style.cssText = btnBaseStyle + ' background: rgba(255,255,255,0.08) !important; color: #e4e4e7 !important; border: 1px solid rgba(255,255,255,0.15) !important;';
         copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>复制 Tag</span>';
-        copyBtn.addEventListener('click', (e) => {
+        copyBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            navigator.clipboard.writeText(currentPrompt).then(() => {
+            const ok = await copyToClipboard(currentPrompt);
+            if (ok) {
                 toastr.success('Tag 已成功复制到剪贴板', PLUGIN_NAME);
-            }).catch(() => {
-                toastr.info(currentPrompt, '复制 Tag');
-            });
+                const oldHtml = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="fa-solid fa-check"></i><span>已复制!</span>';
+                setTimeout(() => { copyBtn.innerHTML = oldHtml; }, 1800);
+            } else {
+                toastr.warning('复制失败，请手动选择复制', PLUGIN_NAME);
+            }
         });
         actionRow.appendChild(copyBtn);
 

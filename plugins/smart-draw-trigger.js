@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.46';
+    const PLUGIN_VERSION = '6.0.47';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -15469,10 +15469,72 @@ SCHEMA:
 
         const btnBaseStyle = 'display: inline-flex !important; flex-direction: row !important; align-items: center !important; justify-content: center !important; gap: 6px !important; white-space: nowrap !important; padding: 6px 14px !important; font-size: 12px !important; border-radius: 6px !important; cursor: pointer !important; font-weight: 500 !important; box-sizing: border-box !important;';
 
+        // 未生图时展示核心生图按钮；已生图时展示重新生图按钮
+        if (!hasImage) {
+            const generateBtn = document.createElement('button');
+            generateBtn.type = 'button';
+            generateBtn.style.cssText = btnBaseStyle + ' background: linear-gradient(135deg, rgba(121,228,255,0.25), rgba(99,102,241,0.25)) !important; color: #fff !important; border: 1px solid #79e4ff !important; font-weight: 600 !important; box-shadow: 0 2px 10px rgba(121,228,255,0.18) !important;';
+            generateBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>🎨 立即生图</span>';
+            generateBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                generateBtn.disabled = true;
+                generateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>正在生成图像...</span>';
+                toastr.info('开始按当前提炼 Tag 生成图像...', PLUGIN_NAME);
+                try {
+                    prepareNaiCharData(segment);
+                    const drawResult = await RBQ.api.generateImage(currentPrompt, 'sdt-test');
+                    toastr.success('智能测试生图完成！', PLUGIN_NAME);
+                    renderSdtTestResultCard({
+                        result: drawResult,
+                        segment,
+                        prompt,
+                        finalPrompt: currentPrompt,
+                        isGenerated: true,
+                        container,
+                        onRedrawPrompt
+                    });
+                } catch (err) {
+                    toastr.error(`生图失败: ${err.message || err}`, PLUGIN_NAME);
+                    generateBtn.disabled = false;
+                    generateBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>🎨 立即生图</span>';
+                }
+            });
+            actionRow.appendChild(generateBtn);
+        } else {
+            const redrawBtn = document.createElement('button');
+            redrawBtn.type = 'button';
+            redrawBtn.style.cssText = btnBaseStyle + ' background: rgba(255,184,108,0.18) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.4) !important; font-weight: 500 !important;';
+            redrawBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i><span>重新生图</span>';
+            redrawBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                redrawBtn.disabled = true;
+                redrawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>生成中...</span>';
+                try {
+                    prepareNaiCharData(segment);
+                    const drawResult = await RBQ.api.generateImage(currentPrompt, 'sdt-test-redraw');
+                    toastr.success('重新生图完成！', PLUGIN_NAME);
+                    renderSdtTestResultCard({
+                        result: drawResult,
+                        segment,
+                        prompt,
+                        finalPrompt: currentPrompt,
+                        isGenerated: true,
+                        container,
+                        onRedrawPrompt
+                    });
+                } catch (err) {
+                    toastr.error(`重新生图失败: ${err.message || err}`, PLUGIN_NAME);
+                    redrawBtn.disabled = false;
+                    redrawBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i><span>重新生图</span>';
+                }
+            });
+            actionRow.appendChild(redrawBtn);
+        }
+
         const adjustBtn = document.createElement('button');
         adjustBtn.type = 'button';
         adjustBtn.style.cssText = btnBaseStyle + ' background: rgba(100,180,255,0.18) !important; color: #79e4ff !important; border: 1px solid rgba(100,180,255,0.4) !important;';
-        adjustBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i><span>调整 Tag 并重新生图</span>';
+        adjustBtn.innerHTML = `<i class="fa-solid fa-pen-to-square"></i><span>${hasImage ? '调整 Tag 并重新生图' : '调整 Tag 并生图'}</span>`;
         adjustBtn.addEventListener('click', (e) => {
             e.preventDefault();
             openSegmentManualTagModal(null, segment, {
@@ -15513,19 +15575,6 @@ SCHEMA:
         });
         actionRow.appendChild(copyBtn);
 
-        const backfillBtn = document.createElement('button');
-        backfillBtn.type = 'button';
-        backfillBtn.style.cssText = btnBaseStyle + ' background: rgba(255,255,255,0.08) !important; color: #e4e4e7 !important; border: 1px solid rgba(255,255,255,0.15) !important;';
-        backfillBtn.innerHTML = '<i class="fa-solid fa-arrow-up-from-bracket"></i><span>回填到输入框</span>';
-        backfillBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (typeof RBQ?.ui?.setTestPrompt === 'function') {
-                RBQ.ui.setTestPrompt(currentPrompt);
-            }
-            toastr.success('已回填至测试提示词输入框', PLUGIN_NAME);
-        });
-        actionRow.appendChild(backfillBtn);
-
         card.appendChild(actionRow);
         container.replaceChildren(card);
     }
@@ -15552,14 +15601,14 @@ SCHEMA:
         }
     };
 
-    // 注册测试面板动作按钮（智能测试生成 & 智能解析 Tag）
+    // 注册测试面板动作按钮（仅保留一个核心「智能测试」：先智能解析分镜 Tag，用户审阅后再决定生图）
     if (typeof RBQ?.ui?.registerTestAction === 'function') {
         RBQ.ui.registerTestAction({
-            id: 'sdt-smart-generate',
-            label: '智能测试生成',
+            id: 'sdt-smart-test',
+            label: '智能测试',
             icon: 'fa-solid fa-wand-magic-sparkles',
             priority: 20,
-            style: 'background: rgba(100,180,255,0.12); border: 1px solid rgba(100,180,255,0.3); font-weight: 600;',
+            style: 'background: rgba(100,180,255,0.14); border: 1px solid rgba(100,180,255,0.35); font-weight: 600;',
             onClick: async ({ getPrompt, setResult, setLoading }) => {
                 const prompt = (getPrompt?.() || '').trim();
                 if (!prompt) {
@@ -15568,58 +15617,14 @@ SCHEMA:
                 }
                 try {
                     setLoading(true, '<i class="fa-solid fa-spinner fa-spin"></i> tagger 分析中...');
-                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用 Tagger API 分析...</span>');
+                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用 Tagger API 分析分镜...</span>');
 
                     const { segment: seg, finalPrompt } = await parseTaggerSegment(prompt, (progressText) => {
                         setResult(`<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText)}</span>`);
                     });
 
                     prepareNaiCharData(seg);
-                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> Tagger 分析成功，开始生成图像...</span>');
-
-                    const result = await RBQ.api.generateImage(finalPrompt, 'sdt-test', {});
-                    toastr.success('智能测试生成完成', PLUGIN_NAME);
-
-                    renderSdtTestResultCard({
-                        result,
-                        segment: seg,
-                        prompt,
-                        finalPrompt,
-                        isGenerated: true,
-                        container: RBQ?.ui?.getTestResultContainer?.(),
-                        onRedrawPrompt: handleSdtTestRedraw
-                    });
-                } catch (error) {
-                    toastr.error(error.message || String(error), PLUGIN_NAME);
-                    setResult(`<span style="color: #e05252; font-size: 14px;">错误: ${escapeHtml(error.message || String(error))}</span>`);
-                } finally {
-                    setLoading(false);
-                }
-            }
-        });
-
-        RBQ.ui.registerTestAction({
-            id: 'sdt-parse-tags',
-            label: '🏷️ 智能解析 Tag',
-            icon: 'fa-solid fa-tags',
-            priority: 10,
-            style: 'background: rgba(180,130,255,0.12); border: 1px solid rgba(180,130,255,0.3); font-weight: 500;',
-            onClick: async ({ getPrompt, setResult, setLoading }) => {
-                const prompt = (getPrompt?.() || '').trim();
-                if (!prompt) {
-                    toastr.warning('请先输入测试提示词', PLUGIN_NAME);
-                    return;
-                }
-                try {
-                    setLoading(true, '<i class="fa-solid fa-spinner fa-spin"></i> tagger 分析中...');
-                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用 Tagger API 分析...</span>');
-
-                    const { segment: seg, finalPrompt } = await parseTaggerSegment(prompt, (progressText) => {
-                        setResult(`<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText)}</span>`);
-                    });
-
-                    prepareNaiCharData(seg);
-                    toastr.success('Tag 解析完成（未消耗出图配额）', PLUGIN_NAME);
+                    toastr.success('分镜 Tag 提炼完成，可预览词条后点击「立即生图」', PLUGIN_NAME);
 
                     renderSdtTestResultCard({
                         result: null,

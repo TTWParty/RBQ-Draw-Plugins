@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.21';
+    const VERSION = '2.2.22';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1002,7 +1002,8 @@
             // 若名字含有中文字符，严禁作为 Danbooru 提示词标签注入！
             const isChineseName = /[\u4e00-\u9fa5]/.test(rawName);
             const namePrefix = (!isChineseName && rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
-            const centerStr = formatCoordOutput(slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3')));
+            const center = slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'));
+            const centerStr = formatCoordOutput(center);
             const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + centerStr) : '';
 
             // 模板动作分配给此槽位

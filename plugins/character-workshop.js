@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.20';
+    const VERSION = '2.2.21';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -57,7 +57,7 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    //  Coordinate System (5x5 Stage Grid)
+    //  Coordinate System (5x5 Stage Grid & Continuous Float Coords)
     // ══════════════════════════════════════════════════════════
     const COLS = ['A', 'B', 'C', 'D', 'E'];
     const ROWS = ['1', '2', '3', '4', '5'];
@@ -68,9 +68,81 @@
         A4: '左下方',   B4: '左前方',   C4: '正前方',   D4: '右前方',   E4: '右下方',
         A5: '左下特写', B5: '偏左特写', C5: '中央特写', D5: '偏右特写', E5: '右下特写'
     };
+
+    function cwParseCoord(raw) {
+        if (!raw) return { x: 0.5, y: 0.5 };
+        if (typeof raw === 'object') {
+            if ('x' in raw && 'y' in raw) {
+                const x = Math.max(0, Math.min(1, parseFloat(raw.x) || 0.5));
+                const y = Math.max(0, Math.min(1, parseFloat(raw.y) || 0.5));
+                return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
+            }
+            if (Array.isArray(raw) && raw.length >= 2) {
+                const x = Math.max(0, Math.min(1, parseFloat(raw[0]) || 0.5));
+                const y = Math.max(0, Math.min(1, parseFloat(raw[1]) || 0.5));
+                return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
+            }
+        }
+        if (typeof raw === 'string') {
+            const s = raw.trim();
+            const gridMatch = s.toUpperCase().match(/^([A-E])([1-5])$/);
+            if (gridMatch) {
+                const col = gridMatch[1].charCodeAt(0) - 65; // A=0, B=1, C=2, D=3, E=4
+                const row = parseInt(gridMatch[2], 10) - 1; // 1=0, 2=1, 3=2, 4=3, 5=4
+                const x = Number(((col + 0.5) / 5).toFixed(2));
+                const y = Number(((row + 0.5) / 5).toFixed(2));
+                return { x, y };
+            }
+            const numMatch = s.match(/([0-1]?(?:\.\d+)?|\d+)[,\s:x/]+([0-1]?(?:\.\d+)?|\d+)/);
+            if (numMatch) {
+                let x = parseFloat(numMatch[1]);
+                let y = parseFloat(numMatch[2]);
+                if (!isNaN(x) && !isNaN(y)) {
+                    if (x > 1 && x <= 5) x = (x - 0.5) / 5;
+                    if (y > 1 && y <= 5) y = (y - 0.5) / 5;
+                    return { x: Number(Math.max(0, Math.min(1, x)).toFixed(2)), y: Number(Math.max(0, Math.min(1, y)).toFixed(2)) };
+                }
+            }
+        }
+        return { x: 0.5, y: 0.5 };
+    }
+
+    function formatCoordOutput(coord) {
+        if (!coord) return '0.50,0.50';
+        if (typeof coord === 'string') {
+            const s = coord.trim();
+            if (/^[A-E][1-5]$/i.test(s)) return s.toUpperCase();
+            const pt = cwParseCoord(s);
+            return `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`;
+        }
+        if (typeof coord === 'object') {
+            const pt = cwParseCoord(coord);
+            return `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`;
+        }
+        return '0.50,0.50';
+    }
+
+    function formatCenterDisplay(coord) {
+        if (!coord) return 'X:0.50, Y:0.50';
+        if (typeof coord === 'string') {
+            const s = coord.trim().toUpperCase();
+            if (/^[A-E][1-5]$/.test(s)) return s;
+        }
+        const pt = cwParseCoord(coord);
+        return `X:${pt.x.toFixed(2)}, Y:${pt.y.toFixed(2)}`;
+    }
+
     function coordLabel(c) {
-        const u = (c || 'C3').toUpperCase();
-        return COORD_LABELS[u] ? `${u} (${COORD_LABELS[u]})` : u;
+        if (!c) return '正中 (C3)';
+        if (typeof c === 'string') {
+            const u = c.trim().toUpperCase();
+            if (COORD_LABELS[u]) return `${u} (${COORD_LABELS[u]})`;
+        }
+        const pt = cwParseCoord(c);
+        const colIdx = Math.max(0, Math.min(4, Math.floor(pt.x * 5)));
+        const rowIdx = Math.max(0, Math.min(4, Math.floor(pt.y * 5)));
+        const gridKey = COLS[colIdx] + ROWS[rowIdx];
+        return `X:${pt.x.toFixed(2)}, Y:${pt.y.toFixed(2)} (${COORD_LABELS[gridKey] || gridKey})`;
     }
 
     const COLORS = [
@@ -930,8 +1002,8 @@
             // 若名字含有中文字符，严禁作为 Danbooru 提示词标签注入！
             const isChineseName = /[\u4e00-\u9fa5]/.test(rawName);
             const namePrefix = (!isChineseName && rawName && !base.toLowerCase().includes(rawName.toLowerCase())) ? rawName : '';
-            const center = (slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3'))).toUpperCase();
-            const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + center) : '';
+            const centerStr = formatCoordOutput(slot.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3')));
+            const centersSuffix = (comp?.useCoords === true) ? ('|centers:' + centerStr) : '';
 
             // 模板动作分配给此槽位
             let tplActionForSlot = (i === 0 ? extraChar1Tpl : (i === 1 ? extraChar2Tpl : ''));
@@ -1470,12 +1542,12 @@
 .cw-card{background:rgba(30,41,59,.45);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:12px;backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:9px;max-width:100%;box-sizing:border-box;overflow:hidden}
 .cw-card-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;max-width:100%;box-sizing:border-box}
 .cw-card-tt{font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:6px;color:#e2e8f0}
-.cw-grid5{width:250px;height:250px;background:rgba(15,23,42,.7);border:1.5px solid rgba(56,189,248,.35);border-radius:9px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:2px;padding:3px;position:relative;box-shadow:inset 0 0 18px rgba(0,0,0,.5);flex-shrink:0}
-.cw-cell{background:rgba(255,255,255,.03);border-radius:3px;border:1px dashed rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;position:relative;font-size:9.5px;color:rgba(255,255,255,.3);font-weight:bold}
+.cw-grid5{width:250px;height:250px;background:rgba(15,23,42,.75);border:1.5px solid rgba(56,189,248,.35);border-radius:9px;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:0;padding:0;position:relative;box-shadow:inset 0 0 18px rgba(0,0,0,.5);flex-shrink:0;box-sizing:border-box}
+.cw-cell{background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.15s;position:relative;font-size:9.5px;color:rgba(255,255,255,.3);font-weight:bold;box-sizing:border-box}
 .cw-cell:hover{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.5);color:#38bdf8}
 .cw-cell.has{border-style:solid}
-.cw-pin{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:2;cursor:pointer;transition:.15s}
-.cw-pin:hover{transform:scale(1.2)}
+.cw-pin{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.6);position:absolute;z-index:3;cursor:grab;transition:transform .12s, box-shadow .12s;touch-action:none;user-select:none;-webkit-user-select:none}
+.cw-pin:active{cursor:grabbing}
 .cw-slot{background:rgba(15,23,42,.55);border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:11px;display:flex;flex-direction:column;gap:9px;transition:.2s;box-sizing:border-box;max-width:100%}
 .cw-slot.on{border-color:#38bdf8;box-shadow:0 0 10px rgba(56,189,248,.15)}
 .cw-slot-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -2206,6 +2278,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             slots.push({ charName: '', outfitId: '', customOutfit: '', action: '', uc: '', center: 'B3' });
         }
         const ai = Math.min(slots.length - 1, Math.max(0, comp.activeSlotIndex || 0));
+        const activePt = cwParseCoord(slots[ai]?.center || (ai === 0 ? 'B3' : (ai === 1 ? 'D3' : 'C3')));
 
         const chatProfiles = getCurrentChatProfiles();
         const globalProfiles = getAllGlobalProfiles();
@@ -2367,39 +2440,89 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 </div>
             </div>
 
-            <!-- 3. 空间布局与场景设定 (网格按复选框直接展开/折叠) -->
+            <!-- 3. 空间布局与场景设定 (连续与网格定位) -->
             <div class="cw-card">
                 <div class="cw-card-hd" style="flex-wrap:wrap;gap:8px">
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                         <span class="cw-card-tt" style="color:#fbbf24"><i class="fa-solid fa-chess-board"></i> ③ 空间布局与场景设定</span>
-                        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);user-select:none" title="关闭后由 AI 自主决定角色构图站位，网格收起；开启后按 5×5 网格固定坐标">
+                        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;background:rgba(255,255,255,0.06);padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);user-select:none" title="关闭后由 AI 自主决定角色构图站位，网格收起；开启后按坐标定位">
                             <input type="checkbox" id="cw-toggle-coords" ${useCoords ? 'checked' : ''} style="margin:0;cursor:pointer" />
                             <span style="color:${useCoords ? '#38bdf8' : 'rgba(255,255,255,0.7)'};font-weight:${useCoords ? 'bold' : 'normal'}">
-                                <i class="fa-solid fa-crosshairs"></i> 5×5 严格坐标定位
+                                <i class="fa-solid fa-crosshairs"></i> V5 空间坐标定位 (连续/5×5)
                             </span>
                         </label>
                     </div>
                     <div style="font-size:11px;opacity:.65">
-                        ${useCoords ? `当前状态: 🎯 严格坐标定位已开启 (网格已展开)` : `当前状态: 🤖 由 AI 自行决定自然构图 (网格已折叠收起)`}
+                        ${useCoords ? `当前状态: 🎯 空间坐标定位已开启 (支持触控/拖拽无级调节)` : `当前状态: 🤖 由 AI 自行决定自然构图 (面板已折叠收起)`}
                     </div>
                 </div>
 
                 <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
                     ${useCoords ? `
-                    <!-- 5x5 Grid (勾选展开，关闭折叠) -->
-                    <div style="display:flex;flex-direction:column;gap:6px">
-                        <div class="cw-grid5" id="cw-stage">
+                    <!-- 2D Continuous & 5x5 Stage Grid -->
+                    <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+                        <div class="cw-grid5" id="cw-stage" style="position:relative;width:250px;height:250px;touch-action:none;user-select:none;cursor:crosshair;overflow:hidden;box-sizing:border-box">
                             ${ROWS.map(r => COLS.map(c => {
                                 const coord = c + r;
-                                const charsHere = slots.map((s, i) => ({ ...s, si: i })).filter(s => (s.center || (s.si === 0 ? 'B3' : 'D3')).toUpperCase() === coord);
-                                return `<div class="cw-cell ${charsHere.length ? 'has' : ''}" data-coord="${coord}">
+                                return `<div class="cw-cell" data-coord="${coord}" title="${coord} (${COORD_LABELS[coord]})">
                                     <span>${coord}</span>
-                                    ${charsHere.map(s => `<div class="cw-pin" data-si="${s.si}" style="background:${COLORS[s.si % COLORS.length].hex}; border: 2px solid ${ai === s.si ? '#fff' : 'rgba(0,0,0,0.5)'}; transform: ${ai === s.si ? 'scale(1.25)' : 'scale(1)'}" title="Char ${s.si + 1}">${s.si + 1}</div>`).join('')}
                                 </div>`;
                             }).join('')).join('')}
+
+                            <!-- Safe-zone guide (inset 10%) -->
+                            <div style="position:absolute;left:10%;top:10%;width:80%;height:80%;border:1px dashed rgba(56,189,248,0.3);border-radius:4px;pointer-events:none;z-index:1"></div>
+
+                            <!-- Continuous Draggable Pins for all slots -->
+                            ${slots.map((s, i) => {
+                                const pt = cwParseCoord(s.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3')));
+                                const isActive = (ai === i);
+                                const col = COLORS[i % COLORS.length];
+                                const charTitle = esc(s.charName || `Char ${i + 1}`);
+                                return `<div class="cw-pin" data-si="${i}" style="
+                                    position: absolute;
+                                    left: ${pt.x * 100}%;
+                                    top: ${pt.y * 100}%;
+                                    transform: translate(-50%, -50%) ${isActive ? 'scale(1.25)' : 'scale(1)'};
+                                    background: ${col.hex};
+                                    border: 2px solid ${isActive ? '#ffffff' : 'rgba(0,0,0,0.6)'};
+                                    box-shadow: ${isActive ? '0 0 12px ' + col.hex + ', 0 2px 6px rgba(0,0,0,0.8)' : '0 2px 5px rgba(0,0,0,0.6)'};
+                                    z-index: ${isActive ? 10 : 3};
+                                    cursor: grab;
+                                    touch-action: none;
+                                " title="${charTitle} (${formatCenterDisplay(s.center || pt)})">
+                                    ${i + 1}
+                                </div>`;
+                            }).join('')}
                         </div>
-                        <div style="display:flex;gap:4px;flex-wrap:wrap">
-                            ${slots.map((s, i) => `<button class="cw-btn sm cw-switch-slot ${(comp.activeSlotIndex || 0) === i ? 'cy' : ''}" data-idx="${i}" type="button">控制 Char ${i + 1} (${s.center || (i === 0 ? 'B3' : 'D3')})</button>`).join('')}
+
+                        <!-- Active Slot Coordinates Controls -->
+                        <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;gap:5px;width:250px;box-sizing:border-box">
+                            <div style="display:flex;align-items:center;justify-content:space-between">
+                                <span style="font-size:11px;font-weight:bold;color:${COLORS[ai % COLORS.length].hex}">
+                                    <i class="fa-solid fa-location-dot"></i> Char ${ai + 1} (${esc(slots[ai]?.charName || '未命名')})
+                                </span>
+                                <button class="cw-btn sm" id="cw-toggle-snap" type="button" style="padding:2px 6px;font-size:10px;background:${comp.snapGrid ? 'rgba(56,189,248,0.25)' : 'rgba(255,255,255,0.06)'};color:${comp.snapGrid ? '#38bdf8' : '#cbd5e1'};border:1px solid ${comp.snapGrid ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.15)'}">
+                                    <i class="fa-solid fa-magnet"></i> 网格吸附: ${comp.snapGrid ? '开' : '关'}
+                                </button>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px">
+                                <label style="font-size:10.5px;color:#cbd5e1;display:flex;align-items:center;gap:3px;flex:1">
+                                    X: <input type="number" step="0.01" min="0" max="1" id="cw-coord-x" class="cw-in" style="padding:2px 5px;font-size:11px;width:100%" value="${activePt.x.toFixed(2)}" />
+                                </label>
+                                <label style="font-size:10.5px;color:#cbd5e1;display:flex;align-items:center;gap:3px;flex:1">
+                                    Y: <input type="number" step="0.01" min="0" max="1" id="cw-coord-y" class="cw-in" style="padding:2px 5px;font-size:11px;width:100%" value="${activePt.y.toFixed(2)}" />
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Slot switcher buttons -->
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:250px">
+                            ${slots.map((s, i) => {
+                                const pt = cwParseCoord(s.center || (i === 0 ? 'B3' : (i === 1 ? 'D3' : 'C3')));
+                                return `<button class="cw-btn sm cw-switch-slot ${(comp.activeSlotIndex || 0) === i ? 'cy' : ''}" data-idx="${i}" type="button" style="font-size:10.5px;padding:2px 6px">
+                                    Char ${i + 1} (${pt.x.toFixed(2)},${pt.y.toFixed(2)})
+                                </button>`;
+                            }).join('')}
                         </div>
                     </div>` : ''}
 
@@ -2969,7 +3092,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             }, 'camera');
         });
 
-        // 5x5 Coords toggle
+        // 5x5 / Continuous Coords toggle
         container.querySelector('#cw-toggle-coords')?.addEventListener('change', (e) => {
             comp.useCoords = !!e.target.checked;
             const s = RBQ.api.getSettings();
@@ -2977,25 +3100,169 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             s[MCC_KEY].useCoords = comp.useCoords;
             wsSave();
             refresh('composer');
-            toastr.info(comp.useCoords ? '5×5 严格坐标定位已开启' : '严格坐标定位已关闭，角色站位将由 AI 自主决定', PLUGIN_NAME);
+            toastr.info(comp.useCoords ? 'V5 空间坐标定位已开启' : '坐标定位已关闭，角色站位将由 AI 自主决定', PLUGIN_NAME);
         });
 
-        // 5x5 pin & cell clicks
-        container.querySelectorAll('.cw-pin').forEach(pin => pin.addEventListener('click', (e) => {
-            e.stopPropagation();
-            comp.activeSlotIndex = +pin.dataset.si;
+        // Snap toggle
+        container.querySelector('#cw-toggle-snap')?.addEventListener('click', () => {
+            comp.snapGrid = !comp.snapGrid;
             wsSave();
             refresh('composer');
-        }));
-        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', () => {
-            const ai = comp.activeSlotIndex || 0;
-            if (comp.slots[ai]) { comp.slots[ai].center = cell.dataset.coord; wsSave(); refresh('composer'); }
-        }));
+        });
+
+        // Slot switcher buttons
         container.querySelectorAll('.cw-switch-slot').forEach(b => b.addEventListener('click', () => {
             comp.activeSlotIndex = +b.dataset.idx;
             wsSave();
             refresh('composer');
         }));
+
+        // Grid cell clicks (snap active slot to clicked cell)
+        container.querySelectorAll('.cw-cell').forEach(cell => cell.addEventListener('click', () => {
+            const ai = comp.activeSlotIndex || 0;
+            if (comp.slots && comp.slots[ai]) {
+                const coord = cell.dataset.coord;
+                const pt = cwParseCoord(coord);
+                comp.slots[ai].center = comp.snapGrid ? coord : { x: pt.x, y: pt.y };
+                wsSave();
+                refresh('composer');
+            }
+        }));
+
+        // Draggable pins and continuous stage interaction
+        const stage = container.querySelector('#cw-stage');
+        if (stage) {
+            let activeDragSlot = null;
+
+            const snapValue = (val) => {
+                return Math.max(0.1, Math.min(0.9, Math.round((val - 0.1) / 0.2) * 0.2 + 0.1));
+            };
+
+            const updateSlotPos = (si, rawX, rawY, saveAndRefresh = false) => {
+                let px = Math.max(0, Math.min(1, rawX));
+                let py = Math.max(0, Math.min(1, rawY));
+                if (comp.snapGrid) {
+                    px = snapValue(px);
+                    py = snapValue(py);
+                }
+                const fx = Number(px.toFixed(2));
+                const fy = Number(py.toFixed(2));
+
+                if (comp.slots && comp.slots[si]) {
+                    comp.slots[si].center = { x: fx, y: fy };
+                }
+
+                // Update pin visually
+                const pin = stage.querySelector(`.cw-pin[data-si="${si}"]`);
+                if (pin) {
+                    pin.style.left = `${(fx * 100)}%`;
+                    pin.style.top = `${(fy * 100)}%`;
+                    pin.setAttribute('title', `${comp.slots[si]?.charName || 'Char ' + (si + 1)} (${formatCenterDisplay(comp.slots[si]?.center)})`);
+                }
+
+                // If active slot, update inputs and preview
+                if (si === (comp.activeSlotIndex || 0)) {
+                    const inX = container.querySelector('#cw-coord-x');
+                    const inY = container.querySelector('#cw-coord-y');
+                    if (inX) inX.value = fx.toFixed(2);
+                    if (inY) inY.value = fy.toFixed(2);
+                }
+
+                updatePromptPreview();
+
+                if (saveAndRefresh) {
+                    wsSave();
+                    refresh('composer');
+                }
+            };
+
+            stage.querySelectorAll('.cw-pin').forEach(pin => {
+                pin.addEventListener('pointerdown', (e) => {
+                    e.stopPropagation();
+                    const si = parseInt(pin.dataset.si, 10);
+                    comp.activeSlotIndex = si;
+                    activeDragSlot = si;
+                    try { pin.setPointerCapture(e.pointerId); } catch (_) {}
+                    // Refresh active highlight immediately
+                    stage.querySelectorAll('.cw-pin').forEach(p => {
+                        const isCur = parseInt(p.dataset.si, 10) === si;
+                        p.style.zIndex = isCur ? '10' : '3';
+                        p.style.transform = `translate(-50%, -50%) ${isCur ? 'scale(1.25)' : 'scale(1)'}`;
+                        p.style.border = `2px solid ${isCur ? '#ffffff' : 'rgba(0,0,0,0.6)'}`;
+                    });
+                });
+
+                pin.addEventListener('pointermove', (e) => {
+                    if (activeDragSlot === null) return;
+                    const rect = stage.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return;
+                    const rx = (e.clientX - rect.left) / rect.width;
+                    const ry = (e.clientY - rect.top) / rect.height;
+                    updateSlotPos(activeDragSlot, rx, ry, false);
+                });
+
+                const endDrag = (e) => {
+                    if (activeDragSlot === null) return;
+                    activeDragSlot = null;
+                    try { pin.releasePointerCapture(e.pointerId); } catch (_) {}
+                    wsSave();
+                    refresh('composer');
+                };
+
+                pin.addEventListener('pointerup', endDrag);
+                pin.addEventListener('pointercancel', endDrag);
+            });
+
+            // Stage surface click / drag for active pin
+            stage.addEventListener('pointerdown', (e) => {
+                if (e.target.classList.contains('cw-pin')) return;
+                const ai = comp.activeSlotIndex || 0;
+                activeDragSlot = ai;
+                try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+                const rect = stage.getBoundingClientRect();
+                if (!rect.width || !rect.height) return;
+                const rx = (e.clientX - rect.left) / rect.width;
+                const ry = (e.clientY - rect.top) / rect.height;
+                updateSlotPos(ai, rx, ry, false);
+            });
+
+            stage.addEventListener('pointermove', (e) => {
+                if (activeDragSlot === null || e.target.classList.contains('cw-pin')) return;
+                const rect = stage.getBoundingClientRect();
+                if (!rect.width || !rect.height) return;
+                const rx = (e.clientX - rect.left) / rect.width;
+                const ry = (e.clientY - rect.top) / rect.height;
+                updateSlotPos(activeDragSlot, rx, ry, false);
+            });
+
+            const endStageDrag = (e) => {
+                if (activeDragSlot === null || e.target.classList.contains('cw-pin')) return;
+                activeDragSlot = null;
+                try { stage.releasePointerCapture(e.pointerId); } catch (_) {}
+                wsSave();
+                refresh('composer');
+            };
+
+            stage.addEventListener('pointerup', endStageDrag);
+            stage.addEventListener('pointercancel', endStageDrag);
+
+            // Numeric input handlers for active slot
+            const inputCoordX = container.querySelector('#cw-coord-x');
+            const inputCoordY = container.querySelector('#cw-coord-y');
+
+            const handleCoordInput = () => {
+                const ai = comp.activeSlotIndex || 0;
+                const vx = parseFloat(inputCoordX?.value || '0.5');
+                const vy = parseFloat(inputCoordY?.value || '0.5');
+                updateSlotPos(ai, isNaN(vx) ? 0.5 : vx, isNaN(vy) ? 0.5 : vy, false);
+                wsSave();
+            };
+
+            inputCoordX?.addEventListener('change', () => { handleCoordInput(); refresh('composer'); });
+            inputCoordY?.addEventListener('change', () => { handleCoordInput(); refresh('composer'); });
+            inputCoordX?.addEventListener('input', handleCoordInput);
+            inputCoordY?.addEventListener('input', handleCoordInput);
+        }
 
         // Copy prompt
         container.querySelector('#cw-copy-prompt')?.addEventListener('click', () => {

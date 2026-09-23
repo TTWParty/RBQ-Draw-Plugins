@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.38';
+    const PLUGIN_VERSION = '6.0.39';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7044,24 +7044,6 @@ SCHEMA:
             const charName = c._rawName || c.name || `角色 ${idx + 1}`;
             const centerDisplay = formatCenterDisplay(c.center);
             const pt = sdtParseCoord(c.center);
-            let matchedOptVal = null;
-            if (typeof c.center === 'string') {
-                const s = c.center.trim().toUpperCase();
-                if (COORD_OPTIONS.some(opt => opt.val === s)) matchedOptVal = s;
-            }
-            if (!matchedOptVal) {
-                const gridOpt = COORD_OPTIONS.find(opt => {
-                    const optPt = sdtParseCoord(opt.val);
-                    return Math.abs(optPt.x - pt.x) < 0.01 && Math.abs(optPt.y - pt.y) < 0.01;
-                });
-                if (gridOpt) matchedOptVal = gridOpt.val;
-            }
-            const currentVal = matchedOptVal || centerDisplay;
-            const hasOption = COORD_OPTIONS.some(opt => opt.val === currentVal);
-            const optionsToRender = hasOption ? COORD_OPTIONS : [{ val: currentVal, label: `${centerDisplay} (${formatCoordLabel(c.center)})` }, ...COORD_OPTIONS];
-            const coordOpts = optionsToRender.map(opt => `
-                <option value="${escapeHtml(opt.val)}"${opt.val === currentVal ? ' selected' : ''}>${escapeHtml(opt.label)}</option>
-            `).join('');
 
             const charCaption = c.caption || [c.base, c.outfit, c.action].filter(Boolean).join(', ') || [c._rawBase, c._rawOutfit, c._rawAction].filter(Boolean).join(', ');
             const charUc = c.uc || '';
@@ -7076,10 +7058,108 @@ SCHEMA:
                             <input class="rbq-sdt-manual-char-name" type="hidden" value="${escapeHtml(charName)}">
                         </div>
                         <div style="display: flex !important; align-items: center !important; gap: 6px !important;">
-                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.6) !important;">构图坐标:</span>
-                            <select class="rbq-sdt-manual-char-center" style="background: rgba(0,0,0,0.5) !important; border: 1px solid rgba(104,215,255,0.35) !important; color: #79e4ff !important; border-radius: 4px !important; padding: 3px 8px !important; font-size: 11px !important; cursor: pointer !important;">
-                                ${coordOpts}
-                            </select>
+                            <span style="font-size: 11px !important; color: rgba(255,255,255,0.7) !important; font-weight: 500 !important;">
+                                <i class="fa-solid fa-crosshairs" style="color: #79e4ff !important;"></i> 构图坐标:
+                            </span>
+                            <span class="rbq-sdt-char-coord-badge" style="background: rgba(104,215,255,0.12) !important; border: 1px solid rgba(104,215,255,0.3) !important; color: #79e4ff !important; border-radius: 4px !important; padding: 2px 8px !important; font-size: 11px !important; font-weight: bold !important;">
+                                ${centerDisplay} (${formatCoordLabel(c.center)})
+                            </span>
+                            <input type="hidden" class="rbq-sdt-manual-char-center" value="${escapeHtml(typeof c.center === 'string' ? c.center : `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`)}">
+                        </div>
+                    </div>
+
+                    <!-- 2D 连续坐标定位盘 (Touch & Mouse Draggable Pad) -->
+                    <div class="rbq-sdt-coord-pad-box" style="background: rgba(0,0,0,0.28) !important; border: 1px solid rgba(104,215,255,0.18) !important; border-radius: 8px !important; padding: 10px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;">
+                        <div style="display: flex !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 6px !important;">
+                            <span style="font-size: 11px !important; font-weight: bold !important; color: #79e4ff !important; display: flex !important; align-items: center !important; gap: 6px !important;">
+                                <i class="fa-solid fa-gamepad"></i> V5 连续位置调节
+                                <span class="rbq-sdt-pad-status" style="font-weight: normal !important; color: #a6e3a1 !important; font-size: 11px !important;">
+                                    X: ${pt.x.toFixed(2)} · Y: ${pt.y.toFixed(2)} (${formatCoordLabel(pt)})
+                                </span>
+                            </span>
+                            <button type="button" class="rbq-sdt-snap-btn" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.15) !important; color: #ccc !important; border-radius: 4px !important; padding: 2px 8px !important; font-size: 10.5px !important; cursor: pointer !important; transition: all 0.2s !important;" title="开启后拖动时自动对齐到 5×5 网格点">
+                                <i class="fa-solid fa-magnet"></i> 网格吸附: 关
+                            </button>
+                        </div>
+
+                        <div style="display: flex !important; gap: 14px !important; align-items: center !important; flex-wrap: wrap !important;">
+                            <!-- 2D Pad Surface -->
+                            <div class="rbq-sdt-pad-surface" style="
+                                position: relative !important;
+                                width: 140px !important;
+                                height: 140px !important;
+                                flex-shrink: 0 !important;
+                                background: #111216 !important;
+                                border: 1.5px solid rgba(104,215,255,0.35) !important;
+                                border-radius: 8px !important;
+                                cursor: crosshair !important;
+                                touch-action: none !important;
+                                user-select: none !important;
+                                overflow: hidden !important;
+                                box-shadow: inset 0 0 16px rgba(0,0,0,0.7) !important;
+                                background-image:
+                                    linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+                                    linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px) !important;
+                                background-size: 20% 20% !important;
+                            ">
+                                <!-- Edge coordinate tips -->
+                                <span style="position: absolute !important; top: 3px !important; left: 4px !important; font-size: 9px !important; color: rgba(255,255,255,0.35) !important; pointer-events: none !important;">(0,0)</span>
+                                <span style="position: absolute !important; bottom: 3px !important; right: 4px !important; font-size: 9px !important; color: rgba(255,255,255,0.35) !important; pointer-events: none !important;">(1,1)</span>
+                                <!-- Safe area dashed box (inset 10% for standard 0.1~0.9 grid zone) -->
+                                <div style="position: absolute !important; left: 10% !important; top: 10% !important; width: 80% !important; height: 80% !important; border: 1px dashed rgba(104,215,255,0.3) !important; border-radius: 4px !important; pointer-events: none !important;"></div>
+                                <!-- Center cross lines -->
+                                <div style="position: absolute !important; left: 50% !important; top: 0 !important; bottom: 0 !important; width: 1px !important; background: rgba(255,255,255,0.1) !important; pointer-events: none !important;"></div>
+                                <div style="position: absolute !important; top: 50% !important; left: 0 !important; right: 0 !important; height: 1px !important; background: rgba(255,255,255,0.1) !important; pointer-events: none !important;"></div>
+
+                                <!-- Draggable Pin / Thumb -->
+                                <div class="rbq-sdt-pad-thumb" style="
+                                    position: absolute !important;
+                                    left: ${pt.x * 100}% !important;
+                                    top: ${pt.y * 100}% !important;
+                                    transform: translate(-50%, -50%) !important;
+                                    width: 24px !important;
+                                    height: 24px !important;
+                                    border-radius: 50% !important;
+                                    background: linear-gradient(135deg, #79e4ff 0%, #0099ff 100%) !important;
+                                    border: 2px solid #ffffff !important;
+                                    box-shadow: 0 0 10px rgba(104,215,255,0.9), 0 2px 6px rgba(0,0,0,0.6) !important;
+                                    cursor: grab !important;
+                                    display: flex !important;
+                                    align-items: center !important;
+                                    justify-content: center !important;
+                                    font-size: 11px !important;
+                                    font-weight: bold !important;
+                                    color: #000000 !important;
+                                    touch-action: none !important;
+                                    user-select: none !important;
+                                    pointer-events: none !important;
+                                ">${idx + 1}</div>
+                            </div>
+
+                            <!-- Numeric Inputs & Quick Alignment -->
+                            <div style="flex: 1 !important; min-width: 190px !important; display: flex !important; flex-direction: column !important; gap: 7px !important;">
+                                <div style="display: flex !important; gap: 8px !important;">
+                                    <div style="flex: 1 !important; display: flex !important; flex-direction: column !important; gap: 3px !important;">
+                                        <span style="font-size: 10.5px !important; color: rgba(255,255,255,0.65) !important;">X (左0 → 右1):</span>
+                                        <input type="number" step="0.01" min="0" max="1" class="rbq-sdt-pad-x" value="${pt.x.toFixed(2)}" style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 4px !important; padding: 4px 7px !important; font-size: 12px !important; color: #fff !important; width: 100% !important; box-sizing: border-box !important;">
+                                    </div>
+                                    <div style="flex: 1 !important; display: flex !important; flex-direction: column !important; gap: 3px !important;">
+                                        <span style="font-size: 10.5px !important; color: rgba(255,255,255,0.65) !important;">Y (上0 → 下1):</span>
+                                        <input type="number" step="0.01" min="0" max="1" class="rbq-sdt-pad-y" value="${pt.y.toFixed(2)}" style="background: rgba(0,0,0,0.4) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 4px !important; padding: 4px 7px !important; font-size: 12px !important; color: #fff !important; width: 100% !important; box-sizing: border-box !important;">
+                                    </div>
+                                </div>
+
+                                <div style="display: flex !important; flex-direction: column !important; gap: 4px !important; margin-top: 2px !important;">
+                                    <span style="font-size: 10px !important; color: rgba(255,255,255,0.45) !important;">快速对齐预设:</span>
+                                    <div style="display: flex !important; flex-wrap: wrap !important; gap: 4px !important;">
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">正中 (C3)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.30" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">左侧 (B3)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.70" data-y="0.50" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">右侧 (D3)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.30" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">后方 (C2)</button>
+                                        <button type="button" class="rbq-sdt-preset-btn" data-x="0.50" data-y="0.70" style="background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important; color: #ddd !important; font-size: 10px !important; padding: 2px 7px !important; border-radius: 4px !important; cursor: pointer !important;">前方 (C4)</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div style="display: flex !important; flex-direction: column !important; gap: 4px !important;">
@@ -7229,6 +7309,127 @@ SCHEMA:
             });
         }
 
+        // Bind 2D Continuous Position Pad for each character card
+        modal.querySelectorAll('.rbq-sdt-manual-char-card').forEach(card => {
+            const padSurface = card.querySelector('.rbq-sdt-pad-surface');
+            const padThumb = card.querySelector('.rbq-sdt-pad-thumb');
+            const inputX = card.querySelector('.rbq-sdt-pad-x');
+            const inputY = card.querySelector('.rbq-sdt-pad-y');
+            const statusEl = card.querySelector('.rbq-sdt-pad-status');
+            const snapBtn = card.querySelector('.rbq-sdt-snap-btn');
+            const badgeEl = card.querySelector('.rbq-sdt-char-coord-badge');
+            const hiddenCenter = card.querySelector('.rbq-sdt-manual-char-center');
+            const presetBtns = card.querySelectorAll('.rbq-sdt-preset-btn');
+
+            let isSnapping = false;
+
+            const snapValue = (val) => {
+                return Math.max(0.1, Math.min(0.9, Math.round((val - 0.1) / 0.2) * 0.2 + 0.1));
+            };
+
+            const updatePos = (x, y, triggerInputs = true) => {
+                let clampedX = Math.max(0, Math.min(1, x));
+                let clampedY = Math.max(0, Math.min(1, y));
+                if (isSnapping) {
+                    clampedX = snapValue(clampedX);
+                    clampedY = snapValue(clampedY);
+                }
+                const fx = Number(clampedX.toFixed(2));
+                const fy = Number(clampedY.toFixed(2));
+                const coordObj = { x: fx, y: fy };
+
+                if (padThumb) {
+                    padThumb.style.left = `${(fx * 100)}%`;
+                    padThumb.style.top = `${(fy * 100)}%`;
+                }
+                if (triggerInputs) {
+                    if (inputX) inputX.value = fx.toFixed(2);
+                    if (inputY) inputY.value = fy.toFixed(2);
+                }
+                const coordText = `X: ${fx.toFixed(2)} · Y: ${fy.toFixed(2)} (${formatCoordLabel(coordObj)})`;
+                if (statusEl) {
+                    statusEl.textContent = coordText;
+                }
+                if (badgeEl) {
+                    badgeEl.textContent = `${formatCenterDisplay(coordObj)} (${formatCoordLabel(coordObj)})`;
+                }
+                if (hiddenCenter) {
+                    hiddenCenter.value = `${fx.toFixed(2)},${fy.toFixed(2)}`;
+                }
+            };
+
+            if (snapBtn) {
+                snapBtn.addEventListener('click', () => {
+                    isSnapping = !isSnapping;
+                    if (isSnapping) {
+                        snapBtn.style.background = 'rgba(104,215,255,0.25)';
+                        snapBtn.style.color = '#79e4ff';
+                        snapBtn.style.borderColor = 'rgba(104,215,255,0.5)';
+                        snapBtn.innerHTML = '<i class="fa-solid fa-magnet"></i> 网格吸附: 开';
+                        const curX = parseFloat(inputX?.value || '0.5');
+                        const curY = parseFloat(inputY?.value || '0.5');
+                        updatePos(curX, curY);
+                    } else {
+                        snapBtn.style.background = 'rgba(255,255,255,0.06)';
+                        snapBtn.style.color = '#ccc';
+                        snapBtn.style.borderColor = 'rgba(255,255,255,0.15)';
+                        snapBtn.innerHTML = '<i class="fa-solid fa-magnet"></i> 网格吸附: 关';
+                    }
+                });
+            }
+
+            if (padSurface) {
+                let isDragging = false;
+
+                const handlePointer = (e) => {
+                    const rect = padSurface.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return;
+                    const rawX = (e.clientX - rect.left) / rect.width;
+                    const rawY = (e.clientY - rect.top) / rect.height;
+                    updatePos(rawX, rawY);
+                };
+
+                padSurface.addEventListener('pointerdown', (e) => {
+                    isDragging = true;
+                    try { padSurface.setPointerCapture(e.pointerId); } catch (_) {}
+                    handlePointer(e);
+                });
+
+                padSurface.addEventListener('pointermove', (e) => {
+                    if (!isDragging) return;
+                    handlePointer(e);
+                });
+
+                const endDrag = (e) => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    try { padSurface.releasePointerCapture(e.pointerId); } catch (_) {}
+                };
+
+                padSurface.addEventListener('pointerup', endDrag);
+                padSurface.addEventListener('pointercancel', endDrag);
+            }
+
+            const handleInputChange = () => {
+                const vx = parseFloat(inputX?.value || '0.5');
+                const vy = parseFloat(inputY?.value || '0.5');
+                updatePos(isNaN(vx) ? 0.5 : vx, isNaN(vy) ? 0.5 : vy, false);
+            };
+
+            inputX?.addEventListener('input', handleInputChange);
+            inputY?.addEventListener('input', handleInputChange);
+
+            presetBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const px = parseFloat(btn.dataset.x);
+                    const py = parseFloat(btn.dataset.y);
+                    if (!isNaN(px) && !isNaN(py)) {
+                        updatePos(px, py);
+                    }
+                });
+            });
+        });
+
         function gatherUpdatedSegment(tab) {
             const updatedSeg = JSON.parse(JSON.stringify(segResult || {}));
             const negVal = String(modal.querySelector('#rbq-sdt-manual-negative')?.value || '').trim();
@@ -7250,7 +7451,16 @@ SCHEMA:
                     const idx = parseInt(card.dataset.index, 10);
                     if (updatedSeg.characters && updatedSeg.characters[idx]) {
                         const charObj = updatedSeg.characters[idx];
-                        const centerVal = String(card.querySelector('.rbq-sdt-manual-char-center')?.value || 'C3').trim();
+                        const xInput = card.querySelector('.rbq-sdt-pad-x');
+                        const yInput = card.querySelector('.rbq-sdt-pad-y');
+                        let centerVal = { x: 0.5, y: 0.5 };
+                        if (xInput && yInput) {
+                            const px = Math.max(0, Math.min(1, parseFloat(xInput.value) || 0.5));
+                            const py = Math.max(0, Math.min(1, parseFloat(yInput.value) || 0.5));
+                            centerVal = { x: Number(px.toFixed(2)), y: Number(py.toFixed(2)) };
+                        } else {
+                            centerVal = String(card.querySelector('.rbq-sdt-manual-char-center')?.value || 'C3').trim();
+                        }
                         const captionVal = String(card.querySelector('.rbq-sdt-manual-char-caption')?.value || '').trim();
                         const ucVal = String(card.querySelector('.rbq-sdt-manual-char-uc')?.value || '').trim();
                         charObj.center = centerVal;

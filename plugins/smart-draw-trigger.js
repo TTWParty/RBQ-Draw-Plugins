@@ -15183,6 +15183,7 @@ SCHEMA:
     };
 
     RBQ.api.openSegmentManualTagModal = openSegmentManualTagModal;
+    RBQ.api.prepareNaiCharData = prepareNaiCharData;
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);

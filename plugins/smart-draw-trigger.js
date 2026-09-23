@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.43';
+    const PLUGIN_VERSION = '6.0.44';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -15250,6 +15250,9 @@ SCHEMA:
         if (typeof RBQ?.ui?.removeSettingPanel === 'function') {
             RBQ.ui.removeSettingPanel('smart-draw');
         }
+        if (typeof RBQ?.ui?.unregisterTestAction === 'function') {
+            RBQ.ui.unregisterTestAction('sdt-smart-generate');
+        }
     }
 
     waitForPanel();
@@ -15262,6 +15265,46 @@ SCHEMA:
     }, 1000);
     observeMessages();
     watchForFloatingBall();
+
+    // 注册测试面板动作按钮（智能测试生成）
+    if (typeof RBQ?.ui?.registerTestAction === 'function') {
+        RBQ.ui.registerTestAction({
+            id: 'sdt-smart-generate',
+            label: '智能测试生成',
+            icon: 'fa-solid fa-wand-magic-sparkles',
+            priority: 10,
+            style: 'background: rgba(100,180,255,0.12); border: 1px solid rgba(100,180,255,0.3); font-weight: 600;',
+            onClick: async ({ getPrompt, setResult, renderResultImage, setLoading }) => {
+                const prompt = (getPrompt?.() || '').trim();
+                if (!prompt) {
+                    toastr.warning('请先输入测试提示词', PLUGIN_NAME);
+                    return;
+                }
+                try {
+                    setLoading(true, '<i class="fa-solid fa-spinner fa-spin"></i> tagger 分析中...');
+                    setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用 Tagger API 分析...</span>');
+
+                    const result = await RBQ.api.generateWithTagger(prompt, (progressText) => {
+                        setResult(`<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText)}</span>`);
+                    });
+                    toastr.success('智能测试生成完成', PLUGIN_NAME);
+
+                    if (typeof renderResultImage === 'function') {
+                        renderResultImage(result, prompt);
+                    } else if (result && result.url) {
+                        setResult(`<img src="${escapeHtml(result.url)}" style="max-width: 100%; max-height: 400px; border-radius: 8px; box-shadow: rgba(0,0,0,0.5) 0px 4px 12px; cursor: pointer;" class="st-scene-trigger-test-img" data-url="${escapeHtml(result.url)}" data-prompt="${escapeHtml(result.prompt || prompt)}" data-cache-id="${escapeHtml(result.cacheId || '')}">`);
+                    } else {
+                        setResult('<span style="color: #e05252; font-size: 14px;">生成失败: 未返回图像 URL</span>');
+                    }
+                } catch (error) {
+                    toastr.error(error.message || String(error), PLUGIN_NAME);
+                    setResult(`<span style="color: #e05252; font-size: 14px;">错误: ${escapeHtml(error.message || String(error))}</span>`);
+                } finally {
+                    setLoading(false);
+                }
+            }
+        });
+    }
 
     RBQ.api.openStoryboardDrawer = openStoryboardDrawer;
     RBQ.api.closeStoryboardDrawer = closeStoryboardDrawer;

@@ -411,7 +411,75 @@ RBQ.api.saveChat();
 
 ---
 
-### 11. 插件生命周期与热插拔守卫规范 (`Lifecycle & Hot Reload Cleanup`)
+### 11. 测试面板通用动作扩展 API (`RBQ.ui.registerTestAction`)
+
+宿主 `0.3.102+` 支持插件在控制台「生成测试」面板中注册自定义动作按钮（如「智能测试生成」、「仅分析审查 Tag」、「一键翻译提词」等），实现业务逻辑与宿主底座的彻底解耦。
+
+```javascript
+// 注册测试面板动作按钮
+RBQ.ui.registerTestAction({
+  id: 'my-smart-test',                            // 动作唯一 ID
+  label: '智能测试生成',                           // 按钮展示文字
+  icon: 'fa-solid fa-wand-magic-sparkles',        // FontAwesome 图标类名（可选）
+  priority: 10,                                   // 排序权重（数值越大越靠前，默认 0）
+  className: 'my-custom-test-btn',                // 自定义 CSS 类名（可选）
+  style: 'background: rgba(100,180,255,0.12); border: 1px solid rgba(100,180,255,0.3); font-weight: 600;', // 自定义样式（可选）
+  condition: () => true,                          // 显隐判断函数（可选，返回 false 时不渲染）
+  onClick: async ({ prompt, getPrompt, setPrompt, setResult, renderResultImage, setLoading, toastr, RBQ }) => {
+    const input = (getPrompt?.() || prompt || '').trim();
+    if (!input) {
+      toastr.warning('请先输入测试提示词');
+      return;
+    }
+
+    try {
+      setLoading(true, '<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
+      setResult('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在调用模型分析...</span>');
+
+      // 执行插件自身业务（如 Tagger 分析、提示词提炼等）
+      const finalPrompt = await myAnalyzeFunction(input);
+
+      // 调用宿主生图 API 发起出图
+      const result = await RBQ.api.generateImage(finalPrompt, 'my-test');
+      toastr.success('生成完成');
+
+      // 使用宿主标准预览卡片展示结果（支持点击放大与查看器联动）
+      renderResultImage(result, finalPrompt);
+    } catch (err) {
+      toastr.error(err.message || String(err));
+      setResult(`<span style="color: #e05252; font-size: 14px;">错误: ${err.message}</span>`);
+    } finally {
+      setLoading(false);
+    }
+  }
+});
+
+// 在插件清理钩子中注销动作
+RBQ.ui.unregisterTestAction('my-smart-test');
+```
+
+#### 回调上下文 `context` 字段详解：
+- `prompt: string`：当前测试输入框中的纯文本。
+- `getPrompt(): string`：实时获取测试输入框中的文本。
+- `setPrompt(value: string)`：修改/回填测试输入框内容并分发 input 事件。
+- `setResult(htmlOrElement: string | HTMLElement)`：将 HTML 字符串或 DOM 元素渲染到测试结果容器中。
+- `renderResultImage(result: Object, prompt?: string)`：以宿主官方标准带阴影与圆角的格式渲染生成的图片，并自动挂载点击进入大图查看器的事件。
+- `setLoading(loading: boolean, loadingHtml?: string)`：切换按钮的 loading 状态与文案，避免重复触发。
+- `button: HTMLButtonElement`：当前触发的按钮原生 DOM 元素。
+- `event: MouseEvent`：点击事件原生对象。
+- `toastr: Object`：酒馆 toastr 提示对象。
+- `RBQ: Object`：全局 RBQ 实例。
+
+#### 宿主辅助 API：
+- `RBQ.ui.getTestPrompt()`：获取测试输入框内容。
+- `RBQ.ui.setTestPrompt(text)`：设置测试输入框内容。
+- `RBQ.ui.setTestResult(htmlOrElement)`：直接设置测试结果区域内容。
+- `RBQ.ui.getTestResultContainer()`：获取测试结果 DOM 容器（`#st-scene-trigger-test-result`）。
+- `RBQ.ui.renderTestResultImage(result, prompt)`：以标准规范渲染生成结果图片。
+
+---
+
+### 12. 插件生命周期与热插拔守卫规范 (`Lifecycle & Hot Reload Cleanup`)
 
 宿主 `0.3.52+` 支持完整的插件卸载与热更新自清理机制。当用户在插件中心点击「更新」或「卸载」时，宿主会在无需刷新整个页面的前提下，精确调用子插件注册的清理钩子，杜绝 `MutationObserver` 掉帧泄露、多重 `setInterval` 定时器叠加以及事件监听器重复触发：
 
@@ -421,6 +489,7 @@ RBQ.api.saveChat();
 - `RBQ.cleanupPlugin(pluginId)`：手动触发指定插件的清理流程。
 - `RBQ.off(event, callback)`：解绑通过 `RBQ.on` 注册的事件总线监听器。
 - `RBQ.ui.removeSettingPanel(panelId)`：安全注销并移除动态设置标签页与面板 DOM。
+- `RBQ.ui.unregisterTestAction(actionId)`：安全注销并移除测试面板中的自定义动作按钮。
 - `RBQ.api.unregisterMode(modeId)`：安全注销并移除自定义生图模式。
 
 #### 子插件标准热插拔模板范式 (Best Practice)

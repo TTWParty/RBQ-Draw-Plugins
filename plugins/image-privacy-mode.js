@@ -308,7 +308,7 @@
         if (mode === 'gallery') {
             const viewText = label ? `🖼️ 查看: ${label}` : '🖼️ 查看大图';
             bar.innerHTML = `
-              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-view-btn" title="点击查看全屏大图">
+              <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-view-btn" title="${escapeHtml(viewText)} (点击查看全屏大图)">
                 ${escapeHtml(viewText)}
               </button>
               <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-regen-btn" title="重新生成该图片">

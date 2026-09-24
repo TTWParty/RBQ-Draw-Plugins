@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.58';
+    const PLUGIN_VERSION = '6.0.59';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6494,6 +6494,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         const normalized = {
             shouldDraw,
+            label: segments.length ? (segments[0].label || '') : (decodeUnicodeEscapes(String(source?.label || source?.title || '')).trim() || '分镜01·剧情插画'),
             prompt: segments.length ? segments[0].prompt : '',
             negative: '',
             multiChar: segments.length ? segments[0].multiChar : false,
@@ -6510,7 +6511,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!segments.length && normalized.shouldDraw && (normalized.prompt || normalized.characters.length)) {
             normalized.segments = [{
                 anchor: normalized.anchor,
-                label: '分镜01·剧情插画',
+                label: normalized.label || '分镜01·剧情插画',
                 prompt: normalized.prompt,
                 negative: normalized.negative,
                 multiChar: normalized.multiChar,
@@ -9039,6 +9040,10 @@ SCHEMA:
                 // Pre-configure segment-specific button states while detached in memory
                 const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
                 if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
+                const segLabel = getSegmentLabel(seg, '').trim();
+                if (segLabel && segLabel !== '生成图片') {
+                    wrapper.dataset.rbqSdtOrigLabel = segLabel;
+                }
                 const btnLabel = store.autoRunGenerate ? '等待自动生图...' : getSegmentLabel(seg);
                 setGenerateButtonState(wrapper, true, btnLabel, false);
                 setWrapperStage(wrapper, 'ready-generate');
@@ -9077,6 +9082,13 @@ SCHEMA:
                 existing.dataset.rbqSdtReason = result.reason || '';
                 const finalPrompt = getFinalPrompt(result);
                 existing.dataset.rbqSdtFinalPrompt = finalPrompt;
+                if (finalPrompt && finalPrompt !== '[Smart Draw]') {
+                    existing.dataset.prompt = finalPrompt;
+                }
+                const segLabel = getSegmentLabel(result, '').trim();
+                if (segLabel && segLabel !== '生成图片') {
+                    existing.dataset.rbqSdtOrigLabel = segLabel;
+                }
                 if (Array.isArray(result?.characters) && result.characters.length > 0) {
                     try { existing.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch (_e) { /* noop */ }
                 }
@@ -10820,6 +10832,12 @@ SCHEMA:
         wrapper.dataset.rbqSdtTriggerType = trigger?.type || 'auto';
         wrapper.dataset.rbqSdtReason = result.reason || '';
         wrapper.dataset.rbqSdtFinalPrompt = finalPrompt;
+        if (result) {
+            const segLabel = getSegmentLabel(result, '').trim();
+            if (segLabel && segLabel !== '生成图片') {
+                wrapper.dataset.rbqSdtOrigLabel = segLabel;
+            }
+        }
 
         // Store structured char data for NAI V4 direct injection on manual generate
         if (Array.isArray(result?.characters) && result.characters.length > 0) {
@@ -10996,20 +11014,21 @@ SCHEMA:
 
     /** Generate a descriptive label for a segment's generate button */
     function getSegmentLabel(seg, prefix = '🎨') {
-        if (!seg) return `${prefix} 生成图片`;
+        const p = prefix ? `${prefix} ` : '';
+        if (!seg) return `${p}生成图片`.trim();
 
         // 1. LLM 输出的 label 字段（首选分镜标签）
         if (seg.label) {
             const l = String(seg.label).trim().replace(/[\r\n]+/g, ' ');
             if (l.length > 0) {
-                return `${prefix} ${l.length > 40 ? l.slice(0, 39) + '…' : l}`;
+                return `${p}${l.length > 40 ? l.slice(0, 39) + '…' : l}`.trim();
             }
         }
 
         // 2. 备用字段 title / name (若模型输出结构变异)
         const altTitle = String(seg.title || (typeof seg.name === 'string' ? seg.name : '') || '').trim().replace(/[\r\n]+/g, ' ');
         if (altTitle.length > 0) {
-            return `${prefix} ${altTitle.length > 40 ? altTitle.slice(0, 39) + '…' : altTitle}`;
+            return `${p}${altTitle.length > 40 ? altTitle.slice(0, 39) + '…' : altTitle}`.trim();
         }
 
         // 3. 角色名拼接 (如 苏婉儿 或 角色A·角色B)
@@ -11017,7 +11036,7 @@ SCHEMA:
             const names = seg.characters.map(c => c._rawName || c.name || c.char_name).filter(Boolean);
             if (names.length) {
                 const joined = names.join('·');
-                return `${prefix} ${joined.length > 40 ? joined.slice(0, 39) + '…' : joined}`;
+                return `${p}${joined.length > 40 ? joined.slice(0, 39) + '…' : joined}`.trim();
             }
         }
 
@@ -11026,17 +11045,17 @@ SCHEMA:
             const a = String(seg.anchor.text).trim().replace(/^[“"「『\s]+/, '').replace(/[”"」』\s]+$/, '');
             if (a.length >= 2) {
                 const cleanA = a.length > 14 ? a.slice(0, 13) + '…' : a;
-                return `${prefix} ${cleanA}`;
+                return `${p}${cleanA}`.trim();
             }
         }
 
         // 5. 分镜序号兜底（如 🎨 分镜01·剧情画面）
         const segIdx = Number(seg.segmentIndex || seg.index);
         if (Number.isFinite(segIdx) && segIdx > 0) {
-            return `${prefix} 分镜${String(segIdx).padStart(2, '0')}·剧情画面`;
+            return `${p}分镜${String(segIdx).padStart(2, '0')}·剧情画面`.trim();
         }
 
-        return `${prefix} 生成图片`;
+        return `${p}生成图片`.trim();
     }
 
     function setGenerateButtonState(wrapper, visible, text = '生成图片', disabled = false) {
@@ -11048,7 +11067,7 @@ SCHEMA:
         // Save non-transient labels so getRegenLabel can read the original label
         const TRANSIENT_LABELS = ['生成中...', '自动生成中...', '等待自动生图...'];
         if (!TRANSIENT_LABELS.includes(text) && !disabled) {
-            wrapper.dataset.rbqSdtOrigLabel = text.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}]\s*/u, '').trim();
+            wrapper.dataset.rbqSdtOrigLabel = text.replace(/^[\u{1F300}-\u{1FAD6}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\s]+/gu, '').trim();
         }
         button.disabled = !!disabled;
         return button;
@@ -11077,8 +11096,8 @@ SCHEMA:
     }
 
     async function runImageGenerationForWrapper(wrapper, messageId, baseKey, segmentKey = '') {
-        const finalPrompt = String(wrapper?.dataset?.prompt || '').trim();
-        if (!finalPrompt) {
+        const finalPrompt = String(wrapper?.dataset?.rbqSdtFinalPrompt || wrapper?.dataset?.prompt || '').trim();
+        if (!finalPrompt || finalPrompt === '[Smart Draw]') {
             toastr.warning('当前还没有可用 prompt，请先解析 tag', PLUGIN_NAME);
             return;
         }
@@ -11154,6 +11173,10 @@ SCHEMA:
             setGenerateButtonState(wrapper, true, '自动生成中...', true);
             prepareNaiCharData(result);
             const finalPrompt = getFinalPrompt(result);
+            if (!finalPrompt || finalPrompt === '[Smart Draw]') {
+                console.warn(`[${PLUGIN_NAME}] Auto-generate skipped: empty or placeholder prompt`, result);
+                return;
+            }
             const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
@@ -11248,6 +11271,9 @@ SCHEMA:
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'ready-generate');
                 clearWrapperLoading(wrapper);
+                if (container && wrapper.parentElement === container) {
+                    container.append(wrapper);
+                }
             } else if (store.cardPosition === 'message_actions') {
                 if (wrapper.parentElement) wrapper.remove();
             }

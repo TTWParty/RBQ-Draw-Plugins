@@ -10998,53 +10998,39 @@ SCHEMA:
     function getSegmentLabel(seg, prefix = '🎨') {
         if (!seg) return `${prefix} 生成图片`;
 
-        const isReasoningNoise = (str) => {
-            if (!str) return true;
-            const s = String(str).trim();
-            if (!s) return true;
-            return /^(?:生图数量决策|推演|思考|CoT|思维链|[①-⑩]|【|决策分析|当前消息|正文包含)/i.test(s)
-                || s.includes('视觉冲击力')
-                || s.includes('叙事价值')
-                || s.includes('生图数量')
-                || s.includes('场景选取')
-                || s.includes('shouldDraw');
-        };
-
-        // 1. LLM 输出的 label 字段（首选，但严格过滤 CoT 推演和决策分析词）
+        // 1. LLM 输出的 label 字段（首选分镜标签）
         if (seg.label) {
-            const l = String(seg.label).trim();
-            if (!isReasoningNoise(l)) {
-                return `${prefix} ${l.length > 50 ? l.slice(0, 49) + '…' : l}`;
+            const l = String(seg.label).trim().replace(/[\r\n]+/g, ' ');
+            if (l.length > 0) {
+                return `${prefix} ${l.length > 40 ? l.slice(0, 39) + '…' : l}`;
             }
         }
 
-        // 2. 备用字段 title / name (若模型输出结构稍有变异)
-        const altTitle = String(seg.title || (typeof seg.name === 'string' ? seg.name : '') || '').trim();
-        if (altTitle && !isReasoningNoise(altTitle)) {
-            return `${prefix} ${altTitle.length > 50 ? altTitle.slice(0, 49) + '…' : altTitle}`;
+        // 2. 备用字段 title / name (若模型输出结构变异)
+        const altTitle = String(seg.title || (typeof seg.name === 'string' ? seg.name : '') || '').trim().replace(/[\r\n]+/g, ' ');
+        if (altTitle.length > 0) {
+            return `${prefix} ${altTitle.length > 40 ? altTitle.slice(0, 39) + '…' : altTitle}`;
         }
 
-        // 3. 角色名拼接
+        // 3. 角色名拼接 (如 苏婉儿 或 角色A·角色B)
         if (Array.isArray(seg.characters) && seg.characters.length > 0) {
             const names = seg.characters.map(c => c._rawName || c.name || c.char_name).filter(Boolean);
             if (names.length) {
                 const joined = names.join('·');
-                if (!isReasoningNoise(joined)) {
-                    return `${prefix} ${joined.length > 50 ? joined.slice(0, 49) + '…' : joined}`;
-                }
+                return `${prefix} ${joined.length > 40 ? joined.slice(0, 39) + '…' : joined}`;
             }
         }
 
         // 4. 正文锚点原文提炼（提取前 10~14 字精简画面动作）
         if (seg.anchor?.text) {
             const a = String(seg.anchor.text).trim().replace(/^[“"「『\s]+/, '').replace(/[”"」』\s]+$/, '');
-            if (a.length >= 2 && !isReasoningNoise(a)) {
+            if (a.length >= 2) {
                 const cleanA = a.length > 14 ? a.slice(0, 13) + '…' : a;
                 return `${prefix} ${cleanA}`;
             }
         }
 
-        // 5. 分镜序号兜底（如 分镜01·剧情画面）
+        // 5. 分镜序号兜底（如 🎨 分镜01·剧情画面）
         const segIdx = Number(seg.segmentIndex || seg.index);
         if (Number.isFinite(segIdx) && segIdx > 0) {
             return `${prefix} 分镜${String(segIdx).padStart(2, '0')}·剧情画面`;

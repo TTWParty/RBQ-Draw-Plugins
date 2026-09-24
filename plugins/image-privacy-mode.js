@@ -256,11 +256,8 @@
             if (['生成图片', '重新生成', '大图', '图片'].includes(label)) {
                 label = '';
             }
-            // 严格过滤 CoT 推演、内部决策分析等思考残留文本
-            const isReasoningNoise = /^(?:生图数量决策|推演|思考|CoT|思维链|[①-⑩]|【|决策分析|当前消息|正文包含)/i.test(label)
-                || label.includes('视觉冲击力') || label.includes('叙事价值') || label.includes('生图数量');
-            if (isReasoningNoise || label.length > 30) {
-                label = '';
+            if (label.length > 30) {
+                label = label.slice(0, 29) + '…';
             }
         }
         return label || '';

@@ -9024,11 +9024,14 @@ SCHEMA:
 
                 let wrapper = existing;
                 if (wrapper instanceof HTMLElement) {
-                    // 清理现有卡片中的旧图片和隐私遮罩残留，防止重新解析后依然显示旧图
-                    const resEl = wrapper.querySelector('.st-scene-trigger-inline-result');
-                    if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
-                    wrapper.querySelector('.rbq-privacy-bar')?.remove();
-                    delete wrapper.dataset.latestImageUrl;
+                    const hasValidImage = !!(wrapper.querySelector('.st-scene-trigger-inline-result img') || wrapper.dataset.rbqSdtStage === 'generated');
+                    if (!hasValidImage) {
+                        // 仅当卡片未出图时才重置图片容器与隐私操作栏，防止全量扫描自愈时误杀已存在的图片和展开按钮
+                        const resEl = wrapper.querySelector('.st-scene-trigger-inline-result');
+                        if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
+                        wrapper.querySelector('.rbq-privacy-bar')?.remove();
+                        delete wrapper.dataset.latestImageUrl;
+                    }
 
                     const finalPrompt = getFinalPrompt(segResult);
                     wrapper.dataset.rbqSdtFinalPrompt = finalPrompt;
@@ -9046,9 +9049,13 @@ SCHEMA:
 
                     const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
                     if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
-                    const btnLabel = getSegmentLabel(seg);
-                    setGenerateButtonState(wrapper, true, btnLabel, false);
-                    setWrapperStage(wrapper, 'ready-generate');
+                    if (!hasValidImage) {
+                        const btnLabel = getSegmentLabel(seg);
+                        setGenerateButtonState(wrapper, true, btnLabel, false);
+                        setWrapperStage(wrapper, 'ready-generate');
+                    } else if (wrapper.dataset.rbqSdtStage === 'generated') {
+                        setGenerateButtonState(wrapper, true, getRegenLabel(wrapper), false);
+                    }
                     bindWrapperManualRun(wrapper, trigger, messageId, key, segmentKey);
 
                     resultMap.set(index, { wrapper, key: segmentKey, segment: seg });
@@ -9106,11 +9113,13 @@ SCHEMA:
         } else {
             const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
             if (existing instanceof HTMLElement) {
-                // 清理旧图片残留与隐私遮罩
-                const resEl = existing.querySelector('.st-scene-trigger-inline-result');
-                if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
-                existing.querySelector('.rbq-privacy-bar')?.remove();
-                delete existing.dataset.latestImageUrl;
+                const hasValidImage = !!(existing.querySelector('.st-scene-trigger-inline-result img') || existing.dataset.rbqSdtStage === 'generated');
+                if (!hasValidImage) {
+                    const resEl = existing.querySelector('.st-scene-trigger-inline-result');
+                    if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
+                    existing.querySelector('.rbq-privacy-bar')?.remove();
+                    delete existing.dataset.latestImageUrl;
+                }
 
                 // 更新现有卡片为正式结果卡
                 existing.dataset.rbqSdtIsResult = '1';
@@ -9130,9 +9139,13 @@ SCHEMA:
                 renderCardBadges(existing, result);
                 const taggerBtn = existing.querySelector('.st-scene-trigger-generate');
                 if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
-                const btnLabel = getSegmentLabel(result);
-                setGenerateButtonState(existing, true, btnLabel, false);
-                setWrapperStage(existing, 'ready-generate');
+                if (!hasValidImage) {
+                    const btnLabel = getSegmentLabel(result);
+                    setGenerateButtonState(existing, true, btnLabel, false);
+                    setWrapperStage(existing, 'ready-generate');
+                } else if (existing.dataset.rbqSdtStage === 'generated') {
+                    setGenerateButtonState(existing, true, getRegenLabel(existing), false);
+                }
                 bindWrapperManualRun(existing, trigger, messageId, key);
 
                 // 若有锚点，将其从顶部占位位置移入正文对应锚点位置
@@ -9294,25 +9307,55 @@ SCHEMA:
     }
 
     function getSegmentState(store, baseKey, segmentKey, messageId = null) {
+        const segSuffixMatch = String(segmentKey || '').match(/-seg-(\d+)$/);
+        const segIdx = segSuffixMatch ? Number(segSuffixMatch[1]) : null;
+
+        function findInStates(states) {
+            if (!states || typeof states !== 'object') return null;
+            if (states[segmentKey]) return states[segmentKey];
+            if (segIdx != null) {
+                if (states[String(segIdx)]) return states[String(segIdx)];
+                if (states[`seg-${segIdx}`]) return states[`seg-${segIdx}`];
+                for (const [k, v] of Object.entries(states)) {
+                    if (k.endsWith(`-seg-${segIdx}`) || k.endsWith(`:seg-${segIdx}`)) return v;
+                }
+            }
+            const entries = Object.values(states);
+            if (entries.length === 1 && (segIdx === 0 || segIdx == null)) {
+                return entries[0];
+            }
+            return null;
+        }
+
         if (messageId != null && Number.isFinite(Number(messageId))) {
             const sdt = getMsgExtraSdt(messageId);
-            if (sdt?.segmentStates?.[segmentKey]) {
-                return sdt.segmentStates[segmentKey];
-            }
-            if (sdt && typeof sdt.segmentStates === 'object') {
-                return {};
+            if (sdt) {
+                const found = findInStates(sdt.segmentStates);
+                if (found) return found;
+                if (sdt.imageResult && (segIdx === 0 || segIdx == null)) {
+                    return { autoGenerated: true, imageResult: sdt.imageResult };
+                }
             }
         }
         const cardEl = document.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(segmentKey)}"]`);
         if (cardEl?.dataset?.messageId) {
             const mId = Number(cardEl.dataset.messageId);
             const sdt = getMsgExtraSdt(mId);
-            if (sdt?.segmentStates?.[segmentKey]) {
-                return sdt.segmentStates[segmentKey];
+            if (sdt) {
+                const found = findInStates(sdt.segmentStates);
+                if (found) return found;
+                if (sdt.imageResult && (segIdx === 0 || segIdx == null)) {
+                    return { autoGenerated: true, imageResult: sdt.imageResult };
+                }
             }
         }
         const cache = store?.cache?.[baseKey];
-        return cache?.segmentStates?.[segmentKey] || {};
+        const cacheFound = findInStates(cache?.segmentStates);
+        if (cacheFound) return cacheFound;
+        if (cache?.imageResult && (segIdx === 0 || segIdx == null)) {
+            return { autoGenerated: true, imageResult: cache.imageResult };
+        }
+        return {};
     }
 
     function cleanTextForMatch(str) {
@@ -11708,7 +11751,7 @@ SCHEMA:
 
     function scanLatestVisible() {
         const latest = getLatestMessageId();
-        if (latest != null) scheduleProcess(latest);
+        if (latest != null) scheduleProcess(latest, { force: true, allowHistorical: true });
     }
 
     function injectStyles() {

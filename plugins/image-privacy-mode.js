@@ -122,10 +122,10 @@
                 transform: rotate(90deg);
                 transition: transform 0.3s ease;
             }
-            .st-scene-trigger-inline-wrap.is-generating .rbq-privacy-bar {
-                display: none !important;
-            }
-            .st-scene-trigger-inline-ui:has(.st-scene-trigger-inline-loader:not([style*="display: none"])) .rbq-privacy-bar {
+            .st-scene-trigger-inline-wrap.is-generating .rbq-privacy-bar,
+            .st-scene-trigger-inline-wrap[data-rbq-sdt-stage="generating-image"] .rbq-privacy-bar,
+            .st-scene-trigger-inline-wrap[data-rbq-sdt-stage="parsing"] .rbq-privacy-bar,
+            .st-scene-trigger-inline-ui:has(.st-scene-trigger-inline-loader[style*="flex"]) .rbq-privacy-bar {
                 display: none !important;
             }
 
@@ -351,6 +351,9 @@
         const rawBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
         if (rawBtn instanceof HTMLElement) {
             rawBtn.classList.remove('rbq-privacy-hidden-btn');
+            if (rawBtn.classList.contains('rbq-sdt-run-image') && wrapper.dataset?.rbqSdtIsResult === '1') {
+                rawBtn.style.display = '';
+            }
         }
         if (container) removeSpoilerMask(container);
     }

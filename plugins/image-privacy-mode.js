@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.9
+ * Version: 1.0.10
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */

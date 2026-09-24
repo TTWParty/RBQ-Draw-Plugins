@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.52';
+    const PLUGIN_VERSION = '6.0.53';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9394,6 +9394,8 @@ SCHEMA:
             } : minSeg > 0 ? {
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
+            } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
+                segmentInstruction: `【前情增强生图位置与数量推演指令】：当前已启用前情增强分析（${store.enhancedContext}）。你必须在思考区（reason 字段）严格执行【正文场景选取与生图数量决策】推演：\n1. 哪里生图（视觉锚点选取）：通读当前消息（currentMessage），定位最具视觉冲击力、动作高潮演变、体位转变、脱衣暴露等关键节点，每个选定画面必须从正文中一字不差截取 10~40 字逐字原文填入 anchor.text，并拟定 5~15 字中文 label；\n2. 需要生几张（数量自适应决策）：根据剧情推进节拍自适应决策生图数量——单一瞬间动作提取 1 个分镜；长文多阶段动作演变、空间场景转换或情节推进，按节拍自然拆分为多个独立分镜全部填入 segments 数组（根据剧情自然提取，绝不人为限定死板数字，亦绝不草率将多节拍长文压缩为单张）；若纯日常闲聊无视觉画面则输出 {"shouldDraw": false}。\n【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
@@ -9401,7 +9403,7 @@ SCHEMA:
             outputSchema: {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
-                segments: effectiveMinSeg > 1 ? [
+                segments: ((store.enhancedContext && store.enhancedContext !== 'off') || effectiveMinSeg > 1) ? [
                     {
                         label: 'string (5~15字中文分镜名，如 分镜01·阶段一动作)',
                         anchor: { text: 'string exact copy from currentMessage (10~40字原文)' },
@@ -9411,7 +9413,7 @@ SCHEMA:
                         ]
                     },
                     {
-                        label: 'string (如 分镜02·阶段二动作推进，根据剧情拆分多个分镜)',
+                        label: 'string (如 分镜02·阶段二动作推进/体位转换，根据推演结论提取分镜)',
                         anchor: { text: 'string exact copy from currentMessage (后续关键段落逐字原文)' },
                         scene: 'string tags',
                         characters: [
@@ -12807,7 +12809,6 @@ SCHEMA:
                                 ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97' && key !== 'custom').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
                             </optgroup>
                         </select></label>
-                        <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch wide" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <label id="rbq-sdt-system-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
                             <span>自定义 System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span>
                             <textarea id="rbq-sdt-system-prompt" rows="8" placeholder="在此输入自定义生图提示词（留空则继承内置规范）..."></textarea>
@@ -12906,6 +12907,7 @@ SCHEMA:
                         <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
             </div>

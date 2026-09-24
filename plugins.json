@@ -27,9 +27,9 @@
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "基于 LLM 深度分镜理解的多角色自动绘图触发器，支持 2D 连续坐标触控调节、分镜 Tag 可视化调整、NAI V4.5/V5 连续坐标生成与多角色精确构图控制。",
-    "version": "6.0.57",
+    "version": "6.0.58",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=6.0.57"
+    "main": "plugins/smart-draw-trigger.js?v=6.0.58"
   },
   {
     "id": "rbq-multi-char",
@@ -67,9 +67,9 @@
     "id": "rbq-image-privacy",
     "name": "图片隐私模式 (Image Privacy Mode)",
     "description": "支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "author": "TTWP-09",
-    "main": "plugins/image-privacy-mode.js?v=1.0.7"
+    "main": "plugins/image-privacy-mode.js?v=1.0.8"
   },
   {
     "id": "rbq-save-downloads-fix",

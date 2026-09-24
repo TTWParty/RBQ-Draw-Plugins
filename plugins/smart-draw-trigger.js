@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.61';
+    const PLUGIN_VERSION = '6.0.62';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9294,29 +9294,12 @@ SCHEMA:
     }
 
     function getSegmentState(store, baseKey, segmentKey, messageId = null) {
-        const findInStates = (states, targetKey) => {
-            if (!states || typeof states !== 'object') return null;
-            if (states[targetKey]) return states[targetKey];
-            // Suffix matching: if targetKey ends with "-seg-0", find any key ending in "-seg-0"
-            const segSuffixMatch = String(targetKey).match(/-seg-\d+$/);
-            if (segSuffixMatch) {
-                const suffix = segSuffixMatch[0];
-                const matchedKey = Object.keys(states).find(k => k.endsWith(suffix));
-                if (matchedKey && states[matchedKey]) return states[matchedKey];
-            } else {
-                // Single card fallback matching (no -seg- suffix)
-                const singleKey = Object.keys(states).find(k => !k.includes('-seg-'));
-                if (singleKey && states[singleKey]) return states[singleKey];
-            }
-            return null;
-        };
-
         if (messageId != null && Number.isFinite(Number(messageId))) {
             const sdt = getMsgExtraSdt(messageId);
+            if (sdt?.segmentStates?.[segmentKey]) {
+                return sdt.segmentStates[segmentKey];
+            }
             if (sdt && typeof sdt.segmentStates === 'object') {
-                const found = findInStates(sdt.segmentStates, segmentKey);
-                if (found) return found;
-                // 若 sdt 中已有明确的 segmentStates 对象（例如重新解析后已重置为空对象 {}），严禁穿透到旧缓存
                 return {};
             }
         }
@@ -9324,17 +9307,12 @@ SCHEMA:
         if (cardEl?.dataset?.messageId) {
             const mId = Number(cardEl.dataset.messageId);
             const sdt = getMsgExtraSdt(mId);
-            if (sdt && typeof sdt.segmentStates === 'object') {
-                const found = findInStates(sdt.segmentStates, segmentKey);
-                if (found) return found;
-                return {};
+            if (sdt?.segmentStates?.[segmentKey]) {
+                return sdt.segmentStates[segmentKey];
             }
         }
         const cache = store?.cache?.[baseKey];
-        const foundInCache = findInStates(cache?.segmentStates, segmentKey);
-        if (foundInCache) return foundInCache;
-
-        return {};
+        return cache?.segmentStates?.[segmentKey] || {};
     }
 
     function cleanTextForMatch(str) {
@@ -11507,36 +11485,15 @@ SCHEMA:
                 const segmentState = getSegmentState(store, key, item.key, messageId);
                 let restoredResult = segmentState.imageResult ? { ...segmentState.imageResult } : null;
 
-                // 多端跨设备容灾兜底：若 SDT 本地分镜状态未包含有效图片，从宿主消息 extra (rbq_image / rbq_images) 或图库历史拉取
+                // 多端跨设备容灾兜底：若 SDT 本地分镜状态未包含有效图片，从宿主图库历史拉取
                 if (!restoredResult || (!restoredResult.url && !restoredResult.cacheId && !restoredResult.serverUrl)) {
-                    const msg = getMessageSnapshot(messageId);
-                    const hostExtras = [];
-                    if (Array.isArray(msg?.extra?.rbq_images)) hostExtras.push(...msg.extra.rbq_images);
-                    if (msg?.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
-                    if (hostExtras.length > 0) {
-                        const promptText = String(item.segment?.prompt || '').trim();
-                        const matchedExtra = hostExtras.find(ext => {
-                            if (!ext) return false;
-                            if (promptText && ext.prompt) {
-                                const p1 = normalizePromptKey(promptText);
-                                const p2 = normalizePromptKey(ext.prompt);
-                                if (p1 && p2 && (p1 === p2 || p1.includes(p2) || p2.includes(p1))) return true;
-                            }
-                            return false;
-                        }) || (rendered.length === 1 && hostExtras.length === 1 ? hostExtras[0] : null);
-                        if (matchedExtra && (matchedExtra.cacheId || matchedExtra.url || matchedExtra.serverUrl || matchedExtra.serverPreviewUrl || matchedExtra.serverOriginalUrl)) {
-                            restoredResult = { ...matchedExtra };
-                        }
-                    }
-                    if (!restoredResult || (!restoredResult.url && !restoredResult.cacheId && !restoredResult.serverUrl)) {
-                        if (typeof RBQ?.api?.getLatestHistoryItemForScope === 'function') {
-                            const hostItem = RBQ.api.getLatestHistoryItemForScope({
-                                messageId,
-                                prompt: item.segment?.prompt || ''
-                            });
-                            if (hostItem && (hostItem.cacheId || hostItem.url || hostItem.serverUrl || hostItem.serverPreviewUrl || hostItem.serverOriginalUrl)) {
-                                restoredResult = { ...hostItem };
-                            }
+                    if (typeof RBQ?.api?.getLatestHistoryItemForScope === 'function') {
+                        const hostItem = RBQ.api.getLatestHistoryItemForScope({
+                            messageId,
+                            prompt: item.segment?.prompt || ''
+                        });
+                        if (hostItem && (hostItem.cacheId || hostItem.url || hostItem.serverUrl || hostItem.serverPreviewUrl || hostItem.serverOriginalUrl)) {
+                            restoredResult = { ...hostItem };
                         }
                     }
                 }

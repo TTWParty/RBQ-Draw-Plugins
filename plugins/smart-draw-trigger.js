@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.51';
+    const PLUGIN_VERSION = '6.0.52';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9393,17 +9393,15 @@ SCHEMA:
                 segmentInstruction: `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！【最高警告：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对禁止提取历史楼层（recentMessages）中的图组或场景！】`
             } : minSeg > 0 ? {
                 minSegments: minSeg,
-                segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
-            } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
-                segmentInstruction: `【前情增强多分镜协同推演铁律】：当前已开启前情增强分析推演（${store.enhancedContext}）。你必须通读当前消息（currentMessage），深入推演情节发展中的视觉节拍转换与动作推进。只要正文包含丰富情节、体位转变或动作阶段演变（如前奏挑逗→动作展开→高潮互动，或空间场景转换），【强烈要求提取 2~4 个独立分镜】全部输出到 segments 数组！每个分镜必须拥有独立的 label、独立的 anchor.text（正文对应段落的逐字原文）和独立的构图画面（若正文确实为极简单一瞬间则输出 1 个分镜，纯日常闲聊无视觉画面则输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
+                segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
             } : {
-                segmentInstruction: `【分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中提取需要生图的独立分镜填入 segments 数组（若无新画面变化则输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
+                segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
             ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
-                segments: [
+                segments: effectiveMinSeg > 1 ? [
                     {
                         label: 'string (5~15字中文分镜名，如 分镜01·阶段一动作)',
                         anchor: { text: 'string exact copy from currentMessage (10~40字原文)' },
@@ -9413,9 +9411,18 @@ SCHEMA:
                         ]
                     },
                     {
-                        label: 'string (如 分镜02·阶段二体位转换/高潮互动，剧情推进时提取多个分镜)',
+                        label: 'string (如 分镜02·阶段二动作推进，根据剧情拆分多个分镜)',
                         anchor: { text: 'string exact copy from currentMessage (后续关键段落逐字原文)' },
                         scene: 'string tags',
+                        characters: [
+                            { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
+                        ]
+                    }
+                ] : [
+                    {
+                        label: 'string (5~15字中文分镜名，如 分镜01·动作画面；支持自适应输出1个或多个分镜)',
+                        anchor: { text: 'string exact copy from currentMessage (10~40字逐字原文)' },
+                        scene: 'string danbooru tags, NO quality tags, NO character tags',
                         characters: [
                             { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
                         ]
@@ -9647,7 +9654,7 @@ SCHEMA:
                     },
                     segments: {
                         type: 'array',
-                        description: 'List of prompt segments to render. When the scene contains multi-stage action beats, narrative progression or position transitions, naturally extract 2-4 distinct segments into this array instead of compressing into a single one.',
+                        description: 'List of prompt segments to render. Adaptively extract one or more distinct segments based on narrative progression, action beats or position transitions, without artificially compressing multi-beat scenes into a single segment.',
                         items: {
                             type: 'object',
                             properties: {

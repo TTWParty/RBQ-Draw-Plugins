@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.56';
+    const PLUGIN_VERSION = '6.0.57';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2239,10 +2239,23 @@ Zimage 擅长理解复杂的英文长句和语境。
     const SYSTEM_PROMPT_PRESETS = {
         v40_worldbook_97_opt: { label: 'V40·文生图9.7全功能优化版 (默认推荐/四模块自洽架构/全场景覆盖)', prompt: V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT },
         v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (.53实装版/绝杀肚脐机位/无接触留白)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
-        consistent: { label: 'V24·8.30全能规范版 (经典备选)', prompt: CONSISTENT_SYSTEM_PROMPT },
-        zimage_nl: { label: 'Zimage·自然语言 (Flux/SD通用)', prompt: ZIMAGE_NL_PROMPT },
-        grok_nl: { label: 'Grok·自然语言', prompt: GROK_NL_PROMPT },
+        consistent: { label: 'V24·8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
         custom: { label: '⚙️ 自定义提示词 (Custom · 展开编辑框)', prompt: '' },
+        v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
+        v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
+        v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
+        v28_worldbook_91: { label: 'V28·9.1全息分层原版 (历史)', prompt: V5_SPEC_91_SYSTEM_PROMPT },
+        v27_5: { label: 'V27.5·全息分层自适应版 (历史)', prompt: V27_5_SYSTEM_PROMPT },
+        v27_universal: { label: 'V27·全场景通用自适应版 (历史)', prompt: UNIVERSAL_SYSTEM_PROMPT },
+        v26_hybrid: { label: 'V26·全息空间自适应版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        v25_hybrid: { label: 'V25·全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
+        v24_3d: { label: 'V24·3D写实电影版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
+        v23: { label: 'V23·国籍面相版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
+        v22: { label: 'V22·完整版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
+        zimage_nl: { label: 'Zimage·自然语言', prompt: ZIMAGE_NL_PROMPT },
+        grok_nl: { label: 'Grok·自然语言', prompt: GROK_NL_PROMPT },
+        storyboarder: { label: 'V21·POV增强版 (历史)', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'v40_worldbook_97_opt';
@@ -12796,10 +12809,10 @@ SCHEMA:
                         <label class="st-scene-trigger-field wide"><span>提示词预设档位</span><select id="rbq-sdt-system-preset">
                             <option value="v40_worldbook_97_opt">${SYSTEM_PROMPT_PRESETS['v40_worldbook_97_opt']?.label || 'V40·文生图9.7全功能优化版'}</option>
                             <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·文生图9.7完整详尽版'}</option>
-                            <option value="consistent">${SYSTEM_PROMPT_PRESETS['consistent']?.label || 'V24·8.30全能规范版 (经典备选)'}</option>
-                            <option value="zimage_nl">${SYSTEM_PROMPT_PRESETS['zimage_nl']?.label || 'Zimage·自然语言 (Flux/SD通用)'}</option>
-                            <option value="grok_nl">${SYSTEM_PROMPT_PRESETS['grok_nl']?.label || 'Grok·自然语言'}</option>
                             <option value="custom">⚙️ 自定义提示词 (Custom · 展开编辑框)</option>
+                            <optgroup label="历史版本归档 (Legacy)">
+                                ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97' && key !== 'custom').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
+                            </optgroup>
                         </select></label>
                         <label id="rbq-sdt-system-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
                             <span>自定义 System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span>

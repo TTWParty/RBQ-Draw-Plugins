@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.53';
+    const PLUGIN_VERSION = '6.0.54';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9395,7 +9395,7 @@ SCHEMA:
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
-                segmentInstruction: `【前情增强生图位置与数量推演指令】：当前已启用前情增强分析（${store.enhancedContext}）。你必须在思考区（reason 字段）严格执行【正文场景选取与生图数量决策】推演：\n1. 哪里生图（视觉锚点选取）：通读当前消息（currentMessage），定位最具视觉冲击力、动作高潮演变、体位转变、脱衣暴露等关键节点，每个选定画面必须从正文中一字不差截取 10~40 字逐字原文填入 anchor.text，并拟定 5~15 字中文 label；\n2. 需要生几张（数量自适应决策）：根据剧情推进节拍自适应决策生图数量——单一瞬间动作提取 1 个分镜；长文多阶段动作演变、空间场景转换或情节推进，按节拍自然拆分为多个独立分镜全部填入 segments 数组（根据剧情自然提取，绝不人为限定死板数字，亦绝不草率将多节拍长文压缩为单张）；若纯日常闲聊无视觉画面则输出 {"shouldDraw": false}。\n【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
+                segmentInstruction: `【前情增强多分镜协同推演铁律】：当前已开启前情增强分析推演（${store.enhancedContext}）。你必须通读当前消息（currentMessage），深入推演情节发展中的视觉节拍转换与动作推进。只要正文包含丰富情节、体位转变或动作阶段演变（如前奏挑逗→动作展开→高潮互动，或空间场景转换），【强烈要求提取多个独立分镜】全部输出到 segments 数组！每个分镜必须拥有独立的 label、独立的 anchor.text（正文对应段落的逐字原文）和独立的构图画面（若正文确实为极简单一瞬间则输出 1 个分镜，纯日常闲聊无视觉画面则输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
@@ -9413,7 +9413,7 @@ SCHEMA:
                         ]
                     },
                     {
-                        label: 'string (如 分镜02·阶段二动作推进/体位转换，根据推演结论提取分镜)',
+                        label: 'string (如 分镜02·阶段二体位转换/高潮互动，剧情推进时提取多个分镜)',
                         anchor: { text: 'string exact copy from currentMessage (后续关键段落逐字原文)' },
                         scene: 'string tags',
                         characters: [

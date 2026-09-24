@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.60';
+    const PLUGIN_VERSION = '6.0.61';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9014,10 +9014,6 @@ SCHEMA:
             for (const { seg, index } of insertionOrder) {
                 const segmentKey = `${key}-seg-${index}`;
                 const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(segmentKey)}"]`);
-                if (existing instanceof HTMLElement) {
-                    resultMap.set(index, { wrapper: existing, key: segmentKey, segment: seg });
-                    continue;
-                }
 
                 // Pass the individual segment so charData/label are per-segment
                 const segResult = {
@@ -9026,7 +9022,40 @@ SCHEMA:
                     matchedLorebooks: result.matchedLorebooks || [],
                 };
 
-                const wrapper = createConfiguredCard({
+                let wrapper = existing;
+                if (wrapper instanceof HTMLElement) {
+                    // 清理现有卡片中的旧图片和隐私遮罩残留，防止重新解析后依然显示旧图
+                    const resEl = wrapper.querySelector('.st-scene-trigger-inline-result');
+                    if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
+                    wrapper.querySelector('.rbq-privacy-bar')?.remove();
+                    delete wrapper.dataset.latestImageUrl;
+
+                    const finalPrompt = getFinalPrompt(segResult);
+                    wrapper.dataset.rbqSdtFinalPrompt = finalPrompt;
+                    if (finalPrompt && finalPrompt !== '[Smart Draw]') {
+                        wrapper.dataset.prompt = finalPrompt;
+                    }
+                    const segLabel = getSegmentLabel(seg, '').trim();
+                    if (segLabel && segLabel !== '生成图片') {
+                        wrapper.dataset.rbqSdtOrigLabel = segLabel;
+                    }
+                    if (Array.isArray(seg.characters) && seg.characters.length > 0) {
+                        try { wrapper.dataset.rbqSdtCharData = JSON.stringify(seg.characters); } catch (_e) { /* noop */ }
+                    }
+                    renderCardBadges(wrapper, segResult);
+
+                    const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
+                    if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
+                    const btnLabel = getSegmentLabel(seg);
+                    setGenerateButtonState(wrapper, true, btnLabel, false);
+                    setWrapperStage(wrapper, 'ready-generate');
+                    bindWrapperManualRun(wrapper, trigger, messageId, key, segmentKey);
+
+                    resultMap.set(index, { wrapper, key: segmentKey, segment: seg });
+                    continue;
+                }
+
+                wrapper = createConfiguredCard({
                     messageId,
                     trigger,
                     result: segResult,
@@ -9077,6 +9106,12 @@ SCHEMA:
         } else {
             const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
             if (existing instanceof HTMLElement) {
+                // 清理旧图片残留与隐私遮罩
+                const resEl = existing.querySelector('.st-scene-trigger-inline-result');
+                if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
+                existing.querySelector('.rbq-privacy-bar')?.remove();
+                delete existing.dataset.latestImageUrl;
+
                 // 更新现有卡片为正式结果卡
                 existing.dataset.rbqSdtIsResult = '1';
                 existing.dataset.rbqSdtReason = result.reason || '';
@@ -9278,15 +9313,22 @@ SCHEMA:
 
         if (messageId != null && Number.isFinite(Number(messageId))) {
             const sdt = getMsgExtraSdt(messageId);
-            const found = findInStates(sdt?.segmentStates, segmentKey);
-            if (found) return found;
+            if (sdt && typeof sdt.segmentStates === 'object') {
+                const found = findInStates(sdt.segmentStates, segmentKey);
+                if (found) return found;
+                // 若 sdt 中已有明确的 segmentStates 对象（例如重新解析后已重置为空对象 {}），严禁穿透到旧缓存
+                return {};
+            }
         }
         const cardEl = document.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(segmentKey)}"]`);
         if (cardEl?.dataset?.messageId) {
             const mId = Number(cardEl.dataset.messageId);
             const sdt = getMsgExtraSdt(mId);
-            const found = findInStates(sdt?.segmentStates, segmentKey);
-            if (found) return found;
+            if (sdt && typeof sdt.segmentStates === 'object') {
+                const found = findInStates(sdt.segmentStates, segmentKey);
+                if (found) return found;
+                return {};
+            }
         }
         const cache = store?.cache?.[baseKey];
         const foundInCache = findInStates(cache?.segmentStates, segmentKey);
@@ -11285,10 +11327,9 @@ SCHEMA:
             // lingering when re-parse returns different segments or fewer segments.
             const container = RBQ.api.getMessageTextContainer(messageId);
             if (container instanceof HTMLElement) {
-                const selector = `.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(cacheKey)}"][data-rbq-sdt-is-result="1"]`;
-                const oldCards = container.querySelectorAll(selector);
+                const oldCards = container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-is-result="1"]`);
                 console.info(`[Smart Draw] 🧹 re-parse cleanup: found ${oldCards.length} old cards to remove`, {
-                    selector,
+                    messageId,
                     cacheKey,
                     allSdtCards: container.querySelectorAll(`.${CARD_CLASS}`).length,
                 });
@@ -11311,51 +11352,13 @@ SCHEMA:
             syncMessageActionButton(messageId, null, trigger, cacheKey);
             for (const item of rendered) {
                 const renderedWrapper = item.wrapper;
-                const segmentState = getSegmentState(store, cacheKey, item.key, messageId);
-                let restoredResult2 = segmentState.imageResult ? { ...segmentState.imageResult } : null;
-
-                // 多端跨设备容灾兜底：若 SDT 分镜状态未包含图片或缺少URL，从宿主消息 extra / 图库检索
-                if (!restoredResult2 || (!restoredResult2.url && !restoredResult2.cacheId && !restoredResult2.serverUrl)) {
-                    const msg2 = getMessageSnapshot(messageId);
-                    const hostExtras2 = [];
-                    if (Array.isArray(msg2?.extra?.rbq_images)) hostExtras2.push(...msg2.extra.rbq_images);
-                    if (msg2?.extra?.rbq_image && typeof msg2.extra.rbq_image === 'object') hostExtras2.push(msg2.extra.rbq_image);
-                    if (hostExtras2.length > 0) {
-                        const promptText2 = String(item.segment?.prompt || '').trim();
-                        const matchedExtra2 = hostExtras2.find(ext => ext && (ext.prompt === promptText2 || (ext.url || ext.cacheId || ext.serverUrl))) || hostExtras2[0];
-                        if (matchedExtra2 && (matchedExtra2.cacheId || matchedExtra2.url || matchedExtra2.serverUrl || matchedExtra2.serverPreviewUrl || matchedExtra2.serverOriginalUrl)) {
-                            restoredResult2 = { ...matchedExtra2 };
-                        }
-                    }
-                    if (!restoredResult2 || (!restoredResult2.url && !restoredResult2.cacheId && !restoredResult2.serverUrl)) {
-                        if (typeof RBQ?.api?.getLatestHistoryItemForScope === 'function') {
-                            const hostItem = RBQ.api.getLatestHistoryItemForScope({
-                                messageId,
-                                prompt: item.segment?.prompt || ''
-                            });
-                            if (hostItem && (hostItem.cacheId || hostItem.url || hostItem.serverUrl || hostItem.serverPreviewUrl || hostItem.serverOriginalUrl)) {
-                                restoredResult2 = { ...hostItem };
-                            }
-                        }
-                    }
-                }
-
-                if (restoredResult2 && (restoredResult2.cacheId || restoredResult2.url || restoredResult2.serverUrl || restoredResult2.serverPreviewUrl || restoredResult2.serverOriginalUrl)) {
-                    if (typeof RBQ.api.ensureHistoryItemDisplayUrl === 'function') {
-                        try {
-                            const freshUrl2 = await RBQ.api.ensureHistoryItemDisplayUrl(restoredResult2);
-                            if (freshUrl2) restoredResult2.url = freshUrl2;
-                        } catch (_e) { /* fall through */ }
-                    }
-                    const finalUrl2 = restoredResult2.serverPreviewUrl || (restoredResult2.url && !restoredResult2.url.startsWith('blob:') && restoredResult2.url.includes('_preview.webp') ? restoredResult2.url : '') || restoredResult2.url || restoredResult2.serverUrl || restoredResult2.serverOriginalUrl;
-                    if (finalUrl2) {
-                        restoredResult2.url = finalUrl2;
-                        RBQ.api.renderInlineGeneratedImage(renderedWrapper, restoredResult2);
-                        setGenerateButtonState(renderedWrapper, true, getRegenLabel(renderedWrapper), false);
-                        setWrapperStage(renderedWrapper, 'generated');
-                    }
-                } else if (store.autoRunGenerate) {
+                // 重新解析/主动解析完成：新分镜必须基于最新提示词与标签，严禁复用旧图
+                if (store.autoRunGenerate) {
                     await maybeAutoGenerate(renderedWrapper, item.segment, messageId, cacheKey, item.key);
+                } else {
+                    const segLabel = getSegmentLabel(item.segment);
+                    setGenerateButtonState(renderedWrapper, true, segLabel, false);
+                    setWrapperStage(renderedWrapper, 'ready-generate');
                 }
             }
             processedKeys.add(cacheKey);
@@ -11512,7 +11515,15 @@ SCHEMA:
                     if (msg?.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
                     if (hostExtras.length > 0) {
                         const promptText = String(item.segment?.prompt || '').trim();
-                        const matchedExtra = hostExtras.find(ext => ext && (ext.prompt === promptText || (ext.url || ext.cacheId || ext.serverUrl))) || hostExtras[0];
+                        const matchedExtra = hostExtras.find(ext => {
+                            if (!ext) return false;
+                            if (promptText && ext.prompt) {
+                                const p1 = normalizePromptKey(promptText);
+                                const p2 = normalizePromptKey(ext.prompt);
+                                if (p1 && p2 && (p1 === p2 || p1.includes(p2) || p2.includes(p1))) return true;
+                            }
+                            return false;
+                        }) || (rendered.length === 1 && hostExtras.length === 1 ? hostExtras[0] : null);
                         if (matchedExtra && (matchedExtra.cacheId || matchedExtra.url || matchedExtra.serverUrl || matchedExtra.serverPreviewUrl || matchedExtra.serverOriginalUrl)) {
                             restoredResult = { ...matchedExtra };
                         }

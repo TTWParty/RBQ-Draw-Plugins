@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.50';
+    const PLUGIN_VERSION = '6.0.51';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2217,13 +2217,6 @@ Zimage 擅长理解复杂的英文长句和语境。
           "uc": "close-up, eye level, from above, nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
         }
       ]
-    }
-  ]
-}
-          "uc": "close-up, eye level, from above, nude, clothes on lower body, panties, skirt, feet, shoes, boy face, male body, extra limbs, bad hands, full body, wide shot"
-        }
-      ]
-    }
   ]
 }
 
@@ -8943,7 +8936,7 @@ SCHEMA:
         let recentHistoricalTexts = null;
         const segments = rawSegments.filter((seg) => {
             const anchorText = String(seg?.anchor?.text || '').trim();
-            if (!anchorText || anchorText.length < 5) return true;
+            if (!anchorText || anchorText.length < 4) return true;
             // 检查在当前楼层正文中是否能找到
             const matchesCurrent = currentMesText ? anchorsMatchSentence(anchorText, currentMesText) : false;
             if (matchesCurrent) return true;
@@ -8955,7 +8948,11 @@ SCHEMA:
                     .map(m => String(m.mes || '').trim())
                     .filter(Boolean);
             }
-            const matchesRecent = recentHistoricalTexts.some(histText => anchorsMatchSentence(anchorText, histText));
+            const cleanA = cleanTextForMatch(anchorText);
+            const matchesRecent = recentHistoricalTexts.some(histText => {
+                const cleanB = cleanTextForMatch(histText);
+                return cleanB.includes(cleanA) || (cleanA.length >= 8 && cleanB.includes(cleanA.slice(0, 8)));
+            });
             if (matchesRecent) {
                 console.warn(`[${PLUGIN_NAME}] 🛡️ 拦截跨楼层串话分镜: 「${seg.label || ''}」锚点来自上一轮历史对话，已自动剔除！`, { anchorText });
                 return false;
@@ -9019,7 +9016,7 @@ SCHEMA:
                 }
             }
 
-            // Batch mount unanchored cards using DocumentFragment
+            // Batch mount unanchored cards using DocumentFragment (isResultCard: true ensures fallback to bottom)
             if (unanchoredCards.length > 0) {
                 unanchoredCards.sort((a, b) => a.index - b.index);
                 const fragment = document.createDocumentFragment();
@@ -9027,7 +9024,7 @@ SCHEMA:
                     fragment.append(item.wrapper);
                     resultMap.set(item.index, { wrapper: item.wrapper, key: item.key, segment: item.segment });
                 }
-                mountFallbackFragment(container, fragment, store);
+                mountFallbackFragment(container, fragment, store, true);
             }
 
             // Restore original segment order for downstream consumers (auto-gen, event binding)
@@ -9038,6 +9035,26 @@ SCHEMA:
         } else {
             const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
             if (existing instanceof HTMLElement) {
+                // 更新现有卡片为正式结果卡
+                existing.dataset.rbqSdtIsResult = '1';
+                existing.dataset.rbqSdtReason = result.reason || '';
+                const finalPrompt = getFinalPrompt(result);
+                existing.dataset.rbqSdtFinalPrompt = finalPrompt;
+                if (Array.isArray(result?.characters) && result.characters.length > 0) {
+                    try { existing.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch (_e) { /* noop */ }
+                }
+                renderCardBadges(existing, result);
+                const taggerBtn = existing.querySelector('.st-scene-trigger-generate');
+                if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
+                const btnLabel = store.autoRunGenerate ? '等待自动生图...' : getSegmentLabel(result);
+                setGenerateButtonState(existing, true, btnLabel, false);
+                setWrapperStage(existing, 'ready-generate');
+                bindWrapperManualRun(existing, trigger, messageId, key);
+
+                // 若有锚点，将其从顶部占位位置移入正文对应锚点位置
+                if (result?.anchor?.text || (Number.isFinite(Number(result?.anchor?.index)) && Number(result?.anchor?.index) > 0)) {
+                    tryMountAnchoredCard(container, messageId, trigger, result, existing);
+                }
                 rendered.push({ wrapper: existing, key, segment: result });
             } else {
                 const wrapper = createConfiguredCard({
@@ -9061,7 +9078,7 @@ SCHEMA:
                     if (!mounted) {
                         const fragment = document.createDocumentFragment();
                         fragment.append(wrapper);
-                        mountFallbackFragment(container, fragment, store);
+                        mountFallbackFragment(container, fragment, store, true);
                     }
                     rendered.push({ wrapper, key, segment: result });
                 }
@@ -9211,14 +9228,71 @@ SCHEMA:
         return cache?.segmentStates?.[segmentKey] || {};
     }
 
+    function cleanTextForMatch(str) {
+        if (!str) return '';
+        return String(str)
+            .toLowerCase()
+            // Strip markdown formatting characters: * _ ~ ` > # |
+            .replace(/[*_~`>#|]/g, '')
+            // Normalize quotes (Chinese/English double/single quotes, bracket quotes)
+            .replace(/[“”"「」『』]/g, '"')
+            .replace(/[‘’']/g, "'")
+            // Normalize ellipses
+            .replace(/(?:\.{3,}|…+|……)/g, '...')
+            // Normalize full-width punctuation to half-width
+            .replace(/，/g, ',')
+            .replace(/。/g, '.')
+            .replace(/！/g, '!')
+            .replace(/？/g, '?')
+            .replace(/：/g, ':')
+            .replace(/；/g, ';')
+            .replace(/（/g, '(')
+            .replace(/）/g, ')')
+            .replace(/【/g, '[')
+            .replace(/】/g, ']')
+            .replace(/\s+/g, '');
+    }
+
+    function buildCleanMap(fullText) {
+        let cleanStr = '';
+        const cleanToFullEndIndex = []; // index in cleanStr -> 1-based end offset in fullText
+
+        for (let i = 0; i < fullText.length; i++) {
+            const ch = fullText[i];
+            if (/\s/.test(ch)) continue; // ignore whitespace
+            if (/[*_~`>#|]/.test(ch)) continue; // ignore markdown syntax
+
+            let normChar = ch.toLowerCase();
+            if (/[“”"「」『』]/.test(normChar)) normChar = '"';
+            else if (/[‘’']/.test(normChar)) normChar = "'";
+            else if (/[…]+/.test(normChar)) normChar = '.';
+            else if (normChar === '，') normChar = ',';
+            else if (normChar === '。') normChar = '.';
+            else if (normChar === '！') normChar = '!';
+            else if (normChar === '？') normChar = '?';
+            else if (normChar === '：') normChar = ':';
+            else if (normChar === '；') normChar = ';';
+            else if (normChar === '（') normChar = '(';
+            else if (normChar === '）') normChar = ')';
+            else if (normChar === '【') normChar = '[';
+            else if (normChar === '】') normChar = ']';
+
+            for (const c of normChar) {
+                cleanToFullEndIndex.push(i + 1); // 1-based end offset after this character in fullText
+                cleanStr += c;
+            }
+        }
+        return { cleanStr, cleanToFullEndIndex };
+    }
+
     function anchorsMatchSentence(anchorText, nodeText) {
-        const a = String(anchorText || '').trim().toLowerCase().replace(/\s+/g, '');
-        const b = String(nodeText || '').trim().toLowerCase().replace(/\s+/g, '');
-        if (!a || !b || a.length < 4) return false;
+        const a = cleanTextForMatch(anchorText);
+        const b = cleanTextForMatch(nodeText);
+        if (!a || !b || a.length < 3) return false;
         // 1. Exact substring (best case)
         if (b.includes(a) || a.includes(b)) return true;
-        // 2. Fuzzy: 70% of anchor chars appear consecutively in nodeText
-        const minOverlap = Math.max(4, Math.floor(a.length * 0.7));
+        // 2. Fuzzy: 50% of anchor chars appear consecutively in nodeText (or at least 3 chars)
+        const minOverlap = Math.max(3, Math.floor(a.length * 0.5));
         for (let i = 0; i <= a.length - minOverlap; i++) {
             if (b.includes(a.slice(i, i + minOverlap))) return true;
         }
@@ -9320,8 +9394,10 @@ SCHEMA:
             } : minSeg > 0 ? {
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
+            } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
+                segmentInstruction: `【前情增强多分镜协同推演铁律】：当前已开启前情增强分析推演（${store.enhancedContext}）。你必须通读当前消息（currentMessage），深入推演情节发展中的视觉节拍转换与动作推进。只要正文包含丰富情节、体位转变或动作阶段演变（如前奏挑逗→动作展开→高潮互动，或空间场景转换），【强烈要求提取 2~4 个独立分镜】全部输出到 segments 数组！每个分镜必须拥有独立的 label、独立的 anchor.text（正文对应段落的逐字原文）和独立的构图画面（若正文确实为极简单一瞬间则输出 1 个分镜，纯日常闲聊无视觉画面则输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
-                segmentInstruction: `【分镜提取准则与楼层隔离铁律】：根据前情增强分析推演结论，从当前消息（currentMessage）中提取需要生图的独立分镜填入 segments 数组（若无新画面变化则输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
+                segmentInstruction: `【分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中提取需要生图的独立分镜填入 segments 数组（若无新画面变化则输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
             ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: {
@@ -9329,9 +9405,17 @@ SCHEMA:
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
                 segments: [
                     {
-                        label: 'string (5~15字中文分镜名)',
+                        label: 'string (5~15字中文分镜名，如 分镜01·阶段一动作)',
                         anchor: { text: 'string exact copy from currentMessage (10~40字原文)' },
                         scene: 'string danbooru tags, NO quality tags, NO character tags',
+                        characters: [
+                            { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
+                        ]
+                    },
+                    {
+                        label: 'string (如 分镜02·阶段二体位转换/高潮互动，剧情推进时提取多个分镜)',
+                        anchor: { text: 'string exact copy from currentMessage (后续关键段落逐字原文)' },
+                        scene: 'string tags',
                         characters: [
                             { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
                         ]
@@ -9563,7 +9647,7 @@ SCHEMA:
                     },
                     segments: {
                         type: 'array',
-                        description: 'List of prompt segments to render',
+                        description: 'List of prompt segments to render. When the scene contains multi-stage action beats, narrative progression or position transitions, naturally extract 2-4 distinct segments into this array instead of compressing into a single one.',
                         items: {
                             type: 'object',
                             properties: {
@@ -10428,7 +10512,43 @@ SCHEMA:
             if (inserted) return true;
         }
 
-        // Strategy 2: Fall back to sentence index ONLY if an explicit valid index was supplied
+        // Strategy 2: Fall back to sentence map by text overlap if direct text search didn't match
+        if (anchor?.text) {
+            const map = buildSentenceMapFromRoot(container);
+            if (map.length > 0) {
+                let bestEntry = null;
+                let maxOverlap = 0;
+                const cleanAnchor = cleanTextForMatch(anchor.text);
+                for (const entry of map) {
+                    const cleanSent = cleanTextForMatch(entry.sentence);
+                    if (!cleanSent) continue;
+                    let overlap = 0;
+                    if (cleanSent.includes(cleanAnchor) || cleanAnchor.includes(cleanSent)) {
+                        overlap = Math.min(cleanAnchor.length, cleanSent.length) * 2;
+                    } else {
+                        for (let len = Math.min(cleanAnchor.length, cleanSent.length); len >= 4; len--) {
+                            for (let s = 0; s <= cleanAnchor.length - len; s++) {
+                                if (cleanSent.includes(cleanAnchor.slice(s, s + len))) {
+                                    overlap = len;
+                                    break;
+                                }
+                            }
+                            if (overlap > 0) break;
+                        }
+                    }
+                    if (overlap > maxOverlap) {
+                        maxOverlap = overlap;
+                        bestEntry = entry;
+                    }
+                }
+                if (bestEntry && maxOverlap >= 4) {
+                    insertWrapperAtTextNode(bestEntry.node, bestEntry.endOffset, bestEntry.endOffset, wrapper);
+                    return true;
+                }
+            }
+        }
+
+        // Strategy 3: Fall back to sentence index ONLY if an explicit valid index was supplied
         const explicitIndex = Number(anchor?.index);
         if (Number.isFinite(explicitIndex) && explicitIndex > 0) {
             const map = buildSentenceMapFromRoot(container);
@@ -10479,11 +10599,13 @@ SCHEMA:
     }
 
     function findAnchorEndPosition(fullText, needle) {
-        // 1. Exact substring match
+        if (!fullText || !needle) return -1;
+
+        // 1. Exact raw substring match
         const idx = fullText.indexOf(needle);
         if (idx >= 0) return idx + needle.length;
 
-        // 2. Whitespace-normalized match (handles minor spacing differences)
+        // 2. Whitespace-normalized raw match (handles minor spacing differences)
         const normFull = fullText.toLowerCase().replace(/\s+/g, '');
         const normNeedle = needle.toLowerCase().replace(/\s+/g, '');
         const normIdx = normFull.indexOf(normNeedle);
@@ -10497,18 +10619,51 @@ SCHEMA:
             }
         }
 
-        // 3. Fuzzy: find the longest suffix of the needle that exists in the text
-        //    (handles LLM truncating or slightly modifying the anchor text)
-        const minLen = Math.max(4, Math.floor(normNeedle.length * 0.5));
-        for (let len = normNeedle.length; len >= minLen; len--) {
-            const tail = normNeedle.slice(normNeedle.length - len);
-            const tailIdx = normFull.indexOf(tail);
-            if (tailIdx >= 0) {
-                const normEnd = tailIdx + tail.length;
-                let normPos = 0;
-                for (let i = 0; i < fullText.length; i++) {
-                    if (!/\s/.test(fullText[i].toLowerCase())) normPos++;
-                    if (normPos >= normEnd) return i + 1;
+        // 3. Cleaned text exact match (Markdown syntax stripped, quotes & punctuation normalized)
+        const { cleanStr, cleanToFullEndIndex } = buildCleanMap(fullText);
+        const cleanNeedle = cleanTextForMatch(needle);
+        if (!cleanStr || !cleanNeedle) return -1;
+
+        const cleanIdx = cleanStr.indexOf(cleanNeedle);
+        if (cleanIdx >= 0) {
+            const cleanEnd = cleanIdx + cleanNeedle.length - 1;
+            if (cleanEnd < cleanToFullEndIndex.length) {
+                return cleanToFullEndIndex[cleanEnd];
+            }
+        }
+
+        // 4. Cleaned text fuzzy match: find the longest matching slice (suffix, prefix, or sliding window)
+        const minLen = Math.max(4, Math.floor(cleanNeedle.length * 0.4));
+        for (let len = cleanNeedle.length - 1; len >= minLen; len--) {
+            // Check suffix first (most common: LLM anchor matched end of sentence)
+            const suffix = cleanNeedle.slice(cleanNeedle.length - len);
+            const suffixIdx = cleanStr.indexOf(suffix);
+            if (suffixIdx >= 0) {
+                const cleanEnd = suffixIdx + suffix.length - 1;
+                if (cleanEnd < cleanToFullEndIndex.length) {
+                    return cleanToFullEndIndex[cleanEnd];
+                }
+            }
+
+            // Check prefix (LLM anchor matched beginning of sentence)
+            const prefix = cleanNeedle.slice(0, len);
+            const prefixIdx = cleanStr.indexOf(prefix);
+            if (prefixIdx >= 0) {
+                const cleanEnd = prefixIdx + prefix.length - 1;
+                if (cleanEnd < cleanToFullEndIndex.length) {
+                    return cleanToFullEndIndex[cleanEnd];
+                }
+            }
+
+            // Sliding window: internal substring match
+            for (let s = 1; s <= cleanNeedle.length - len - 1; s++) {
+                const sub = cleanNeedle.slice(s, s + len);
+                const subIdx = cleanStr.indexOf(sub);
+                if (subIdx >= 0) {
+                    const cleanEnd = subIdx + sub.length - 1;
+                    if (cleanEnd < cleanToFullEndIndex.length) {
+                        return cleanToFullEndIndex[cleanEnd];
+                    }
                 }
             }
         }
@@ -10651,10 +10806,12 @@ SCHEMA:
         return false;
     }
 
-    function mountFallbackFragment(container, fragment, store = null) {
+    function mountFallbackFragment(container, fragment, store = null, isResultCard = false) {
         if (!container || !fragment || !fragment.hasChildNodes()) return;
         const currentStore = store || getStore();
-        if (currentStore.cardPosition === 'top') {
+        // 关键保护：若为生图结果/分镜卡片，即使兜底未命中锚点，也绝对不置顶到消息开头（防止大卡片遮挡正文与产生未匹配感），一律平滑追加到正文末尾；
+        // 只有未解析前的初始占位大卡片（!isResultCard），才遵循 cardPosition === 'top' 放置在开头。
+        if (!isResultCard && currentStore.cardPosition === 'top') {
             const reasoningEl = container.querySelector('.mes_reasoning, details, .thinking-block, .thought');
             if (reasoningEl && reasoningEl.nextSibling) {
                 container.insertBefore(fragment, reasoningEl.nextSibling);
@@ -10697,11 +10854,12 @@ SCHEMA:
             configureWrapper(wrapper);
         }
 
+        const isResult = !!(result?.isResult || (result?.prompt && result?.prompt !== '[Smart Draw]' && result?.shouldDraw));
         const mounted = tryMountAnchoredCard(container, messageId, trigger, result, wrapper);
         if (!mounted) {
             const fragment = document.createDocumentFragment();
             fragment.append(wrapper);
-            mountFallbackFragment(container, fragment, store);
+            mountFallbackFragment(container, fragment, store, isResult);
         }
 
         syncMessageActionButton(messageId, wrapper, trigger, key);
@@ -12642,6 +12800,7 @@ SCHEMA:
                                 ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97' && key !== 'custom').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
                             </optgroup>
                         </select></label>
+                        <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch wide" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <label id="rbq-sdt-system-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
                             <span>自定义 System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span>
                             <textarea id="rbq-sdt-system-prompt" rows="8" placeholder="在此输入自定义生图提示词（留空则继承内置规范）..."></textarea>
@@ -12715,7 +12874,7 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-clapperboard" style="color:#38bdf8;"></i> 分镜规则与呈现位置</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 不限制，由 tagger 自行决定）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px"></label>
+                        <label class="st-scene-trigger-field" title="要求 tagger 每条消息至少输出几个分镜（0 = 智能自适应推演，根据前情与剧情节拍自然提取；设为 2~3 则强制长文至少出 2~3 张图）"><span>每条消息最少生图数</span><input id="rbq-sdt-min-segments" type="number" min="0" max="10" step="1" style="width:80px" placeholder="0"></label>
                         <label class="st-scene-trigger-field" title="设置未解析时的生图/Tag卡片在消息中的默认呈现位置"><span>初始生图按钮位置</span><select id="rbq-sdt-card-position"><option value="bottom">消息末尾 (默认)</option><option value="top">消息开头 (置顶封面，免滑屏)</option><option value="message_actions">消息操作栏小图标 (纯净免占位)</option></select></label>
                     </div>
                 </div>
@@ -12740,7 +12899,6 @@ SCHEMA:
                         <div id="rbq-sdt-multichar-field" class="st-scene-trigger-field switch"><span>多角色输出模式</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-multichar-coords-field" class="st-scene-trigger-field switch" title="启用后，将强制使用角色坐标框定位人物位置，否则将采用 AI 自动排版（AI's Choice）。"><span>多角色严格定位</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-multichar-coords" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-char-coord-badge-field" class="st-scene-trigger-field switch" title="在多角色生图卡片下方，显示每个角色的网格站位坐标（如：👤 金纯珉: C3 居中）"><span>显示多角色站位坐标</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-char-coord-badge" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <div id="rbq-sdt-inject-presets-field" class="st-scene-trigger-field switch" title="启用后，若当前有选中的提示词预设，其正面风格描述和负面词将会注入到 LLM (Tagger) 的上下文或系统提示词中，帮助 LLM 在分析生成分镜时更好地融入匹配该风格特征。"><span>同步预设风格至 LLM 思考</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-inject-presets" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
             </div>

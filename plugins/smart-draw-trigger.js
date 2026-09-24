@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.57';
+    const PLUGIN_VERSION = '6.0.58';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6365,14 +6365,33 @@ Zimage 擅长理解复杂的英文长句和语境。
             : (typeof rawContent === 'string'
                 ? extractJson(rawContent)
                 : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {})));
-        let segments = Array.isArray(source?.segments)
-            ? source.segments.map((item, index) => {
+        const rawSegmentsList = Array.isArray(source?.segments)
+            ? source.segments
+            : (Array.isArray(source?.segment)
+                ? source.segment
+                : (Array.isArray(source?.scenes)
+                    ? source.scenes
+                    : (Array.isArray(source?.storyboards)
+                        ? source.storyboards
+                        : (Array.isArray(source?.cards)
+                            ? source.cards
+                            : (Array.isArray(source?.data?.segments)
+                                ? source.data.segments
+                                : (Array.isArray(source?.result?.segments)
+                                    ? source.result.segments
+                                    : (source?.segment && typeof source.segment === 'object' ? [source.segment] : [])))))));
+        let segments = rawSegmentsList.map((item, index) => {
                 const anchor = normalizeAnchor(item?.anchor, index + 1);
-                const scene = decodeUnicodeEscapes(String(item?.scene || '').trim());
-                const standalone = decodeUnicodeEscapes(String(item?.standalone_prompt || '').trim());
+                const scene = decodeUnicodeEscapes(String(item?.scene || item?.environment || '').trim());
+                const standalone = decodeUnicodeEscapes(String(item?.standalone_prompt || item?.prompt || '').trim());
 
-                const characters = Array.isArray(item?.characters) ? item.characters.map((char, charIndex) => {
-                    const name = decodeUnicodeEscapes(String(char?.name || '').trim());
+                const rawChars = Array.isArray(item?.characters)
+                    ? item.characters
+                    : (Array.isArray(item?.character)
+                        ? item.character
+                        : (item?.characters && typeof item.characters === 'object' ? [item.characters] : []));
+                const characters = rawChars.map((char, charIndex) => {
+                    const name = decodeUnicodeEscapes(String(char?.name || char?.char_name || char?.character || '').trim());
                     // V11: parse base/outfit/action separately; fallback to legacy 'action' field
                     const llmBase = decodeUnicodeEscapes(String(char?.base || '').trim());
                     const llmOutfit = decodeUnicodeEscapes(String(char?.outfit || '').trim());
@@ -6419,22 +6438,21 @@ Zimage 擅长理解复杂的英文长句和语境。
                         _rawOutfit: llmOutfit,
                         _rawAction: llmAction
                     };
-                }).filter((char) => char.caption || char._rawName) : [];
+                }).filter((char) => char.caption || char._rawName);
 
                 const charPrompts = characters.map(c => c.caption).filter(Boolean).join(' AND ');
                 const finalPromptFallback = [scene, standalone, charPrompts].filter(Boolean).join(', ');
 
                 return {
                     anchor,
-                    label: decodeUnicodeEscapes(String(item?.label || '').trim()),
+                    label: decodeUnicodeEscapes(String(item?.label || item?.title || item?.name || item?.scene_name || '').trim()),
                     scene,
                     prompt: finalPromptFallback,
                     negative: decodeUnicodeEscapes(String(item?.negative || '').trim()),
                     multiChar: characters.length > 1,
                     characters,
                 };
-            }).filter((item) => item.prompt || item.characters.length)
-            : [];
+            }).filter((item) => item.prompt || item.characters.length);
 
         const validMatchedLorebooks = (matchedLorebooks || [])
             .filter(isMeaningfulLorebookEntry)
@@ -6492,6 +6510,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!segments.length && normalized.shouldDraw && (normalized.prompt || normalized.characters.length)) {
             normalized.segments = [{
                 anchor: normalized.anchor,
+                label: '分镜01·剧情插画',
                 prompt: normalized.prompt,
                 negative: normalized.negative,
                 multiChar: normalized.multiChar,
@@ -9002,7 +9021,7 @@ SCHEMA:
                 // Pass the individual segment so charData/label are per-segment
                 const segResult = {
                     ...seg,
-                    reason: result.reason || '',
+                    reason: seg.reason || '',
                     matchedLorebooks: result.matchedLorebooks || [],
                 };
 
@@ -10827,12 +10846,15 @@ SCHEMA:
         // 只有未解析前的初始占位大卡片（!isResultCard），才遵循 cardPosition === 'top' 放置在开头。
         if (!isResultCard && currentStore.cardPosition === 'top') {
             const reasoningEl = container.querySelector('.mes_reasoning, details, .thinking-block, .thought');
+            const headerEl = container.querySelector('.mes_header, .extraMesButtons, .mes_buttons, .timestamp, .mes_title');
             if (reasoningEl && reasoningEl.nextSibling) {
                 container.insertBefore(fragment, reasoningEl.nextSibling);
             } else if (reasoningEl) {
                 // 有思考块但暂无后续正文节点时，插入到思考块之后，绝不挂载到思考中上方
                 reasoningEl.insertAdjacentElement('afterend', fragment.firstElementChild);
                 if (fragment.hasChildNodes()) container.append(fragment);
+            } else if (headerEl && headerEl.nextSibling) {
+                container.insertBefore(fragment, headerEl.nextSibling);
             } else {
                 container.prepend(fragment);
             }
@@ -10975,27 +10997,59 @@ SCHEMA:
     /** Generate a descriptive label for a segment's generate button */
     function getSegmentLabel(seg, prefix = '🎨') {
         if (!seg) return `${prefix} 生成图片`;
-        // 1. LLM 输出的 label 字段（首选）
+
+        const isReasoningNoise = (str) => {
+            if (!str) return true;
+            const s = String(str).trim();
+            if (!s) return true;
+            return /^(?:生图数量决策|推演|思考|CoT|思维链|[①-⑩]|【|决策分析|当前消息|正文包含)/i.test(s)
+                || s.includes('视觉冲击力')
+                || s.includes('叙事价值')
+                || s.includes('生图数量')
+                || s.includes('场景选取')
+                || s.includes('shouldDraw');
+        };
+
+        // 1. LLM 输出的 label 字段（首选，但严格过滤 CoT 推演和决策分析词）
         if (seg.label) {
             const l = String(seg.label).trim();
-            // 保留完整分镜标签（如角色名+所属作品），避免在宽屏电脑端被JS硬截断
-            // 移动端/窄屏通过 CSS (max-width: 100% + text-overflow: ellipsis) 视口自适应省略
-            return `${prefix} ${l.length > 80 ? l.slice(0, 79) + '…' : l}`;
-        }
-        // 2. 角色名拼接
-        if (Array.isArray(seg.characters) && seg.characters.length > 0) {
-            const names = seg.characters.map(c => c._rawName).filter(Boolean);
-            if (names.length) {
-                const joined = names.join('·');
-                return `${prefix} ${joined.length > 80 ? joined.slice(0, 79) + '…' : joined}`;
+            if (!isReasoningNoise(l)) {
+                return `${prefix} ${l.length > 50 ? l.slice(0, 49) + '…' : l}`;
             }
         }
-        // 3. reason
-        if (seg.reason) {
-            const r = String(seg.reason).trim();
-            // 理由若偏长，保留合理长度（50字），多余部分交给 CSS 视口自适应
-            return `${prefix} ${r.length > 50 ? r.slice(0, 49) + '…' : r}`;
+
+        // 2. 备用字段 title / name (若模型输出结构稍有变异)
+        const altTitle = String(seg.title || (typeof seg.name === 'string' ? seg.name : '') || '').trim();
+        if (altTitle && !isReasoningNoise(altTitle)) {
+            return `${prefix} ${altTitle.length > 50 ? altTitle.slice(0, 49) + '…' : altTitle}`;
         }
+
+        // 3. 角色名拼接
+        if (Array.isArray(seg.characters) && seg.characters.length > 0) {
+            const names = seg.characters.map(c => c._rawName || c.name || c.char_name).filter(Boolean);
+            if (names.length) {
+                const joined = names.join('·');
+                if (!isReasoningNoise(joined)) {
+                    return `${prefix} ${joined.length > 50 ? joined.slice(0, 49) + '…' : joined}`;
+                }
+            }
+        }
+
+        // 4. 正文锚点原文提炼（提取前 10~14 字精简画面动作）
+        if (seg.anchor?.text) {
+            const a = String(seg.anchor.text).trim().replace(/^[“"「『\s]+/, '').replace(/[”"」』\s]+$/, '');
+            if (a.length >= 2 && !isReasoningNoise(a)) {
+                const cleanA = a.length > 14 ? a.slice(0, 13) + '…' : a;
+                return `${prefix} ${cleanA}`;
+            }
+        }
+
+        // 5. 分镜序号兜底（如 分镜01·剧情画面）
+        const segIdx = Number(seg.segmentIndex || seg.index);
+        if (Number.isFinite(segIdx) && segIdx > 0) {
+            return `${prefix} 分镜${String(segIdx).padStart(2, '0')}·剧情画面`;
+        }
+
         return `${prefix} 生成图片`;
     }
 

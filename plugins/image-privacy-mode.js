@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.8
+ * Version: 1.0.9
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
@@ -342,10 +342,10 @@
 
     // ── 5. 清除卡片隐私状态（恢复原始状态） ──
     function cleanCardPrivacyState(wrapper, container) {
-        if (!wrapper.dataset.rbqPrivacyAppliedMode) return;
         delete wrapper.dataset.rbqPrivacyAppliedMode;
         delete wrapper.dataset.rbqPrivacyAppliedLabel;
         delete wrapper.dataset.rbqPrivacyAppliedCollapsed;
+        if (container?.dataset?.rbqHasImage) delete container.dataset.rbqHasImage;
         container?.classList.remove('rbq-privacy-hidden-image', 'rbq-privacy-collapsed');
         wrapper.querySelector('.rbq-privacy-bar')?.remove();
         const rawBtn = wrapper.querySelector('.rbq-sdt-run-image') || wrapper.querySelector('.st-scene-trigger-generate');
@@ -361,10 +361,10 @@
         const container = wrapper.querySelector('.st-scene-trigger-inline-result');
         if (!(container instanceof HTMLElement)) return;
 
-        // 仅在已有生成图片时生效
+        // 仅在已有生成图片时生效：必须真实存在具有有效链接的 img 节点
         const img = container.querySelector('img');
-        const hasImage = !!(img || container.dataset.rbqHasImage || wrapper.dataset.latestImageUrl);
-        if (!hasImage) {
+        const hasValidImg = !!(img && (img.getAttribute('src') || img.src));
+        if (!hasValidImg) {
             cleanCardPrivacyState(wrapper, container);
             return;
         }

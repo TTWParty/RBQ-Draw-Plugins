@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.62';
+    const PLUGIN_VERSION = '6.0.63';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -10764,7 +10764,13 @@ SCHEMA:
             const mesEl = document.querySelector(`.mes[mesid="${messageId}"]`);
             if (!mesEl) return;
             const btnBar = mesEl.querySelector('.extraMesButtons') || mesEl.querySelector('.mes_buttons') || mesEl.querySelector('.flex-container');
-            if (!btnBar) return;
+            if (!btnBar) {
+                // 如果操作栏 DOM 尚未渲染完成，延迟重试挂载，防止消息操作栏小图标模式下按钮永久消失
+                if (store.cardPosition === 'message_actions') {
+                    setTimeout(() => syncMessageActionButton(messageId, wrapper, trigger, key), 300);
+                }
+                return;
+            }
             let existing = btnBar.querySelector(`.rbq-sdt-action-btn`);
 
             // 如果当前不是「消息操作栏小图标」模式，坚决清理移除该按钮，绝不常驻干扰
@@ -11392,14 +11398,21 @@ SCHEMA:
         }
         const store = getStore();
 
-        // Auto-refresh profile UI & purge lingering cards when chat context becomes available or changes
+        // Auto-refresh profile UI & sync chat context when it becomes available or changes
         const currentChatKey = getChatKey();
         if (currentChatKey && currentChatKey !== '_global' && currentChatKey !== lastChatKey) {
-            console.info(`[Smart Draw] 🔄 chat changed: ${lastChatKey} -> ${currentChatKey}, purging old cards`);
+            const isInitialTransition = (lastChatKey === null || lastChatKey === '_global');
+            console.info(`[Smart Draw] 🔄 chat context resolved: ${lastChatKey} -> ${currentChatKey}`);
             lastChatKey = currentChatKey;
-            processedKeys.clear();
-            document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
             refreshCharacterProfileListUi();
+            // 关键修复：绝不可在单条消息的 processMessage 中盲目执行全文档 document.querySelectorAll('.rbq-sdt-card').forEach(el => el.remove())！
+            // 否则会瞬间清空已挂载的其他所有楼层的生图卡片与按钮，且不会重新触发扫描，导致按钮凭空消失！
+            // 只有当 chat 确实发生实际切换（非首次加载）时，才调度安全全量扫描
+            if (!isInitialTransition) {
+                processedKeys.clear();
+                document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
+                setTimeout(() => scanAllVisible(true), 100);
+            }
         }
 
         const message = getMessageSnapshot(id);
@@ -11410,27 +11423,30 @@ SCHEMA:
         const currentMesHash = hashText(message?.mes || '');
         if (force) processedKeys.delete(key);
         const container = RBQ.api.getMessageTextContainer(id);
-        if (container instanceof HTMLElement) {
-            const removedStaleCards = removeStaleCards(container, key);
-            if (removedStaleCards > 0) {
-                debugInfo(`🧹 removed ${removedStaleCards} stale card(s) for message ${id}`, { key });
-            }
-            // If any card in this message is currently being parsed, don't create new cards
-            const activeParsingCard = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-stage="parsing"]`);
-            if (activeParsingCard) {
-                debugInfo(`⏳ skipping processMessage for #${id} — tagger is active`);
-                return;
-            }
-            const hasCurrentCards = hasCardsForBaseKey(container, key);
-            if (processedKeys.has(key) && !force) {
-                if (hasCurrentCards) return;
-                processedKeys.delete(key);
-                debugInfo(`♻️ cards missing for processed key, restoring from cache`, { messageId: id, key });
-            }
-            if (hasCurrentCards && !force) {
-                processedKeys.add(key);
-                return;
-            }
+        if (!(container instanceof HTMLElement)) {
+            // DOM 容器尚未挂载（如酒馆正在异步渲染历史楼层），延迟 200ms 重试，严禁提前 mark processedKeys
+            setTimeout(() => scheduleProcess(id, options), 200);
+            return;
+        }
+        const removedStaleCards = removeStaleCards(container, key);
+        if (removedStaleCards > 0) {
+            debugInfo(`🧹 removed ${removedStaleCards} stale card(s) for message ${id}`, { key });
+        }
+        // If any card in this message is currently being parsed, don't create new cards
+        const activeParsingCard = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-stage="parsing"]`);
+        if (activeParsingCard) {
+            debugInfo(`⏳ skipping processMessage for #${id} — tagger is active`);
+            return;
+        }
+        const hasCurrentCards = hasCardsForBaseKey(container, key);
+        if (processedKeys.has(key) && !force) {
+            if (hasCurrentCards) return;
+            processedKeys.delete(key);
+            debugInfo(`♻️ cards missing for processed key, restoring from cache`, { messageId: id, key });
+        }
+        if (hasCurrentCards && !force) {
+            processedKeys.add(key);
+            return;
         }
         if (processedKeys.has(key)) return;
         if (inFlight.has(key)) return;
@@ -11514,12 +11530,25 @@ SCHEMA:
                             console.warn(`[Smart Draw] ❌ ensureHistoryItemDisplayUrl failed:`, e);
                         }
                     }
-                    const finalUrl = restoredResult.serverPreviewUrl || (restoredResult.url && !restoredResult.url.startsWith('blob:') && restoredResult.url.includes('_preview.webp') ? restoredResult.url : '') || restoredResult.url || restoredResult.serverUrl || restoredResult.serverOriginalUrl;
+                    // 过滤旧会话中已失效的 blob: URL，避免将刷新前无效的内存 blob 当作有效图片进行渲染
+                    const isBlobActive = restoredResult.url && restoredResult.url.startsWith('blob:') && (typeof RBQ?.api?.isCachedObjectUrlActive === 'function' ? RBQ.api.isCachedObjectUrlActive(restoredResult.url) : true);
+                    const finalUrl = restoredResult.serverPreviewUrl
+                        || (restoredResult.url && !restoredResult.url.startsWith('blob:') && restoredResult.url.includes('_preview.webp') ? restoredResult.url : '')
+                        || (restoredResult.url && !restoredResult.url.startsWith('blob:') ? restoredResult.url : '')
+                        || (isBlobActive ? restoredResult.url : '')
+                        || restoredResult.serverUrl
+                        || restoredResult.serverOriginalUrl;
+
                     if (finalUrl) {
                         restoredResult.url = finalUrl;
                         RBQ.api.renderInlineGeneratedImage(wrapper, restoredResult);
                         setGenerateButtonState(wrapper, true, getRegenLabel(wrapper), false);
                         setWrapperStage(wrapper, 'generated');
+                    } else {
+                        // 图像恢复失败（如 blob 已过期且无服务端/IndexedDB 缓存）：坚决回退为就绪生图状态，确保生图按钮绝不消失！
+                        const segLabel = getSegmentLabel(item.segment);
+                        setGenerateButtonState(wrapper, true, segLabel, false);
+                        setWrapperStage(wrapper, 'ready-generate');
                     }
                 } else {
                     // 历史楼层/未出图分镜：仅重置按钮文案为分镜标签并保持就绪，绝不可在历史扫描/页面刷新时自动发起网络生图请求
@@ -13872,9 +13901,11 @@ SCHEMA:
                 }
             };
             handleChatChanged = () => {
+                lastChatKey = getChatKey();
                 processedKeys.clear();
                 document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
-                setTimeout(scanAllVisible, 200);
+                refreshCharacterProfileListUi();
+                setTimeout(() => scanAllVisible(true), 200);
             };
             try {
                 if (et.CHARACTER_MESSAGE_RENDERED) es.on(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
@@ -13888,7 +13919,8 @@ SCHEMA:
 
         setTimeout(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
-        setTimeout(scanAllVisible, 1500);
+        setTimeout(() => scanAllVisible(true), 1200);
+        setTimeout(() => scanAllVisible(false), 3000);
         startStreamingWatcher();
     }
 

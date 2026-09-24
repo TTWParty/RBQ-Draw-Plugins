@@ -11271,9 +11271,6 @@ SCHEMA:
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'ready-generate');
                 clearWrapperLoading(wrapper);
-                if (container && wrapper.parentElement === container) {
-                    container.append(wrapper);
-                }
             } else if (store.cardPosition === 'message_actions') {
                 if (wrapper.parentElement) wrapper.remove();
             }

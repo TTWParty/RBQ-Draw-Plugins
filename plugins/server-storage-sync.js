@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.18';
+    const PLUGIN_VERSION = '1.1.19';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const copyToClipboard = async (text) => {
@@ -270,7 +270,8 @@
         if (!item) return { type: 'unknown', text: '未知', title: '未知存储位置', color: '#94a3b8', details: {} };
 
         const url = String(item.displayUrl || item.url || '');
-        const serverUrl = String(item.serverUrl || item.serverPreviewUrl || '');
+        const serverUrl = String(item.serverUrl || '');
+        const serverPreviewUrl = String(item.serverPreviewUrl || '');
         const serverOriginalUrl = String(item.serverOriginalUrl || '');
         const cacheId = item.cacheId || '';
 
@@ -289,8 +290,9 @@
             } catch (_e) {}
         }
 
-        // 判定 1: 绘图后端直连 (ComfyUI / SD WebUI)
-        if (url.includes('/view?filename=') || url.includes(':8188') || url.includes(':7860') || (item.mode === 'comfyui' && !serverUrl && !serverOriginalUrl)) {
+        // 1. 绘图后端直连 (ComfyUI / SD WebUI)
+        const isBackendUrl = url.includes('/view?filename=') || url.includes(':8188') || url.includes(':7860');
+        if (isBackendUrl || (item.mode === 'comfyui' && !serverUrl && !serverOriginalUrl && !serverPreviewUrl)) {
             return {
                 type: 'backend',
                 text: '绘图后端',
@@ -300,89 +302,207 @@
                 blobSize,
                 blobType,
                 path: url,
+                hasLocalOriginal: inIndexedDb,
+                hasServerOriginal: false,
+                hasServerPreview: false,
                 canSync: inIndexedDb || !!url,
-                canSyncOriginal: true,
+                canUploadOriginal: true,
+                canLoadServerOriginal: false,
+                canMarkPending: false,
+                localStatus: inIndexedDb ? `✅ 本地已缓存 (${formatBytes(blobSize)})` : '⚡ 后端实时渲染流',
+                serverStatus: '⚪ 绘图后端临时目录',
+                localColor: inIndexedDb ? '#4ade80' : '#c084fc',
+                serverColor: '#94a3b8',
                 serverUrl,
+                serverOriginalUrl,
+                serverPreviewUrl,
                 cacheId,
             };
         }
 
-        // 判定 2: 酒馆服务端高清原画（当前视口已载入原画或本地持有原画）
-        if (serverOriginalUrl || (serverUrl && !serverUrl.includes('_preview.webp'))) {
-            const effectivePath = serverOriginalUrl || serverUrl;
-            const isOriginalActive = Boolean(inIndexedDb || item._originalLoaded || url === effectivePath);
-            if (isOriginalActive) {
+        // 核心双维度研判:
+        // 维度 1: 本地是不是原画
+        // 本地持有 IndexedDB 无损 Blob，或持有着非 preview 的本地 blob/data URL
+        const hasLocalOriginal = Boolean(
+            (inIndexedDb && blobSize > 0) ||
+            (url.startsWith('blob:') && !url.includes('_preview.webp')) ||
+            (url.startsWith('data:') && !url.includes('_preview.webp'))
+        );
+
+        // 维度 2: 云端有没有原画
+        const hasServerOriginal = Boolean(
+            serverOriginalUrl ||
+            (serverUrl && !serverUrl.includes('_preview.webp'))
+        );
+        const effectiveServerOriginal = serverOriginalUrl || (serverUrl && !serverUrl.includes('_preview.webp') ? serverUrl : '');
+
+        // 维度 3: 云端有没有轻量预览图
+        const hasServerPreview = Boolean(
+            serverPreviewUrl ||
+            (serverUrl && serverUrl.includes('_preview.webp')) ||
+            url.includes('_preview.webp')
+        );
+        const effectiveServerPreview = serverPreviewUrl || (serverUrl && serverUrl.includes('_preview.webp') ? serverUrl : (url.includes('_preview.webp') ? url : ''));
+
+        // 维度 4: 当前视口正在展示的是不是原画
+        const isOriginalLoadedInViewer = Boolean(
+            item._originalLoaded ||
+            hasLocalOriginal ||
+            (hasServerOriginal && url === effectiveServerOriginal)
+        );
+
+        // ── 组合 A: 本地有原画 + 云端有原画 (双端原画已入库) ──
+        if (hasLocalOriginal && hasServerOriginal) {
+            return {
+                type: 'both_original',
+                text: '双端原画已入库',
+                title: '本地浏览器与酒馆服务端均已完整保存无损原画',
+                color: '#38bdf8', // sky blue
+                inIndexedDb,
+                blobSize,
+                blobType,
+                path: effectiveServerOriginal,
+                hasLocalOriginal: true,
+                hasServerOriginal: true,
+                hasServerPreview,
+                canSync: false,
+                canUploadOriginal: false,
+                canLoadServerOriginal: false,
+                canMarkPending: false,
+                localStatus: `✅ 完整无损原画 (${blobSize ? formatBytes(blobSize) : '本地已存'})`,
+                serverStatus: '✅ 无损原画已持久化入库',
+                localColor: '#38bdf8',
+                serverColor: '#38bdf8',
+                serverUrl: effectiveServerOriginal,
+                serverOriginalUrl: effectiveServerOriginal,
+                serverPreviewUrl: effectiveServerPreview,
+                cacheId,
+            };
+        }
+
+        // ── 组合 B: 本地有原画 + 云端无原画 (本地生成设备最常见场景) ──
+        if (hasLocalOriginal && !hasServerOriginal) {
+            return {
+                type: 'local_original',
+                text: hasServerPreview ? '本地原画 · 云端仅预览' : '仅保存在本地',
+                title: hasServerPreview
+                    ? '当前设备持有无损高清原画；云端已生成轻量预览图供多端秒开，可一键上传原画'
+                    : '图片仅存储在当前设备本地缓存中，尚未同步至酒馆服务器',
+                color: '#22c55e', // emerald green
+                inIndexedDb,
+                blobSize,
+                blobType,
+                path: effectiveServerPreview || `IndexedDB: ${cacheId || 'local_blob'}`,
+                hasLocalOriginal: true,
+                hasServerOriginal: false,
+                hasServerPreview,
+                canSync: true,
+                canUploadOriginal: true,
+                canLoadServerOriginal: false,
+                canMarkPending: false,
+                localStatus: `✅ 完整无损原画 (${blobSize ? formatBytes(blobSize) : '本地已存'})`,
+                serverStatus: hasServerPreview ? '🟡 仅轻量预览图 (~60 KB 省流中)' : '⚪ 未同步到酒馆服务器',
+                localColor: '#22c55e',
+                serverColor: hasServerPreview ? '#facc15' : '#94a3b8',
+                serverUrl: effectiveServerPreview,
+                serverOriginalUrl: '',
+                serverPreviewUrl: effectiveServerPreview,
+                cacheId,
+            };
+        }
+
+        // ── 组合 C: 本地无原画 + 云端有原画 (非生成端或清空本地缓存后，云端已入库) ──
+        if (!hasLocalOriginal && hasServerOriginal) {
+            if (isOriginalLoadedInViewer) {
                 return {
-                    type: 'server',
-                    text: '酒馆服务端 (原图)',
-                    title: '酒馆服务器持久化高清原画 (已加载无损原画)',
+                    type: 'server_original_loaded',
+                    text: '已载入云端原画',
+                    title: '当前视口已成功载入酒馆服务器存储的完整无损原画',
                     color: '#38bdf8', // sky blue
                     inIndexedDb,
                     blobSize,
                     blobType,
-                    path: effectivePath,
+                    path: effectiveServerOriginal,
+                    hasLocalOriginal: false,
+                    hasServerOriginal: true,
+                    hasServerPreview,
                     canSync: false,
-                    canSyncOriginal: false,
-                    serverUrl: effectivePath,
+                    canUploadOriginal: false,
+                    canLoadServerOriginal: false,
+                    canMarkPending: false,
+                    localStatus: '✅ 当前已载入云端无损原画',
+                    serverStatus: '✅ 无损原画已持久化入库',
+                    localColor: '#38bdf8',
+                    serverColor: '#38bdf8',
+                    serverUrl: effectiveServerOriginal,
+                    serverOriginalUrl: effectiveServerOriginal,
+                    serverPreviewUrl: effectiveServerPreview,
                     cacheId,
                 };
             }
-            // 云端有原图，但当前视口加载的是轻量预览图
             return {
-                type: 'preview',
-                text: '酒馆服务端 (预览)',
-                title: '当前展示轻量预览图 (~60KB 省流中)；云端已有高清原画，点击「查看原图」即可加载',
+                type: 'server_original_previewing',
+                text: '本地预览 · 云端有原画',
+                title: '当前展示轻量预览图 (~60KB 省流中)；云端已有高清原画，点击可一键加载',
                 color: '#facc15', // amber
                 inIndexedDb,
                 blobSize,
                 blobType,
-                path: item.serverPreviewUrl || effectivePath,
+                path: effectiveServerPreview || effectiveServerOriginal,
+                hasLocalOriginal: false,
+                hasServerOriginal: true,
+                hasServerPreview,
                 canSync: false,
-                canSyncOriginal: false, // 云端已存在原图，无需重复补传
-                serverUrl: effectivePath,
+                canUploadOriginal: false,
+                canLoadServerOriginal: true,
+                canMarkPending: false,
+                localStatus: '⚠️ 当前展示轻量预览图 (~60 KB)',
+                serverStatus: '✅ 无损原画已入库',
+                localColor: '#facc15',
+                serverColor: '#38bdf8',
+                serverUrl: effectiveServerOriginal,
+                serverOriginalUrl: effectiveServerOriginal,
+                serverPreviewUrl: effectiveServerPreview,
                 cacheId,
             };
         }
 
-        // 判定 3: 酒馆服务端轻量预览图（云端尚未上传无损原图）
-        if (serverUrl || item.serverPreviewUrl || url.includes('_preview.webp')) {
-            const effectivePath = serverUrl || item.serverPreviewUrl || url;
+        // ── 组合 D: 本地无原画 + 云端无原画 / 仅有预览 (多端同步中，生成设备尚未补传原画) ──
+        if (hasServerPreview || item.pendingOriginalUpload) {
             const isPending = Boolean(item.pendingOriginalUpload);
             return {
-                type: 'preview',
-                text: isPending ? '待生成端补传' : '酒馆服务端 (预览)',
-                title: isPending ? '⭐ 已加入收藏：无损原画将在切回生成设备时自动上传入库' : '酒馆轻量 WebP 预览图 (~60KB 省流中)；云端暂无原图，可一键补传',
-                color: isPending ? '#fb923c' : '#facc15', // orange / amber
+                type: 'preview_only',
+                text: isPending ? '待生成端补传' : '仅有轻量预览',
+                title: isPending
+                    ? '⭐ 已加入收藏：无损原画将在切回生成设备时自动上传入库'
+                    : '当前仅有轻量预览图 (~60KB)；无损原画保留在原生成设备的本地缓存中',
+                color: isPending ? '#fb923c' : '#f59e0b', // orange / amber
                 inIndexedDb,
                 blobSize,
                 blobType,
-                path: effectivePath,
-                canSync: inIndexedDb || !!item.url,
-                canSyncOriginal: true, // 可补传无损原画
-                serverUrl: effectivePath,
-                cacheId,
+                path: effectiveServerPreview || url,
+                hasLocalOriginal: false,
+                hasServerOriginal: false,
+                hasServerPreview: true,
+                canSync: false,
+                canUploadOriginal: false,
+                canLoadServerOriginal: false,
+                canMarkPending: !isPending,
                 isPending,
-            };
-        }
-
-        // 判定 4: 仅本地浏览器 (IndexedDB 缓存)
-        if (inIndexedDb || url.startsWith('blob:')) {
-            return {
-                type: 'local',
-                text: '本地浏览器',
-                title: '仅保存在当前设备浏览器中 (IndexedDB)',
-                color: '#4ade80', // green
-                inIndexedDb: true,
-                blobSize,
-                blobType,
-                path: `IndexedDB: ${cacheId || 'blob'}`,
-                canSync: true,
-                canSyncOriginal: true,
-                serverUrl,
+                localStatus: '⚠️ 本机无原画 (仅从云端加载了预览图)',
+                serverStatus: isPending
+                    ? '⭐ 待补传 (切回原生成设备时自动上传)'
+                    : '🟡 仅轻量预览图 (云端暂无原画)',
+                localColor: '#fb923c',
+                serverColor: isPending ? '#fb923c' : '#f59e0b',
+                serverUrl: effectiveServerPreview,
+                serverOriginalUrl: '',
+                serverPreviewUrl: effectiveServerPreview,
                 cacheId,
             };
         }
 
+        // 外部链接或未知
         return {
             type: 'external',
             text: '外部链接',
@@ -392,9 +512,20 @@
             blobSize,
             blobType,
             path: url,
-            canSync: true,
-            canSyncOriginal: true,
+            hasLocalOriginal: false,
+            hasServerOriginal: false,
+            hasServerPreview: false,
+            canSync: inIndexedDb || !!url,
+            canUploadOriginal: inIndexedDb || !!url,
+            canLoadServerOriginal: false,
+            canMarkPending: false,
+            localStatus: '外部链接资源',
+            serverStatus: '⚪ 未同步到酒馆服务器',
+            localColor: '#a855f7',
+            serverColor: '#94a3b8',
             serverUrl,
+            serverOriginalUrl,
+            serverPreviewUrl,
             cacheId,
         };
     }
@@ -406,14 +537,18 @@
         if (isOriginal) {
             item.serverOriginalUrl = path;
             delete item.pendingOriginalUpload;
-            if (!item.serverPreviewUrl && (!item.url || item.url.startsWith('blob:'))) {
+            item.serverUrl = path;
+            if (!item.url || item.url.includes('_preview.webp')) {
                 item.url = path;
             }
-            if (!item.serverUrl) item.serverUrl = path;
         } else {
             item.serverPreviewUrl = path;
-            item.serverUrl = path;
-            item.url = path;
+            if (!item.serverUrl || item.serverUrl.includes('_preview.webp')) {
+                item.serverUrl = path;
+            }
+            if (!item.url) {
+                item.url = path;
+            }
         }
 
         // 1. 同步到会话消息 extra (跨设备多端秒级同步的核心路径)
@@ -453,13 +588,15 @@
             if (isOriginal) {
                 msg.extra.rbq_image.serverOriginalUrl = path;
                 delete msg.extra.rbq_image.pendingOriginalUpload;
-                if (!msg.extra.rbq_image.serverPreviewUrl && (!msg.extra.rbq_image.url || msg.extra.rbq_image.url.startsWith('blob:'))) {
+                msg.extra.rbq_image.serverUrl = path;
+                if (!msg.extra.rbq_image.url || msg.extra.rbq_image.url.includes('_preview.webp')) {
                     msg.extra.rbq_image.url = path;
                 }
-                if (!msg.extra.rbq_image.serverUrl) msg.extra.rbq_image.serverUrl = path;
             } else {
                 msg.extra.rbq_image.serverPreviewUrl = path;
-                if (!msg.extra.rbq_image.serverUrl) msg.extra.rbq_image.serverUrl = path;
+                if (!msg.extra.rbq_image.serverUrl || msg.extra.rbq_image.serverUrl.includes('_preview.webp')) {
+                    msg.extra.rbq_image.serverUrl = path;
+                }
                 if (!msg.extra.rbq_image.url) msg.extra.rbq_image.url = path;
             }
 
@@ -471,11 +608,11 @@
                         if (isOriginal) {
                             img.serverOriginalUrl = path;
                             delete img.pendingOriginalUpload;
-                            if (!img.serverPreviewUrl && (!img.url || img.url.startsWith('blob:'))) img.url = path;
-                            if (!img.serverUrl) img.serverUrl = path;
+                            img.serverUrl = path;
+                            if (!img.url || img.url.includes('_preview.webp')) img.url = path;
                         } else {
                             img.serverPreviewUrl = path;
-                            if (!img.serverUrl) img.serverUrl = path;
+                            if (!img.serverUrl || img.serverUrl.includes('_preview.webp')) img.serverUrl = path;
                             if (!img.url) img.url = path;
                         }
                     }
@@ -491,13 +628,16 @@
                             (!item.cacheId && item.prompt && st.imageResult.prompt === item.prompt)) {
                             if (isOriginal) {
                                 st.imageResult.serverOriginalUrl = path;
-                                if (!st.imageResult.serverPreviewUrl && (!st.imageResult.url || st.imageResult.url.startsWith('blob:'))) {
+                                delete st.imageResult.pendingOriginalUpload;
+                                st.imageResult.serverUrl = path;
+                                if (!st.imageResult.url || st.imageResult.url.includes('_preview.webp')) {
                                     st.imageResult.url = path;
                                 }
-                                if (!st.imageResult.serverUrl) st.imageResult.serverUrl = path;
                             } else {
                                 st.imageResult.serverPreviewUrl = path;
-                                if (!st.imageResult.serverUrl) st.imageResult.serverUrl = path;
+                                if (!st.imageResult.serverUrl || st.imageResult.serverUrl.includes('_preview.webp')) {
+                                    st.imageResult.serverUrl = path;
+                                }
                                 if (!st.imageResult.url) st.imageResult.url = path;
                             }
                         }
@@ -579,13 +719,15 @@
                 if (isOriginal) {
                     matched.serverOriginalUrl = path;
                     delete matched.pendingOriginalUpload;
-                    if (!matched.serverPreviewUrl && (!matched.url || matched.url.startsWith('blob:'))) {
+                    matched.serverUrl = path;
+                    if (!matched.url || matched.url.includes('_preview.webp')) {
                         matched.url = path;
                     }
-                    if (!matched.serverUrl) matched.serverUrl = path;
                 } else {
                     matched.serverPreviewUrl = path;
-                    if (!matched.serverUrl) matched.serverUrl = path;
+                    if (!matched.serverUrl || matched.serverUrl.includes('_preview.webp')) {
+                        matched.serverUrl = path;
+                    }
                     if (!matched.url) matched.url = path;
                 }
                 RBQ.api.saveSettings?.();
@@ -597,10 +739,15 @@
             if (isOriginal) {
                 currentViewerItem.serverOriginalUrl = path;
                 delete currentViewerItem.pendingOriginalUpload;
-                if (!currentViewerItem.serverPreviewUrl) currentViewerItem.serverUrl = path;
+                currentViewerItem.serverUrl = path;
+                if (!currentViewerItem.url || currentViewerItem.url.includes('_preview.webp')) {
+                    currentViewerItem.url = path;
+                }
             } else {
                 currentViewerItem.serverPreviewUrl = path;
-                if (!currentViewerItem.serverUrl) currentViewerItem.serverUrl = path;
+                if (!currentViewerItem.serverUrl || currentViewerItem.serverUrl.includes('_preview.webp')) {
+                    currentViewerItem.serverUrl = path;
+                }
                 if (!currentViewerItem.url) currentViewerItem.url = path;
             }
             const modal = document.getElementById('st-scene-trigger-image-viewer');
@@ -1487,7 +1634,7 @@
     function showStorageModal(current, info) {
         document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
 
-        const sizeStr = info?.blobSize ? formatBytes(info.blobSize) : (current?.url ? '云端流媒体' : '未知');
+        const sizeStr = info?.blobSize ? formatBytes(info.blobSize) : (info?.hasServerOriginal ? '无损原画' : (current?.url ? '轻量流媒体' : '未知'));
         const dimStr = (current?.width && current?.height) ? `${current.width} × ${current.height}` : '自适应';
 
         const overlay = document.createElement('div');
@@ -1509,26 +1656,41 @@
             <div class="rbq-storage-modal-body">
                 <div class="rbq-storage-info-list">
                     <div class="rbq-storage-info-row">
-                        <span class="rbq-storage-info-label">存储归属</span>
-                        <span class="rbq-storage-info-val" style="color:${info.color};font-weight:600;">${escapeHtml(info.title)}</span>
+                        <span class="rbq-storage-info-label">🖥️ 本机状态</span>
+                        <span class="rbq-storage-info-val" style="color:${info.localColor || '#e2e8f0'};font-weight:600;">${escapeHtml(info.localStatus)}</span>
                     </div>
                     <div class="rbq-storage-info-row">
-                        <span class="rbq-storage-info-label">规格尺寸</span>
+                        <span class="rbq-storage-info-label">☁️ 云端状态</span>
+                        <span class="rbq-storage-info-val" style="color:${info.serverColor || '#e2e8f0'};font-weight:600;">${escapeHtml(info.serverStatus)}</span>
+                    </div>
+                    <div class="rbq-storage-info-row">
+                        <span class="rbq-storage-info-label">📐 规格尺寸</span>
                         <span class="rbq-storage-info-val">${escapeHtml(dimStr)} (${escapeHtml(sizeStr)})</span>
                     </div>
-                    <div class="rbq-storage-info-row">
-                        <span class="rbq-storage-info-label">多端状态</span>
-                        <span class="rbq-storage-info-val">${info.type === 'server' ? '✅ 高清原画已入库' : (current.pendingOriginalUpload ? '⭐ 已收藏 (切回生成端自动补传)' : (info.type === 'preview' ? '⚡ 轻量预览图已同步' : '⚠️ 仅当前设备可用'))}</span>
-                    </div>
                     <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px;">
-                        <span class="rbq-storage-info-label">物理路径 / URL：</span>
+                        <span class="rbq-storage-info-label">🔗 物理路径 / URL：</span>
                         <div class="rbq-storage-path-box">${escapeHtml(info.path || '(内存链接)')}</div>
                     </div>
                 </div>
                 <div class="rbq-storage-actions">
-                    ${info.canSync ? `
+                    ${info.canUploadOriginal ? `
                         <button id="rbq-action-manual-sync" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" type="button">
-                            <i class="fa-solid fa-cloud-arrow-up"></i> ${info.type === 'preview' ? '上传高清原画至酒馆' : '一键同步至酒馆服务端'}
+                            <i class="fa-solid fa-cloud-arrow-up"></i> 上传高清原画至酒馆服务器
+                        </button>
+                    ` : ''}
+                    ${info.canLoadServerOriginal ? `
+                        <button id="rbq-action-load-original" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" style="background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(245, 158, 11, 0.2)) !important; border-color: #facc15 !important; color: #facc15 !important;" type="button">
+                            <i class="fa-solid fa-cloud-arrow-down"></i> 加载云端高清原画
+                        </button>
+                    ` : ''}
+                    ${info.canMarkPending ? `
+                        <button id="rbq-action-mark-pending" class="menu_button rbq-storage-action-btn rbq-storage-btn-sync" style="background: linear-gradient(135deg, rgba(251, 146, 60, 0.2), rgba(234, 88, 12, 0.2)) !important; border-color: #fb923c !important; color: #fb923c !important;" type="button">
+                            <i class="fa-solid fa-star"></i> 标记收藏并在生成端自动上传
+                        </button>
+                    ` : ''}
+                    ${(info.hasLocalOriginal && info.hasServerOriginal) ? `
+                        <button class="menu_button rbq-storage-action-btn" style="background: rgba(56, 189, 248, 0.12) !important; border: 1px solid rgba(56, 189, 248, 0.3) !important; color: #38bdf8 !important; cursor: default !important; opacity: 0.9 !important;" type="button" disabled>
+                            <i class="fa-solid fa-circle-check"></i> 无损原画已双端持久化
                         </button>
                     ` : ''}
                     <button id="rbq-action-copy-path" class="menu_button rbq-storage-action-btn rbq-storage-btn-copy" type="button">
@@ -1585,16 +1747,16 @@
                         const rec = await RBQ.api.getCachedImageRecord(current.cacheId);
                         if (rec?.blob instanceof Blob) blobToSync = rec.blob;
                     }
-                    if (!blobToSync && current.displayUrl) {
+                    if (!blobToSync && current.displayUrl && current.displayUrl.startsWith('blob:')) {
                         const res = await fetch(current.displayUrl);
                         if (res.ok) blobToSync = await res.blob();
                     }
-                    if (!blobToSync && current.url) {
+                    if (!blobToSync && current.url && current.url.startsWith('blob:')) {
                         const res = await fetch(current.url);
                         if (res.ok) blobToSync = await res.blob();
                     }
 
-                    if (!blobToSync) throw new Error('无法读取图片原始数据');
+                    if (!blobToSync) throw new Error('当前设备本地未找到无损原图缓存');
 
                     const mode = current.mode || 'rbq';
                     const now = Date.now();
@@ -1627,6 +1789,51 @@
                     syncBtn.disabled = false;
                     syncBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 重试同步';
                 }
+            };
+        }
+
+        // 绑定加载云端原画按钮
+        const loadBtn = dialog.querySelector('#rbq-action-load-original');
+        if (loadBtn) {
+            loadBtn.onclick = async (e) => {
+                e.stopPropagation();
+                loadBtn.disabled = true;
+                loadBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在加载云端原画...';
+                try {
+                    const originalUrl = info.serverOriginalUrl || info.serverUrl;
+                    if (!originalUrl) throw new Error('云端无损原画地址不存在');
+                    const imgLoader = new Image();
+                    imgLoader.src = originalUrl;
+                    await new Promise((resolve, reject) => {
+                        imgLoader.onload = resolve;
+                        imgLoader.onerror = reject;
+                    });
+                    current._originalLoaded = true;
+                    current.displayUrl = originalUrl;
+                    const viewerImg = document.querySelector('#st-scene-trigger-image-viewer img');
+                    if (viewerImg) viewerImg.src = originalUrl;
+                    const origPill = document.querySelector('#st-viewer-load-original-pill');
+                    if (origPill) origPill.style.display = 'none';
+                    toastr.success('已载入云端无损高清原图', PLUGIN_NAME);
+                    closeModal();
+                    updateViewerBadge({ modal: document.getElementById('st-scene-trigger-image-viewer'), current });
+                } catch (err) {
+                    toastr.error(`加载原画失败: ${err.message || err}`, PLUGIN_NAME);
+                    loadBtn.disabled = false;
+                    loadBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> 重新尝试加载';
+                }
+            };
+        }
+
+        // 绑定待补传原图收藏标记按钮
+        const pendingBtn = dialog.querySelector('#rbq-action-mark-pending');
+        if (pendingBtn) {
+            pendingBtn.onclick = async (e) => {
+                e.stopPropagation();
+                await markPendingOriginalUpload(current);
+                toastr.success('已标记收藏！切回原生成设备时将自动同步无损原画', PLUGIN_NAME);
+                closeModal();
+                updateViewerBadge({ modal: document.getElementById('st-scene-trigger-image-viewer'), current });
             };
         }
 
@@ -1803,11 +2010,9 @@
                     const now = Date.now();
                     const cleanExt = blobToSync.type.includes('webp') ? 'webp' : (blobToSync.type.includes('jpeg') || blobToSync.type.includes('jpg') ? 'jpg' : 'png');
                     const filename = `st_draw_fav_sync_${mode}_${now}_${i}.${cleanExt}`;
-                    const path = await uploadImageToServer(blobToSync, filename);
+                    const path = await uploadBlobToServer(blobToSync, filename);
                     if (path) {
-                        item.serverOriginalUrl = path;
-                        item.serverUrl = path;
-                        item.pendingOriginalUpload = false;
+                        await applySyncedPathToAllRecords(item, path, true);
                         successCount++;
                     } else {
                         failCount++;
@@ -1821,7 +2026,7 @@
             }
         }
 
-        RBQ.api.saveSettings();
+        RBQ.api?.saveSettings?.();
         if (successCount > 0) {
             toastr.success(`批量补传完成！已成功上传 ${successCount} 张高清原画${failCount > 0 ? ` (${failCount} 张本地缓存已释放)` : ''}`, PLUGIN_NAME);
         } else {

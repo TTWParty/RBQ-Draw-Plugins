@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.55';
+    const PLUGIN_VERSION = '6.0.56';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -79,15 +79,19 @@
     };
 
     const V5_SPEC_97_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
-任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若正文包含显式图组或媒介标记，必须按其实际数量 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。
+任务：通读小说/对话剧情，地毯式定位每一个该生图的视觉节点，提取独立分镜填入 segments 数组（只要该生图的地方就必须立项，生图数量由视觉节点自然决定，不设固定指标；若包含显式图组标记则 1:1 完整输出全部图组，严禁截断或合并），输出严谨、高审美、解剖自洽的合法 JSON 对象。纯日常闲聊/无视觉画面变化输出 {"shouldDraw": false}。
 
 ══ 总则与铁律 ══
 - 优先级：先画对（该有的都有）→ 再画稳（锚定复用，跨图连续）→ 后画美（剧情未写处，补充适合氛围的上镜细节，让画面更好看）。
-- 多节拍分镜与图组拆分准则（核心）：
-  · 数量指引与图组对齐：单条消息按视觉节拍提取分镜。若正文显式包含 [图组XX]、[插画X]、[照片X] 等媒介标记，必须按正文实际图组数量 1:1 完整输出全部图组（正文有 4 个图组就输出 4 个分镜，有 5 个就输出 5 个，绝对不设上限、严禁截断或遗漏！）；若正文无显式图组标记，则按剧情高潮与转折自然提取（通常 1~4 个关键分镜）。
-  · 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须严格一对一为每一个图组/照片输出独立的 segment 分镜，正文有几个就必须出几个，绝对严禁漏提、截断或合并！
-  · 优先触发：动作阶段突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/抽打/高潮特写等）。
-  · 独立构图：每个 segment 必须有独立的 label、独立的 anchor.text（从正文对应段落一字不差截取 10~40 字原文）、独立的 scene 构图与 characters！
+- 视觉节点全覆盖与精准布点准则（核心：分析哪里生图、需要生几张）：
+  · 哪里需要生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面组成的，绝不仅有最后的大高潮才算画面！顺着正文时间线自上而下地毯式扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组，绝严禁偷懒只挑最后一段大高潮而掠过前文所有精彩画面：
+    ① 角色造型与服装高光：登场外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；
+    ② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；
+    ③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写表情；
+    ④ 空间机位与氛围转换：场景地点转移、景别与俯仰机位切换（特写/中景/大俯视/大仰视等）；
+    ⑤ 显式媒介内容（图组/插画/照片）：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等，必须严格 1:1 提取对应数量的分镜，有几个出几个，绝对严禁漏提、截断或合并！
+  · 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要正文该生图的地方就必须有图，几张不设死板指标；单一瞬间动作提取 1 个分镜；长文多阶段推进自然拆分为对应数量的独立分镜填入 segments 数组；纯日常闲聊/毫无画面的纯抽象理论探讨才输出 {"shouldDraw": false}。
+  · 独立构图与逐字锚定：每个 segment 必须有独立的 label、从当前正文对应段落一字不差截取 10~40 字逐字原文作为 anchor.text、独立的 scene 构图与 characters！
 - 跨楼层绝对隔离与防串话铁律（最高红线）：
   · 绝对严禁从 recentMessages（历史上下文楼层）中提取任何分镜、场景、动作或图组！
   · segments 数组中的每一个分镜，其画面内容和 anchor.text 必须 100% 完全且逐字取自 currentMessage 的正文！
@@ -1991,15 +1995,19 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     // V40: 文生图9.7全功能优化版（四模块自洽架构 / 零功能丢失 / 剔除跨章节重复与查表冗余 / 性能与依从率最高）
     const V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT = `你是专为 NovelAI V5 及高级多角色生图引擎打造的「全息分层分镜导演与提示词引擎」，深度融合《(主体)文生图9.7[V5测试]》工业级视觉生成规范。
-任务：深入阅读小说/对话剧情，精准提取最具视觉表现力的关键分镜（若正文包含多个动作阶段、空间切换、视角转移或显式图组/照片标记，拆分为独立分镜填入 segments 数组；若包含显式图组标记则 1:1 完整输出全部图组，严禁设上限截断），输出严谨、高审美、解剖自洽的合法 JSON 对象。纯日常闲聊/无视觉变化输出 {"shouldDraw": false}。
+任务：通读小说/对话剧情，地毯式定位每一个该生图的视觉节点，提取独立分镜填入 segments 数组（只要该生图的地方就必须立项，生图数量由视觉节点自然决定，不设固定指标；若包含显式图组标记则 1:1 完整输出全部图组，严禁截断或合并），输出严谨、高审美、解剖自洽的合法 JSON 对象。纯日常闲聊/无视觉画面变化输出 {"shouldDraw": false}。
 
 ══ 总则与交互铁律 ══
 1. 核心优先级：先画对（该有的都有）→ 再画稳（锚定复用，跨图连续）→ 后画美（剧情未写处补充氛围上镜细节）。真实性优先，只画物理规律真实成立的画面，严禁将修辞比喻/心理活动画成实体。
-2. 多节拍分镜与图组拆分准则（核心）：
-   - 数量指引与图组对齐：单条消息按视觉节拍提取分镜。若正文显式包含 [图组XX]、[插画X]、[照片X] 等媒介标记，必须按正文实际图组数量 1:1 完整输出全部图组（正文有 4 个图组就输出 4 个分镜，有 5 个就输出 5 个，绝对不设上限、严禁截断或遗漏！）；若正文无显式图组标记，则按剧情高潮与转折自然提取（通常 1~4 个关键分镜）。
-   - 强制触发（图组与媒介标记）：若正文显式包含 [图组01]、[图组02]、[插画1]、[分镜2]、[照片]、[自拍]、连拍描述等媒介内容，必须严格一对一为每一个图组/照片输出独立的 segment 分镜，正文有几个就必须出几个，绝对严禁漏提、截断或合并！
-   - 优先触发：动作阶段突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/抽打/高潮特写等）。
-   - 独立构图：每个 segment 必须有独立的 label、独立的 anchor.text（从正文对应段落一字不差截取 10~40 字原文）、独立的 scene 构图与 characters！
+2. 视觉节点全覆盖与精准布点准则（核心：分析哪里生图、需要生几张）：
+   - 哪里需要生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面组成的，绝不仅有最后的大高潮才算画面！顺着正文时间线自上而下地毯式扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组，绝严禁偷懒只挑最后一段大高潮而掠过前文所有精彩画面：
+     ① 角色造型与服装高光：登场外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；
+     ② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；
+     ③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写表情；
+     ④ 空间机位与氛围转换：场景地点转移、景别与俯仰机位切换（特写/中景/大俯视/大仰视等）；
+     ⑤ 显式媒介内容（图组/插画/照片）：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等，必须严格 1:1 提取对应数量的分镜，有几个出几个，绝对严禁漏提、截断或合并！
+   - 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要正文该生图的地方就必须有图，几张不设死板指标；单一瞬间动作提取 1 个分镜；长文多阶段推进自然拆分为对应数量的独立分镜填入 segments 数组；纯日常闲聊/毫无画面的纯抽象理论探讨才输出 {"shouldDraw": false}。
+   - 独立构图与逐字锚定：每个 segment 必须有独立的 label、从当前正文对应段落一字不差截取 10~40 字逐字原文作为 anchor.text、独立的 scene 构图与 characters！
 3. 标签与自然语言：能用标签表达的优先用标签；微妙语感（空间/质感/特殊动态）用自然语言短句紧密配合；关联度高内容跨分类相邻排列，自然语言紧跟其修饰的标签。禁止质量词（masterpiece等）与画师名（@artist）。
 4. anchor.text：必须从当前消息中一字不差截取 10~40 字原文。外部世界书（payload.lorebook）匹配词库优先直接引用。严禁 Markdown 代码块包装或闲聊，直接输出合法 JSON。
 
@@ -2231,23 +2239,10 @@ Zimage 擅长理解复杂的英文长句和语境。
     const SYSTEM_PROMPT_PRESETS = {
         v40_worldbook_97_opt: { label: 'V40·文生图9.7全功能优化版 (默认推荐/四模块自洽架构/全场景覆盖)', prompt: V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT },
         v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (.53实装版/绝杀肚脐机位/无接触留白)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
-        consistent: { label: 'V24·8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
-        classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
-        custom: { label: '⚙️ 自定义提示词 (Custom · 展开编辑框)', prompt: '' },
-        v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
-        v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
-        v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
-        v28_worldbook_91: { label: 'V28·9.1全息分层原版 (历史)', prompt: V5_SPEC_91_SYSTEM_PROMPT },
-        v27_5: { label: 'V27.5·全息分层自适应版 (历史)', prompt: V27_5_SYSTEM_PROMPT },
-        v27_universal: { label: 'V27·全场景通用自适应版 (历史)', prompt: UNIVERSAL_SYSTEM_PROMPT },
-        v26_hybrid: { label: 'V26·全息空间自适应版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
-        v25_hybrid: { label: 'V25·全息自然语言混合版 (历史)', prompt: HYBRID_NL_SYSTEM_PROMPT },
-        v24_3d: { label: 'V24·3D写实电影版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_3D },
-        v23: { label: 'V23·国籍面相版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V23 },
-        v22: { label: 'V22·完整版 (历史)', prompt: CONSISTENT_SYSTEM_PROMPT_V22 },
-        zimage_nl: { label: 'Zimage·自然语言', prompt: ZIMAGE_NL_PROMPT },
+        consistent: { label: 'V24·8.30全能规范版 (经典备选)', prompt: CONSISTENT_SYSTEM_PROMPT },
+        zimage_nl: { label: 'Zimage·自然语言 (Flux/SD通用)', prompt: ZIMAGE_NL_PROMPT },
         grok_nl: { label: 'Grok·自然语言', prompt: GROK_NL_PROMPT },
-        storyboarder: { label: 'V21·POV增强版 (历史)', prompt: STORYBOARDER_SYSTEM_PROMPT },
+        custom: { label: '⚙️ 自定义提示词 (Custom · 展开编辑框)', prompt: '' },
     };
 
     const DEFAULT_SYSTEM_PROMPT_PRESET = 'v40_worldbook_97_opt';
@@ -2461,7 +2456,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
-        enhancedContext: 'v13', // off | v2 | v5 | v6 | v7 | v8 | v9 | v10 | v11 | v12 | v13 | v14
+        enhancedContext: 'v13', // off | v13 | v14 | v11
         postProcessEnabled: false,
         postProcessRole: 'assistant',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
@@ -9310,36 +9305,23 @@ SCHEMA:
     }
 
     function getEnhancedContextPayload(ec) {
+        const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
-            v2: "Implicitly analyze 'recentMessages' for scene continuity, character states, and outfits. Critically: identify the EXACT temporal moment of 'currentMessage' (imminent/ongoing/completed) and only use tags matching that moment. Never add cum/climax tags to pre-climax scenes.",
-            v5: "Build a state snapshot from recentMessages and currentMessage before tag generation.",
-            v6: "FRAME-SYNC: Reconstruct character states from context and currentMessage before tag generation.",
-            v7: "SCENE-AWARE ANALYSIS: Before JSON output, perform a three-layer analysis chain: Layer 1 Scene Selection, Layer 2 Frame Reconstruction, Layer 3 POV Determination.",
-            v8: "CHAIN-OF-THOUGHT: Before JSON output, perform comprehensive reasoning on visual value, temporal state, character continuity, and perspective.",
-            v9: "SCENE-AWARE REASONING: Scan currentMessage for all visually significant moments (each moment -> 1 segment). Execute 5-step analysis: ① Multi-moment Selection, ② L0~L2 Anchor Tracking & Gradual Fading, ③ Composition & Lighting Matrix, ④ Visibility Pruning into uc, ⑤ Perspective & Multi-character Bindings.",
-            v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
-            v12: "SCENE-AWARE 9.7 ADVANCED REASONING: Execute 7-step analysis with universal spatial depth & kinematic laws: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency, ③ Q1-Q3 Rating, ④ Spatial Depth Philosophy (4 foreground forms, empty is valid, depth of field), ⑤ Lens, Kinematics & Eye-Height Geometry (standing-looking-at-kneeling strictly forbids close-up, requires steep high-angle + head tilted back foreshortening; POV hands anchored with action+contact target, no floating reaching-in; strict zero Char2 entity), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
-            v10: "SCENE-AWARE 9.1 REASONING: Execute 6-step reasoning before output: ① Multi-moment temporal tracking from currentMessage only (strictly forbid copying scenes/actions from recentMessages), ② L0~L2 Anchor inheritance & gradual fading, ③ Q1-Q3 Rating (Safe/R/X), ④ 3-Layer Spatial Depth (Foreground/Middle/Background), ⑤ Composition, camera angles & lighting, ⑥ Strict visibility pruning into uc. CRITICAL: Every segment and anchor.text must come strictly and verbatim from currentMessage.",
+            v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
         };
-        return ecPayloads[ec] ? { contextAnalysisInstructions: ecPayloads[ec] } : {};
+        return ecPayloads[activeEc] ? { contextAnalysisInstructions: ecPayloads[activeEc] } : {};
     }
 
     function getEnhancedContextSystemPrompt(ec) {
+        const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
             v14: "【V14·自适应节拍与极简四公理推演 (分析生图位置与数量)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）完成推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史）：顺着正文时间线地毯式扫描，推演正文中【哪里需要生图】与【需要生几张】：\n  * 哪里生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面构成的，绝不仅有最后的大高潮才算画面！正文中凡是出现以下视觉跃迁节点（①造型服饰高光/换装脱衣/湿身暴露、②动作演进/肢体接触/体位姿态升级、③神态特写/动情红晕/眼神对视、④空间场景或机位景别转换、⑤显式图组[图组XX]/插画），每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜，绝严禁只挑最后一个动作而把前面的精彩画面全部漏掉！每个选定画面精准摘取 10~40 字逐字原文 anchor.text 并拟定 label；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要该生图的地方就必须有图，几张不设死板指标；单一瞬间=1张；多节拍推进=自然拆分多张独立分镜填入 segments，绝不草率压缩为单张；纯抽象理论探讨/毫无画面的纯闲聊才判 0 张（shouldDraw: false）。\n②【主题与分层】：确立主体层级（无近身实体接触则自然省略 Foreground 降级为双层，严禁强凑）。\n③【视点位姿与高差】：明确观察者自身体态（站/坐/跪/躺/覆身）与视点坐标；判定与目标高差——垂直落差 ≥ 50cm 绝对禁止单纯 close-up，强制使用俯/仰角度景别配合透视短缩链（head tilted back / foreshortening）；同高度特写才成立。\n④【视锥探入与受力闭环】：探入实体（手脚/道具/武器/器官）一律从画框下边缘向前上方延伸，严禁上方逆向垂落；必须具备物理接触受力面闭环（抓胯/托脸/握柄/按压），无接触则留白。\n⑤【实体解耦与分级底线】：POV 观察者绝对不出镜、严禁创建为 Character，其探入实体归入 Scene 前景，Scene 负面必补 boy, male 防骨骼分裂；判定 Safe / R / X 并填齐底线负面词。\n⑥【自检输出】：确认字段自洽后直接输出合法 JSON，禁止输出任何多余标记。",
             v13: "【9.7 全息节拍推演与自适应视点动力学七步思维链 (V13 · 推荐)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息节拍与自适应视点强化七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：通读并深入推演当前消息正文，准确分析正文中【哪里需要生图】以及【需要生几张】：\n  * 哪里需要生图（视觉全流程节点覆盖法则 · 绝不遗漏）：顺着正文时间线自上而下地毯式扫描，绝不仅有最后的大高潮才算画面！凡是出现具备独立画面表现力与叙事价值的节点，每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜并精准锚定，绝严禁只挑最后一个大动作而掠过前文的精彩画面：\n    - 角色造型与服装高光（登场外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点）；\n    - 动作阶段演进与互动升级（肢体接触、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换、姿势切换）；\n    - 情感张力与神态特写（动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写表情）；\n    - 空间机位转换与环境氛围（场景地点转移、景别与俯仰视角切换）；\n    - 显式媒介内容（如 [图组XX]、[插画]、照片、手机屏幕等）：必须 1:1 提取对应数量的分镜；\n    - 每一个选定画面，必须从 currentMessage 中精准摘取对应段落的逐字原文（10~40字）作为 anchor.text，并拟定 5~15 字中文分镜名（label）；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻数量自然决定——只要该生图的地方就必须有图，几张不设固定指标；正文篇幅紧凑且仅包含单一瞬间动作则提取 1 张；长文多阶段演进自然拆分对应数量的独立分镜全部填入 segments 数组；纯日常闲聊/纯抽象内心独白无画面变化才判 0 张（shouldDraw: false）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【观察者体态位姿与自适应人眼视点几何】：\n- 【机位锚定：摄像机 ＝ 观察者双眼当前三维坐标】：POV 摄像机严格绑定观察者当前动作与体态下的真实人眼视点：\n  * 站姿(Standing, ~1.7m)：看站姿为平视(eye level)，看坐姿为微俯视，看跪/趴/躺为大俯视(steep high angle from standing height)；\n  * 坐姿(Sitting, ~1.1m~1.2m)：看坐姿为平视，看跪在腿间/地面为俯视(looking down between knees, from seated height)，看站立为仰视(low angle from below)；\n  * 跪姿(Kneeling, ~0.9m~1.0m)：同跪为平视(kneeling face-to-face)，看站立为大仰视(steep low angle looking up)；\n  * 躺卧/仰卧(Lying on back, ~0.2m~0.4m)：看被跨坐/骑乘为大仰视(steep low angle, looking up from below, lying on back looking up at her)，同躺为枕边平视(eye level, lying side by side)；\n  * 俯身/覆身在上(Leaning over / Missionary)：居高临下直视笼罩(leaning over her, looking down close-up)。\n- ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up！强制使用带俯仰透视景别（bust shot from above / looking up from below），配合仰头/低头短缩链（head tilted back / head lowered, foreshortening）；平视特写仅限双方同等高度；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸（仰卧被跨坐时向上托扶），严禁上方逆向垂落；探入必须具备「动作+物理接触受力面/受体」闭环；无接触则自然留白；探入肢体默认单侧防多肢体；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认观察者位姿与机位视角自洽、高差与景别自洽、探入实体受力闭环、服装四要素签名完备、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
-            v12: "【9.7 全息透视与视锥动力学七步思维链推演 (V12)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息透视强化七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：地毯式推演正文中【哪里需要生图】以及【需要生几张】：\n  * 哪里生图（视觉节点全覆盖法则）：顺着正文自上而下扫描，定位所有独立画面节点（造型换装脱衣、肢体动作升级、体位姿势切换、神态情绪特写、机位转换、显式图组[图组XX]等），每一个画面节点都属于【该生图的地方】，提取独立分镜并摘取 10~40 字逐字原文 anchor.text，绝严禁只挑最后大高潮而掠过前文；\n  * 生几张（数量自然衍生）：数量由正文包含的独立视觉节点自然决定，只要该生图的地方就必须有图；单一瞬间动作出 1 张；多动作阶段推进自然拆解为对应数量独立分镜填入 segments；纯抽象/无视觉变化判 0 张（shouldDraw: false）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【机位视线几何与视锥探入闭环】：\n- 摄像机必须锚定在【人眼高度(1.7m)】，绝不滑落到腰腹/肚脐！\n- ⛔【高差与特写互斥铁律】：站姿看跪姿/躺姿等高落差场景，绝对禁止使用 close-up！强制使用 bust shot from above 或 cowboy shot from above，配合仰头透视链：steep high angle, looking down from standing eye-level, head tilted back, top of head visible, foreshortening；平视特写仅限双方同高度（同坐/同跪/同躺）；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸，严禁上方逆向垂落（杜绝天降肢体与浮空武器）；探入必须具备「动作+物理接触受力面/受体」闭环（如 gripping hip 抓胯、curled around handle 握柄、resting on surface 贴面、aiming at target 对准）；无接触则自然留白；肢体默认单侧防增生；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认高差与景别自洽、探入实体受力闭环、服装四要素签名完备（带长度/颜色）、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v11: "【9.7 全息空间七步思维链推演 (V11)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描 currentMessage 正文（严禁提取历史）：深入推演【哪里需要生图】（顺着正文时间线地毯式扫描造型服饰、肢体动作演进、体位切换、神态特写、显式图组等关键节点，每一个画面节点均提取独立分镜与 10~40 字逐字 anchor.text，绝不只挑最后一幕）与【需要生几张】（数量由视觉节点自然衍生，只要该生图的地方就必须有图；单一瞬间=1张；长文多阶段推进=自然拆分多张独立分镜入 segments；纯抽象无画面闲聊=0张）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间矩阵】：\n- 前景(Foreground) / 中景(Middle ground) / 背景(Background), 主体落层自由；【前景克制】：日常对话/开门/对视场景天然为双层，严禁强行编造入镜断手(reaching hands/pov hands)，无直接接触道具时直接省略 Foreground 降为双层！\n⑤【镜头组合与情境速查】：\n- 视角：第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）/ 第一人称 POV（视角主人⛔严禁创建为 Character，非直接接触场景严禁生成入镜手，仅保留出镜角色；Scene 负面补 boy/male 防鬼影）；\n- 景别与机位：按情境意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body/远景 wide_shot）与水平机位（正位/前侧3/4/侧位/后侧3/4/背位）、垂直机位（平视/俯视/仰视/顶视/虫视）。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认字段自洽、服装四要素签名完备（带长度/颜色）、左右手动作独立、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
-            v10: "【9.1 全息空间六步思维链推演 (V10)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.1 全息六步推演：\n\n【🚨 核心边界与当前场景锁定铁律】：\n1. 所有分镜与画面 100% 必须来源于 currentMessage 正文！recentMessages 仅用于角色基础外貌（发型发色/瞳色/体型）的连续性参考，绝对严禁将 recentMessages 中的旧环境、旧事件、旧场景（如上一轮的天气、地点、历史画面）搬运或遗留到当前生图分镜！若 currentMessage 是全新场景，必须彻底切换到全新场景，严禁滞留旧场景！\n2. 每个 segment 的 anchor.text 必须 100% 逐字原样摘自 currentMessage.content 中的连续文字（10~40字），严禁从 recentMessages 中摘取，也严禁自行概括虚构！\n\n①【时序捕捉与多段时刻选取】：\n- 仅扫描 currentMessage 正文，捕捉当前正在发生的全新视觉瞬间（每个选定瞬间对应 1 个 segment，填入 segments 数组）；\n- 优先捕捉：动作突变（体位/姿势切换）、情绪峰值（表情剧变）、空间转换、关键视觉表现（脱衣/暴露/战损等）、媒介画面（正文提到照片/图片/配图/自拍/截图/画面/手机屏幕等必触发）；\n- 动作相位严控：判定当前处于哪个相位（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），只进不退，严禁提前剧透后续动作，严禁滞留旧动作；纯对话/内心独白且无新视觉信息时输出 shouldDraw:false。\n\n②【L0~L2 三级锚点状态继承与流转】：\n- L0 固有锚点：从 recentMessages 继承角色固有特征（发型发色/瞳色/胸型/种族面貌/专属饰品），未有剧情明确改变严禁擅自突变；\n- L1 近期锚点：仅当角色处于连续同一场景中时，继承其当前着装状态与破损/残留（若 currentMessage 场景或角色已切换，则以新场景描述为准）；\n- L2 瞬态痕迹：脸红(blush)、汗水(sweat)、精液(cum)、眼泪(tears)在连续场景中遵循渐进消退法则；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（谁执行、谁承受、效果在谁身上）。\n\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic。\n\n④【全息三层纵深空间矩阵】：\n- 前景(Foreground)：入镜近物、环境遮挡（门窗/树叶/栏杆）、POV者入镜肢体（如 pov_hands）、光斑或雨滴虚化；\n- 中景(Middle ground)：画面主体角色、核心互动动作、体态构图与网格站位（center: C3/B3/D3 等）；\n- 背景(Background)：环境纵深、室内外建筑格局、天空天气、空间范围（必须严格对应 currentMessage 的环境描写）。\n\n⑤【叙事机位与镜头意图决策】：\n- 视角：第一人称 POV（摄像机主体不建 Character，入镜肢体入 scene）、第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）、旁观窥视（voyeurism）；\n- 景别与机位：按情绪意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body）与机位（平视/俯视 from_above/仰视 low-angle/前侧 3/4 three-quarter view/纯侧位 side_view/过肩 over-the-shoulder/背位 from_behind）；\n- 氛围光影：智能配置氛围光（rim lighting, dramatic lighting, low-key, cinematic lighting 等）；预排裁切边界（如脚出框、腰以下出框）。\n\n⑥【可见性清理与物理互斥裁切（核心自洽）】：\n- 景别裁切：特写移除颈以下，uc 填 feet, shoes, legs, lower_body；近景移除腰以下；局部特写剔除无关面貌表情并在 uc 屏蔽；\n- 朝向裁切：背位/后侧位彻底移除正面表情、瞳色与正面着装细节（uc 填 face, front_view）；\n- 视角裁切：第一人称 POV 移除用户自身不可见的发色瞳色与面相；\n- 物理互斥：全裸/暴露移除被遮挡衣物；闭眼移除瞳色；蒙面戴口罩移除嘴部；无头彻底移除头部面部；\n- 负面隔离：角色特有负面写入该角色 uc，严禁全局广播误伤其他角色。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
-            v9: "【8.30 前情增强思维链推演 (V9)】\n在输出 JSON 前，在思考区执行五步推演：\n\n①【视觉时刻多段选取】：\n扫描 currentMessage 正文，识别所有值得生图的视觉时刻（每个选定画面对应 1 个 segment，全部输出到 segments 数组）：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/射精/特写等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用，输出所有选定的 segments！\n\n②【四级锚点状态追踪与流转】：\n- 从 recentMessages 继承每个角色的 L0 固有特征（种族/国籍面相/发色瞳色/体型）与 L1 场景服装；\n- 判定当前正文处于剧情的哪个演进阶段（准备前奏 / 正在进行 / 爆发高潮 / 事后余韵），严禁在未完成阶段剧透后续状态；\n- L2 瞬态痕迹（脸红 blush、汗水 sweat、精液 cum 等）严格遵循「渐进消退法则」，跨图生成须渐变退散，禁止无依据突变消失。\n\n③【镜头构图与氛围矩阵】：\n- 依据剧情情绪基调，精准选用最佳景别（特写 close-up、近景 bust_shot、中景 cowboy_shot、全景 full_body）与机位（平视、俯视 from_above、仰视 low-angle、前侧 3/4、侧位 from_side、过肩 over-the-shoulder、背位 from_behind）；\n- 智能补充匹配氛围的具象光影（如逆光 rim_lighting、戏剧侧光 sidelighting、暗调 low-key）。\n\n④【可见性裁切与状态物理互斥（核心自洽）】：\n- 景别裁切：特写移除颈以下并在 uc 写入 feet, shoes, legs, lower_body; 近景移除腰以下；局部特写(手/足/下体/道具)彻底剔除面部表情/发色/瞳色并在 uc 填 face, eyes, head；\n- 状态互斥：无头(headless)彻底剔除所有面相/发型/面部动作并在 uc 填 1.6::head, face, eyes, hair, mouth::；全裸/暴露剔除对应遮挡衣物；蒙眼/闭眼剔除瞳色；背位剔除正面细节（uc 填 face, front_view）；\n- 时态逻辑：前奏禁写事后状态词，事后禁写激烈抽插动作；\n- 负面隔离：角色特有负面严格只写该角色的 uc，严禁全局广播误伤他人。\n\n⑤【视角决策与多角色站位】：\n- 主观视角 POV：摄像机主体（用户/主角）不建 Character，其入镜肢体（如 pov_hands）写入 scene；\n- 旁观/第三人称：观察者不建 Character；scene 选用侧面(from_side)、过肩(over-the-shoulder)等机位；互动角色视线与朝向面向彼此（facing_another, eye_contact），避免无故直视镜头(facing_viewer)；\n- 局部焦点：当正文核心描写聚焦在局部肢体或动作细节时，采用对应局部特写并执行可见性裁切；\n- 多人交互：出镜角色各入 characters，使用 source#/target# 明确施受关系，并分配网格站位（center: A1-E5，如 B3, C3, D3, E3）。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何额外文字。",
-            v8: "【综合推理分析 v8】\n\n在输出 JSON 前，请进行一段连贯的思维链（Chain of Thought）综合分析，无需刻板分条列点：\n\n首先，判断生图价值。正文中是否明确提到了照片、图片、配图、屏幕等？如果有，这是必须生图的锚点；如果是动作突变或情绪高潮，则是极佳的生图时机；若是纯对话或内心活动且无视觉变化，则果断放弃生图。\n其次，整体重构画面。结合前情与当前文本，理清所有角色的状态变化、空间位置和动作施受关系。精准定位“此时此刻”，不提前剧透动作，也不滞留过去的姿势，同时严格忠于原文的描写强度，拒绝擅自加戏。\n最后，决定画面视角。当前情境应当采用什么镜头？是代入感极强的 user POV（用户作摄像机，其身体部位写进 scene 而绝对禁入 characters 数组），还是旁观他人的窥视视角，或者是全知的第三人称客观视角？决定视角后，必须采用系统提示词里对应视角的专有格式来构建后续的 JSON 数据。\n\n请在脑内或思考区完成上述综合推演后，再严格按对应的视角格式输出 JSON，禁止在 JSON 外输出额外文本。",
-            v7: "【场景感知分析 v7】\n\n在输出 JSON 前，按以下三层流水线完成分析：\n\n■ 第一层 · 场景选取\n扫描 currentMessage 正文，识别值得生图的视觉时刻：\n- 强制触发：正文中提到照片/图片/配图/自拍/截图/画面/手机屏幕等媒介内容 → 必须为该处生成 segment\n- 优先触发：动作突变（体位/姿势切换）、情绪高潮（表情剧变）、空间转换（场景切换）、关键视觉表现（脱衣/暴露/特效等）\n- 抑制判断：纯对话、内心独白、重复性日常描写、无新视觉信息 → shouldDraw:false\n- 每个选定画面对应一个 segment，anchor.text 必须是正文中对应位置的逐字引用\n\n■ 第二层 · 帧重建\n对每个选定画面，从 recentMessages 和 currentMessage 统一重建帧状态快照：\n- 从上下文继承角色已知状态（服装、外貌等），仅当前文本明确描述变化时更新，未提及 = 不变\n- 每个角色的情绪独立判断，不笼统套用同一种情绪\n- 姿势和动作以 currentMessage 为准，不沿用前文\n- center 坐标反映实际空间位置关系\n- 只 tag 此刻正在发生的事；区分瞬间动作（grab→release）和持续动作（lying/sitting）\n- 分清施受方向：谁执行、谁承受、结果发生在谁身上 → tag 放在正确角色上\n- 忠实程度：不超越文本描述的强度，按原文程度选 tag\n\n■ 第三层 · 视角决策\n根据叙事上下文判断此画面的摄像机视角类型，不同视角直接决定 JSON 输出结构：\n① pov（主观视角）：叙事以用户/男主视角展开 → 摄像机角色⛔禁入 characters，其可见身体部位写入 scene（pov_hands/large_penis 等），被看角色加 looking_at_viewer，不用 source#/target# 前缀\n② 旁观/窥视视角：用户在旁观察他人互动 → 互动者各入 characters 用 source#/target# 绑施受，加 facing_another，scene 酌加 voyeurism/peeping\n③ 第三人称（客观视角）：全景叙事 → 所有角色入 characters，source#/target# 绑施受，追加 from_side/facing_another/eye_contact，坐标 B3↔D3\n→ 选定视角后，严格按系统提示词中对应视角的示例格式输出 JSON\n\n核心：每个 tag 必须有文本依据。禁止输出分析文本，只输出 JSON。",
-            v6: "【帧同步分析】\n在输出 JSON 前，先在脑内完成以下分析：\n1. 状态继承：从 recentMessages 继承每个角色的已知状态（服装、外貌等），仅当 currentMessage 明确描述变化时才更新。\n2. 当前帧定位：姿势和动作以 currentMessage 为准。\n3. 情绪独立：每个角色的情绪状态单独判断。\n4. 空间感：center 坐标反映实际位置关系。\n5. 时间帧：只 tag 此刻正在发生的事。\n6. 动作粒度：区分瞬间动作和持续动作。\n7. 动作方向：把 tag 放在正确的角色上。\n8. 忠实程度：按原文程度选 tag。",
-            v5: "【前情增强分析指令】\n在处理 user 传入的 payload 时，你必须首先在脑内对 `recentMessages` 进行隐式分析，建立当前帧的完整状态快照（场景连续性、衣态追踪、体态位置、情绪基调、时间线定位、动作承接）。生成的 Tag 必须是当前帧状态快照的忠实映射。",
         };
-        return ecPrompts[ec] || '';
+        return ecPrompts[activeEc] || '';
     }
 
     function utf8ToBase64(str) {
@@ -12814,10 +12796,10 @@ SCHEMA:
                         <label class="st-scene-trigger-field wide"><span>提示词预设档位</span><select id="rbq-sdt-system-preset">
                             <option value="v40_worldbook_97_opt">${SYSTEM_PROMPT_PRESETS['v40_worldbook_97_opt']?.label || 'V40·文生图9.7全功能优化版'}</option>
                             <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·文生图9.7完整详尽版'}</option>
+                            <option value="consistent">${SYSTEM_PROMPT_PRESETS['consistent']?.label || 'V24·8.30全能规范版 (经典备选)'}</option>
+                            <option value="zimage_nl">${SYSTEM_PROMPT_PRESETS['zimage_nl']?.label || 'Zimage·自然语言 (Flux/SD通用)'}</option>
+                            <option value="grok_nl">${SYSTEM_PROMPT_PRESETS['grok_nl']?.label || 'Grok·自然语言'}</option>
                             <option value="custom">⚙️ 自定义提示词 (Custom · 展开编辑框)</option>
-                            <optgroup label="历史版本归档 (Legacy)">
-                                ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97' && key !== 'custom').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
-                            </optgroup>
                         </select></label>
                         <label id="rbq-sdt-system-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
                             <span>自定义 System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span>
@@ -12904,7 +12886,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，识别动作高潮与节拍转换，精准定位分镜锚点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 最新推荐）。V14: 极简四公理自适应推演 (分析生图位置与数量)。V12: 9.7 全息透视强化推演。V11: 9.7 全息七步推演。V10: 9.1 全息空间六步思维链推演。V9: 8.30 思维链推演。V8: 综合推理。V7: 三层场景感知。V6: 帧同步分析。V5: 状态快照。V2: 轻量时间线。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 最新推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (分析生图位置与数量)</option><option value="v12">V12 · 9.7全息透视强化推演</option><option value="v11">V11 · 9.7全息七步推演</option><option value="v10">V10 · 9.1全息六步推演</option><option value="v9">V9 · 8.30思维链推演</option><option value="v8">V8 · 综合推理</option><option value="v7">V7 · 三层场景感知</option><option value="v6">V6 · 帧同步分析</option><option value="v5">V5 · 状态快照</option><option value="v2">V2 · 轻量时间线定位</option></select></label>
+                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option></select></label>
                     </div>
                 </div>
 
@@ -13037,8 +13019,9 @@ SCHEMA:
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
         document.getElementById('rbq-sdt-context-count').value = store.contextCount;
         // Backward compat: boolean true → 'v13', removed legacy versions → fallback
-        const ecVal = store.enhancedContext === true ? 'v13' : (['v1','v3','v4'].includes(store.enhancedContext) ? 'v13' : (store.enhancedContext || 'off'));
-        document.getElementById('rbq-sdt-enhanced-context').value = ecVal;
+        const legacyEcList = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v12'];
+        const ecVal = store.enhancedContext === true || legacyEcList.includes(store.enhancedContext) ? 'v13' : (store.enhancedContext || 'off');
+        document.getElementById('rbq-sdt-enhanced-context').value = ['off', 'v13', 'v14', 'v11'].includes(ecVal) ? ecVal : 'v13';
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-tagger-debug').checked = !!store.showTaggerDebug;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
@@ -13050,7 +13033,9 @@ SCHEMA:
         document.getElementById('rbq-sdt-card-position').value = store.cardPosition || 'bottom';
         document.getElementById('rbq-sdt-manual-draw').checked = !!store.manualDrawEnabled;
         document.getElementById('rbq-sdt-comic-drawer-floating').checked = store.comicDrawerFloatingEnabled !== false;
-        document.getElementById('rbq-sdt-system-preset').value = store.systemPromptPreset || DEFAULT_SYSTEM_PROMPT_PRESET;
+        const validPresetKeys = Object.keys(SYSTEM_PROMPT_PRESETS);
+        const presetVal = validPresetKeys.includes(store.systemPromptPreset) ? store.systemPromptPreset : DEFAULT_SYSTEM_PROMPT_PRESET;
+        document.getElementById('rbq-sdt-system-preset').value = presetVal;
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
         document.getElementById('rbq-sdt-lorebook-current-floor').checked = !!store.lorebookCurrentFloorOnly;

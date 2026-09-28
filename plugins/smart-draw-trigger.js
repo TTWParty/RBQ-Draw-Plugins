@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.65';
+    const PLUGIN_VERSION = '6.0.66';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7980,10 +7980,11 @@ SCHEMA:
             sdtSegmentMap.set(finalPrompt, segData);
         }
 
-        const img = wrapper.querySelector('img');
-        if (img?.src) {
-            sdtSegmentMap.set(img.src, segData);
-            if (validLorebooks.length > 0) sdtLorebookHitMap.set(img.src, { entries: validLorebooks, prompt: finalPrompt });
+        const media = wrapper.querySelector('img, video');
+        const mediaSrc = media?.getAttribute('src') || media?.src;
+        if (mediaSrc) {
+            sdtSegmentMap.set(mediaSrc, segData);
+            if (validLorebooks.length > 0) sdtLorebookHitMap.set(mediaSrc, { entries: validLorebooks, prompt: finalPrompt });
         }
         const imgLink = wrapper.querySelector('.st-scene-trigger-inline-image-link');
         if (imgLink?.dataset?.url) {
@@ -8670,9 +8671,10 @@ SCHEMA:
 
         if (url) {
             matchedWrapper = wrappers.find(w => {
-                const img = w.querySelector('img');
+                const media = w.querySelector('img, video');
+                const mSrc = media?.getAttribute('src') || media?.src;
                 const link = w.querySelector('.st-scene-trigger-inline-image-link');
-                return (img && (img.src === url || url.endsWith(img.src) || img.src.endsWith(url)))
+                return (mSrc && (mSrc === url || url.endsWith(mSrc) || mSrc.endsWith(url)))
                     || (link && (link.dataset.url === url || link.dataset.url?.endsWith(url)));
             });
         }
@@ -8944,7 +8946,7 @@ SCHEMA:
 
         // 清理当前容器中未出图的残留/过期分镜卡片，杜绝堆积与多重副本
         container.querySelectorAll(`.${CARD_CLASS}[data-rbq-sdt-is-result="1"]`).forEach((el) => {
-            const hasImg = !!el.querySelector?.('.st-scene-trigger-inline-result img') || el.dataset?.rbqSdtStage === 'generated';
+            const hasImg = !!el.querySelector?.('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video') || el.dataset?.rbqSdtStage === 'generated';
             if (!hasImg) el.remove();
         });
         // 确保重新解析卡片保持纯净，清除非法注入的图片残留
@@ -9024,7 +9026,7 @@ SCHEMA:
 
                 let wrapper = existing;
                 if (wrapper instanceof HTMLElement) {
-                    const hasValidImage = !!(wrapper.querySelector('.st-scene-trigger-inline-result img') || wrapper.dataset.rbqSdtStage === 'generated');
+                    const hasValidImage = !!(wrapper.querySelector('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video') || wrapper.dataset.rbqSdtStage === 'generated');
                     if (!hasValidImage) {
                         // 仅当卡片未出图时才重置图片容器与隐私操作栏，防止全量扫描自愈时误杀已存在的图片和展开按钮
                         const resEl = wrapper.querySelector('.st-scene-trigger-inline-result');
@@ -9113,7 +9115,7 @@ SCHEMA:
         } else {
             const existing = container.querySelector(`[data-rbq-sdt-key="${CSS.escape(key)}"]`);
             if (existing instanceof HTMLElement) {
-                const hasValidImage = !!(existing.querySelector('.st-scene-trigger-inline-result img') || existing.dataset.rbqSdtStage === 'generated');
+                const hasValidImage = !!(existing.querySelector('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video') || existing.dataset.rbqSdtStage === 'generated');
                 if (!hasValidImage) {
                     const resEl = existing.querySelector('.st-scene-trigger-inline-result');
                     if (resEl) { resEl.innerHTML = ''; resEl.classList.remove('is-visible'); }
@@ -11045,7 +11047,7 @@ SCHEMA:
             }
 
             // 保留已实际生成出图的卡片（防止误删历史已有图）；对于未出图的过期结果卡片，必须彻底销毁，杜绝堆叠
-            const hasImage = !!card.querySelector?.('.st-scene-trigger-inline-result img') || card.dataset?.rbqSdtStage === 'generated';
+            const hasImage = !!card.querySelector?.('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video') || card.dataset?.rbqSdtStage === 'generated';
             if (hasImage) continue;
             card.remove();
             removed += 1;
@@ -11270,7 +11272,7 @@ SCHEMA:
 
         // 🛡️ DOM防御：若当前卡片已经有图片渲染，或处于 generated 状态，绝对不再重复生图
         if (wrapper instanceof HTMLElement) {
-            const hasExistingImg = !!wrapper.querySelector('.st-scene-trigger-inline-result img') ||
+            const hasExistingImg = !!wrapper.querySelector('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video') ||
                                    wrapper.dataset.rbqSdtStage === 'generated' ||
                                    !!wrapper.dataset.latestImageUrl;
             if (hasExistingImg) return;
@@ -14466,7 +14468,7 @@ SCHEMA:
             wrappers.forEach((w, idx) => {
                 const prompt = String(w.dataset.prompt || '').trim();
                 const raw = w.querySelector('.st-scene-trigger-inline-raw')?.textContent || (prompt ? `[${prompt}]` : '');
-                const resultImg = w.querySelector('.st-scene-trigger-inline-result img');
+                const resultImg = w.querySelector('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video');
                 const resultLink = w.querySelector('.st-scene-trigger-inline-image-link');
                 const url = resultImg?.getAttribute('src') || resultLink?.getAttribute('href') || '';
                 const cacheId = resultLink?.dataset?.cacheId || resultImg?.dataset?.cacheId || '';

@@ -1,8 +1,8 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.11
+ * Version: 1.0.12
  * Author: TTWP-09
- * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
+ * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片与视频，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
 (function(RBQ, $, toastr) {
     'use strict';
@@ -390,10 +390,10 @@
         const container = wrapper.querySelector('.st-scene-trigger-inline-result');
         if (!(container instanceof HTMLElement)) return;
 
-        // 仅在已有生成图片时生效：必须真实存在具有有效链接的 img 节点
-        const img = container.querySelector('img');
-        const hasValidImg = !!(img && (img.getAttribute('src') || img.src));
-        if (!hasValidImg) {
+        // 仅在已有生成媒体时生效：必须真实存在具有有效链接的 img 或 video 节点
+        const media = container.querySelector('img, video');
+        const hasValidMedia = !!(media && (media.getAttribute('src') || media.src));
+        if (!hasValidMedia) {
             cleanCardPrivacyState(wrapper, container);
             return;
         }
@@ -464,7 +464,7 @@
     function ensureSpoilerMask(wrapper, container) {
         let spoilerWrap = container.querySelector('.rbq-privacy-spoiler-wrap');
         if (!spoilerWrap) {
-            const link = container.querySelector('.st-scene-trigger-inline-image-link') || container.querySelector('img');
+            const link = container.querySelector('.st-scene-trigger-inline-image-link') || container.querySelector('img, video');
             if (!link) return;
             spoilerWrap = document.createElement('div');
             spoilerWrap.className = 'rbq-privacy-spoiler-wrap';
@@ -499,7 +499,7 @@
     function removeSpoilerMask(container) {
         const spoilerWrap = container.querySelector('.rbq-privacy-spoiler-wrap');
         if (spoilerWrap) {
-            const link = spoilerWrap.querySelector('.st-scene-trigger-inline-image-link') || spoilerWrap.querySelector('img');
+            const link = spoilerWrap.querySelector('.st-scene-trigger-inline-image-link') || spoilerWrap.querySelector('img, video');
             if (link) {
                 container.insertBefore(link, spoilerWrap);
             }
@@ -565,15 +565,16 @@
                 if (imgLink) {
                     imgLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
                 } else {
-                    const img = wrapper.querySelector('img');
-                    if (img && img.src) {
+                    const media = wrapper.querySelector('img, video');
+                    if (media && (media.getAttribute('src') || media.src)) {
+                        const mSrc = media.getAttribute('src') || media.src;
                         const prompt = wrapper.dataset?.prompt || '';
                         const messageId = Number(wrapper.dataset?.messageId);
                         const fakeLink = document.createElement('a');
                         fakeLink.className = 'st-scene-trigger-inline-image-link';
-                        fakeLink.href = img.src;
+                        fakeLink.href = mSrc;
                         fakeLink.dataset.prompt = prompt;
-                        fakeLink.dataset.url = img.src;
+                        fakeLink.dataset.url = mSrc;
                         fakeLink.dataset.messageId = Number.isFinite(messageId) ? String(messageId) : '';
                         wrapper.appendChild(fakeLink);
                         fakeLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -718,7 +719,7 @@
                             node.classList.contains('st-scene-trigger-inline-wrap') ||
                             node.classList.contains('st-scene-trigger-inline-result') ||
                             node.classList.contains('mes') ||
-                            node.querySelector?.('.st-scene-trigger-inline-wrap, .st-scene-trigger-inline-result, img')
+                            node.querySelector?.('.st-scene-trigger-inline-wrap, .st-scene-trigger-inline-result, img, video')
                         ) {
                             hasRelevantChange = true;
                             break;

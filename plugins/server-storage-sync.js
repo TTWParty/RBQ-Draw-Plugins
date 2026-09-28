@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.19';
+    const PLUGIN_VERSION = '1.1.20';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const copyToClipboard = async (text) => {
@@ -678,9 +678,12 @@
 
                     if (isMatch && typeof RBQ?.api?.renderInlineGeneratedImage === 'function') {
                         // 保护已在卡片展示的本地原画：
-                        // 如果卡片已经在展示本地完整原图（不是 _preview.webp），且当前只是同步完预览图，绝不触发 DOM 降级重绘与跳动！
-                        const existingImg = card.querySelector('.st-scene-trigger-inline-image') || card.querySelector('img');
-                        const isShowingOriginal = existingImg && existingImg.complete && existingImg.naturalWidth > 0 && !existingImg.src.includes('_preview.webp');
+                        const existingMedia = card.querySelector('.st-scene-trigger-inline-image') || card.querySelector('img, video');
+                        const isShowingOriginal = existingMedia && (
+                            existingMedia.tagName === 'VIDEO'
+                                ? (existingMedia.readyState >= 1 && !existingMedia.src.includes('_preview.webp'))
+                                : (existingMedia.complete && existingMedia.naturalWidth > 0 && !existingMedia.src.includes('_preview.webp'))
+                        );
                         if (!isShowingOriginal || isOriginal) {
                             const renderUrl = isOriginal ? path : (item.url || path);
                             RBQ.api.renderInlineGeneratedImage(card, {
@@ -1802,19 +1805,33 @@
                 try {
                     const originalUrl = info.serverOriginalUrl || info.serverUrl;
                     if (!originalUrl) throw new Error('云端无损原画地址不存在');
-                    const imgLoader = new Image();
-                    imgLoader.src = originalUrl;
-                    await new Promise((resolve, reject) => {
-                        imgLoader.onload = resolve;
-                        imgLoader.onerror = reject;
-                    });
+                    const isVid = (typeof RBQ?.utils?.isVideoMedia === 'function')
+                        ? RBQ.utils.isVideoMedia(current) || RBQ.utils.isVideoMedia(originalUrl)
+                        : (/\.(mp4|webm|mov|mkv)/i.test(originalUrl) || current?.mediaType === 'video');
+                    if (isVid) {
+                        const vidLoader = document.createElement('video');
+                        vidLoader.preload = 'auto';
+                        vidLoader.src = originalUrl;
+                        await new Promise((resolve, reject) => {
+                            vidLoader.onloadeddata = resolve;
+                            vidLoader.onerror = reject;
+                            setTimeout(resolve, 8000);
+                        });
+                    } else {
+                        const imgLoader = new Image();
+                        imgLoader.src = originalUrl;
+                        await new Promise((resolve, reject) => {
+                            imgLoader.onload = resolve;
+                            imgLoader.onerror = reject;
+                        });
+                    }
                     current._originalLoaded = true;
                     current.displayUrl = originalUrl;
-                    const viewerImg = document.querySelector('#st-scene-trigger-image-viewer img');
-                    if (viewerImg) viewerImg.src = originalUrl;
+                    const viewerMedia = document.querySelector('#st-scene-trigger-image-viewer .st-scene-trigger-viewer-image');
+                    if (viewerMedia) viewerMedia.src = originalUrl;
                     const origPill = document.querySelector('#st-viewer-load-original-pill');
                     if (origPill) origPill.style.display = 'none';
-                    toastr.success('已载入云端无损高清原图', PLUGIN_NAME);
+                    toastr.success(isVid ? '已载入云端无损高清原视频' : '已载入云端无损高清原图', PLUGIN_NAME);
                     closeModal();
                     updateViewerBadge({ modal: document.getElementById('st-scene-trigger-image-viewer'), current });
                 } catch (err) {

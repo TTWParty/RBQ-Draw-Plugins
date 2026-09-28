@@ -199,57 +199,113 @@ RBQ.api.refreshNaiVibeUi();
 
 ---
 
-### 4. 画廊与全屏大图查看器 API (`Viewer & Gallery`)
+### 4. 跨平台工具与多媒体判定 API (`RBQ.utils` & `RBQ.api`)
 
-宿主内置了全功能大图查看器（支持全屏查看、双栏分镜对比、缩略图切换与无损下载）。
+宿主 `0.3.103+` 与 `0.3.108+` 向插件全面开放了高可靠剪贴板工具与统一多媒体/视频检测接口：
 
 ```javascript
-// 获取查看器当前运行状态
+// 1. 跨平台高可靠复制到剪贴板
+const success = await RBQ.utils.copyToClipboard('1girl, solo, masterpiece');
+// 亦可调用 RBQ.api.copyToClipboard(...)
+
+// 2. 检测 URL 是否为视频格式（.mp4, .webm, .mov, .mkv, data:video/ 等）
+const isVid = RBQ.utils.isVideoUrl('https://example.com/output.mp4');
+// 或检测包含查询参数的链接：isVideoUrl('http://127.0.0.1:8188/view?filename=v_01.webm')
+
+// 3. 智能检测条目或对象是否为视频媒体
+const isMediaVideo = RBQ.utils.isVideoMedia(historyItem);
+// 支持传入包含 { mediaType: 'video' } 或 { format: 'video/mp4' } 的结果对象或 URL
+
+// 4. 安全 HTML 转义工具
+const safeText = RBQ.utils.escapeHtml('<script>alert(1)</script>');
+```
+
+- `RBQ.utils.copyToClipboard(text)` / `RBQ.api.copyToClipboard(text)`：跨平台异步剪贴板工具。优先使用 Clipboard API；在 HTTP 局域网访问（如 `192.168.x.x:8000`）、Termux、移动端或非安全上下文下全自动平滑降级至选区沙盒（`document.execCommand('copy')`），返回 `Promise<boolean>`。
+- `RBQ.utils.isVideoUrl(url)` / `RBQ.api.isVideoUrl(url)`：严格判断 URL 是否指向视频流或视频文件（支持 `.mp4`, `.webm`, `.mov`, `.mkv`, `.m4v`, `.ogv`, `data:video/*` 及 ComfyUI `filename=xxx.mp4` 查询参数）。
+- `RBQ.utils.isVideoMedia(urlOrItem)` / `RBQ.api.isVideoMedia(urlOrItem)`：智能判定目标条目是否为视频媒体。支持传入 URL 字符串、包含 `mediaType: 'video'` 的结果对象、MIME `format` 对象或图片/视频条目。
+- `RBQ.utils.escapeHtml(str)`：安全 HTML 转义工具，杜绝 XSS 注入。
+
+---
+
+### 5. 画廊与全屏大图/大视频查看器 API (`Viewer & Gallery`)
+
+宿主内置了全功能大图/大视频查看器（支持全屏查看、双栏分镜对比、缩略图切换与无损下载，原生支持图片与动态视频）。
+
+```javascript
+// 1. 程序化呼出全屏查看器（支持定位到指定图片或视频，支持历史联动）
+await RBQ.api.openImageViewer(prompt, currentUrl, {
+  messageId: 12,
+  cacheId: 'cache-abc',
+  fromHistory: true // true 时载入当前图库筛选的所有历史，支持左右滑动手势切图
+});
+
+// 2. 获取查看器当前运行状态
 const viewerState = RBQ.api.getViewerState();
-// { open: boolean, index: number, items: Array, prompt: string }
+// { open: boolean, index: number, items: Array, prompt: string, modalWasOpen: boolean }
 
-// 确保历史条目具备可展示的 Display URL（支持自动从 IndexedDB 提取缓存或 Blob）
-const displayUrl = await RBQ.api.ensureHistoryItemDisplayUrl(historyItem);
+// 3. 确保历史条目具备可展示的 Display URL（支持自动从 IndexedDB 提取缓存或 Blob）
+const displayUrl = await RBQ.api.ensureHistoryItemDisplayUrl(historyItem, { preferOriginal: true });
 
-// 动态热更新查看器中当前激活的图像（用于微调重绘或二次修改）
+// 4. 动态热更新查看器中当前激活的条目（用于微调重绘或二次修改）
 RBQ.api.updateViewerCurrentItem({
   url: 'https://...',
   displayUrl: 'blob:...',
-  thumbnailUrl: 'blob:...'
+  thumbnailUrl: 'blob:...',
+  cacheId: 'cache-abc'
 }, 'updated new prompt tags');
 ```
 
+- `RBQ.api.openImageViewer(prompt, currentUrl, meta)`：程序化唤起全屏大图/大视频查看器。
+  - `prompt`：提示词文本（可选）；
+  - `currentUrl`：当前要激活的图片或视频链接/Blob（可选）；
+  - `meta.fromHistory`：若为 `true`，载入当前图库筛选列表，支持切图与缩略图联动；
+  - `meta.messageId`：指定消息楼层范围；
+  - `meta.cacheId`：指定精确缓存记录 ID。
+  - *特性*：原生适配图片与 `<video>`，支持双指捏合缩放/滚轮光标定点缩放、抓手拖拽平移、下滑退出渐隐，视频查看时关闭自动暂停并卸载音视频资源，下载按钮自动以 `.png` / `.mp4` 命名。
 - `RBQ.api.getViewerState()`：获取查看器全局状态对象。
-- `RBQ.api.ensureHistoryItemDisplayUrl(item)`：异步解析图片真实地址，自动处理 IndexedDB 缓存还原。
+- `RBQ.api.ensureHistoryItemDisplayUrl(item, options)`：异步解析图片或视频真实地址，自动处理 IndexedDB 缓存还原。
 - `RBQ.api.updateViewerCurrentItem(imageResult, updatedPrompt)`：在画廊开启时动态刷新当前展示内容。
 
 ---
 
-### 5. 本地缓存与图片导出 API (`Cache & Storage`)
+### 6. 本地缓存与媒体导出 API (`Cache & Storage`)
 
-RBQ 默认将所有生图结果缓存在本地 IndexedDB（`st-scene-trigger-image-cache`），支持跨会话秒级还原与脱机访问。
+RBQ 默认将所有生图与视频结果缓存在本地 IndexedDB（`st-scene-trigger-image-cache`），支持跨会话秒级还原与脱机访问。
 
 ```javascript
-// 1. 读取当前本地图片缓存占用
+// 1. 读取当前本地媒体缓存占用
 const { totalBytes, count } = await RBQ.api.getImageCacheUsage();
-console.log(`当前共缓存 ${count} 张图片，占用 ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+console.log(`当前共缓存 ${count} 个媒体，占用 ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
 
-// 2. 清空全部本地图像缓存
+// 2. 从本地缓存中读取特定记录（包含 blob、mediaType、prompt、createdAt 等）
+const record = await RBQ.api.getCachedImageRecord(cacheId);
+
+// 3. 将外部媒体 Blob 写入本地缓存
+const newCacheId = await RBQ.api.saveImageBlobToCache(historyItem, blob);
+
+// 4. 清空全部本地图像/视频缓存
 await RBQ.api.clearImageCache();
 
-// 3. 清理指定天数之前的过期本地图片缓存
+// 5. 清理指定天数之前的过期本地缓存
 await RBQ.api.clearCacheOlderThanDays(7);
 
-// 4. 将当前聊天的全部历史生成图片打包为 ZIP 导出下载
+// 6. 将当前聊天的全部历史生成图片与视频打包为 ZIP 导出下载（自动分配 .png/.mp4 语义化扩展名与 manifest.json）
 await RBQ.api.exportChatImagesZip();
 
-// 5. 重新统计并更新控制台界面的缓存占用文字
+// 7. 重新统计并更新控制台界面的缓存占用文字
 RBQ.api.updateCacheUsageUi();
 ```
 
+- `RBQ.api.getImageCacheUsage()`：获取 IndexedDB 缓存占用字节数与条目数。
+- `RBQ.api.getCachedImageRecord(cacheId)`：按 ID 读取单条缓存记录详情与 Blob。
+- `RBQ.api.saveImageBlobToCache(item, blob)`：持久化媒体 Blob 并返回 cacheId。
+- `RBQ.api.clearImageCache()`：清空 IndexedDB 缓存数据库。
+- `RBQ.api.clearCacheOlderThanDays(days)`：清理过期媒体缓存。
+- `RBQ.api.exportChatImagesZip()`：一键将当前会话历史生成媒体打包下载（自动兼容视频与图片）。
+
 ---
 
-### 6. 酒馆原生事件总线桥接 (`EventBus Bridge`)
+### 7. 酒馆原生事件总线桥接 (`EventBus Bridge`)
 
 插件无需从全局作用域或复杂 DOM 中摸索 SillyTavern 事件，宿主直接桥接导出官方事件接口。
 
@@ -269,7 +325,7 @@ eventSource.on(event_types.CHAT_CHANGED, () => {
 
 ---
 
-### 7. 动态设置面板注册 (`RBQ.ui.addSettingPanel`)
+### 8. 动态设置面板注册 (`RBQ.ui.addSettingPanel`)
 
 宿主 `0.3.20+` 支持插件在控制面板中动态注册专属 Tab 页，杜绝暴力篡改 DOM。
 
@@ -283,7 +339,7 @@ RBQ.ui.addSettingPanel(id, title, renderHtmlFn);
 
 ---
 
-### 8. 自定义生图模式注册 (`RBQ.api.registerMode`)
+### 9. 自定义生图模式注册 (`RBQ.api.registerMode`)
 
 ```javascript
 RBQ.api.registerMode('my-mode', {
@@ -341,7 +397,7 @@ RBQ.api.registerMode('my-mode', {
 
 ---
 
-### 9. 消息读取与正文卡片 API
+### 10. 消息读取、流式守卫与正文卡片 API
 
 专为非侵入式智能分镜、提词卡片、自动化工作流设计：
 
@@ -353,7 +409,15 @@ const recent = RBQ.api.getRecentMessages(messageId, 5); // 返回 { id, is_user,
 const messageElement = RBQ.api.getMessageElement(messageId);
 const textContainer = RBQ.api.getMessageTextContainer(messageId);
 
-// 2. 创建 RBQ 原生内联生图卡片
+// 2. 检测当前是否处于流式生成或思考阶段（防重复渲染与频繁 DOM 抖动）
+if (RBQ.api.isStreamingActive()) {
+  return; // 思考中或流式输出中暂缓挂载卡片
+}
+
+// 3. 从文本中提取分镜提示词（支持 [img: ...], [scene: ...] 等）
+const extracted = RBQ.api.extractPrompts(message.mes);
+
+// 4. 创建 RBQ 原生内联生图卡片
 const wrapper = RBQ.api.createPromptCard({
   messageId,
   prompt: '1girl, cinematic lighting, rain',
@@ -365,11 +429,12 @@ const wrapper = RBQ.api.createPromptCard({
 // 将卡片挂载到正文中
 RBQ.api.getMessageTextContainer(messageId)?.append(wrapper);
 
-// 3. 判断并执行自动生图或手动渲染
+// 5. 判断并执行自动生图或手动渲染
 if (RBQ.api.shouldAutoGenerate()) {
   const result = await RBQ.api.generateImage(prompt, 'my-plugin', { messageId }, (status) => {
     console.log('Progress:', status);
   });
+  // 渲染结果到卡片（自动识别图片与视频，自动支持隐私模式与全屏画廊查看）
   RBQ.api.renderInlineGeneratedImage(wrapper, result);
 }
 ```
@@ -377,14 +442,16 @@ if (RBQ.api.shouldAutoGenerate()) {
 - `RBQ.api.getContext()`：返回酒馆上下文。
 - `RBQ.api.getMessage(messageId)`：读取指定楼层消息。
 - `RBQ.api.getRecentMessages(messageId, count)`：读取指定消息前后的上下文楼层。
+- `RBQ.api.isStreamingActive()`：实时探查当前是否处于模型流式生成或思考推理阶段。
+- `RBQ.api.extractPrompts(text)`：调用宿主提取器解析文本中的提示词标签。
 - `RBQ.api.createPromptCard(options)`：创建符合宿主规范的 `.st-scene-trigger-inline-wrap` 节点。
 - `RBQ.api.shouldAutoGenerate()`：获取宿主“自动生图”开关状态。
 - `RBQ.api.generateImage(prompt, reason, meta, onProgress)`：调用宿主当前激活的生图渠道发起出图。
-- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：将生图结果插入卡片（自动兼容隐私展示模式与全屏画廊查看）。
+- `RBQ.api.renderInlineGeneratedImage(wrapper, result)`：将生图或视频结果平滑原地插入卡片（自动兼容隐私展示模式、全屏画廊查看与视频播放控件）。
 
 ---
 
-### 10. 聊天文件背包持久化 API (`Chat-Level Persistence`)
+### 11. 聊天文件背包持久化 API (`Chat-Level Persistence`)
 
 宿主 `0.3.51+` 支持直接读写当前消息的背包拓展字段（`message.extra`）并提供防抖存盘。存储在 `message.extra` 中的数据随酒馆服务端 `.jsonl` 聊天记录自动保存与跨端流转，换浏览器或换设备永久不丢，且不会膨胀浏览器全局 `localStorage` 设置。
 
@@ -411,7 +478,28 @@ RBQ.api.saveChat();
 
 ---
 
-### 11. 测试面板通用动作扩展 API (`RBQ.ui.registerTestAction`)
+### 12. 安全网络请求与 CSRF 鉴权头 API (`Security & CSRF Headers`)
+
+宿主 `0.3.72+` 导出了与酒馆服务端通信的鉴权标头生成接口，供插件与酒馆后端 API 安全交互：
+
+```javascript
+// 1. 获取包含 CSRF Token 和酒馆鉴权信息的 Headers 对象
+const headers = RBQ.api.getStRequestHeaders();
+// 亦可传入自定义头选项: RBQ.api.getStRequestHeaders({ 'Content-Type': 'application/json' })
+
+// 2. 发起安全请求
+const response = await fetch('/api/plugins/my-endpoint', {
+  method: 'POST',
+  headers,
+  body: JSON.stringify({ data: 'hello' })
+});
+```
+
+- `RBQ.api.getStRequestHeaders(options)` / `RBQ.api.getRequestHeaders(options)`：获取与 SillyTavern 服务端通信所必需的安全请求头（包括 CSRF 令牌等），防止请求被酒馆安全过滤器拦截。
+
+---
+
+### 13. 测试面板通用动作扩展 API (`RBQ.ui.registerTestAction`)
 
 宿主 `0.3.102+` 支持插件在控制台「生成测试」面板中注册自定义动作按钮（如「智能测试生成」、「仅分析审查 Tag」、「一键翻译提词」等），实现业务逻辑与宿主底座的彻底解耦。
 
@@ -443,7 +531,7 @@ RBQ.ui.registerTestAction({
       const result = await RBQ.api.generateImage(finalPrompt, 'my-test');
       toastr.success('生成完成');
 
-      // 使用宿主标准预览卡片展示结果（支持点击放大与查看器联动）
+      // 使用宿主标准预览卡片展示结果（自动支持图片与带全屏查看按钮的视频播放器）
       renderResultImage(result, finalPrompt);
     } catch (err) {
       toastr.error(err.message || String(err));
@@ -479,7 +567,7 @@ RBQ.ui.unregisterTestAction('my-smart-test');
 
 ---
 
-### 12. 插件生命周期与热插拔守卫规范 (`Lifecycle & Hot Reload Cleanup`)
+### 14. 插件生命周期与热插拔守卫规范 (`Lifecycle & Hot Reload Cleanup`)
 
 宿主 `0.3.52+` 支持完整的插件卸载与热更新自清理机制。当用户在插件中心点击「更新」或「卸载」时，宿主会在无需刷新整个页面的前提下，精确调用子插件注册的清理钩子，杜绝 `MutationObserver` 掉帧泄露、多重 `setInterval` 定时器叠加以及事件监听器重复触发：
 

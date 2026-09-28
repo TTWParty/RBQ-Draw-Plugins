@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.64';
+    const PLUGIN_VERSION = '6.0.65';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -11149,7 +11149,13 @@ SCHEMA:
         const button = ensureRenderGenerateButton(wrapper);
         if (!(button instanceof HTMLButtonElement)) return null;
         button.style.display = visible ? '' : 'none';
-        button.textContent = text;
+        let span = button.querySelector('.st-scene-trigger-inline-btn-text');
+        if (!span) {
+            button.innerHTML = '<span class="st-scene-trigger-inline-btn-text"></span>';
+            span = button.querySelector('.st-scene-trigger-inline-btn-text');
+        }
+        if (span) span.textContent = text;
+        else button.textContent = text;
         button.title = text; // 设置原生提示框，鼠标悬停或长按即可查看完整分镜/角色文本
         // Save non-transient labels so getRegenLabel can read the original label
         const TRANSIENT_LABELS = ['生成中...', '自动生成中...', '等待自动生图...'];
@@ -11777,8 +11783,23 @@ SCHEMA:
                 flex: 0 1 auto;
                 box-sizing: border-box !important;
                 overflow: hidden !important;
+                white-space: nowrap !important;
+            }
+            .rbq-sdt-card .st-scene-trigger-inline-btn-text,
+            .rbq-sdt-card .st-scene-trigger-inline-button > span {
+                display: block !important;
+                overflow: hidden !important;
                 text-overflow: ellipsis !important;
                 white-space: nowrap !important;
+                min-width: 0 !important;
+                max-width: 100% !important;
+                pointer-events: none;
+            }
+            @media (max-width: 768px) {
+                .rbq-sdt-card .st-scene-trigger-inline-button {
+                    min-height: 36px;
+                    touch-action: manipulation;
+                }
             }
             .rbq-sdt-card[data-rbq-sdt-is-result="1"] .st-scene-trigger-generate:not(.rbq-sdt-run-image) { display: none !important; }
             .rbq-sdt-card[data-rbq-sdt-stage="parsing"],

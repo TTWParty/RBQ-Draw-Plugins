@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.10
+ * Version: 1.0.11
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
@@ -79,16 +79,26 @@
             }
             .rbq-privacy-bar .rbq-privacy-view-btn,
             .rbq-privacy-bar .rbq-privacy-collapse-toggle {
-                flex: 1 1 auto;
+                flex: 0 1 auto;
                 min-width: 0 !important;
-                max-width: calc(100% - 42px) !important;
+                max-width: 100% !important;
                 overflow: hidden !important;
-                text-overflow: ellipsis !important;
                 white-space: nowrap !important;
                 box-sizing: border-box !important;
                 justify-content: flex-start !important;
                 text-align: left !important;
                 padding: 6px 14px !important;
+            }
+            .rbq-privacy-bar .rbq-privacy-label-text,
+            .rbq-privacy-bar .rbq-privacy-collapse-toggle > span,
+            .rbq-privacy-bar .rbq-privacy-view-btn > span {
+                display: block !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+                min-width: 0 !important;
+                max-width: 100% !important;
+                pointer-events: none;
             }
             .rbq-privacy-bar .st-scene-trigger-inline-button {
                 min-height: 34px;
@@ -121,6 +131,22 @@
             .rbq-privacy-regen-btn:hover i {
                 transform: rotate(90deg);
                 transition: transform 0.3s ease;
+            }
+            @media (max-width: 768px) {
+                .rbq-privacy-bar {
+                    max-width: 100%;
+                }
+                .rbq-privacy-bar .st-scene-trigger-inline-button {
+                    min-height: 36px;
+                    touch-action: manipulation;
+                }
+                .rbq-privacy-regen-btn {
+                    flex: 0 0 36px !important;
+                    min-width: 36px !important;
+                    width: 36px !important;
+                    height: 36px !important;
+                    touch-action: manipulation;
+                }
             }
             .st-scene-trigger-inline-wrap.is-generating .rbq-privacy-bar,
             .st-scene-trigger-inline-wrap[data-rbq-sdt-stage="generating-image"] .rbq-privacy-bar,
@@ -309,7 +335,7 @@
             const viewText = label ? `🖼️ 查看: ${label}` : '🖼️ 查看大图';
             bar.innerHTML = `
               <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-view-btn" title="${escapeHtml(viewText)} (点击查看全屏大图)">
-                ${escapeHtml(viewText)}
+                <span class="rbq-privacy-label-text">${escapeHtml(viewText)}</span>
               </button>
               <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-regen-btn" title="重新生成该图片">
                 <i class="fa-solid fa-arrows-rotate"></i>
@@ -321,7 +347,7 @@
                 : (label ? `🙈 收起: ${label}` : '🙈 收起');
             bar.innerHTML = `
               <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-collapse-toggle" title="${escapeHtml(toggleText)}">
-                ${escapeHtml(toggleText)}
+                <span class="rbq-privacy-label-text">${escapeHtml(toggleText)}</span>
               </button>
               <button type="button" class="menu_button st-scene-trigger-inline-button rbq-privacy-regen-btn" title="重新生成该图片">
                 <i class="fa-solid fa-arrows-rotate"></i>

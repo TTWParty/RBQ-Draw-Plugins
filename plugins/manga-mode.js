@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.0';
+        const VERSION = '1.4.1';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -28,6 +28,7 @@
         if (!s[STORAGE_KEY].studio) {
             s[STORAGE_KEY].studio = {
                 storyText: '',
+                panelCountMode: 'auto',
                 ratio: '832x1216',
                 autoSfx: true,
                 antiHijack: true,
@@ -63,6 +64,9 @@
                     }
                 ]
             };
+        }
+        if (!s[STORAGE_KEY].studio.panelCountMode) {
+            s[STORAGE_KEY].studio.panelCountMode = 'auto';
         }
         return s[STORAGE_KEY];
     }
@@ -1060,6 +1064,8 @@ ${antiHijackRule}
             flex-direction: column !important;
             gap: 8px !important;
             transition: border-color 0.15s ease !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
         }
         .mw-panel-card:hover {
             border-color: rgba(245, 158, 11, 0.4) !important;
@@ -1068,13 +1074,17 @@ ${antiHijackRule}
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            gap: 8px !important;
+            gap: 6px !important;
+            width: 100% !important;
+            min-width: 0 !important;
         }
         .mw-panel-info {
             display: flex !important;
             align-items: center !important;
             gap: 6px !important;
-            flex: 1 !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+            overflow: hidden !important;
         }
         .mw-panel-num {
             width: 22px !important;
@@ -1097,8 +1107,13 @@ ${antiHijackRule}
             font-weight: 600 !important;
             padding: 2px 4px !important;
             border-radius: 4px !important;
-            flex: 1 !important;
-            max-width: 180px !important;
+            flex: 0 1 120px !important;
+            min-width: 45px !important;
+            max-width: 130px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            box-sizing: border-box !important;
         }
         .mw-panel-title-in:focus {
             background: rgba(0, 0, 0, 0.4) !important;
@@ -1112,19 +1127,42 @@ ${antiHijackRule}
             padding: 2px 6px !important;
             border-radius: 5px !important;
             cursor: pointer !important;
+            flex: 1 1 130px !important;
+            min-width: 80px !important;
+            max-width: 165px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+            box-sizing: border-box !important;
         }
         .mw-panel-btns {
             display: flex !important;
             align-items: center !important;
             gap: 3px !important;
+            flex-shrink: 0 !important;
+            margin-left: auto !important;
+        }
+        .mw-panel-btns .mw-btn {
+            width: 24px !important;
+            height: 24px !important;
+            padding: 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: unset !important;
+            flex-shrink: 0 !important;
+            font-size: 10px !important;
         }
         .mw-panel-desc-row {
             display: flex !important;
             gap: 6px !important;
             align-items: center !important;
+            width: 100% !important;
+            min-width: 0 !important;
         }
         .mw-panel-desc-in {
-            flex: 1 !important;
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
             background: rgba(0, 0, 0, 0.45) !important;
             border: 1px solid rgba(245, 158, 11, 0.35) !important;
             border-radius: 6px !important;
@@ -2003,14 +2041,21 @@ ${antiHijackRule}
         return baseCaption;
     }
 
-    async function callLlmStoryboardParser(storyText, grammar, language, onProgress) {
+    async function callLlmStoryboardParser(storyText, grammar, language, panelCountMode = 'auto', onProgress) {
         const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
         const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const apiKey = (sdtStore.openaiApiKey || '').trim();
         const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
 
+        const isFixed = panelCountMode && panelCountMode !== 'auto';
+        const panelCountInstruction = isFixed
+            ? `【重要画格数硬性要求】：你必须将用户提供的自然语言剧情严格拆解为恰好 ${panelCountMode} 个连续画格（Panels 数组长度必须严格等于 ${panelCountMode}）！`
+            : `你的任务是将用户提供的自然语言剧情故事拆解为 1~4 个连续且具视觉冲击力的漫画画格（依据剧情容量自适应规划画格数，通常为 2~4 格）。`;
+
+        const countReq = isFixed ? `必须严格规划为恰好 ${panelCountMode} 个画格（panels 数组必须恰好有 ${panelCountMode} 项）` : `自动规划（根据情节容量自适应 1~4 格）`;
+
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
-你的任务是将用户提供的自然语言剧情故事拆解为 1~4 个连续且具视觉冲击力的漫画画格（Panels）。
+${panelCountInstruction}
 必须输出纯 JSON，绝不要包含 Markdown 代码块（如 \`\`\`json）或任何额外文字。
 JSON 格式规范：
 {
@@ -2026,7 +2071,7 @@ JSON 格式规范：
   ]
 }`;
 
-        const userContent = `【剧情叙事】：${storyText}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}`;
+        const userContent = `【剧情叙事】：${storyText}\n【画格数规划要求】：${countReq}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}`;
 
         if (baseUrl) {
             try {
@@ -2066,7 +2111,7 @@ JSON 格式规范：
         }
 
         if (onProgress) onProgress('正在应用漫画导演分镜文法推演...');
-        return runHeuristicStoryboardParser(storyText, grammar, language);
+        return runHeuristicStoryboardParser(storyText, grammar, language, panelCountMode);
     }
 
     function parseSentenceToPanelData(sentence, i = 0, panelCount = 3) {
@@ -2140,7 +2185,7 @@ JSON 格式规范：
         };
     }
 
-    function runHeuristicStoryboardParser(text, grammar, language) {
+    function runHeuristicStoryboardParser(text, grammar, language, panelCountMode = 'auto') {
         if (!text || !text.trim()) {
             text = '夕阳西下的教室，女主角红着脸低下头。男主角鼓起勇气递上一封情书。女主角惊慌地抬起头，眼睛里闪烁着泪光，窗外的风吹动窗帘。';
         }
@@ -2149,11 +2194,14 @@ JSON 格式规范：
             .map(s => s.trim())
             .filter(s => s.length > 1);
 
-        const panelCount = Math.max(2, Math.min(4, sentences.length || 3));
+        const isFixed = panelCountMode && panelCountMode !== 'auto';
+        const panelCount = isFixed
+            ? Math.max(1, Math.min(5, Number(panelCountMode) || 3))
+            : Math.max(2, Math.min(4, sentences.length || 3));
         const panels = [];
 
         for (let i = 0; i < panelCount; i++) {
-            const sentence = sentences[i] || `场景片段 ${i + 1}`;
+            const sentence = sentences[i] || (sentences[sentences.length - 1] ? `${sentences[sentences.length - 1]} (续)` : `场景片段 ${i + 1}`);
             panels.push(parseSentenceToPanelData(sentence, i, panelCount));
         }
         return panels;
@@ -2479,8 +2527,19 @@ JSON 格式规范：
                             <textarea id="mw-story-input" placeholder="在此输入自然语言故事片段、对话或场景描写，点击「AI 智能分镜推演」自动拆解为画格与镜头机位...">${RBQ.utils.escapeHtml(studio.storyText || '')}</textarea>
                             <div class="mw-story-ft">
                                 <div class="mw-opts">
+                                    <div style="display:inline-flex;align-items:center;gap:4px;">
+                                        <span style="font-size:11.5px;color:#cbd5e1;"><i class="fa-solid fa-table-cells-large" style="color:#f59e0b"></i> 画格数:</span>
+                                        <select id="mw-story-panel-count" class="mw-sel" style="padding:2px 6px;font-size:11px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:#fcd34d;cursor:pointer;">
+                                            <option value="auto" ${(!studio.panelCountMode || studio.panelCountMode === 'auto') ? 'selected' : ''}>🤖 自动规划 (自适应)</option>
+                                            <option value="1" ${studio.panelCountMode === '1' ? 'selected' : ''}>1 格 (单格大画幅)</option>
+                                            <option value="2" ${studio.panelCountMode === '2' ? 'selected' : ''}>2 格 (起承 / 对峙)</option>
+                                            <option value="3" ${studio.panelCountMode === '3' ? 'selected' : ''}>3 格 (三段节拍)</option>
+                                            <option value="4" ${studio.panelCountMode === '4' ? 'selected' : ''}>4 格 (经典四格)</option>
+                                            <option value="5" ${studio.panelCountMode === '5' ? 'selected' : ''}>5 格 (密集分镜)</option>
+                                        </select>
+                                    </div>
                                     <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-anti-hijack" ${studio.antiHijack !== false ? 'checked' : ''}> <span>角色防夺舍</span></label>
-                                    <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-auto-sfx" ${studio.autoSfx !== false ? 'checked' : ''}> <span>生成拟音词 (SFX)</span></label>
+                                    <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-auto-sfx" ${studio.autoSfx !== false ? 'checked' : ''}> <span>拟音词 (SFX)</span></label>
                                 </div>
                                 <button id="mw-btn-ai-storyboard" class="mw-btn pri"><i class="fa-solid fa-brain"></i> AI 智能分镜推演</button>
                             </div>
@@ -2491,10 +2550,10 @@ JSON 格式规范：
                             <div class="mw-card-hd">
                                 <span class="mw-card-tt"><i class="fa-solid fa-layer-group" style="color:#f59e0b"></i> 分镜画格序列 (<span id="mw-panel-count-badge">3</span> 格)</span>
                                 <div class="mw-card-actions">
-                                    <button id="mw-btn-ai-batch" class="mw-btn sm gn" title="根据各个画格填写的剧情句子，批量生成 Danbooru Tag 与镜头"><i class="fa-solid fa-wand-magic-sparkles"></i> 🪄 逐格批量生成</button>
-                                    <button id="mw-btn-template" class="mw-btn sm cy"><i class="fa-solid fa-bookmark"></i> 常用分镜模板</button>
-                                    <button id="mw-btn-add-panel" class="mw-btn sm am"><i class="fa-solid fa-plus"></i> 添加画格</button>
-                                    <button id="mw-btn-reset-panels" class="mw-btn sm rd"><i class="fa-solid fa-rotate-left"></i> 重置</button>
+                                    <button id="mw-btn-ai-batch" class="mw-btn sm gn" title="根据各个画格填写的剧情句子，批量生成 Danbooru Tag 与镜头"><i class="fa-solid fa-wand-magic-sparkles"></i> 逐格批量生成</button>
+                                    <button id="mw-btn-template" class="mw-btn sm cy" title="常用分镜模板"><i class="fa-solid fa-bookmark"></i> 模板</button>
+                                    <button id="mw-btn-add-panel" class="mw-btn sm am" title="添加新画格"><i class="fa-solid fa-plus"></i> 加格</button>
+                                    <button id="mw-btn-reset-panels" class="mw-btn sm rd" title="重置画格"><i class="fa-solid fa-rotate-left"></i> 重置</button>
                                 </div>
                             </div>
                             <div id="mw-panels-list" class="mw-panels-list"></div>
@@ -2603,7 +2662,7 @@ JSON 格式规范：
                     </div>
 
                     <div class="mw-panel-desc-row">
-                        <input type="text" class="mw-panel-desc-in" value="${RBQ.utils.escapeHtml(p.desc || '')}" placeholder="✍️ 在本格填入剧情句子（例如：夕阳下少女红着脸递出情书）...">
+                        <input type="text" class="mw-panel-desc-in" value="${RBQ.utils.escapeHtml(p.desc || '')}" placeholder="✍️ 输入本格剧情描述（如：少女红着脸递出情书）...">
                         <button class="mw-btn sm cy mw-panel-ai-single" title="针对本格填入的句子，单独调用 AI 生成 Tag、机位与对白"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 润色本格</button>
                     </div>
 
@@ -2778,6 +2837,10 @@ JSON 格式规范：
             studio.storyText = e.target.value;
             save();
         });
+        container.querySelector('#mw-story-panel-count')?.addEventListener('change', (e) => {
+            studio.panelCountMode = e.target.value;
+            save();
+        });
         container.querySelector('#mw-chk-anti-hijack')?.addEventListener('change', (e) => {
             studio.antiHijack = e.target.checked;
             save();
@@ -2813,6 +2876,7 @@ JSON 格式规范：
                     storyText,
                     store.grammar,
                     store.language,
+                    studio.panelCountMode || 'auto',
                     (status) => {
                         btnAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${status}`;
                     }

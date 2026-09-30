@@ -159,8 +159,8 @@
 【全彩漫画继承规则】人物保持本轮已确定的发色、瞳色、服装与配饰颜色。新写视觉词优先使用有效英文标签，必要时使用简短英日短句。页面按实际场景使用 full color 及适用的光影视觉词。\n`
                 : '');
 
-        const antiHijackRule = (store.antiHijack && store.style !== 'custom')
-            ? '10. 画风保护（来自原版 v1.1.json [ANTI-FRANCHISE-HIJACK]）：\n同人角色出场时，仅将其特征作为固有外貌DNA使用，严格禁止同人角色的游戏原作官方立绘画风覆盖选定的漫画黑白/网点风格。\n'
+        const antiHijackRule = store.antiHijack
+            ? '10. 同人角色防夺舍（来自原版 v1.1.json 条目 27 [FAN-CHARACTER-UC]）：\n同人角色出场时，在其人物负面词中优先加入原作画师或原作作品标签，防止原作官方画风夺舍覆盖当前设定的画风；人物自身的正确角色特征保留在正面。\n'
             : '';
 
         return `【🎬 NovelAI Diffusion V5 漫画分镜导演规范】

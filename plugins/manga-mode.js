@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.7';
+        const VERSION = '1.4.8';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {

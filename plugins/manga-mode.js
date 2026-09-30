@@ -153,11 +153,13 @@
             ? `9. 色彩模式（来自原版 v1.1.json 条目 23 [COLOR-MODE: MONOCHROME]）：
 - 当前处于黑白漫画模式：严禁在 scene、characters 的服装外貌或动作中输出任何具体彩色词；具体色相（青/茶/粉/赤/蓝/绿等）一律改写为 dark/light/white/black/gray 等灰阶明暗词。
 - 每一页页面描述必须写上介质词：モノクロ, グレースケール, スクリーントーン。不要写 full color，不要写 warm light 等带色相的词。
-- 各格只写所属场景的光源方向和明暗，不写环境色。`
-            : `9. 色彩模式（来自原版 v1.1.json 条目 24 [COLOR-MODE: FULL-COLOR]）：
-【全彩漫画继承规则】人物保持本轮已确定的发色、瞳色、服装与配饰颜色。新写视觉词优先使用有效英文标签，必要时使用简短英日短句。页面按实际场景使用 full color 及适用的光影视觉词。`;
+- 各格只写所属场景的光源方向和明暗，不写环境色。\n`
+            : (store.style === 'soft_color'
+                ? `9. 色彩模式（来自原版 v1.1.json 条目 24 [COLOR-MODE: FULL-COLOR]）：
+【全彩漫画继承规则】人物保持本轮已确定的发色、瞳色、服装与配饰颜色。新写视觉词优先使用有效英文标签，必要时使用简短英日短句。页面按实际场景使用 full color 及适用的光影视觉词。\n`
+                : '');
 
-        const antiHijackRule = store.antiHijack
+        const antiHijackRule = (store.antiHijack && store.style !== 'custom')
             ? '10. 画风保护（来自原版 v1.1.json [ANTI-FRANCHISE-HIJACK]）：\n同人角色出场时，仅将其特征作为固有外貌DNA使用，严格禁止同人角色的游戏原作官方立绘画风覆盖选定的漫画黑白/网点风格。\n'
             : '';
 

@@ -4,7 +4,7 @@
 
 入口文件：[`../../plugins/manga-mode.js`](../../plugins/manga-mode.js)
 
-版本：`1.0.1`
+版本：`1.0.2`
 
 ---
 

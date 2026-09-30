@@ -5,7 +5,7 @@
     const PLUGIN_NAME = '漫画模式 (Manga Mode)';
     const STORAGE_KEY = '_mangaMode';
     const SDT_KEY = '_smartDrawTrigger';
-    const VERSION = '1.0.1';
+    const VERSION = '1.0.2';
 
     // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -74,35 +74,73 @@
     const GRAMMAR_PRESETS = {
         cinema: {
             name: '通用映画文法 (Universal Cinema)',
-            instruction: '[SHOT-GRAMMAR: UNIVERSAL-CINEMA]\n依据演出目的选择远景、中景和近景。远景交代空间，中景呈现互动，近景突出细节。每格选取一个明确时刻围绕主要事件构图，总画格数通常为2~3格，主格占据优势面积。'
+            instruction: `[SHOT-GRAMMAR: UNIVERSAL-CINEMA]
+日式漫画正统阅读顺序（右至左、上至下）。画面规划 2~3 个不同面积画格：
+- 设置一个占据 50%~70% 优势视觉面积的核心主画格（呈现主冲突或高潮时刻）；
+- 搭配 1~2 个辅助小画格（展现对峙角色反应、局部特写或环境交代）；
+- 景别层次丰富：远景交代空间（wide shot, establishing shot），中景呈现互动（medium shot, cowboy shot），近景/特写捕捉微表情与眼神光（close-up, looking at viewer）；
+- 视平线、俯角与仰角结合剧情动态切换（from above, from below, dutch angle）。`
         },
         '4koma': {
             name: '经典四格 (Classic 4-Koma)',
-            instruction: '[SHOT-GRAMMAR: 4-KOMA]\n经典四格分镜：严格按起、承、转、结节奏排布四个连续画格，画格尺寸均等规范，注重戏剧转折与搞笑包袱。'
+            instruction: `[SHOT-GRAMMAR: 4-KOMA]
+经典四格分镜规范：
+- 严格遵循“起、承、转、结”四阶梯垂直等宽等距排布（4 panels, vertical layout）；
+- 前两格平稳铺垫情境与对话，第三格突发转折，第四格引爆反差包袱或搞笑落点；
+- 画格方正均等，画面重心清晰平衡。`
         },
         shonen: {
             name: '少年热血 (Shonen Action)',
-            instruction: '[SHOT-GRAMMAR: SHONEN-ACTION]\n少年热血分镜：大跨度对角线切割、倾斜动态格、突出爆发力与动作瞬间的大主格，配合速度线与冲击张力。'
+            instruction: `[SHOT-GRAMMAR: SHONEN-ACTION]
+少年热血漫画分镜文法（Jump系/热血动作风格）：
+- 核心动势格显著扩大，大通栏或斜切大格占用半页以上空间；
+- 至少两格采用大角度不规则斜切边框（slanted panels），形成强烈对抗张力；
+- 视线激烈跳跃，动作与冲击力优先，大量运用速度线与透视缩短（speed lines, foreshortening, dynamic angle, bold action）；
+- 人物动作与拳脚突破画格边界。`
         },
         mystery: {
             name: '悬疑推理 (Mystery & Suspense)',
-            instruction: '[SHOT-GRAMMAR: MYSTERY-SUSPENSE]\n悬疑推理分镜：强化环境阴影、局部特写（眼神、手部微动作、关键证据道具），营造压抑逼仄的心理氛围。'
+            instruction: `[SHOT-GRAMMAR: SEINEN-SUSPENSE]
+青年悬疑推理分镜文法（死亡笔记/Monster风格）：
+- 采用宽画幅横向长视线格（widescreen panel）；
+- 节奏凝重克制，强调压迫感与时间拉长感；
+- 多层级微表情、眼神阴影特写（shadow over eyes, intense stare, extreme close-up）；
+- 穿插关键证物道具与视线错落特写，营造屏息推理氛围。`
         },
         shojo: {
             name: '恋爱少女 (Shojo Romance)',
-            instruction: '[SHOT-GRAMMAR: SHOJO-ROMANCE]\n恋爱少女分镜：注重情感留白、花瓣与柔光网点氛围，双人视线交错，大面积心理独白与心动瞬间特写。'
+            instruction: `[SHOT-GRAMMAR: SHOJO-ROMANCE]
+精致装饰系少女漫分镜文法（CLAMP/少女漫经典风格）：
+- 注重情感流动与心动瞬间，多用竖向全身长构图（vertical full body panel）；
+- 强调发丝流动（flowing hair）、服饰材质与姿态优雅感；
+- 格间穿插散落花瓣（falling flower petals）、柔光光斑（bokeh, light particles）与唯美光影；
+- 双人视线交错与大面积心理独白特写，格与格边界柔化。`
         },
         daily: {
             name: '轻松日常 (Slice of Life)',
-            instruction: '[SHOT-GRAMMAR: SLICE-OF-LIFE]\n轻松日常分镜：轻快的中景平切，舒缓的生活节奏，人物神态生动自然，突出温馨陪伴感。'
+            instruction: `[SHOT-GRAMMAR: SLICE-OF-LIFE]
+轻松日常系分镜文法（四叶妹妹/高木同学风格）：
+- 规整横读格为主，间距宽松均匀，阅读节奏轻快无压力；
+- 经典“铺垫 ➔ 铺垫 ➔ 反应落差”的松弛三拍节拍；
+- 角色颜芸神态（funny face, expressive, comical reaction）与眼神互动为核心视觉锚点；
+- 边界清晰稳定，突出温馨陪伴感。`
         },
         comedy: {
             name: '喜剧搞笑 (Comedy & Gag)',
-            instruction: '[SHOT-GRAMMAR: COMEDY-GAG]\n喜剧搞笑分镜：夸张的面部表情崩坏、Q版插格、大汗滴与滑稽肢体动作，节奏紧凑明快。'
+            instruction: `[SHOT-GRAMMAR: COMEDY-GAG]
+爆笑喜剧日常分镜文法（月刊少女野崎君式）：
+- 方正规整画格服务于喜剧包袱节奏，吐槽链条紧凑；
+- 正常脸与崩溃崩颜（chibi gag, blank eyes, sweatdrop, exaggerated expression）快速切换制造落差笑点；
+- 背景极简或留白，视觉重心全部聚焦于人物肢体互动与滑稽吐槽。`
         },
         ecchi: {
             name: '本子肉感 (Sensual & Ecchi)',
-            instruction: '[SHOT-GRAMMAR: SENSUAL-ECCHI]\n感官透视分镜：透视压缩、贴身微距特写、体态曲线、呼吸神态与细腻接触感。'
+            instruction: `[SHOT-GRAMMAR: SENSUAL-ECCHI]
+感官同人本分镜文法：
+- 核心大画格完整呈现主互动、体位全貌与肢体纠缠；
+- 边角紧贴嵌入局部极近特写小格（Insert Cut-in），收束视觉焦点至敏感接触部位或失神神态（flushed face, parted lips, heavy breathing）；
+- 边框顺应身体曲线作动态贴合（body contour framing）；
+- 密集拟音文字直接在格内生动展现。`
         }
     };
 
@@ -126,40 +164,60 @@
             : '';
 
         return `【🎬 NovelAI Diffusion V5 漫画分镜导演规范】
-你现在是专业漫画分镜导演（Comic Director）。你的职责是将输入的剧情对话与小说场景，转译为高水准的 NovelAI V5 漫画分镜。
+你现在是专业漫画分镜导演（Comic Storyboard Director）。你的职责是将输入的剧情对话与小说场景，转译为高水准的 NovelAI V5 漫画分镜，指导生成具备原生日漫质感的分格漫画页。
 
 [PAGE-LAYOUT-RULES]
 1. 页面形态与画格：
-   - 默认根据戏剧冲突规划为 2~3 格漫画页；
-   - 若遇到宏大决战、广阔天地或全景展示，可规划为单格大画幅或横向跨页（見開きページ / double-page spread）；
+   - 默认根据戏剧冲突规划为 2~3 格不同尺寸画格（普通分格页）；
+   - 若遇到宏大决战、广阔天地或全景展示，可规划为单格大画幅（splash page, 1 panel）或横向跨页（見開きページ / double-page spread）；
    - 普通分格页必须在 scene 字段明确写明画格数与页面类型，例如: comic, 複数コマの漫画ページ, 3 panels, vertical layout, white border。
 
-2. 画格构图与分镜文法：
+2. 镜头文法与构图机位：
 ${grammarObj.instruction}
+- 灵活运用英文 Danbooru 景别与机位词：close-up, medium shot, cowboy shot, full body, wide shot, from above, from below, dutch angle, looking at viewer, profile, dynamic angle。
 
 3. 排版留白与出血：
 ${gutterRule}
 
-4. 气泡与对白契约（V5 核心语法）：
-- 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, Layout: 縦書き, Text: [原句]
-- 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し 或 ギザギザ吹き出し, Layout: 縦書き, Text: [原句]
-- 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, Layout: 縦書き, Text: [原句]
-- 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, Layout: 縦書き, Text: [原句]
-- 发颤/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, Layout: 縦書き, Text: [原句]
-- 电话/广播/机械音 ➔ 标注 BubbleType: 四角い吹き出し, Layout: 縦書き, Text: [原句]
-- 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, Layout: 横書き, Text: [原句]
-- 拟声拟态词 ➔ 标注 SFX: 擬音, 吹き出しなし, Text: [拟声词]
-- 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；Text: 后直接跟台词原文，严禁外包引号。
+4. 原生对白与气泡契约（NAI V5 核心语法）：
+- 语气与气泡外形严格对应：
+  - 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, Layout: 縦書き, Text: [原句]
+  - 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し 或 ギザギザ吹き出し, Layout: 縦書き, Text: [原句]
+  - 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, Layout: 縦書き, Text: [原句]
+  - 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, Layout: 縦書き, Text: [原句]
+  - 发颤/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, Layout: 縦書き, Text: [原句]
+  - 机械音/电话/广播 ➔ 标注 BubbleType: 四角い吹き出し, Layout: 縦書き, Text: [原句]
+  - 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, Layout: 横書き, Text: [原句]
+  - 拟声拟态词 ➔ 标注 SFX: 擬音, 吹き出しなし, Text: [拟声词]
+- 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；旁白采用横排（Layout: 横書き）。
+- Text: 后直接跟台词原文，严禁外包任何引号或括号！Text: 内保留原句语言。
 
-5. 语言规范：
+5. 台词原句与对话落格契约：
+- 严格基于剧情正文中的真实台词提取，绝对禁止凭空捏造未发生的情节或虚构台词！
+- 长句停顿拆分：若角色的一句话很长且有自然停顿，在同一个 Text: 后用换行分隔（例如: Text: 那个……\\n明天你有空吗？）。
+- 修辞转实体：小说正文里的比喻描写（如“像蛇一样的细腰”、“软热的脸颊”）在视觉描述中转换为 Danbooru 实体标签（slender waist, soft cheeks），但 Text: 中的台词原文完整保留修辞。
+
+6. 拟声拟态词常用库 (SFX Guide)：
+- 重击/落地/关门: SFX: 擬音, 吹き出しなし, Text: ドンッ
+- 心跳/紧张/心动: SFX: 擬音, 吹き出しなし, Text: ドキドキ
+- 闪亮/惊艳/可爱: SFX: 擬音, 吹き出しなし, Text: キラキラ
+- 察觉/震惊/回头: SFX: 擬音, 吹き出しなし, Text: ハッ
+- 气场/压迫感/杀气: SFX: 擬音, 吹き出しなし, Text: ゴゴゴ
+- 碰撞/摔倒: SFX: 擬音, 吹き出しなし, Text: バタン
+
+7. 多人同框防串色与差异化负面词 (Differential UC)：
+- 每个角色描述使用无数字主体词（boy, girl, other），总人数词写在 scene 中；
+- 若分镜内有多人，在角色的 uc (negative) 字段中写入其他角色的互斥外观特征（例如 A 是金发、B 是黑发，则 A 的 uc 写入 black hair，B 的 uc 写入 blonde hair），严防特征串位！
+
+8. 语言规范：
 ${langRule}
 
-${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
+${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
 [JSON 输出字段映射规范 - 务必严格遵守]
 你必须输出符合系统指定的 JSON 结构：
 1. \`scene\` 字段：
    - 必须包含漫画分格与排版 Tag（例如: comic, 複数コマの漫画ページ, 2 panels, vertical layout, white border 等）；
-   - 紧接着写入背景环境、灯光与构图 Danbooru Tag；
+   - 紧接着写入背景环境、灯光氛围与构图机位 Danbooru Tag；
    - 若有全景拟声词或时空旁白，可在末尾追加 SFX 或 ナレーション枠。
 2. \`characters[].action\` 字段：
    - 先写入角色的当前动作、姿态与表情（英文 Danbooru 风格 Tag）；
@@ -168,7 +226,8 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
      例如：\`sitting at desk, looking at viewer, gentle smile, BubbleType: 通常吹き出し, Layout: 縦書き, Text: 那个……明天见！\`
    - 若角色在该格无台词，只写动作表情，切勿追加 BubbleType 与 Text；
    - 若同一角色在同一格连续说两句台词，台词写在同一个 Text: 后用换行分隔（例如: \`Text: 第一句\\n第二句\`）。
-3. \`characters[].base\` 与 \`characters[].outfit\` 字段：保持正常的人物基本外貌特征与服装提示词。`;
+3. \`characters[].base\` 与 \`characters[].outfit\` 字段：保持正常的人物基本外貌特征（发型发色瞳色等）与服装提示词。
+4. \`characters[].uc\` 字段：写入该角色专属的排除词，多角色同框时填入对方的互斥特征防止串色。`;
     }
 
     // ── 5. Payload Sanitizer & Comic Assembler for NAI V5 ──────────

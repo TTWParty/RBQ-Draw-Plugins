@@ -432,7 +432,9 @@ ${antiHijackRule}
                         '$&, manga page layout, dynamic komawari'
                     );
                 } else {
-                    v4Prompt.base_caption = `comic, 複数コマの漫画ページ, manga page layout, vertical layout, white border, dynamic komawari, ${v4Prompt.base_caption}`;
+                    const layoutTag = isDoubleSpread ? 'wide spread' : 'vertical layout';
+                    const gutterTag = store.gutter === 'black_line' ? '太い黒い仕切り線, 余白なし' : (store.gutter === 'splash' ? '全面裁ち落とし, 余白なし' : 'white border');
+                    v4Prompt.base_caption = `comic, 複数コマの漫画ページ, manga page layout, ${layoutTag}, ${gutterTag}, dynamic komawari, ${v4Prompt.base_caption}`;
                 }
             }
         }

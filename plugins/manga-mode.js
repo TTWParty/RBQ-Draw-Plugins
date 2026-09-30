@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.4';
+        const VERSION = '1.0.5';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -384,6 +384,8 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
             align-items: center !important;
             justify-content: space-between !important;
             gap: 10px !important;
+            cursor: pointer !important;
+            user-select: none !important;
         }
         .rbq-manga-title-wrap {
             display: flex !important;
@@ -407,14 +409,72 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
             color: #fff !important;
             box-shadow: 0 2px 8px rgba(238, 82, 83, 0.4) !important;
         }
+
+        /* 漫画模式专属开关按钮 */
+        .rbq-manga-switch {
+            position: relative !important;
+            display: inline-block !important;
+            width: 44px !important;
+            height: 24px !important;
+            cursor: pointer !important;
+            user-select: none !important;
+            flex-shrink: 0 !important;
+        }
+        .rbq-manga-switch input {
+            opacity: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+            position: absolute !important;
+            margin: 0 !important;
+            pointer-events: none !important;
+        }
+        .rbq-manga-slider {
+            position: absolute !important;
+            cursor: pointer !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            background-color: rgba(255, 255, 255, 0.15) !important;
+            transition: all 0.25s ease !important;
+            border-radius: 999px !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+        }
+        .rbq-manga-slider::before {
+            position: absolute !important;
+            content: "" !important;
+            height: 18px !important;
+            width: 18px !important;
+            left: 2px !important;
+            bottom: 2px !important;
+            background-color: #ffffff !important;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            border-radius: 50% !important;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35) !important;
+        }
+        .rbq-manga-switch input:checked + .rbq-manga-slider {
+            background: linear-gradient(135deg, #ff9f43, #ee5253) !important;
+            border-color: rgba(255, 159, 67, 0.6) !important;
+            box-shadow: 0 0 12px rgba(255, 159, 67, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2) !important;
+        }
+        .rbq-manga-switch input:checked + .rbq-manga-slider::before {
+            transform: translateX(20px) !important;
+        }
+
         .rbq-manga-subpanel {
             margin-top: 12px !important;
             padding-top: 12px !important;
             border-top: 1px dashed rgba(255, 180, 100, 0.25) !important;
-            display: flex !important;
             flex-direction: column !important;
             gap: 10px !important;
             animation: rbqMangaFadeIn 0.25s ease-out !important;
+        }
+        .rbq-manga-toggle-card:not(.active) .rbq-manga-subpanel {
+            display: none !important;
+        }
+        .rbq-manga-toggle-card.active .rbq-manga-subpanel {
+            display: flex !important;
         }
         @keyframes rbqMangaFadeIn {
             from { opacity: 0; transform: translateY(-4px); }
@@ -654,19 +714,19 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         card.id = 'rbq-manga-mode-card';
         card.className = `rbq-manga-toggle-card ${store.enabled ? 'active' : ''}`;
         card.innerHTML = `
-            <div class="rbq-manga-header-bar">
+            <div class="rbq-manga-header-bar" id="rbq-manga-header-trigger">
                 <div class="rbq-manga-title-wrap">
                     <i class="fa-solid fa-book-open-reader"></i>
                     <span>漫画模式 (Manga Mode)</span>
                     <span class="rbq-manga-badge">NAI V5</span>
                 </div>
-                <div class="st-scene-trigger-toggle">
+                <label class="rbq-manga-switch" title="开启/关闭漫画模式">
                     <input id="rbq-manga-mode-enabled" type="checkbox" ${store.enabled ? 'checked' : ''}>
-                    <span class="st-scene-trigger-toggle-ui"></span>
-                </div>
+                    <span class="rbq-manga-slider"></span>
+                </label>
             </div>
 
-            <div id="rbq-manga-mode-subpanel" class="rbq-manga-subpanel" style="display: ${store.enabled ? 'flex' : 'none'};">
+            <div id="rbq-manga-mode-subpanel" class="rbq-manga-subpanel" style="${store.enabled ? 'display: flex;' : 'display: none;'}">
                 <!-- 1. 漫画画风选择 -->
                 <div class="rbq-manga-field">
                     <span>🎨 漫画专属画风</span>
@@ -740,13 +800,27 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
 
         // 事件监听
         const toggleInput = card.querySelector('#rbq-manga-mode-enabled');
-        toggleInput.addEventListener('change', (e) => {
+        const headerTrigger = card.querySelector('#rbq-manga-header-trigger');
+
+        const handleToggle = (nextState) => {
             const s = getStore();
-            s.enabled = e.target.checked;
+            s.enabled = nextState;
             save();
-            syncMangaToSdt(s);
+            syncMangaToSdt(s, true);
             updateUiState();
             toastr.info(s.enabled ? '已开启漫画模式，提示词预设已由漫画分镜接管' : '已关闭漫画模式，恢复标准提示词预设', PLUGIN_NAME);
+        };
+
+        toggleInput?.addEventListener('change', (e) => {
+            handleToggle(e.target.checked);
+        });
+
+        headerTrigger?.addEventListener('click', (e) => {
+            if (e.target.closest('.rbq-manga-switch')) return;
+            if (toggleInput) {
+                toggleInput.checked = !toggleInput.checked;
+                handleToggle(toggleInput.checked);
+            }
         });
 
         card.querySelector('#rbq-manga-style')?.addEventListener('change', (e) => {

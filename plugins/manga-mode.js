@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.6';
+        const VERSION = '1.0.7';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -175,6 +175,18 @@
 
         return `【🎬 NovelAI Diffusion V5 漫画分镜导演规范】
 你现在是专业漫画分镜导演（Comic Storyboard Director）。你的职责是将输入的剧情对话与小说场景，转译为高水准的 NovelAI V5 漫画分镜，指导生成具备原生日漫质感的分格漫画页。
+
+[COMIC-DRAMATIC-PACING-AND-ANCHORS]
+【🎬 漫画戏剧节拍与生图位置规划（来自原版 v1.1.json [PAGE CONTRACT: DYNAMIC EVENT-DRIVEN PAGES]）】
+在提取分镜（segments）与选定生图位置（anchor.text）时，必须严格执行原版漫画事件驱动的节拍分析：
+1. 剧情段落切分与节拍扫描：
+   - 顺着正文时间线自上而下扫描，识别关键戏剧节拍（起 ➔ 承 ➔ 转 ➔ 合 / 对抗升级 ➔ 情绪激变 ➔ 高潮定格）；
+   - 依据情节容量自适应决定生成分镜数量（若正文仅为单一动作瞬间则提取 1 个分镜；若包含多次转场、激烈互动或动作升级，则顺应节拍自然拆分为 2~4 个剧情分镜）；
+   - 严禁偷懒只挑最后一句草草生成一张图！凡是出现重要造型亮点、攻守互换、情绪高光、关键转场的节点，均设立独立分镜；
+2. 精准锚定正文位置（anchor.text）：
+   - 每个分镜卡片的 anchor.text 必须一字不差截取正文中该视觉高光点发生的 10~40 字原句，使漫画卡片精准落位于剧情发生的那一刻，严禁错位或胡乱定位；
+3. 逐页叙事使命明确：
+   - 各分镜卡片之间焦点层次分明（如 分镜01 负责环境与初始互动，分镜02 负责冲突升级或局部特写，分镜03 负责情绪爆发或高潮定格）。
 
 [PAGE-LAYOUT-RULES]
 1. 页面形态与画格自适应规划（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR]）：
@@ -597,6 +609,13 @@ ${antiHijackRule}
             if (sdtStore.customSystemPrompt && sdtStore.systemPromptPreset === 'custom' && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedCustomPrompt = sdtStore.customSystemPrompt;
             }
+            // 备份并锁定前情增强分析 (锁定至 V13 全息节拍推演，确保剧情与分镜锚点精准)
+            if (sdtStore.enhancedContext && !sdtStore._mangaActive) {
+                sdtStore._mangaSavedEnhancedContext = sdtStore.enhancedContext;
+            }
+            if (!sdtStore.enhancedContext || sdtStore.enhancedContext === 'off') {
+                sdtStore.enhancedContext = 'v13';
+            }
             // 自动开启多角色独立生图以确保 char_captions 注入
             if (sdtStore.multiCharOutput === false) {
                 sdtStore._mangaSavedMultiChar = false;
@@ -611,6 +630,10 @@ ${antiHijackRule}
                 sdtStore._mangaActive = false;
                 sdtStore.systemPromptPreset = sdtStore._mangaSavedPreset || 'v40_worldbook_97_opt';
                 sdtStore.customSystemPrompt = sdtStore._mangaSavedCustomPrompt || '';
+                if (sdtStore._mangaSavedEnhancedContext) {
+                    sdtStore.enhancedContext = sdtStore._mangaSavedEnhancedContext;
+                    delete sdtStore._mangaSavedEnhancedContext;
+                }
                 if (typeof sdtStore._mangaSavedMultiChar === 'boolean') {
                     sdtStore.multiCharOutput = sdtStore._mangaSavedMultiChar;
                     delete sdtStore._mangaSavedMultiChar;
@@ -678,6 +701,35 @@ ${antiHijackRule}
                         customPromptField.style.display = '';
                     }
                 }
+            }
+        }
+
+        // 锁定/解锁前情增强分析 (锁定至 V13 全息节拍推演，确保剧情与分镜锚点精准)
+        const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
+        const ecField = ecSelect ? ecSelect.closest('.st-scene-trigger-field') : null;
+        if (ecSelect && ecField) {
+            if (store.enabled) {
+                if (ecSelect.value === 'off') ecSelect.value = 'v13';
+                ecSelect.disabled = true;
+                ecField.classList.add('rbq-sdt-preset-locked');
+                let badge = ecField.querySelector('.rbq-sdt-preset-lock-badge');
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'rbq-sdt-preset-lock-badge';
+                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (节拍推演)';
+                    const titleSpan = ecField.querySelector('span');
+                    if (titleSpan) titleSpan.appendChild(badge);
+                }
+            } else {
+                const sdtStore = getSdtStore();
+                const expectedEc = sdtStore._mangaSavedEnhancedContext || sdtStore.enhancedContext || 'v13';
+                if (ecSelect.value !== expectedEc) {
+                    ecSelect.value = expectedEc;
+                }
+                ecSelect.disabled = false;
+                ecField.classList.remove('rbq-sdt-preset-locked');
+                const badge = ecField.querySelector('.rbq-sdt-preset-lock-badge');
+                if (badge) badge.remove();
             }
         }
 

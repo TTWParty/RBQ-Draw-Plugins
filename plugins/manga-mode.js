@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.5';
+        const VERSION = '1.0.6';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -76,9 +76,10 @@
         cinema: {
             name: '通用映画文法 (Universal Cinema)',
             instruction: `[SHOT-GRAMMAR: UNIVERSAL-CINEMA]
-日式漫画正统阅读顺序（右至左、上至下）。画面规划 2~3 个不同面积画格：
-- 设置一个占据 50%~70% 优势视觉面积的核心主画格（呈现主冲突或高潮时刻）；
-- 搭配 1~2 个辅助小画格（展现对峙角色反应、局部特写或环境交代）；
+日式漫画正统阅读顺序（右至左、上至下）。
+依据台本事件量自适应规划画格，普通分格页由 1 个核心主画格与若干辅助画格组成：
+- 设置一个占据优势视觉面积的核心主画格（呈现主冲突或高潮时刻）；
+- 搭配辅助画格（展现对峙角色反应、局部特写、环境交代或拟声词）；
 - 景别层次丰富：远景交代空间（wide shot, establishing shot），中景呈现互动（medium shot, cowboy shot），近景/特写捕捉微表情与眼神光（close-up, looking at viewer）；
 - 视平线、俯角与仰角结合剧情动态切换（from above, from below, dutch angle）。`
         },
@@ -160,18 +161,26 @@
                     ? '[GUTTER-BLEED: ZERO-WHITE-BORDER]\n全幅零白留白：画格之间无白色缝隙，画布边缘无外白边，完全由粗黑墨线（太い黒い仕切り線, 太いインクの枠, 余白なし, コマが密着）密着切分。'
                     : '[GUTTER-BLEED: TOP-BOTTOM-BLEED]\n天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。'));
 
+        const colorRule = (store.style === 'monochrome' || store.style === 'shonen_action')
+            ? `9. 黑白漫画脱色契约（来自原版 v1.1.json [COLOR-MODE: MONOCHROME]）：
+- 当前处于黑白漫画模式：严禁在 scene、characters 的服装外貌或动作中输出任何具体彩色词（如 yellow, bright yellow, blue, red, pink, green, brown, purple 等）！
+- 所有服装与外貌颜色必须脱色转写为灰阶明暗词：dark, light, white, black, grey/gray（例如 bright yellow shirt 必须转写为 light shirt 或 pale shirt）！
+- 页面描述必须带有黑白介质词：モノクロ, グレースケール, スクリーントーン。严禁出现带色相的词（如 warm light, brown sofa），各格只写光源方向与明暗，不写环境色。`
+            : `9. 色彩模式（来自原版 v1.1.json [COLOR-MODE: FULL-COLOR]）：
+当前处于全彩漫模式，可保留角色的固有服装色彩与发色。`;
+
         const antiHijackRule = store.antiHijack
-            ? '[ANTI-FRANCHISE-HIJACK]\n同人角色出场时，仅将其特征作为固有外貌DNA使用，严格禁止同人角色的游戏原作官方立绘画风覆盖选定的漫画黑白/网点风格。'
+            ? '10. 画风保护（来自原版 v1.1.json [ANTI-FRANCHISE-HIJACK]）：\n同人角色出场时，仅将其特征作为固有外貌DNA使用，严格禁止同人角色的游戏原作官方立绘画风覆盖选定的漫画黑白/网点风格。\n'
             : '';
 
         return `【🎬 NovelAI Diffusion V5 漫画分镜导演规范】
 你现在是专业漫画分镜导演（Comic Storyboard Director）。你的职责是将输入的剧情对话与小说场景，转译为高水准的 NovelAI V5 漫画分镜，指导生成具备原生日漫质感的分格漫画页。
 
 [PAGE-LAYOUT-RULES]
-1. 页面形态与画格：
-   - 默认根据戏剧冲突规划为 2~3 格不同尺寸画格（普通分格页）；
-   - 若遇到宏大决战、广阔天地或全景展示，可规划为单格大画幅（splash page, 1 panel）或横向跨页（見開きページ / double-page spread）；
-   - 普通分格页必须在 scene 字段明确写明画格数与页面类型，例如: comic, 複数コマの漫画ページ, 3 panels, vertical layout, white border。
+1. 页面形态与画格自适应规划（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR]）：
+   - 普通分格页：依据台本事件量、戏剧冲突与台词多寡自适应规划画格数。由 1 个占据主视觉重心的核心主画格，搭配若干辅助画格（展现对峙反应、局部特写、环境交代或拟声词），严禁套用固定死板框架！
+   - 普通分格页必须在 scene 字段明确写明总画格数与页面类型，例如: comic, 複数コマの漫画ページ, 4 panels（或 3 panels / 5 panels 等，依剧情实际画格数填写）, vertical layout, white border；
+   - 若遇到宏大决战、广阔天地或全景展示，且剧情需要整页仅一格时，可规划为单格大画幅（splash page, 単一コマ）或横向跨页（見開きページ / double-page spread）。
 
 2. 镜头文法与构图机位：
 ${grammarObj.instruction}
@@ -180,23 +189,32 @@ ${grammarObj.instruction}
 3. 排版留白与出血：
 ${gutterRule}
 
-4. 原生对白与气泡契约（NAI V5 核心语法）：
+4. 原生对白与气泡契约（来自原版 v1.1.json [BUBBLE-STYLES] & [TEXT-BUBBLE-CONTRACT]）：
 - 语气与气泡外形严格对应：
   - 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, Layout: 縦書き, Text: [原句]
   - 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し 或 ギザギザ吹き出し, Layout: 縦書き, Text: [原句]
   - 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, Layout: 縦書き, Text: [原句]
   - 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, Layout: 縦書き, Text: [原句]
-  - 发颤/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, Layout: 縦書き, Text: [原句]
+  - 发颤/发虚/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, Layout: 縦書き, Text: [原句]
   - 机械音/电话/广播 ➔ 标注 BubbleType: 四角い吹き出し, Layout: 縦書き, Text: [原句]
   - 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, Layout: 横書き, Text: [原句]
   - 拟声拟态词 ➔ 标注 SFX: 擬音, 吹き出しなし, Text: [拟声词]
+  - 画外对白（说话者在画面外） ➔ 标注 BubbleType: 切り欠きのある吹き出し, Layout: 縦書き, Text: [原句]
+  - 画外音/独白/无尾气泡 ➔ 标注 BubbleType: しっぽなしの楕円吹き出し, Layout: 縦書き, Text: [原句]
+  - 同一角色紧凑连续两句 ➔ 标注 BubbleType: 連結吹き出し, Layout: 縦書き, Text: [原句]
+- 标点自动转译契约：
+  - 「……」 ➔ 通常吹き出し
+  - 「……！！」 ➔ 叫び吹き出し
+  - *……* ➔ 思考の吹き出し
+  - 【……】 ➔ SFX: 擬音, 吹き出しなし
+  - {……} ➔ ナレーション枠（客观时空叙述）
 - 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；旁白采用横排（Layout: 横書き）。
 - Text: 后直接跟台词原文，严禁外包任何引号或括号！Text: 内保留原句语言。
 
 5. 台词原句与对话落格契约：
 - 严格基于剧情正文中的真实台词提取，绝对禁止凭空捏造未发生的情节或虚构台词！
 - 长句停顿拆分：若角色的一句话很长且有自然停顿，在同一个 Text: 后用换行分隔（例如: Text: 那个……\\n明天你有空吗？）。
-- 修辞转实体：小说正文里的比喻描写（如“像蛇一样的细腰”、“软热的脸颊”）在视觉描述中转换为 Danbooru 实体标签（slender waist, soft cheeks），但 Text: 中的台词原文完整保留修辞。
+- 修辞转实体：小说正文里的比喻描写在视觉描述中转换为 Danbooru 实体标签，但 Text: 中的台词原文完整保留修辞。
 
 6. 拟声拟态词常用库 (SFX Guide)：
 - 重击/落地/关门: SFX: 擬音, 吹き出しなし, Text: ドンッ
@@ -213,11 +231,13 @@ ${gutterRule}
 8. 语言规范：
 ${langRule}
 
-${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
+${colorRule}
+
+${antiHijackRule}
 [JSON 输出字段映射规范 - 务必严格遵守]
 你必须输出符合系统指定的 JSON 结构：
 1. \`scene\` 字段：
-   - 必须包含漫画分格与排版 Tag（例如: comic, 複数コマの漫画ページ, 2 panels, vertical layout, white border 等）；
+   - 必须包含漫画分格与排版 Tag（例如: comic, 複数コマの漫画ページ, 4 panels (依实际分格填写), vertical layout, white border 等）；
    - 紧接着写入背景环境、灯光氛围与构图机位 Danbooru Tag；
    - 若有全景拟声词或时空旁白，可在末尾追加 SFX 或 ナレーション枠。
 2. \`characters[].action\` 字段：

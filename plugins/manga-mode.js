@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.3.2';
+        const VERSION = '1.4.0';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -36,6 +36,7 @@
                 panels: [
                     {
                         title: '起景 · 黄昏教室',
+                        desc: '夕阳斜照的黄昏教室，少女红着脸低下头，手指紧张地捏着百褶裙角。',
                         shot: 'medium shot',
                         tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
                         bubbleType: 'thought',
@@ -44,6 +45,7 @@
                     },
                     {
                         title: '递信特写 · 决定瞬间',
+                        desc: '镜头拉近双手递信特写，紧紧握着带有红色火漆封口的白色情书。',
                         shot: 'close-up focus',
                         tags: 'focus on hands, holding love letter, white envelope, red wax seal, romantic tension',
                         bubbleType: 'speech',
@@ -52,6 +54,7 @@
                     },
                     {
                         title: '神情骤变 · 泪光',
+                        desc: '少女惊愕地抬起头睁大双眼，眼眶闪烁着泪光，窗外微风吹拂窗帘。',
                         shot: 'face close-up',
                         tags: '1girl, chinami, wide eyed, tears prickling in eyes, fluttering hair, curtain blowing in wind, dramatic lighting',
                         bubbleType: 'screaming',
@@ -1115,6 +1118,32 @@ ${antiHijackRule}
             align-items: center !important;
             gap: 3px !important;
         }
+        .mw-panel-desc-row {
+            display: flex !important;
+            gap: 6px !important;
+            align-items: center !important;
+        }
+        .mw-panel-desc-in {
+            flex: 1 !important;
+            background: rgba(0, 0, 0, 0.45) !important;
+            border: 1px solid rgba(245, 158, 11, 0.35) !important;
+            border-radius: 6px !important;
+            color: #fef08a !important;
+            padding: 5px 8px !important;
+            font-size: 11.5px !important;
+            box-sizing: border-box !important;
+            outline: none !important;
+            transition: border-color 0.2s, background-color 0.2s !important;
+        }
+        .mw-panel-desc-in:focus {
+            border-color: #f59e0b !important;
+            background: rgba(0, 0, 0, 0.65) !important;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.2) !important;
+        }
+        .mw-panel-ai-single {
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+        }
         .mw-panel-tag-in {
             width: 100% !important;
             background: rgba(0, 0, 0, 0.35) !important;
@@ -1776,6 +1805,7 @@ ${antiHijackRule}
             panels: [
                 {
                     title: '起景 · 黄昏教室',
+                    desc: '黄昏的教室中，夕阳余晖洒在课桌上，少女红着脸低着头，手指紧张地摆弄着裙角。',
                     shot: 'medium shot',
                     tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
                     bubbleType: 'thought',
@@ -1784,6 +1814,7 @@ ${antiHijackRule}
                 },
                 {
                     title: '递信特写 · 瞬间',
+                    desc: '双手紧紧递出一封带有红色火漆印章的白色情书，浪漫而充满决意的紧绷感。',
                     shot: 'close-up focus',
                     tags: 'focus on hands, holding love letter, white envelope, red wax seal, romantic tension',
                     bubbleType: 'speech',
@@ -1792,6 +1823,7 @@ ${antiHijackRule}
                 },
                 {
                     title: '神情骤变 · 泪光',
+                    desc: '少女愕然睁大泪眼，狂乱的风吹动发丝与窗帘，戏剧性的心动光影。',
                     shot: 'face close-up',
                     tags: '1girl, chinami, wide eyed, tears prickling in eyes, fluttering hair, curtain blowing in wind, dramatic lighting',
                     bubbleType: 'screaming',
@@ -1808,7 +1840,8 @@ ${antiHijackRule}
             panels: [
                 {
                     title: '远景 · 废墟战云',
-                    shot: 'wide shot',
+                    desc: '风暴席卷的破败城市废墟，阴云密布雷光闪烁，史诗般的终局战场全景。',
+                    shot: 'wide establishing shot',
                     tags: 'battlefield, storm, destroyed city, dark clouds, lightning, epic perspective, debris',
                     bubbleType: 'caption',
                     bubbleText: '终局之刻，在此降临。',
@@ -1816,6 +1849,7 @@ ${antiHijackRule}
                 },
                 {
                     title: '中景 · 拔刀斩击',
+                    desc: '拔出太刀的瞬间，电光火花闪烁，眼神凌厉如刀锋。',
                     shot: 'medium shot',
                     tags: 'focus on blade, unsheathing katana, electric sparks, motion blur, sharp eyes, intense glare',
                     bubbleType: 'sfx',
@@ -1824,6 +1858,7 @@ ${antiHijackRule}
                 },
                 {
                     title: '特写 · 怒吼爆发',
+                    desc: '向前猛然跃起挥刀斩击，强烈的速度线与暴怒的神情，极具视觉冲击力的仰角。',
                     shot: 'dynamic low angle',
                     tags: 'leaping forward, sword slash, slashing motion, speed lines, shouting, furious expression, dramatic contrast',
                     bubbleType: 'screaming',
@@ -1832,7 +1867,8 @@ ${antiHijackRule}
                 },
                 {
                     title: '收势 · 烟尘背影',
-                    shot: 'close-up back',
+                    desc: '斩击落地后的背影特写，披风在烟尘中猎猎作响，碎裂的地面。',
+                    shot: 'from behind',
                     tags: 'landing after attack, back view, cape fluttering, smoke rising, shattered ground, cool silhouette',
                     bubbleType: 'thought',
                     bubbleText: '（已经……结束了。）',
@@ -1848,6 +1884,7 @@ ${antiHijackRule}
             panels: [
                 {
                     title: '起 · 惬意早餐',
+                    desc: '宁静晴朗的早晨厨房，端着法式黄油烤吐司微笑，神采奕奕。',
                     shot: 'medium shot',
                     tags: 'peaceful morning, kitchen, sunny day, smiling, holding plate, toast with butter, cheerful',
                     bubbleType: 'speech',
@@ -1856,7 +1893,8 @@ ${antiHijackRule}
                 },
                 {
                     title: '承 · 惊愕一撇',
-                    shot: 'close-up',
+                    desc: '猛然瞥见挂钟的时刻，眼珠暴凸，脸颊挂着一大滴冷汗，目瞪口呆发抖。',
+                    shot: 'close-up focus',
                     tags: 'looking at wall clock, eyes bulging, sweat drop on cheek, dumbfounded, trembling',
                     bubbleType: 'speech',
                     bubbleText: '等等……现在的时刻是？！',
@@ -1864,7 +1902,8 @@ ${antiHijackRule}
                 },
                 {
                     title: '转 · 狂奔风暴',
-                    shot: 'wide shot',
+                    desc: '嘴里叼着吐司全速在大街上狂奔，裙摆随风狂舞，惊慌失措大喊。',
+                    shot: 'wide establishing shot',
                     tags: 'running at full speed, toast in mouth, rushing down street, fluttering skirt, wind, frantic, panicked',
                     bubbleType: 'screaming',
                     bubbleText: '要迟到啦啊啊啊！',
@@ -1872,6 +1911,7 @@ ${antiHijackRule}
                 },
                 {
                     title: '合 · 闭门石化',
+                    desc: '呆立在紧闭的校门前，日历上清楚地写着星期天，眼睛翻白灵魂出窍。',
                     shot: 'medium shot',
                     tags: 'standing before closed school gate, calendar showing Sunday, blank white eyes, soul escaping mouth, comedic defeat',
                     bubbleType: 'caption',
@@ -1888,6 +1928,7 @@ ${antiHijackRule}
             panels: [
                 {
                     title: '远景 · 雨夜长街',
+                    desc: '昏暗的事务所与雨水打湿的窗户，窗外夜色弥漫，孤寂的烟雾缭绕。',
                     shot: 'wide establishing shot',
                     tags: 'dimly lit office, rainy window, rain streaks, wet glass, night city lights, lonely cigarette smoke, chiaroscuro',
                     bubbleType: 'caption',
@@ -1896,6 +1937,7 @@ ${antiHijackRule}
                 },
                 {
                     title: '特写 · 瞳孔与微光',
+                    desc: '阴影覆盖上半张脸，瞳孔闪烁着锐利冷光，放大镜反射出照片上的关键线索。',
                     shot: 'face close-up',
                     tags: 'sharp gaze, shadow covering upper face, glowing eyes, magnifying glass reflecting photo, intense atmosphere, cinematic lighting',
                     bubbleType: 'thought',
@@ -2012,6 +2054,9 @@ JSON 格式规范：
                     const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
                     const parsed = JSON.parse(cleanJson);
                     if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
+                        parsed.panels.forEach((p, idx) => {
+                            if (!p.desc) p.desc = p.title || `画格 #${idx + 1}`;
+                        });
                         return parsed.panels;
                     }
                 }
@@ -2022,6 +2067,77 @@ JSON 格式规范：
 
         if (onProgress) onProgress('正在应用漫画导演分镜文法推演...');
         return runHeuristicStoryboardParser(storyText, grammar, language);
+    }
+
+    function parseSentenceToPanelData(sentence, i = 0, panelCount = 3) {
+        if (!sentence) sentence = '';
+        let bubbleType = 'speech';
+        let bubbleText = '';
+        let bubbleLayout = (i % 2 === 0) ? 'vertical' : 'horizontal';
+
+        // 智能根据叙事情绪分配专业漫画机位
+        let shot = 'medium shot';
+        if (/尾随|跟踪|背后|后面|跟随|脚步声/i.test(sentence)) {
+            shot = 'from behind';
+        } else if (/小巷|街道|教室|天台|黑夜|城市|废墟|远/i.test(sentence) && (i === 0 || i === panelCount - 1)) {
+            shot = 'wide establishing shot';
+        } else if (/恐慌|害怕|惊恐|惊慌|颤抖|冷汗|发抖|逃/i.test(sentence)) {
+            shot = 'dutch angle';
+        } else if (/眼神|凝视|盯着|瞳孔|惊愕|睁大/i.test(sentence)) {
+            shot = 'extreme close-up on eyes';
+        } else if (/泪|哭|红脸|脸|喘息|微笑|神情/i.test(sentence)) {
+            shot = 'face close-up';
+        } else if (/抓|拉|拖|按|推|倒|斩|冲|击|伸出/i.test(sentence)) {
+            shot = 'foreshortening';
+        } else if (/对峙|对话|问|说|转过身|看着/i.test(sentence)) {
+            shot = 'over-the-shoulder';
+        } else {
+            const defaultFlow = ['wide establishing shot', 'face close-up', 'dutch angle', 'foreshortening', 'medium shot'];
+            shot = defaultFlow[i % defaultFlow.length];
+        }
+
+        const thoughtMatch = sentence.match(/[（\(](.+?)[）\)]/);
+        const speechMatch = sentence.match(/[“"「](.+?)[”"」]/);
+
+        if (thoughtMatch) {
+            bubbleType = 'thought';
+            bubbleText = thoughtMatch[1];
+        } else if (speechMatch) {
+            bubbleType = 'speech';
+            bubbleText = speechMatch[1];
+        } else if (sentence.includes('！') || sentence.includes('!')) {
+            bubbleType = 'screaming';
+            bubbleText = sentence.slice(0, 16);
+        } else {
+            bubbleType = (i === 0) ? 'caption' : 'speech';
+            bubbleText = sentence.slice(0, 18);
+        }
+
+        const tags = [];
+        if (/女|少女|妹|她/i.test(sentence)) tags.push('1girl');
+        if (/男|少年|他/i.test(sentence)) tags.push('1boy');
+        if (/红脸|害羞|羞/i.test(sentence)) tags.push('blushing');
+        if (/泪|哭|湿润/i.test(sentence)) tags.push('tears, tears prickling in eyes');
+        if (/黄昏|夕阳/i.test(sentence)) tags.push('sunset, orange light');
+        if (/教室|学校/i.test(sentence)) tags.push('classroom, school desk');
+        if (/信|信封|情书/i.test(sentence)) tags.push('focus on hands, holding love letter, white envelope');
+        if (/笑|微笑/i.test(sentence)) tags.push('gentle smile, expressive eyes');
+        if (/看|凝视|视线/i.test(sentence)) tags.push('looking at viewer');
+        if (/风|吹/i.test(sentence)) tags.push('fluttering hair, wind blowing');
+
+        if (tags.length === 0) {
+            tags.push('dramatic lighting', 'expressive eyes');
+        }
+
+        return {
+            title: `第 ${i + 1} 格 · ${sentence.slice(0, 8) || '画格'}`,
+            desc: sentence,
+            shot,
+            tags: tags.join(', '),
+            bubbleType,
+            bubbleText,
+            bubbleLayout
+        };
     }
 
     function runHeuristicStoryboardParser(text, grammar, language) {
@@ -2038,74 +2154,139 @@ JSON 格式规范：
 
         for (let i = 0; i < panelCount; i++) {
             const sentence = sentences[i] || `场景片段 ${i + 1}`;
-            let bubbleType = 'speech';
-            let bubbleText = '';
-            let bubbleLayout = (i % 2 === 0) ? 'vertical' : 'horizontal';
-
-            // 智能根据叙事情绪分配专业漫画机位
-            let shot = 'medium shot';
-            if (/尾随|跟踪|背后|后面|跟随|脚步声/i.test(sentence)) {
-                shot = 'from behind';
-            } else if (/小巷|街道|教室|天台|黑夜|城市|废墟|远/i.test(sentence) && (i === 0 || i === panelCount - 1)) {
-                shot = 'wide establishing shot';
-            } else if (/恐慌|害怕|惊恐|惊慌|颤抖|冷汗|发抖|逃/i.test(sentence)) {
-                shot = 'dutch angle';
-            } else if (/眼神|凝视|盯着|瞳孔|惊愕|睁大/i.test(sentence)) {
-                shot = 'extreme close-up on eyes';
-            } else if (/泪|哭|红脸|脸|喘息|微笑|神情/i.test(sentence)) {
-                shot = 'face close-up';
-            } else if (/抓|拉|拖|按|推|倒|斩|冲|击|伸出/i.test(sentence)) {
-                shot = 'foreshortening';
-            } else if (/对峙|对话|问|说|转过身|看着/i.test(sentence)) {
-                shot = 'over-the-shoulder';
-            } else {
-                const defaultFlow = ['wide establishing shot', 'face close-up', 'dutch angle', 'foreshortening'];
-                shot = defaultFlow[i % defaultFlow.length];
-            }
-
-            const thoughtMatch = sentence.match(/[（\(](.+?)[）\)]/);
-            const speechMatch = sentence.match(/[“"「](.+?)[”"」]/);
-
-            if (thoughtMatch) {
-                bubbleType = 'thought';
-                bubbleText = thoughtMatch[1];
-            } else if (speechMatch) {
-                bubbleType = 'speech';
-                bubbleText = speechMatch[1];
-            } else if (sentence.includes('！') || sentence.includes('!')) {
-                bubbleType = 'screaming';
-                bubbleText = sentence.slice(0, 16);
-            } else {
-                bubbleType = (i === 0) ? 'caption' : 'speech';
-                bubbleText = sentence.slice(0, 18);
-            }
-
-            const tags = [];
-            if (/女|少女|妹|她/i.test(sentence)) tags.push('1girl');
-            if (/男|少年|他/i.test(sentence)) tags.push('1boy');
-            if (/红脸|害羞|羞/i.test(sentence)) tags.push('blushing');
-            if (/泪|哭|湿润/i.test(sentence)) tags.push('tears, tears prickling in eyes');
-            if (/黄昏|夕阳/i.test(sentence)) tags.push('sunset, orange light');
-            if (/教室|学校/i.test(sentence)) tags.push('classroom, school desk');
-            if (/信|信封|情书/i.test(sentence)) tags.push('focus on hands, holding love letter, white envelope');
-            if (/笑|微笑/i.test(sentence)) tags.push('gentle smile, expressive eyes');
-            if (/看|凝视|视线/i.test(sentence)) tags.push('looking at viewer');
-            if (/风|吹/i.test(sentence)) tags.push('fluttering hair, wind blowing');
-
-            if (tags.length === 0) {
-                tags.push('dramatic lighting', 'expressive eyes');
-            }
-
-            panels.push({
-                title: `第 ${i + 1} 格 · ${sentence.slice(0, 8)}`,
-                shot: shot,
-                tags: tags.join(', '),
-                bubbleType: bubbleType,
-                bubbleText: bubbleText,
-                bubbleLayout: bubbleLayout
-            });
+            panels.push(parseSentenceToPanelData(sentence, i, panelCount));
         }
         return panels;
+    }
+
+    async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language) {
+        const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
+        const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
+        const apiKey = (sdtStore.openaiApiKey || '').trim();
+        const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
+
+        const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
+你的任务是将用户提供的单一漫画画格剧情句子转换为专业的 NAI 提示词。
+必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
+JSON 格式规范：
+{
+  "title": "画格简短标题（5-10字中文）",
+  "shot": "景别机位英文（支持：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
+  "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词）",
+  "bubbleType": "speech | thought | screaming | caption | sfx",
+  "bubbleText": "画格内角色台词或心声文字",
+  "bubbleLayout": "vertical | horizontal"
+}`;
+
+        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}`;
+
+        if (baseUrl) {
+            try {
+                const url = `${baseUrl}/chat/completions`;
+                const reqBody = {
+                    model,
+                    temperature: 0.3,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent }
+                    ]
+                };
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+                    },
+                    body: JSON.stringify(reqBody)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const rawReply = data.choices?.[0]?.message?.content || '';
+                    const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(cleanJson);
+                    if (parsed && (parsed.tags || parsed.shot)) {
+                        return parsed;
+                    }
+                }
+            } catch (e) {
+                console.warn(`[Manga Studio] Single Panel LLM API call failed, using heuristic:`, e);
+            }
+        }
+        return parseSentenceToPanelData(sentence, 0, 1);
+    }
+
+    async function callLlmBatchSentenceExpander(panels, grammar, language, onProgress) {
+        const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
+        const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
+        const apiKey = (sdtStore.openaiApiKey || '').trim();
+        const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
+
+        const promptList = panels.map((p, idx) => `画格 #${idx + 1}: ${p.desc || p.title || '（未输入描述）'}`).join('\n');
+
+        const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
+用户已经确定了整页漫画包含 ${panels.length} 个画格，并给出了每一个画格的具体剧情/动作描写。
+你的任务是为每个画格分别生成：
+1. title: 画格概括（中文，5-10字）
+2. shot: 从以下 19 种专业漫画镜头中挑选最契合剧情的词（close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）
+3. tags: 纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，保持同一角色在各画格间的外观特征连贯，不要画风词）
+4. bubbleType: speech | thought | screaming | caption | sfx
+5. bubbleText: 提炼出的画格内角色台词、心声或旁白
+6. bubbleLayout: vertical | horizontal
+
+必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
+JSON 格式规范：
+{
+  "panels": [
+    {
+      "index": 1,
+      "title": "...",
+      "shot": "...",
+      "tags": "...",
+      "bubbleType": "...",
+      "bubbleText": "...",
+      "bubbleLayout": "..."
+    }
+  ]
+}`;
+
+        const userContent = `【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}\n【用户指定的逐格剧情如下】：\n${promptList}`;
+
+        if (baseUrl) {
+            try {
+                if (onProgress) onProgress('正在调用大模型为各画格生成提示词与机位...');
+                const url = `${baseUrl}/chat/completions`;
+                const reqBody = {
+                    model,
+                    temperature: 0.3,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent }
+                    ]
+                };
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+                    },
+                    body: JSON.stringify(reqBody)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const rawReply = data.choices?.[0]?.message?.content || '';
+                    const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(cleanJson);
+                    if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
+                        return parsed.panels;
+                    }
+                }
+            } catch (e) {
+                console.warn(`[Manga Studio] Batch Sentence LLM API call failed, using heuristic:`, e);
+            }
+        }
+
+        if (onProgress) onProgress('正在应用漫画导演分镜文法逐格推演...');
+        return panels.map((p, idx) => parseSentenceToPanelData(p.desc || p.title, idx, panels.length));
     }
 
     function extractChatNarrative() {
@@ -2294,6 +2475,7 @@ JSON 格式规范：
                             <div class="mw-card-hd">
                                 <span class="mw-card-tt"><i class="fa-solid fa-layer-group" style="color:#f59e0b"></i> 分镜画格序列 (<span id="mw-panel-count-badge">3</span> 格)</span>
                                 <div class="mw-card-actions">
+                                    <button id="mw-btn-ai-batch" class="mw-btn sm gn" title="根据各个画格填写的剧情句子，批量生成 Danbooru Tag 与镜头"><i class="fa-solid fa-wand-magic-sparkles"></i> 🪄 逐格批量生成</button>
                                     <button id="mw-btn-template" class="mw-btn sm cy"><i class="fa-solid fa-bookmark"></i> 常用分镜模板</button>
                                     <button id="mw-btn-add-panel" class="mw-btn sm am"><i class="fa-solid fa-plus"></i> 添加画格</button>
                                     <button id="mw-btn-reset-panels" class="mw-btn sm rd"><i class="fa-solid fa-rotate-left"></i> 重置</button>
@@ -2404,6 +2586,11 @@ JSON 格式规范：
                         </div>
                     </div>
 
+                    <div class="mw-panel-desc-row">
+                        <input type="text" class="mw-panel-desc-in" value="${RBQ.utils.escapeHtml(p.desc || '')}" placeholder="✍️ 在本格填入剧情句子（例如：夕阳下少女红着脸递出情书）...">
+                        <button class="mw-btn sm cy mw-panel-ai-single" title="针对本格填入的句子，单独调用 AI 生成 Tag、机位与对白"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 润色本格</button>
+                    </div>
+
                     <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入该画格专属英文 Danbooru / NAI tags...">
 
                     <div class="mw-bubble-row">
@@ -2432,6 +2619,41 @@ JSON 格式规范：
                 card.querySelector('.mw-panel-title-in')?.addEventListener('input', (e) => {
                     p.title = e.target.value;
                     save();
+                });
+                card.querySelector('.mw-panel-desc-in')?.addEventListener('input', (e) => {
+                    p.desc = e.target.value;
+                    save();
+                });
+                const btnSingleAi = card.querySelector('.mw-panel-ai-single');
+                btnSingleAi?.addEventListener('click', async () => {
+                    const sentence = (p.desc || p.title || '').trim();
+                    if (!sentence) {
+                        return toastr.warning('请先在本格输入剧情句子（例如：夕阳下少女红着脸低头）', PLUGIN_NAME);
+                    }
+                    const origHtml = btnSingleAi.innerHTML;
+                    btnSingleAi.disabled = true;
+                    btnSingleAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...';
+                    try {
+                        const expanded = await callLlmSingleSentenceExpander(sentence, p.shot, store.grammar, store.language);
+                        if (expanded) {
+                            if (expanded.title) p.title = expanded.title;
+                            if (expanded.shot) p.shot = expanded.shot;
+                            if (expanded.tags) p.tags = expanded.tags;
+                            if (expanded.bubbleType) p.bubbleType = expanded.bubbleType;
+                            if (expanded.bubbleText !== undefined) p.bubbleText = expanded.bubbleText;
+                            if (expanded.bubbleLayout) p.bubbleLayout = expanded.bubbleLayout;
+                            renderPanelCards();
+                            updatePromptPreview();
+                            save();
+                            toastr.success(`画格 #${idx + 1} 已由 AI 智能生成 Tag 与机位！`, PLUGIN_NAME);
+                        }
+                    } catch (err) {
+                        console.error('[Manga Studio] Single Panel AI error:', err);
+                        toastr.error('本格生成失败: ' + (err.message || String(err)), PLUGIN_NAME);
+                    } finally {
+                        btnSingleAi.disabled = false;
+                        btnSingleAi.innerHTML = origHtml;
+                    }
                 });
                 card.querySelector('.mw-panel-shot-sel')?.addEventListener('change', (e) => {
                     if (e.target.value === '__custom__') {
@@ -2595,6 +2817,51 @@ JSON 格式规范：
             }
         });
 
+        // Batch AI generate for all panels
+        const btnBatchAi = container.querySelector('#mw-btn-ai-batch');
+        btnBatchAi?.addEventListener('click', async () => {
+            const hasAnyDesc = studio.panels.some(p => (p.desc || p.title || '').trim());
+            if (!hasAnyDesc) {
+                return toastr.warning('请先在画格中填写剧情句子', PLUGIN_NAME);
+            }
+            const origHtml = btnBatchAi.innerHTML;
+            btnBatchAi.disabled = true;
+            btnBatchAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 批量解析中...';
+            try {
+                const results = await callLlmBatchSentenceExpander(
+                    studio.panels,
+                    store.grammar,
+                    store.language,
+                    (msg) => {
+                        btnBatchAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${msg}`;
+                    }
+                );
+                if (Array.isArray(results) && results.length > 0) {
+                    results.forEach((item, i) => {
+                        const targetPanel = studio.panels[i];
+                        if (targetPanel && item) {
+                            if (item.title) targetPanel.title = item.title;
+                            if (item.shot) targetPanel.shot = item.shot;
+                            if (item.tags) targetPanel.tags = item.tags;
+                            if (item.bubbleType) targetPanel.bubbleType = item.bubbleType;
+                            if (item.bubbleText !== undefined) targetPanel.bubbleText = item.bubbleText;
+                            if (item.bubbleLayout) targetPanel.bubbleLayout = item.bubbleLayout;
+                        }
+                    });
+                    renderPanelCards();
+                    updatePromptPreview();
+                    save();
+                    toastr.success(`🎉 已完成全部 ${studio.panels.length} 个画格的批量生成！`, PLUGIN_NAME);
+                }
+            } catch (err) {
+                console.error('[Manga Studio] Batch AI error:', err);
+                toastr.error('批量生成失败: ' + (err.message || String(err)), PLUGIN_NAME);
+            } finally {
+                btnBatchAi.disabled = false;
+                btnBatchAi.innerHTML = origHtml;
+            }
+        });
+
         // Add panel button
         container.querySelector('#mw-btn-add-panel')?.addEventListener('click', () => {
             if (studio.panels.length >= 5) {
@@ -2602,6 +2869,7 @@ JSON 格式规范：
             }
             studio.panels.push({
                 title: `第 ${studio.panels.length + 1} 格 · 画面`,
+                desc: '',
                 shot: 'medium shot',
                 tags: '1girl, expressive eyes',
                 bubbleType: 'speech',

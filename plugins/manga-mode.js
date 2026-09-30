@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.4';
+        const VERSION = '1.4.5';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -19,7 +19,7 @@
                 customNegative: '',
                 grammar: 'cinema', // cinema | 4koma | shonen | mystery | shojo | daily | comedy | ecchi
                 language: 'zh-hans', // zh-hans | ja
-                gutter: 'bleed', // bleed | framed | splash
+                gutter: 'bleed', // bleed | framed | splash | black_line
                 autoSpread: true, // 智能跨页 (見開きページ)
                 antiHijack: true, // 同人角色防夺舍
                 studio: null,
@@ -320,7 +320,7 @@ ${antiHijackRule}
 
 1. \`scene\` 字段（页面全局排版与环境）：
    - 必须以完整的漫画页面排版词开头，格式为：
-     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), manga page layout, vertical layout, white border, dynamic komawari, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
+     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
    - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
 
 2. \`characters\` 数组（逐画格演出槽位分配）：
@@ -460,10 +460,10 @@ ${antiHijackRule}
 
         // 4. 正面画风拼接
         if (stylePositive) {
-            if (payload.input) {
+            if (payload.input && !payload.input.includes(stylePositive)) {
                 payload.input = `${stylePositive}, ${payload.input}`;
             }
-            if (payload.parameters?.v4_prompt?.caption?.base_caption) {
+            if (payload.parameters?.v4_prompt?.caption?.base_caption && !payload.parameters.v4_prompt.caption.base_caption.includes(stylePositive)) {
                 payload.parameters.v4_prompt.caption.base_caption = `${stylePositive}, ${payload.parameters.v4_prompt.caption.base_caption}`;
             }
         }
@@ -480,7 +480,7 @@ ${antiHijackRule}
 
             // 6.1 若 char_captions 为空但输入中包含 | 或 Text:，按 | 分割出各格
             if (!Array.isArray(v4Prompt.char_captions) || v4Prompt.char_captions.length === 0) {
-                if (/\b(?:BubbleType|Text)[ \t]*[:：]/i.test(baseText)) {
+                if (/\b(?:BubbleType|SFX|Text)[ \t]*[:：]/i.test(baseText)) {
                     const segments = baseText.split(/\s*\|\s*/);
                     if (segments.length > 1) {
                         v4Prompt.base_caption = segments[0];
@@ -1574,6 +1574,20 @@ ${antiHijackRule}
             }
         }
 
+        // 同步 SDT 卡片各下拉与开关值 (支持双向响应)
+        const styleSel = document.getElementById('rbq-manga-style');
+        if (styleSel && styleSel.value !== store.style) styleSel.value = store.style;
+        const grammarSel = document.getElementById('rbq-manga-grammar');
+        if (grammarSel && grammarSel.value !== store.grammar) grammarSel.value = store.grammar;
+        const gutterSel = document.getElementById('rbq-manga-gutter');
+        if (gutterSel && gutterSel.value !== store.gutter) gutterSel.value = store.gutter;
+        const langSel = document.getElementById('rbq-manga-lang');
+        if (langSel && langSel.value !== store.language) langSel.value = store.language;
+        const spreadChk = document.getElementById('rbq-manga-spread');
+        if (spreadChk && spreadChk.checked !== !!store.autoSpread) spreadChk.checked = !!store.autoSpread;
+        const hijackChk = document.getElementById('rbq-manga-hijack');
+        if (hijackChk && hijackChk.checked !== !!store.antiHijack) hijackChk.checked = !!store.antiHijack;
+
         // 样式描述更新
         const descEl = document.getElementById('rbq-manga-style-desc');
         if (descEl) {
@@ -2053,12 +2067,19 @@ ${antiHijackRule}
             panelCountTag
         ].filter(Boolean);
 
-        const baseCaption = baseParts.join(', ');
+        const isMonochrome = (styleKey === 'monochrome');
+        let baseCaption = baseParts.join(', ');
+        if (isMonochrome) {
+            baseCaption = decolorizeTags(baseCaption);
+        }
 
         const panelSegments = studio.panels.map((p) => {
             const parts = [];
             if (p.shot) parts.push(p.shot);
-            if (p.tags) parts.push(p.tags);
+            if (p.tags) {
+                const tagStr = isMonochrome ? decolorizeTags(p.tags) : p.tags;
+                if (tagStr) parts.push(tagStr);
+            }
 
             const text = (p.bubbleText || '').trim();
             if (text) {
@@ -2577,9 +2598,7 @@ JSON 格式规范：
                         <div class="mw-control-group">
                             <label><i class="fa-solid fa-brush" style="color:#f59e0b"></i> 画风:</label>
                             <select id="mw-hdr-style" class="mw-sel">
-                                <option value="monochrome" ${store.style === 'monochrome' ? 'selected' : ''}>黑白 (画风-黑白)</option>
-                                <option value="soft_color" ${store.style === 'soft_color' ? 'selected' : ''}>柔光圆润 (画风-柔光圆润)</option>
-                                <option value="custom" ${store.style === 'custom' ? 'selected' : ''}>⚙️ 自定义画风</option>
+                                ${Object.entries(COMIC_STYLES).map(([k, v]) => `<option value="${k}" ${store.style === k ? 'selected' : ''}>${v.name}</option>`).join('')}
                             </select>
                         </div>
                         <div class="mw-control-group">
@@ -2711,7 +2730,13 @@ JSON 格式规范：
 
         function updateViewport() {
             if (!viewportEl) return;
-            const resText = (studio.ratio || '832x1216').replace('x', ' × ') + ' PX';
+            const ratio = studio.ratio || '832x1216';
+            const [w, h] = ratio.split('x').map(Number);
+            if (w && h) {
+                viewportEl.style.aspectRatio = `${w} / ${h}`;
+                viewportEl.style.maxWidth = (w > h) ? '480px' : '320px';
+            }
+            const resText = ratio.replace('x', ' × ') + ' PX';
             if (resBadgeEl) resBadgeEl.textContent = resText;
 
             if (studio.lastGeneratedUrl) {
@@ -2908,12 +2933,14 @@ JSON 格式规范：
             store.style = e.target.value;
             save();
             syncMangaToSdt(store);
+            updateUiState();
             updatePromptPreview();
         });
         container.querySelector('#mw-hdr-grammar')?.addEventListener('change', (e) => {
             store.grammar = e.target.value;
             save();
             syncMangaToSdt(store);
+            updateUiState();
             updatePromptPreview();
         });
         container.querySelector('#mw-hdr-ratio')?.addEventListener('change', (e) => {
@@ -2926,6 +2953,7 @@ JSON 格式规范：
             store.gutter = e.target.value;
             save();
             syncMangaToSdt(store);
+            updateUiState();
             updatePromptPreview();
         });
 
@@ -3067,6 +3095,8 @@ JSON 格式规范：
                     store.grammar = preset.grammar;
                     const gSel = container.querySelector('#mw-hdr-grammar');
                     if (gSel) gSel.value = preset.grammar;
+                    syncMangaToSdt(store);
+                    updateUiState();
                 }
                 renderPanelCards();
                 updatePromptPreview();
@@ -3182,6 +3212,16 @@ JSON 格式规范：
 
         refreshMangaWorkshop = () => {
             try {
+                const s = getStore();
+                const styleSel = container.querySelector('#mw-hdr-style');
+                if (styleSel && styleSel.value !== s.style) styleSel.value = s.style;
+                const gramSel = container.querySelector('#mw-hdr-grammar');
+                if (gramSel && gramSel.value !== s.grammar) gramSel.value = s.grammar;
+                const gutSel = container.querySelector('#mw-hdr-gutter');
+                if (gutSel && gutSel.value !== s.gutter) gutSel.value = s.gutter;
+                const ratioSel = container.querySelector('#mw-hdr-ratio');
+                if (ratioSel && ratioSel.value !== s.studio?.ratio) ratioSel.value = s.studio?.ratio || '832x1216';
+
                 updatePromptPreview();
                 updateViewport();
             } catch (_e) {}

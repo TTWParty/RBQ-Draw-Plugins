@@ -43,6 +43,7 @@ RBQ-Draw-Plugins/
 | `rbq-image-privacy` | 图片隐私模式 | [`plugins/image-privacy-mode.js`](plugins/image-privacy-mode.js) | [`docs/plugins/rbq-image-privacy-mode.md`](docs/plugins/rbq-image-privacy-mode.md) |
 | `rbq-save-downloads-fix` | 安卓保存修复 | [`plugins/save-downloads-fix.js`](plugins/save-downloads-fix.js) | [`docs/plugins/rbq-save-downloads-fix.md`](docs/plugins/rbq-save-downloads-fix.md) |
 | `rbq-gallery-sync` | 图库云同步与存储管理 | [`plugins/server-storage-sync.js`](plugins/server-storage-sync.js) | [`docs/plugins/rbq-gallery-sync.md`](docs/plugins/rbq-gallery-sync.md) |
+| `rbq-manga-mode` | 漫画模式 | [`plugins/manga-mode.js`](plugins/manga-mode.js) | [`docs/plugins/rbq-manga-mode.md`](docs/plugins/rbq-manga-mode.md) |
 
 ---
 

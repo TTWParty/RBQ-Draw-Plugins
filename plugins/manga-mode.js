@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.5';
+        const VERSION = '1.4.6';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -1453,6 +1453,10 @@ ${antiHijackRule}
                 sdtStore._mangaSavedMultiChar = false;
                 sdtStore.multiCharOutput = true;
             }
+            if (sdtStore.multiCharUseCoords && !sdtStore._mangaActive) {
+                sdtStore._mangaSavedMultiCharCoords = sdtStore.multiCharUseCoords;
+            }
+            sdtStore.multiCharUseCoords = false;
             sdtStore._mangaActive = true;
             sdtStore.systemPromptPreset = 'custom';
             sdtStore.customSystemPrompt = buildMangaSystemPrompt(store);
@@ -1471,6 +1475,10 @@ ${antiHijackRule}
                 if (typeof sdtStore._mangaSavedMultiChar === 'boolean') {
                     sdtStore.multiCharOutput = sdtStore._mangaSavedMultiChar;
                     delete sdtStore._mangaSavedMultiChar;
+                }
+                if (typeof sdtStore._mangaSavedMultiCharCoords === 'boolean') {
+                    sdtStore.multiCharUseCoords = sdtStore._mangaSavedMultiCharCoords;
+                    delete sdtStore._mangaSavedMultiCharCoords;
                 }
                 delete sdtStore._mangaSavedPreset;
                 delete sdtStore._mangaSavedCustomPrompt;
@@ -1570,6 +1578,58 @@ ${antiHijackRule}
                 ecSelect.disabled = false;
                 ecField.classList.remove('rbq-sdt-preset-locked');
                 const badge = ecField.querySelector('.rbq-sdt-preset-lock-badge');
+                if (badge) badge.remove();
+            }
+        }
+
+        // 锁定/解锁多角色输出模式与 2D 坐标 (漫画模式按画格槽位接管)
+        const mcCheck = document.getElementById('rbq-sdt-multichar');
+        const mcField = mcCheck ? mcCheck.closest('.st-scene-trigger-field') : null;
+        const coordsCheck = document.getElementById('rbq-sdt-multichar-coords');
+        const coordsField = coordsCheck ? coordsCheck.closest('.st-scene-trigger-field') : null;
+
+        if (mcCheck && mcField) {
+            if (store.enabled) {
+                mcCheck.checked = true;
+                mcCheck.disabled = true;
+                mcField.classList.add('rbq-sdt-preset-locked');
+                let badge = mcField.querySelector('.rbq-sdt-preset-lock-badge');
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'rbq-sdt-preset-lock-badge';
+                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画画格流接管 (强制开启)';
+                    const titleSpan = mcField.querySelector('span');
+                    if (titleSpan) titleSpan.appendChild(badge);
+                }
+            } else {
+                const sdtStore = getSdtStore();
+                mcCheck.checked = !!sdtStore.multiCharOutput;
+                mcCheck.disabled = false;
+                mcField.classList.remove('rbq-sdt-preset-locked');
+                const badge = mcField.querySelector('.rbq-sdt-preset-lock-badge');
+                if (badge) badge.remove();
+            }
+        }
+
+        if (coordsCheck && coordsField) {
+            if (store.enabled) {
+                coordsCheck.checked = false;
+                coordsCheck.disabled = true;
+                coordsField.classList.add('rbq-sdt-preset-locked');
+                let badge = coordsField.querySelector('.rbq-sdt-preset-lock-badge');
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'rbq-sdt-preset-lock-badge';
+                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式禁用 2D 坐标 (按格序自动排版)';
+                    const titleSpan = coordsField.querySelector('span');
+                    if (titleSpan) titleSpan.appendChild(badge);
+                }
+            } else {
+                const sdtStore = getSdtStore();
+                coordsCheck.checked = !!sdtStore.multiCharUseCoords;
+                coordsCheck.disabled = false;
+                coordsField.classList.remove('rbq-sdt-preset-locked');
+                const badge = coordsField.querySelector('.rbq-sdt-preset-lock-badge');
                 if (badge) badge.remove();
             }
         }
@@ -3355,6 +3415,28 @@ JSON 格式规范：
         if (ecSelect) {
             ecSelect.disabled = false;
             const field = ecSelect.closest('.st-scene-trigger-field');
+            if (field) {
+                field.classList.remove('rbq-sdt-preset-locked');
+                const badge = field.querySelector('.rbq-sdt-preset-lock-badge');
+                if (badge) badge.remove();
+            }
+        }
+
+        // 还原 SDT 多角色开关与坐标框
+        const mcCheck = document.getElementById('rbq-sdt-multichar');
+        if (mcCheck) {
+            mcCheck.disabled = false;
+            const field = mcCheck.closest('.st-scene-trigger-field');
+            if (field) {
+                field.classList.remove('rbq-sdt-preset-locked');
+                const badge = field.querySelector('.rbq-sdt-preset-lock-badge');
+                if (badge) badge.remove();
+            }
+        }
+        const coordsCheck = document.getElementById('rbq-sdt-multichar-coords');
+        if (coordsCheck) {
+            coordsCheck.disabled = false;
+            const field = coordsCheck.closest('.st-scene-trigger-field');
             if (field) {
                 field.classList.remove('rbq-sdt-preset-locked');
                 const badge = field.querySelector('.rbq-sdt-preset-lock-badge');

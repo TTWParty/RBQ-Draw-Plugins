@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.3.0';
+        const VERSION = '1.3.1';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -169,6 +169,19 @@
 - 边框顺应身体曲线作动态贴合（body contour framing）；
 - 密集拟音文字直接在格内生动展现。`
         }
+    };
+
+    const COMIC_GRAMMARS = GRAMMAR_PRESETS;
+
+    const GRAMMAR_TAGS = {
+        cinema: 'cinematic composition, dynamic angles',
+        '4koma': '4koma, 4 panels, yonkoma',
+        shonen: 'shonen manga, dynamic action, speed lines',
+        mystery: 'seinen, suspense, dramatic shadows, tension',
+        shojo: 'shojo manga, romantic atmosphere, expressive eyes',
+        daily: 'slice of life, daily scene, relaxed composition',
+        comedy: 'comedy, gag manga, exaggerated expression',
+        ecchi: 'sensual manga, body contour framing'
     };
 
     // ── 4. Prompt Assembly for SDT Tagger LLM ──────────────────────
@@ -1839,13 +1852,13 @@ ${antiHijackRule}
     function composeStudioPrompt(store) {
         const studio = store.studio;
         const grammarKey = store.grammar || 'cinema';
-        const grammarObj = COMIC_GRAMMARS[grammarKey] || COMIC_GRAMMARS.cinema;
+        const grammarTag = GRAMMAR_TAGS[grammarKey] || GRAMMAR_TAGS.cinema;
         const styleKey = store.style || 'monochrome';
         const styleObj = COMIC_STYLES[styleKey] || COMIC_STYLES.monochrome;
         const stylePos = styleKey === 'custom' ? (store.customPositive || '') : styleObj.positive;
 
         let gutterTag = 'white border';
-        if (store.gutter === 'black_line') gutterTag = '太い黒い仕切り線, 余白なし';
+        if (store.gutter === 'black_line') gutterTag = '太い黒い仕切り线, 余白なし';
         else if (store.gutter === 'splash') gutterTag = '全面裁ち落とし, 余白なし';
 
         const isDoubleSpread = studio.ratio === '1216x832';
@@ -1853,7 +1866,7 @@ ${antiHijackRule}
         const panelCountTag = `${studio.panels.length}panels`;
 
         const baseParts = [
-            grammarObj.prefix,
+            grammarTag,
             stylePos,
             'comic, 複数コマの漫画ページ, manga page layout',
             layoutTag,

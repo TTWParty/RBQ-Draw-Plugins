@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.3';
+        const VERSION = '1.0.4';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -507,7 +507,7 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         (document.head || document.documentElement || document.body)?.appendChild(style);
     }
 
-    function syncMangaToSdt(store) {
+    function syncMangaToSdt(store, shouldSave = true) {
         const sdtStore = getSdtStore();
         if (store.enabled) {
             // 备份原有的预设状态
@@ -539,7 +539,9 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
                 delete sdtStore._mangaSavedCustomPrompt;
             }
         }
-        save();
+        if (shouldSave) {
+            save();
+        }
     }
 
     function updateUiState() {
@@ -551,20 +553,23 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         const sysPresetField = sysPresetSelect ? sysPresetSelect.closest('.st-scene-trigger-field') : null;
         const customPromptField = document.getElementById('rbq-sdt-system-prompt-field');
 
-        if (enabledCheck) {
-            enabledCheck.checked = store.enabled;
+        if (enabledCheck && enabledCheck.checked !== !!store.enabled) {
+            enabledCheck.checked = !!store.enabled;
         }
         if (card) {
-            card.classList.toggle('active', store.enabled);
+            card.classList.toggle('active', !!store.enabled);
         }
         if (subpanel) {
-            subpanel.style.display = store.enabled ? 'flex' : 'none';
+            const targetDisplay = store.enabled ? 'flex' : 'none';
+            if (subpanel.style.display !== targetDisplay) {
+                subpanel.style.display = targetDisplay;
+            }
         }
 
         // 锁定/解锁原提示词预设
         if (sysPresetSelect && sysPresetField) {
             if (store.enabled) {
-                sysPresetSelect.value = 'custom';
+                if (sysPresetSelect.value !== 'custom') sysPresetSelect.value = 'custom';
                 sysPresetSelect.disabled = true;
                 sysPresetField.classList.add('rbq-sdt-preset-locked');
                 let badge = sysPresetField.querySelector('.rbq-sdt-preset-lock-badge');
@@ -575,16 +580,23 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
                     const titleSpan = sysPresetField.querySelector('span');
                     if (titleSpan) titleSpan.appendChild(badge);
                 }
-                if (customPromptField) customPromptField.style.display = 'none';
+                if (customPromptField && customPromptField.style.display !== 'none') {
+                    customPromptField.style.display = 'none';
+                }
             } else {
                 const sdtStore = getSdtStore();
-                sysPresetSelect.value = sdtStore.systemPromptPreset || 'v40_worldbook_97_opt';
+                const expectedPreset = sdtStore.systemPromptPreset || 'v40_worldbook_97_opt';
+                if (sysPresetSelect.value !== expectedPreset) {
+                    sysPresetSelect.value = expectedPreset;
+                }
                 sysPresetSelect.disabled = false;
                 sysPresetField.classList.remove('rbq-sdt-preset-locked');
                 const badge = sysPresetField.querySelector('.rbq-sdt-preset-lock-badge');
                 if (badge) badge.remove();
                 if (customPromptField && sysPresetSelect.value === 'custom') {
-                    customPromptField.style.display = '';
+                    if (customPromptField.style.display === 'none') {
+                        customPromptField.style.display = '';
+                    }
                 }
             }
         }
@@ -593,11 +605,17 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         const descEl = document.getElementById('rbq-manga-style-desc');
         if (descEl) {
             const curStyle = COMIC_STYLES[store.style] || COMIC_STYLES.monochrome;
-            descEl.textContent = curStyle.desc || '';
+            const targetDesc = curStyle.desc || '';
+            if (descEl.textContent !== targetDesc) {
+                descEl.textContent = targetDesc;
+            }
         }
         const customWrap = document.getElementById('rbq-manga-custom-wrap');
         if (customWrap) {
-            customWrap.style.display = store.style === 'custom' ? 'flex' : 'none';
+            const targetDisplay = store.style === 'custom' ? 'flex' : 'none';
+            if (customWrap.style.display !== targetDisplay) {
+                customWrap.style.display = targetDisplay;
+            }
         }
     }
 
@@ -794,51 +812,66 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         updateUiState();
     }
 
-    // ── 7. DOM Observation & Lifecycle Guard ───────────────────────
+    // ── 7. DOM Mounting & Lifecycle Guard ─────────────────────────
     try {
         injectStyles();
     } catch (e) {
         console.warn(`[${PLUGIN_NAME}] injectStyles error:`, e);
     }
 
-    // 监听 SDT 设置模态框或控制台加载
-    const observer = new MutationObserver(() => {
-        try {
-            if (document.getElementById('rbq-sdt-system-preset')) {
-                injectUiIntoSdt();
+    let mountPollTimer = null;
+    let pollCount = 0;
+    const MAX_POLLS = 60; // 30s max
+
+    function checkAndMount() {
+        pollCount++;
+        const card = document.getElementById('rbq-manga-mode-card');
+        const sysPresetSelect = document.getElementById('rbq-sdt-system-preset');
+
+        if (card) {
+            if (mountPollTimer) {
+                clearInterval(mountPollTimer);
+                mountPollTimer = null;
             }
-        } catch (e) {
-            console.warn(`[${PLUGIN_NAME}] Observer callback error:`, e);
+            updateUiState();
+            return true;
         }
-    });
 
-    function initObserver() {
-        if (!document.body) {
-            document.addEventListener('DOMContentLoaded', initObserver);
-            return;
-        }
-        try {
-            observer.observe(document.body, { childList: true, subtree: true });
-        } catch (e) {
-            console.warn(`[${PLUGIN_NAME}] Observer registration error:`, e);
-        }
-    }
-    initObserver();
-
-    // 初始化运行一次，如果 SDT 当前已经展开
-    try {
-        if (document.getElementById('rbq-sdt-system-preset')) {
+        if (sysPresetSelect) {
             injectUiIntoSdt();
+            if (mountPollTimer) {
+                clearInterval(mountPollTimer);
+                mountPollTimer = null;
+            }
+            return true;
         }
-    } catch (e) {
-        console.warn(`[${PLUGIN_NAME}] Initial UI injection error:`, e);
+
+        if (pollCount >= MAX_POLLS && mountPollTimer) {
+            clearInterval(mountPollTimer);
+            mountPollTimer = null;
+        }
+        return false;
     }
 
-    // 如果一开始就处于开启状态，确保 SDT 同步
+    // 首次立即挂载
+    if (!checkAndMount()) {
+        mountPollTimer = setInterval(checkAndMount, 500);
+    }
+
+    // 针对用户随时点击模态框/标签页/按钮时被动兜底触发
+    const onUserInteraction = (e) => {
+        const t = e.target;
+        if (t && t.closest && (t.closest('[data-kite-tab="smart-draw"]') || t.closest('#st-scene-trigger-options-btn') || t.closest('.st-scene-trigger-floating-btn') || t.closest('#st-scene-trigger-modal'))) {
+            setTimeout(checkAndMount, 80);
+        }
+    };
+    document.addEventListener('click', onUserInteraction, { passive: true });
+
+    // 如果一开始就处于开启状态，静默同步 SDT 状态，绝不触发写盘网络保存
     try {
         const currentStore = getStore();
         if (currentStore.enabled) {
-            syncMangaToSdt(currentStore);
+            syncMangaToSdt(currentStore, false);
         }
     } catch (e) {
         console.warn(`[${PLUGIN_NAME}] Initial store sync error:`, e);
@@ -846,9 +879,11 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
 
     // 卸载与清理函数
     function cleanup() {
-        try {
-            observer.disconnect();
-        } catch (_e) {}
+        if (mountPollTimer) {
+            clearInterval(mountPollTimer);
+            mountPollTimer = null;
+        }
+        document.removeEventListener('click', onUserInteraction);
         const styleEl = document.getElementById(STYLE_TAG_ID);
         if (styleEl) styleEl.remove();
         const cardEl = document.getElementById('rbq-manga-mode-card');
@@ -870,7 +905,7 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         try {
             const s = getStore();
             s.enabled = false;
-            syncMangaToSdt(s);
+            syncMangaToSdt(s, true);
         } catch (_e) {}
 
         console.info(`[${PLUGIN_NAME}] 插件已彻底卸载并清理`);

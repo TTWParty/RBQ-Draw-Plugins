@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.8';
+        const VERSION = '1.4.9';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -812,41 +812,38 @@ ${antiHijackRule}
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            padding: 6px 12px !important;
+            padding: 8px 14px !important;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
             background: rgba(18, 22, 34, 0.95) !important;
             backdrop-filter: blur(12px) !important;
             gap: 10px !important;
             flex-shrink: 0 !important;
             box-sizing: border-box !important;
-            overflow-x: auto !important;
-            overflow-y: hidden !important;
         }
         .mw-brand {
             display: flex !important;
             align-items: center !important;
             gap: 8px !important;
-            flex-shrink: 0 !important;
         }
         .mw-logo {
-            width: 26px !important;
-            height: 26px !important;
+            width: 28px !important;
+            height: 28px !important;
             border-radius: 7px !important;
             background: linear-gradient(135deg, #f59e0b, #d97706) !important;
             color: #000 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            font-size: 13px !important;
+            font-size: 14px !important;
             box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
         }
         .mw-title-box {
             display: flex !important;
             flex-direction: column !important;
-            gap: 0 !important;
+            gap: 1px !important;
         }
         .mw-title {
-            font-size: 13px !important;
+            font-size: 13.5px !important;
             font-weight: 700 !important;
             color: #fff !important;
             display: flex !important;
@@ -855,52 +852,62 @@ ${antiHijackRule}
             white-space: nowrap !important;
         }
         .mw-badge {
-            font-size: 9px !important;
+            font-size: 9.5px !important;
             font-weight: 700 !important;
-            padding: 1px 5px !important;
+            padding: 1px 6px !important;
             border-radius: 999px !important;
             background: rgba(245, 158, 11, 0.18) !important;
             color: #fcd34d !important;
-            border: 1px solid rgba(245, 158, 11, 0.35) !important;
+            border: 1px solid rgba(255, 158, 11, 0.35) !important;
         }
         .mw-subtitle {
-            font-size: 10px !important;
-            color: #64748b !important;
-            display: none !important;
+            font-size: 10.5px !important;
+            color: #94a3b8 !important;
         }
-        .mw-hdr-controls {
+        /* 全局参数网格工具栏 (Subbar 4-Column Grid) */
+        .mw-subbar {
+            display: grid !important;
+            grid-template-columns: repeat(4, 1fr) !important;
+            gap: 6px !important;
+            padding: 6px 12px !important;
+            background: rgba(13, 16, 25, 0.95) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+            flex-shrink: 0 !important;
+            box-sizing: border-box !important;
+        }
+        @media (max-width: 680px) {
+            .mw-subbar {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+        }
+        .mw-subbar-item {
             display: flex !important;
-            align-items: center !important;
-            gap: 5px !important;
-            flex-wrap: nowrap !important;
-            flex-shrink: 1 !important;
-            min-width: 0 !important;
-        }
-        .mw-hdr-pill {
-            display: inline-flex !important;
             align-items: center !important;
             background: rgba(255, 255, 255, 0.04) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 999px !important;
-            padding: 2px 6px 2px 8px !important;
-            gap: 4px !important;
-            flex-shrink: 0 !important;
-            transition: border-color 0.2s, background 0.2s !important;
+            border-radius: 6px !important;
+            padding: 2px 6px !important;
+            gap: 5px !important;
+            min-width: 0 !important;
+            transition: border-color 0.2s, background-color 0.2s !important;
         }
-        .mw-hdr-pill:hover, .mw-hdr-pill:focus-within {
-            background: rgba(255, 255, 255, 0.08) !important;
-            border-color: rgba(245, 158, 11, 0.45) !important;
+        .mw-subbar-item:hover, .mw-subbar-item:focus-within {
+            background: rgba(255, 255, 255, 0.07) !important;
+            border-color: rgba(245, 158, 11, 0.4) !important;
         }
-        .mw-hdr-pill label {
-            font-size: 10px !important;
+        .mw-subbar-label {
+            font-size: 10.5px !important;
             font-weight: 600 !important;
             color: #94a3b8 !important;
             display: flex !important;
             align-items: center !important;
             gap: 3px !important;
             white-space: nowrap !important;
+            flex-shrink: 0 !important;
         }
-        .mw-hdr-pill select.mw-sel {
+        .mw-subbar-item select.mw-sel {
+            flex: 1 !important;
+            min-width: 0 !important;
             background: transparent !important;
             border: none !important;
             color: #f1f5f9 !important;
@@ -908,8 +915,10 @@ ${antiHijackRule}
             font-weight: 500 !important;
             cursor: pointer !important;
             outline: none !important;
+            text-overflow: ellipsis !important;
+            overflow: hidden !important;
+            white-space: nowrap !important;
             padding: 2px 0 !important;
-            max-width: 160px !important;
         }
         .mw-control-group {
             display: flex !important;
@@ -1044,15 +1053,12 @@ ${antiHijackRule}
             flex-direction: column !important;
             gap: 10px !important;
             min-width: 0 !important;
-            position: sticky !important;
-            top: 0 !important;
-            align-self: start !important;
         }
         .mw-card {
             background: rgba(24, 28, 42, 0.65) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
             border-radius: 9px !important;
-            padding: 10px !important;
+            padding: 9px 11px !important;
             display: flex !important;
             flex-direction: column !important;
             gap: 7px !important;
@@ -1081,14 +1087,14 @@ ${antiHijackRule}
         }
         .mw-story-card textarea {
             width: 100% !important;
-            min-height: 56px !important;
-            max-height: 120px !important;
+            min-height: 54px !important;
+            max-height: 100px !important;
             background: rgba(12, 15, 24, 0.8) !important;
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
             border-radius: 6px !important;
             color: #fff !important;
             padding: 6px 8px !important;
-            font-size: 12px !important;
+            font-size: 11.5px !important;
             line-height: 1.5 !important;
             resize: vertical !important;
             box-sizing: border-box !important;
@@ -1100,11 +1106,12 @@ ${antiHijackRule}
         }
         .mw-story-ft {
             display: flex !important;
-            align-items: stretch !important;
-            flex-direction: column !important;
-            gap: 6px !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+            flex-wrap: wrap !important;
         }
-        .mw-opts {
+        .mw-story-opts {
             display: flex !important;
             align-items: center !important;
             gap: 6px !important;
@@ -1131,8 +1138,8 @@ ${antiHijackRule}
         .mw-count-sel {
             color: #fcd34d !important;
             font-weight: 600 !important;
-            font-size: 11.5px !important;
-            padding: 2px !important;
+            font-size: 11px !important;
+            padding: 1px !important;
             cursor: pointer !important;
         }
         .mw-chip-toggle {
@@ -1149,18 +1156,18 @@ ${antiHijackRule}
             display: inline-flex !important;
             align-items: center !important;
             gap: 5px !important;
-            padding: 3px 8px !important;
+            padding: 2px 7px !important;
             border-radius: 999px !important;
             background: rgba(255, 255, 255, 0.05) !important;
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
             color: #94a3b8 !important;
-            font-size: 10.5px !important;
+            font-size: 10px !important;
             font-weight: 500 !important;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
         .mw-chip-dot {
-            width: 6px !important;
-            height: 6px !important;
+            width: 5px !important;
+            height: 5px !important;
             border-radius: 50% !important;
             background: #64748b !important;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -1176,125 +1183,99 @@ ${antiHijackRule}
         }
         .mw-chip-toggle input:checked + .mw-chip-body .mw-chip-dot {
             background: #f59e0b !important;
-            box-shadow: 0 0 8px #f59e0b !important;
+            box-shadow: 0 0 6px #f59e0b !important;
         }
-        .mw-chk-lbl {
-            display: inline-flex !important;
-            align-items: center !important;
-            gap: 5px !important;
-            cursor: pointer !important;
-            user-select: none !important;
-        }
-        .mw-chk-lbl input {
-            accent-color: #f59e0b !important;
+        .mw-btn-storyboard {
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            padding: 5px 12px !important;
+            font-size: 11.5px !important;
         }
         /* 画格序列卡片流 (Storyboard Frames) */
         .mw-panels-list {
             display: flex !important;
             flex-direction: column !important;
-            gap: 10px !important;
+            gap: 8px !important;
         }
         .mw-panel-card {
             background: rgba(15, 18, 28, 0.85) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
             border-left: 3px solid rgba(245, 158, 11, 0.6) !important;
-            border-radius: 8px !important;
-            padding: 10px 12px !important;
+            border-radius: 7px !important;
+            padding: 8px 10px !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 8px !important;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
-            overflow: hidden !important;
+            gap: 6px !important;
             box-sizing: border-box !important;
+            overflow: hidden !important;
         }
         .mw-panel-card:hover {
             border-color: rgba(245, 158, 11, 0.5) !important;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
         }
+        /* Row 1: Header (Badge + Title + Tools) */
         .mw-panel-hd {
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            gap: 8px !important;
+            gap: 6px !important;
             width: 100% !important;
             min-width: 0 !important;
         }
         .mw-panel-info {
             display: flex !important;
             align-items: center !important;
-            gap: 8px !important;
+            gap: 6px !important;
             flex: 1 1 auto !important;
             min-width: 0 !important;
         }
         .mw-panel-num {
-            padding: 2px 7px !important;
-            border-radius: 5px !important;
+            padding: 2px 6px !important;
+            border-radius: 4px !important;
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.15)) !important;
             border: 1px solid rgba(245, 158, 11, 0.4) !important;
             color: #fcd34d !important;
             font-size: 11px !important;
             font-weight: 800 !important;
             font-family: monospace !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
             flex-shrink: 0 !important;
         }
         .mw-panel-title-in {
+            flex: 1 !important;
+            min-width: 60px !important;
             background: rgba(0, 0, 0, 0.3) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
             color: #fff !important;
-            font-size: 12px !important;
+            font-size: 11.5px !important;
             font-weight: 600 !important;
-            padding: 3px 8px !important;
-            border-radius: 5px !important;
-            flex: 1 1 140px !important;
-            min-width: 80px !important;
-            max-width: 200px !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            white-space: nowrap !important;
+            padding: 3px 7px !important;
+            border-radius: 4px !important;
             box-sizing: border-box !important;
+            outline: none !important;
         }
         .mw-panel-title-in:focus {
+            border-color: rgba(245, 158, 11, 0.5) !important;
             background: rgba(0, 0, 0, 0.5) !important;
-            border-color: rgba(245, 158, 11, 0.4) !important;
-        }
-        .mw-panel-shot-sel {
-            background: rgba(99, 102, 241, 0.1) !important;
-            border: 1px solid rgba(99, 102, 241, 0.3) !important;
-            color: #c7d2fe !important;
-            font-size: 11px !important;
-            padding: 3px 8px !important;
-            border-radius: 6px !important;
-            cursor: pointer !important;
-            flex: 0 0 170px !important;
-            min-width: 140px !important;
-            max-width: 220px !important;
-            box-sizing: border-box !important;
-        }
-        .mw-panel-shot-sel:hover {
-            border-color: rgba(99, 102, 241, 0.5) !important;
         }
         .mw-panel-btns {
             display: flex !important;
             align-items: center !important;
-            gap: 3px !important;
+            gap: 2px !important;
             flex-shrink: 0 !important;
-            margin-left: auto !important;
         }
         .mw-panel-btns .mw-btn {
-            width: 24px !important;
-            height: 24px !important;
+            width: 22px !important;
+            height: 22px !important;
             padding: 0 !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
             min-height: unset !important;
             flex-shrink: 0 !important;
-            font-size: 10.5px !important;
-            border-radius: 5px !important;
+            font-size: 10px !important;
+            border-radius: 4px !important;
         }
+        /* Row 2: Story Beat Description */
         .mw-panel-desc-row {
             display: flex !important;
             gap: 6px !important;
@@ -1303,70 +1284,115 @@ ${antiHijackRule}
             min-width: 0 !important;
         }
         .mw-panel-desc-in {
-            flex: 1 1 auto !important;
+            flex: 1 !important;
             min-width: 0 !important;
             background: rgba(0, 0, 0, 0.45) !important;
             border: 1px solid rgba(245, 158, 11, 0.3) !important;
-            border-radius: 6px !important;
+            border-radius: 5px !important;
             color: #fef08a !important;
-            padding: 6px 10px !important;
-            font-size: 12px !important;
+            padding: 4px 8px !important;
+            font-size: 11.5px !important;
             box-sizing: border-box !important;
             outline: none !important;
-            transition: border-color 0.2s, background-color 0.2s !important;
         }
         .mw-panel-desc-in:focus {
             border-color: #f59e0b !important;
             background: rgba(0, 0, 0, 0.65) !important;
-            box-shadow: 0 0 8px rgba(245, 158, 11, 0.2) !important;
         }
         .mw-panel-ai-single {
             white-space: nowrap !important;
             flex-shrink: 0 !important;
+            font-size: 10.5px !important;
+            padding: 3px 8px !important;
+            min-height: 26px !important;
+        }
+        /* Row 3: Meta Row (Camera Viewfinder + Tags) */
+        .mw-panel-meta-row {
+            display: flex !important;
+            gap: 6px !important;
+            align-items: center !important;
+            width: 100% !important;
+            min-width: 0 !important;
+        }
+        .mw-panel-shot-box {
+            display: inline-flex !important;
+            align-items: center !important;
+            background: rgba(99, 102, 241, 0.1) !important;
+            border: 1px solid rgba(99, 102, 241, 0.3) !important;
+            border-radius: 5px !important;
+            padding: 2px 6px !important;
+            gap: 4px !important;
+            flex: 0 0 150px !important;
+            min-width: 130px !important;
+            max-width: 165px !important;
+            box-sizing: border-box !important;
+        }
+        .mw-panel-shot-box i {
+            color: #818cf8 !important;
+            font-size: 10.5px !important;
+            flex-shrink: 0 !important;
+        }
+        .mw-panel-shot-sel {
+            background: transparent !important;
+            border: none !important;
+            color: #c7d2fe !important;
+            font-size: 10.5px !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            outline: none !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            text-overflow: ellipsis !important;
+            overflow: hidden !important;
+            white-space: nowrap !important;
+            padding: 1px 0 !important;
         }
         .mw-panel-tags-box {
+            flex: 1 !important;
+            min-width: 0 !important;
             display: flex !important;
             align-items: center !important;
             background: rgba(0, 0, 0, 0.3) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 6px !important;
+            border-radius: 5px !important;
             overflow: hidden !important;
+            box-sizing: border-box !important;
         }
         .mw-tags-badge {
-            padding: 4px 8px !important;
+            padding: 2px 6px !important;
             background: rgba(255, 255, 255, 0.05) !important;
             border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-            font-size: 10px !important;
+            font-size: 9.5px !important;
             font-weight: 700 !important;
             color: #64748b !important;
             display: flex !important;
             align-items: center !important;
-            gap: 4px !important;
+            gap: 3px !important;
             white-space: nowrap !important;
+            flex-shrink: 0 !important;
         }
         .mw-panel-tag-in {
             flex: 1 !important;
-            width: 100% !important;
+            min-width: 0 !important;
             background: transparent !important;
             border: none !important;
             color: #93c5fd !important;
-            padding: 5px 8px !important;
-            font-size: 11px !important;
+            padding: 3px 6px !important;
+            font-size: 10.5px !important;
             font-family: 'SF Mono', Consolas, Monaco, monospace !important;
             box-sizing: border-box !important;
             outline: none !important;
         }
-        .mw-panel-tags-box:focus-within {
-            border-color: rgba(245, 158, 11, 0.45) !important;
-        }
+        /* Row 4: Speech Bubble Row */
         .mw-bubble-row {
             display: flex !important;
-            gap: 6px !important;
+            gap: 5px !important;
             background: rgba(14, 165, 233, 0.05) !important;
-            padding: 5px 7px !important;
-            border-radius: 6px !important;
+            padding: 4px 6px !important;
+            border-radius: 5px !important;
             border: 1px solid rgba(14, 165, 233, 0.15) !important;
             align-items: center !important;
+            box-sizing: border-box !important;
         }
         .mw-bubble-type-pill {
             display: inline-flex !important;
@@ -1375,29 +1401,29 @@ ${antiHijackRule}
             background: rgba(0, 0, 0, 0.3) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 4px !important;
-            padding: 2px 6px !important;
+            padding: 2px 5px !important;
             flex-shrink: 0 !important;
         }
         .mw-bubble-type-sel {
             background: transparent !important;
             border: none !important;
             color: #7dd3fc !important;
-            font-size: 11px !important;
+            font-size: 10.5px !important;
             font-weight: 500 !important;
             outline: none !important;
             cursor: pointer !important;
-            padding: 2px 0 !important;
+            padding: 1px 0 !important;
         }
         .mw-bubble-text-in {
             flex: 1 !important;
+            min-width: 0 !important;
             background: rgba(0, 0, 0, 0.35) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
             color: #fff !important;
-            font-size: 11.5px !important;
-            padding: 4px 8px !important;
+            font-size: 11px !important;
+            padding: 3px 6px !important;
             border-radius: 4px !important;
             outline: none !important;
-            transition: border-color 0.2s !important;
             box-sizing: border-box !important;
         }
         .mw-bubble-text-in:focus {
@@ -1407,8 +1433,8 @@ ${antiHijackRule}
             background: rgba(0, 0, 0, 0.3) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             color: #94a3b8 !important;
-            font-size: 11px !important;
-            padding: 3px 6px !important;
+            font-size: 10.5px !important;
+            padding: 2px 4px !important;
             border-radius: 4px !important;
             cursor: pointer !important;
             flex-shrink: 0 !important;
@@ -1417,13 +1443,13 @@ ${antiHijackRule}
         .mw-code-block {
             background: #090b11 !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 7px !important;
-            padding: 8px 10px !important;
+            border-radius: 6px !important;
+            padding: 6px 8px !important;
             font-family: monospace !important;
-            font-size: 11px !important;
-            line-height: 1.5 !important;
+            font-size: 10.5px !important;
+            line-height: 1.4 !important;
             color: #94a3b8 !important;
-            max-height: 90px !important;
+            max-height: 70px !important;
             overflow-y: auto !important;
             word-break: break-all !important;
             user-select: text !important;
@@ -1433,12 +1459,12 @@ ${antiHijackRule}
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            padding: 4px 0 !important;
+            padding: 2px 0 !important;
         }
         .mw-canvas-viewport {
             width: 100% !important;
-            max-width: 220px !important;
-            max-height: clamp(180px, 35vh, 340px) !important;
+            max-width: 170px !important;
+            max-height: 200px !important;
             aspect-ratio: 832 / 1216 !important;
             background: #05070a !important;
             border: 2px solid rgba(255, 255, 255, 0.12) !important;
@@ -1462,8 +1488,8 @@ ${antiHijackRule}
             height: 100% !important;
             display: flex !important;
             flex-direction: column !important;
-            padding: 10px !important;
-            gap: 6px !important;
+            padding: 8px !important;
+            gap: 5px !important;
             box-sizing: border-box !important;
             background: repeating-linear-gradient(45deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, transparent 10px, transparent 20px) !important;
         }
@@ -1475,20 +1501,25 @@ ${antiHijackRule}
             align-items: center !important;
             justify-content: center !important;
             color: rgba(255, 255, 255, 0.3) !important;
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-family: monospace !important;
             background: rgba(255, 255, 255, 0.02) !important;
         }
         .mw-gen-box {
             display: flex !important;
             flex-direction: column !important;
-            gap: 6px !important;
+            gap: 5px !important;
             margin-top: 2px !important;
         }
         .mw-action-row {
             display: grid !important;
             grid-template-columns: 1fr 1fr 1fr !important;
-            gap: 5px !important;
+            gap: 4px !important;
+        }
+        .mw-action-row .mw-btn {
+            padding: 3px 5px !important;
+            font-size: 10.5px !important;
+            min-height: 28px !important;
         }
         /* 查看器与预设模态框 */
         .mw-modal-mask {
@@ -2812,38 +2843,47 @@ JSON 格式规范：
                             <div class="mw-subtitle">自然语言剧情转分镜 · 智能对白气泡 · 原画级单页出图</div>
                         </div>
                     </div>
-                    <div class="mw-hdr-controls">
-                        <div class="mw-hdr-pill">
-                            <label><i class="fa-solid fa-brush" style="color:#f59e0b"></i> 画风:</label>
-                            <select id="mw-hdr-style" class="mw-sel">
-                                ${Object.entries(COMIC_STYLES).map(([k, v]) => `<option value="${k}" ${store.style === k ? 'selected' : ''}>${v.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="mw-hdr-pill">
-                            <label><i class="fa-solid fa-clapperboard" style="color:#6366f1"></i> 文法:</label>
-                            <select id="mw-hdr-grammar" class="mw-sel">
-                                ${Object.keys(COMIC_GRAMMARS).map(k => `
-                                    <option value="${k}" ${store.grammar === k ? 'selected' : ''}>${COMIC_GRAMMARS[k].name}</option>
-                                `).join('')}
-                            </select>
-                        </div>
-                        <div class="mw-hdr-pill">
-                            <label><i class="fa-solid fa-crop-simple" style="color:#10b981"></i> 画布:</label>
-                            <select id="mw-hdr-ratio" class="mw-sel">
-                                <option value="832x1216" ${studio.ratio === '832x1216' ? 'selected' : ''}>纵向单页 (832×1216)</option>
-                                <option value="1216x832" ${studio.ratio === '1216x832' ? 'selected' : ''}>跨页展开 (1216×832)</option>
-                                <option value="896x1152" ${studio.ratio === '896x1152' ? 'selected' : ''}>宽幅剧场 (896×1152)</option>
-                            </select>
-                        </div>
-                        <div class="mw-hdr-pill">
-                            <label><i class="fa-solid fa-border-all" style="color:#ec4899"></i> 留白:</label>
-                            <select id="mw-hdr-gutter" class="mw-sel">
-                                <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>天地出血 (Bleed)</option>
-                                <option value="framed" ${store.gutter === 'framed' ? 'selected' : ''}>全封闭白边 (Framed)</option>
-                                <option value="splash" ${store.gutter === 'splash' ? 'selected' : ''}>沉浸全出血 (Splash)</option>
-                                <option value="black_line" ${store.gutter === 'black_line' ? 'selected' : ''}>纯黑线无白边 (Black Line)</option>
-                            </select>
-                        </div>
+                </div>
+
+                <!-- Global Settings 4-Column Grid Bar -->
+                <div class="mw-subbar">
+                    <div class="mw-subbar-item">
+                        <span class="mw-subbar-label"><i class="fa-solid fa-brush" style="color:#f59e0b"></i> 画风</span>
+                        <select id="mw-hdr-style" class="mw-sel">
+                            <option value="monochrome" ${store.style === 'monochrome' ? 'selected' : ''}>黑白印刷</option>
+                            <option value="soft_color" ${store.style === 'soft_color' ? 'selected' : ''}>柔光全彩</option>
+                            <option value="custom" ${store.style === 'custom' ? 'selected' : ''}>自定义画风</option>
+                        </select>
+                    </div>
+                    <div class="mw-subbar-item">
+                        <span class="mw-subbar-label"><i class="fa-solid fa-clapperboard" style="color:#6366f1"></i> 文法</span>
+                        <select id="mw-hdr-grammar" class="mw-sel">
+                            <option value="cinema" ${store.grammar === 'cinema' ? 'selected' : ''}>通用映画</option>
+                            <option value="4koma" ${store.grammar === '4koma' ? 'selected' : ''}>经典四格</option>
+                            <option value="shonen" ${store.grammar === 'shonen' ? 'selected' : ''}>热血少年</option>
+                            <option value="mystery" ${store.grammar === 'mystery' ? 'selected' : ''}>青年悬疑</option>
+                            <option value="shojo" ${store.grammar === 'shojo' ? 'selected' : ''}>唯美少女</option>
+                            <option value="daily" ${store.grammar === 'daily' ? 'selected' : ''}>日常平实</option>
+                            <option value="comedy" ${store.grammar === 'comedy' ? 'selected' : ''}>夸张搞笑</option>
+                            <option value="ecchi" ${store.grammar === 'ecchi' ? 'selected' : ''}>微涩构图</option>
+                        </select>
+                    </div>
+                    <div class="mw-subbar-item">
+                        <span class="mw-subbar-label"><i class="fa-solid fa-crop-simple" style="color:#10b981"></i> 画布</span>
+                        <select id="mw-hdr-ratio" class="mw-sel">
+                            <option value="832x1216" ${studio.ratio === '832x1216' ? 'selected' : ''}>纵向单页 (832×1216)</option>
+                            <option value="1216x832" ${studio.ratio === '1216x832' ? 'selected' : ''}>跨页展开 (1216×832)</option>
+                            <option value="896x1152" ${studio.ratio === '896x1152' ? 'selected' : ''}>宽幅剧场 (896×1152)</option>
+                        </select>
+                    </div>
+                    <div class="mw-subbar-item">
+                        <span class="mw-subbar-label"><i class="fa-solid fa-border-all" style="color:#ec4899"></i> 留白</span>
+                        <select id="mw-hdr-gutter" class="mw-sel">
+                            <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>天地出血</option>
+                            <option value="framed" ${store.gutter === 'framed' ? 'selected' : ''}>封闭白边</option>
+                            <option value="splash" ${store.gutter === 'splash' ? 'selected' : ''}>沉浸全出血</option>
+                            <option value="black_line" ${store.gutter === 'black_line' ? 'selected' : ''}>纯黑线</option>
+                        </select>
                     </div>
                 </div>
 
@@ -2861,16 +2901,16 @@ JSON 格式规范：
                             </div>
                             <textarea id="mw-story-input" placeholder="在此输入自然语言故事片段、对话或场景描写，点击「AI 智能分镜推演」自动拆解为画格与镜头机位...">${RBQ.utils.escapeHtml(studio.storyText || '')}</textarea>
                             <div class="mw-story-ft">
-                                <div class="mw-opts">
+                                <div class="mw-story-opts">
                                     <div class="mw-count-pill">
-                                        <span class="mw-pill-label"><i class="fa-solid fa-table-cells-large" style="color:#f59e0b"></i> 画格数:</span>
+                                        <span class="mw-pill-label"><i class="fa-solid fa-table-cells-large" style="color:#f59e0b"></i> 格数:</span>
                                         <select id="mw-story-panel-count" class="mw-sel mw-count-sel">
-                                            <option value="auto" ${(!studio.panelCountMode || studio.panelCountMode === 'auto') ? 'selected' : ''}>🤖 自动规划 (自适应)</option>
-                                            <option value="1" ${studio.panelCountMode === '1' ? 'selected' : ''}>1 格 (单格大画幅)</option>
-                                            <option value="2" ${studio.panelCountMode === '2' ? 'selected' : ''}>2 格 (起承 / 对峙)</option>
-                                            <option value="3" ${studio.panelCountMode === '3' ? 'selected' : ''}>3 格 (三段节拍)</option>
-                                            <option value="4" ${studio.panelCountMode === '4' ? 'selected' : ''}>4 格 (经典四格)</option>
-                                            <option value="5" ${studio.panelCountMode === '5' ? 'selected' : ''}>5 格 (密集分镜)</option>
+                                            <option value="auto" ${(!studio.panelCountMode || studio.panelCountMode === 'auto') ? 'selected' : ''}>🤖 自动规划</option>
+                                            <option value="1" ${studio.panelCountMode === '1' ? 'selected' : ''}>1 格 (单格)</option>
+                                            <option value="2" ${studio.panelCountMode === '2' ? 'selected' : ''}>2 格 (起承)</option>
+                                            <option value="3" ${studio.panelCountMode === '3' ? 'selected' : ''}>3 格 (三段)</option>
+                                            <option value="4" ${studio.panelCountMode === '4' ? 'selected' : ''}>4 格 (四格)</option>
+                                            <option value="5" ${studio.panelCountMode === '5' ? 'selected' : ''}>5 格 (密集)</option>
                                         </select>
                                     </div>
                                     <label class="mw-chip-toggle">
@@ -2888,7 +2928,7 @@ JSON 格式规范：
                                         </span>
                                     </label>
                                 </div>
-                                <button id="mw-btn-ai-storyboard" class="mw-btn pri"><i class="fa-solid fa-brain"></i> AI 智能分镜推演</button>
+                                <button id="mw-btn-ai-storyboard" class="mw-btn pri mw-btn-storyboard"><i class="fa-solid fa-brain"></i> AI 智能分镜推演</button>
                             </div>
                         </div>
 
@@ -2964,24 +3004,16 @@ JSON 格式规范：
             const [w, h] = ratio.split('x').map(Number);
             if (w && h) {
                 viewportEl.style.aspectRatio = `${w} / ${h}`;
-                viewportEl.style.maxWidth = (w > h) ? '300px' : '220px';
+                viewportEl.style.maxWidth = (w > h) ? '240px' : '170px';
             }
             const resText = ratio.replace('x', ' × ') + ' PX';
             if (resBadgeEl) resBadgeEl.textContent = resText;
 
-            if (studio.lastGeneratedUrl) {
-                viewportEl.innerHTML = `<img src="${RBQ.utils.escapeHtml(studio.lastGeneratedUrl)}" alt="Generated Manga Page" title="双击大图全屏走查">`;
-                viewportEl.querySelector('img')?.addEventListener('dblclick', () => {
-                    showMangaViewerModal(studio.lastGeneratedUrl, studio.lastGeneratedPrompt);
-                });
-                if (btnSendChat) btnSendChat.disabled = false;
-                if (btnDownload) btnDownload.disabled = false;
-                if (btnZoom) btnZoom.disabled = false;
-            } else {
+            function renderPlaceholder() {
                 viewportEl.innerHTML = `
                     <div class="mw-blueprint-placeholder">
                         <div class="mw-bp-panel">Panel 1 · 漫画分镜预览位</div>
-                        <div style="display:flex;gap:6px;flex:1;">
+                        <div style="display:flex;gap:5px;flex:1;">
                             <div class="mw-bp-panel">Panel 2 · 特写机位</div>
                             <div class="mw-bp-panel">Panel 3 · 对白气泡位</div>
                         </div>
@@ -2991,6 +3023,23 @@ JSON 格式规范：
                 if (btnDownload) btnDownload.disabled = true;
                 if (btnZoom) btnZoom.disabled = true;
             }
+
+            if (studio.lastGeneratedUrl) {
+                viewportEl.innerHTML = `<img src="${RBQ.utils.escapeHtml(studio.lastGeneratedUrl)}" alt="Generated Manga Page" title="双击大图全屏走查">`;
+                const img = viewportEl.querySelector('img');
+                img?.addEventListener('dblclick', () => {
+                    showMangaViewerModal(studio.lastGeneratedUrl, studio.lastGeneratedPrompt);
+                });
+                img?.addEventListener('error', () => {
+                    // Fallback to blueprint placeholder if image fails to load
+                    renderPlaceholder();
+                });
+                if (btnSendChat) btnSendChat.disabled = false;
+                if (btnDownload) btnDownload.disabled = false;
+                if (btnZoom) btnZoom.disabled = false;
+            } else {
+                renderPlaceholder();
+            }
         }
 
         function renderPanelCards() {
@@ -2998,13 +3047,11 @@ JSON 格式规范：
             countBadgeEl.textContent = String(studio.panels.length);
             panelsListEl.innerHTML = studio.panels.map((p, idx) => `
                 <div class="mw-panel-card" data-idx="${idx}">
+                    <!-- Row 1: Badge + Title + Action buttons -->
                     <div class="mw-panel-hd">
                         <div class="mw-panel-info">
                             <span class="mw-panel-num">#${idx + 1}</span>
-                            <input type="text" class="mw-panel-title-in" value="${RBQ.utils.escapeHtml(p.title || '')}" placeholder="画格描述...">
-                            <select class="mw-panel-shot-sel">
-                                ${renderShotOptions(p.shot)}
-                            </select>
+                            <input type="text" class="mw-panel-title-in" value="${RBQ.utils.escapeHtml(p.title || '')}" placeholder="画格场景（如：起景 · 夜路）...">
                         </div>
                         <div class="mw-panel-btns">
                             <button class="mw-btn sm mw-panel-up" ${idx === 0 ? 'disabled' : ''} title="上移画格"><i class="fa-solid fa-arrow-up"></i></button>
@@ -3014,16 +3061,27 @@ JSON 格式规范：
                         </div>
                     </div>
 
+                    <!-- Row 2: Story Beat Description + AI Polisher -->
                     <div class="mw-panel-desc-row">
                         <input type="text" class="mw-panel-desc-in" value="${RBQ.utils.escapeHtml(p.desc || '')}" placeholder="✍️ 输入本格剧情描述（如：少女红着脸递出情书）...">
                         <button class="mw-btn sm cy mw-panel-ai-single" title="针对本格填入的句子，单独调用 AI 生成 Tag、机位与对白"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 润色本格</button>
                     </div>
 
-                    <div class="mw-panel-tags-box">
-                        <span class="mw-tags-badge"><i class="fa-solid fa-tags"></i> TAGS</span>
-                        <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入该画格专属英文 Danbooru / NAI tags...">
+                    <!-- Row 3: Camera Viewfinder + Tags -->
+                    <div class="mw-panel-meta-row">
+                        <div class="mw-panel-shot-box" title="分镜机位景别">
+                            <i class="fa-solid fa-video"></i>
+                            <select class="mw-panel-shot-sel">
+                                ${renderShotOptions(p.shot)}
+                            </select>
+                        </div>
+                        <div class="mw-panel-tags-box">
+                            <span class="mw-tags-badge"><i class="fa-solid fa-tags"></i> TAGS</span>
+                            <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入本格专属英文 Danbooru / NAI tags...">
+                        </div>
                     </div>
 
+                    <!-- Row 4: Speech Bubble Composer -->
                     <div class="mw-bubble-row">
                         <div class="mw-bubble-type-pill">
                             <i class="fa-regular fa-comment-dots" style="color:#38bdf8"></i>

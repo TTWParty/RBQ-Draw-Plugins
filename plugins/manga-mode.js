@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.1.2';
+        const VERSION = '1.1.4';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -155,7 +155,7 @@
 - 所有服装与外貌颜色必须脱色转写为灰阶明暗词：dark, light, white, black, grey/gray（例如 bright yellow shirt 必须转写为 light shirt 或 pale shirt）！
 - 页面描述必须带有黑白介质词：モノクロ, グレースケール, スクリーントーン。严禁出现带色相的词（如 warm light, brown sofa），各格只写光源方向与明暗，不写环境色。`
             : `9. 色彩模式（来自原版 v1.1.json [COLOR-MODE: FULL-COLOR]）：
-当前处于全彩漫模式，可保留角色的固有服装色彩与发色。`;
+当前处于全彩/自定义色彩模式，保留角色的固有服装色彩与发色，严禁输出黑白灰阶词（如 greyscale, monochrome, screentone 等）。`;
 
         const antiHijackRule = store.antiHijack
             ? '10. 画风保护（来自原版 v1.1.json [ANTI-FRANCHISE-HIJACK]）：\n同人角色出场时，仅将其特征作为固有外貌DNA使用，严格禁止同人角色的游戏原作官方立绘画风覆盖选定的漫画黑白/网点风格。\n'
@@ -239,7 +239,7 @@ ${antiHijackRule}
 
 1. \`scene\` 字段（页面全局排版与环境）：
    - 必须以完整的漫画页面排版词开头，格式为：
-     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), manga page layout, vertical layout, white border, dynamic komawari, greyscale, monochrome, screentone, bold linework, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
+     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), manga page layout, vertical layout, white border, dynamic komawari, ${store.style === 'monochrome' ? 'greyscale, monochrome, screentone, bold linework, ' : ''}[本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
    - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
 
 2. \`characters\` 数组（逐画格演出槽位分配）：
@@ -253,7 +253,7 @@ ${antiHijackRule}
    - 紧随构图词后写入本格出场主体的动作与姿势；
    - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], Layout: 縦書き, Text: [台词原文]\`；若本格无台词则切勿添加 BubbleType 与 Text；
    - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。若本格为环境格或拟声词格，base 与 outfit 写 \`solo\` 或留空；
-   - 【黑白漫画脱色铁律】：当前处于黑白漫画模式，严禁输出任何具体颜色词（如 brown, blonde, pink, blue, red 等），所有发色外貌必须脱色为 dark hair, light hair, pale, white, black；
+   - ${store.style === 'monochrome' ? '【黑白漫画脱色铁律】：当前处于黑白漫画模式，严禁输出任何具体颜色词（如 brown, blonde, pink, blue, red 等），所有发色外貌必须脱色为 dark hair, light hair, pale, white, black；' : '【全彩/自定义色彩规则】：当前处于全彩/自定义画风模式，保留角色固有色彩（发色、瞳色、服装与环境色彩），严禁强行输出黑白、脱色或灰阶词；'}
    - center 统一填写 \`C3\`（排版由画格关键词控制，无需手动计算坐标）。`;
     }
 

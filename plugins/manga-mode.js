@@ -1,8 +1,4 @@
 (function(RBQ, $, toastr) {
-    if (typeof window === 'undefined') {
-        if (typeof module !== 'undefined' && module.exports) module.exports = {};
-        return;
-    }
     if (!RBQ) return console.error('[Manga Mode] RBQ Core API missing');
 
     try {
@@ -886,8 +882,4 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
     } catch (err) {
         console.error('[Manga Mode] Uncaught initialization error:', err);
     }
-})(
-    (typeof RBQ !== 'undefined' ? RBQ : (typeof window !== 'undefined' ? window.RBQ : null)),
-    (typeof jQuery !== 'undefined' ? jQuery : (typeof window !== 'undefined' ? (window.jQuery || window.$) : null)),
-    (typeof toastr !== 'undefined' ? toastr : (typeof window !== 'undefined' && window.toastr ? window.toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }))
-);
+})((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

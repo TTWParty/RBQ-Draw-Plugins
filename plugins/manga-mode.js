@@ -2159,14 +2159,30 @@ JSON 格式规范：
         return panels;
     }
 
-    async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language) {
+    async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0) {
         const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
         const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const apiKey = (sdtStore.openaiApiKey || '').trim();
         const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
 
+        let otherContext = '';
+        if (Array.isArray(allPanels) && allPanels.length > 1) {
+            const others = allPanels
+                .map((p, i) => {
+                    if (i === currentIndex) return null;
+                    const descPart = p.desc || p.title || '';
+                    const tagPart = p.tags ? `[已有Tag参考: ${p.tags}]` : '';
+                    return `画格 #${i + 1}: ${descPart} ${tagPart}`.trim();
+                })
+                .filter(Boolean);
+            if (others.length > 0) {
+                otherContext = `\n【当前整页其他画格参考 (必须严格继承同一角色的外貌特征、发色与服装，保持人设一致)】：\n${others.join('\n')}`;
+            }
+        }
+
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
 你的任务是将用户提供的单一漫画画格剧情句子转换为专业的 NAI 提示词。
+如果提供了其他画格的参考内容，请务必继承已确立的角色外貌（例如角色名、发色发型、瞳色、服装等），保持同一漫画单页内人设连贯，在此基础上根据本格剧情生成动作、神态、光影和机位！
 必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
 JSON 格式规范：
 {
@@ -2178,7 +2194,7 @@ JSON 格式规范：
   "bubbleLayout": "vertical | horizontal"
 }`;
 
-        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}`;
+        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}${otherContext}`;
 
         if (baseUrl) {
             try {
@@ -2634,7 +2650,7 @@ JSON 格式规范：
                     btnSingleAi.disabled = true;
                     btnSingleAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...';
                     try {
-                        const expanded = await callLlmSingleSentenceExpander(sentence, p.shot, store.grammar, store.language);
+                        const expanded = await callLlmSingleSentenceExpander(sentence, p.shot, store.grammar, store.language, studio.panels, idx);
                         if (expanded) {
                             if (expanded.title) p.title = expanded.title;
                             if (expanded.shot) p.shot = expanded.shot;

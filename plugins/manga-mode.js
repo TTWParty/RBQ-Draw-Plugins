@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.2.0';
+        const VERSION = '1.3.0';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -22,6 +22,43 @@
                 gutter: 'bleed', // bleed | framed | splash
                 autoSpread: true, // 智能跨页 (見開きページ)
                 antiHijack: true, // 同人角色防夺舍
+                studio: null,
+            };
+        }
+        if (!s[STORAGE_KEY].studio) {
+            s[STORAGE_KEY].studio = {
+                storyText: '',
+                ratio: '832x1216',
+                autoSfx: true,
+                antiHijack: true,
+                lastGeneratedUrl: '',
+                lastGeneratedPrompt: '',
+                panels: [
+                    {
+                        title: '起景 · 黄昏教室',
+                        shot: 'medium shot',
+                        tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
+                        bubbleType: 'thought',
+                        bubbleText: '（心跳……怎么会这么快……）',
+                        bubbleLayout: 'vertical',
+                    },
+                    {
+                        title: '递信特写 · 决定瞬间',
+                        shot: 'close-up focus',
+                        tags: 'focus on hands, holding love letter, white envelope, red wax seal, romantic tension',
+                        bubbleType: 'speech',
+                        bubbleText: '请、请收下这个！',
+                        bubbleLayout: 'horizontal',
+                    },
+                    {
+                        title: '神情骤变 · 泪光',
+                        shot: 'face close-up',
+                        tags: '1girl, chinami, wide eyed, tears prickling in eyes, fluttering hair, curtain blowing in wind, dramatic lighting',
+                        bubbleType: 'screaming',
+                        bubbleText: '……欸？！我、我吗？！',
+                        bubbleLayout: 'vertical',
+                    }
+                ]
             };
         }
         return s[STORAGE_KEY];
@@ -321,11 +358,23 @@ ${antiHijackRule}
         return cleaned.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
     }
 
+    let isStudioGenerating = false;
+    let studioGenerationRatio = null;
+
     RBQ.on('buildNaiV4Payload', (payload) => {
         const store = getStore();
-        if (!store.enabled) return payload;
+        if (!store.enabled && !isStudioGenerating) return payload;
 
         console.info(`[${PLUGIN_NAME}] 正在应用漫画模式 Payload 增强...`);
+
+        // 工作台独立出图画幅尺寸覆盖
+        if (isStudioGenerating && studioGenerationRatio && payload.parameters) {
+            const [sw, sh] = studioGenerationRatio.split('x').map(Number);
+            if (sw && sh) {
+                payload.parameters.width = sw;
+                payload.parameters.height = sh;
+            }
+        }
 
         // 1. 获取选中的漫画画风
         let styleObj = COMIC_STYLES[store.style] || COMIC_STYLES.monochrome;
@@ -702,6 +751,581 @@ ${antiHijackRule}
             margin-left: 6px !important;
             font-weight: 500 !important;
         }
+
+        /* ════════════ 漫画工作台 (Manga Studio) 样式 ════════════ */
+        .mw-wrap {
+            display: flex !important;
+            flex-direction: column !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 100% !important;
+            color: #f1f5f9 !important;
+            background: #0d1019 !important;
+            font-family: inherit !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+        }
+        .mw-hdr {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            padding: 10px 16px !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+            background: rgba(18, 22, 34, 0.95) !important;
+            backdrop-filter: blur(12px) !important;
+            gap: 12px !important;
+            flex-wrap: wrap !important;
+            flex-shrink: 0 !important;
+            box-sizing: border-box !important;
+        }
+        .mw-brand {
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+            flex-shrink: 0 !important;
+        }
+        .mw-logo {
+            width: 34px !important;
+            height: 34px !important;
+            border-radius: 9px !important;
+            background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            color: #000 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 16px !important;
+            box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3) !important;
+        }
+        .mw-title-box {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 1px !important;
+        }
+        .mw-title {
+            font-size: 14px !important;
+            font-weight: 700 !important;
+            color: #fff !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+        }
+        .mw-badge {
+            font-size: 10px !important;
+            font-weight: 700 !important;
+            padding: 1px 6px !important;
+            border-radius: 999px !important;
+            background: rgba(245, 158, 11, 0.18) !important;
+            color: #fcd34d !important;
+            border: 1px solid rgba(245, 158, 11, 0.35) !important;
+        }
+        .mw-subtitle {
+            font-size: 11px !important;
+            color: #94a3b8 !important;
+        }
+        .mw-hdr-controls {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            flex-wrap: wrap !important;
+        }
+        .mw-control-group {
+            display: flex !important;
+            align-items: center !important;
+            background: rgba(0, 0, 0, 0.35) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 7px !important;
+            padding: 3px 8px !important;
+            gap: 6px !important;
+            font-size: 11.5px !important;
+        }
+        .mw-control-group label {
+            color: #94a3b8 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            font-weight: 500 !important;
+            white-space: nowrap !important;
+        }
+        .mw-sel, .mw-in, .mw-ta {
+            background: transparent !important;
+            color: #fff !important;
+            border: none !important;
+            font-size: 12px !important;
+            outline: none !important;
+            font-family: inherit !important;
+        }
+        .mw-sel {
+            cursor: pointer !important;
+        }
+        .mw-sel option {
+            background: #181b26 !important;
+            color: #fff !important;
+        }
+        /* 按钮宿主防御 */
+        .mw-btn {
+            display: inline-flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 6px !important;
+            white-space: nowrap !important;
+            box-sizing: border-box !important;
+            flex-shrink: 0 !important;
+            user-select: none !important;
+            cursor: pointer !important;
+            font-family: inherit !important;
+            font-weight: 600 !important;
+            border-radius: 7px !important;
+            border: 1px solid transparent !important;
+            padding: 5px 11px !important;
+            font-size: 12px !important;
+            transition: all 0.15s ease !important;
+            text-decoration: none !important;
+            background: rgba(255, 255, 255, 0.08) !important;
+            color: #fff !important;
+            min-height: 32px !important;
+        }
+        .mw-btn:hover {
+            filter: brightness(1.15) !important;
+        }
+        .mw-btn:active {
+            transform: scale(0.98) !important;
+        }
+        .mw-btn:disabled {
+            opacity: 0.5 !important;
+            cursor: not-allowed !important;
+            pointer-events: none !important;
+        }
+        .mw-btn.pri {
+            background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            color: #000 !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3) !important;
+        }
+        .mw-btn.cy {
+            background: rgba(99, 102, 241, 0.16) !important;
+            border-color: rgba(99, 102, 241, 0.4) !important;
+            color: #a5b4fc !important;
+        }
+        .mw-btn.gn {
+            background: rgba(16, 185, 129, 0.16) !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+            color: #6ee7b7 !important;
+        }
+        .mw-btn.am {
+            background: rgba(245, 158, 11, 0.16) !important;
+            border-color: rgba(245, 158, 11, 0.4) !important;
+            color: #fcd34d !important;
+        }
+        .mw-btn.rd {
+            background: rgba(239, 68, 68, 0.16) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+            color: #fca5a5 !important;
+        }
+        .mw-btn.sm {
+            padding: 3px 8px !important;
+            font-size: 11px !important;
+            min-height: 26px !important;
+        }
+        .mw-btn.lg {
+            padding: 10px 16px !important;
+            font-size: 13.5px !important;
+            font-weight: 800 !important;
+            min-height: 42px !important;
+            border-radius: 9px !important;
+        }
+        /* 主体双栏拓扑 */
+        .mw-body {
+            flex: 1 !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 7.2fr) minmax(0, 4.8fr) !important;
+            gap: 14px !important;
+            padding: 14px !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+        }
+        @media (max-width: 960px) {
+            .mw-body {
+                grid-template-columns: 1fr !important;
+            }
+        }
+        .mw-left-pane, .mw-right-pane {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+            min-width: 0 !important;
+        }
+        .mw-card {
+            background: rgba(24, 28, 42, 0.65) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 11px !important;
+            padding: 12px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 9px !important;
+            box-sizing: border-box !important;
+        }
+        .mw-card-hd {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+            flex-wrap: wrap !important;
+        }
+        .mw-card-tt {
+            font-size: 12.5px !important;
+            font-weight: 700 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            color: #e2e8f0 !important;
+        }
+        .mw-card-actions {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            flex-wrap: wrap !important;
+        }
+        .mw-story-card textarea {
+            width: 100% !important;
+            min-height: 64px !important;
+            background: rgba(12, 15, 24, 0.8) !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 8px !important;
+            color: #fff !important;
+            padding: 8px 10px !important;
+            font-size: 12px !important;
+            line-height: 1.5 !important;
+            resize: vertical !important;
+            box-sizing: border-box !important;
+            outline: none !important;
+            transition: border-color 0.2s !important;
+        }
+        .mw-story-card textarea:focus {
+            border-color: #f59e0b !important;
+        }
+        .mw-story-ft {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 10px !important;
+            flex-wrap: wrap !important;
+        }
+        .mw-opts {
+            display: flex !important;
+            align-items: center !important;
+            gap: 12px !important;
+            font-size: 11.5px !important;
+            color: #94a3b8 !important;
+        }
+        .mw-chk-lbl {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 5px !important;
+            cursor: pointer !important;
+            user-select: none !important;
+        }
+        .mw-chk-lbl input {
+            accent-color: #f59e0b !important;
+        }
+        /* 画格序列卡片流 */
+        .mw-panels-list {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 9px !important;
+        }
+        .mw-panel-card {
+            background: rgba(15, 18, 28, 0.75) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 9px !important;
+            padding: 10px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            transition: border-color 0.15s ease !important;
+        }
+        .mw-panel-card:hover {
+            border-color: rgba(245, 158, 11, 0.4) !important;
+        }
+        .mw-panel-hd {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+        }
+        .mw-panel-info {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            flex: 1 !important;
+        }
+        .mw-panel-num {
+            width: 22px !important;
+            height: 22px !important;
+            border-radius: 5px !important;
+            background: rgba(245, 158, 11, 0.2) !important;
+            color: #fcd34d !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+        }
+        .mw-panel-title-in {
+            background: transparent !important;
+            border: 1px solid transparent !important;
+            color: #fff !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            padding: 2px 4px !important;
+            border-radius: 4px !important;
+            flex: 1 !important;
+            max-width: 180px !important;
+        }
+        .mw-panel-title-in:focus {
+            background: rgba(0, 0, 0, 0.4) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+        .mw-panel-shot-sel {
+            background: rgba(0, 0, 0, 0.4) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #a5b4fc !important;
+            font-size: 11px !important;
+            padding: 2px 6px !important;
+            border-radius: 5px !important;
+            cursor: pointer !important;
+        }
+        .mw-panel-btns {
+            display: flex !important;
+            align-items: center !important;
+            gap: 3px !important;
+        }
+        .mw-panel-tag-in {
+            width: 100% !important;
+            background: rgba(0, 0, 0, 0.35) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 6px !important;
+            color: #cbd5e1 !important;
+            padding: 5px 8px !important;
+            font-size: 11px !important;
+            font-family: monospace !important;
+            box-sizing: border-box !important;
+            outline: none !important;
+        }
+        .mw-panel-tag-in:focus {
+            border-color: #f59e0b !important;
+        }
+        .mw-bubble-row {
+            display: grid !important;
+            grid-template-columns: 140px 1fr 70px !important;
+            gap: 6px !important;
+            background: rgba(0, 0, 0, 0.25) !important;
+            padding: 6px !important;
+            border-radius: 6px !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            align-items: center !important;
+        }
+        @media (max-width: 600px) {
+            .mw-bubble-row {
+                grid-template-columns: 1fr 1fr !important;
+            }
+        }
+        .mw-bubble-type-sel, .mw-bubble-dir-sel {
+            background: rgba(0, 0, 0, 0.4) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #fff !important;
+            font-size: 11px !important;
+            padding: 3px 5px !important;
+            border-radius: 4px !important;
+        }
+        .mw-bubble-text-in {
+            background: rgba(0, 0, 0, 0.4) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #fff !important;
+            font-size: 11.5px !important;
+            padding: 3px 8px !important;
+            border-radius: 4px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        .mw-bubble-text-in:focus {
+            border-color: #f59e0b !important;
+        }
+        /* 组装提示词预览 */
+        .mw-code-block {
+            background: #090b11 !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 7px !important;
+            padding: 8px 10px !important;
+            font-family: monospace !important;
+            font-size: 11px !important;
+            line-height: 1.5 !important;
+            color: #94a3b8 !important;
+            max-height: 90px !important;
+            overflow-y: auto !important;
+            word-break: break-all !important;
+            user-select: text !important;
+        }
+        /* 右侧画布与出图控制 */
+        .mw-canvas-wrapper {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 8px 0 !important;
+        }
+        .mw-canvas-viewport {
+            width: 100% !important;
+            max-width: 320px !important;
+            aspect-ratio: 832 / 1216 !important;
+            background: #05070a !important;
+            border: 3px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: relative !important;
+            box-shadow: 0 8px 26px rgba(0, 0, 0, 0.7) !important;
+        }
+        .mw-canvas-viewport img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;
+            cursor: zoom-in !important;
+        }
+        .mw-blueprint-placeholder {
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            padding: 10px !important;
+            gap: 6px !important;
+            box-sizing: border-box !important;
+            background: repeating-linear-gradient(45deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, transparent 10px, transparent 20px) !important;
+        }
+        .mw-bp-panel {
+            flex: 1 !important;
+            border: 1.5px dashed rgba(255, 255, 255, 0.18) !important;
+            border-radius: 4px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            color: rgba(255, 255, 255, 0.3) !important;
+            font-size: 11px !important;
+            font-family: monospace !important;
+            background: rgba(255, 255, 255, 0.02) !important;
+        }
+        .mw-gen-box {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            margin-top: 4px !important;
+        }
+        .mw-action-row {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr 1fr !important;
+            gap: 6px !important;
+        }
+        /* 查看器与预设模态框 */
+        .mw-modal-mask {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 2147483640 !important;
+            background: rgba(7, 9, 15, 0.94) !important;
+            backdrop-filter: blur(12px) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 16px !important;
+            box-sizing: border-box !important;
+        }
+        .mw-viewer-box, .mw-preset-box {
+            background: #141724 !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-radius: 12px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            max-width: 90vw !important;
+            max-height: 90vh !important;
+            overflow: hidden !important;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8) !important;
+        }
+        .mw-viewer-box {
+            width: 580px !important;
+        }
+        .mw-preset-box {
+            width: 480px !important;
+        }
+        .mw-viewer-hd, .mw-preset-hd {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            padding: 10px 14px !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            color: #fff !important;
+        }
+        .mw-viewer-body {
+            flex: 1 !important;
+            overflow: hidden !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 10px !important;
+            background: #000 !important;
+        }
+        .mw-viewer-body img {
+            max-width: 100% !important;
+            max-height: 65vh !important;
+            object-fit: contain !important;
+            border-radius: 6px !important;
+        }
+        .mw-viewer-ft {
+            padding: 10px 14px !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+        .mw-preset-list {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            padding: 14px !important;
+            max-height: 65vh !important;
+            overflow-y: auto !important;
+        }
+        .mw-preset-item {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 8px !important;
+            padding: 10px !important;
+            cursor: pointer !important;
+            transition: all 0.15s ease !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 4px !important;
+        }
+        .mw-preset-item:hover {
+            border-color: #f59e0b !important;
+            background: rgba(245, 158, 11, 0.08) !important;
+        }
+        .mw-preset-title {
+            font-size: 12.5px !important;
+            font-weight: 700 !important;
+            color: #fcd34d !important;
+        }
+        .mw-preset-desc {
+            font-size: 11px !important;
+            color: #94a3b8 !important;
+            line-height: 1.4 !important;
+        }
         `;
         (document.head || document.documentElement || document.body)?.appendChild(style);
     }
@@ -1072,7 +1696,987 @@ ${antiHijackRule}
         updateUiState();
     }
 
-    // ── 7. DOM Mounting & Lifecycle Guard ─────────────────────────
+    // ── 7. 漫画工作台 (Manga Studio) 核心引擎与面板挂载 ────────────
+    const STORYBOARD_PRESETS = [
+        {
+            id: 'sunset-confession',
+            name: '黄昏告白 · 3 格 (恋爱物语)',
+            desc: '黄昏教室迟疑 ➔ 鼓起勇气递情书特写 ➔ 神情骤变泪光心动。',
+            grammar: 'shojo',
+            panels: [
+                {
+                    title: '起景 · 黄昏教室',
+                    shot: 'medium shot',
+                    tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
+                    bubbleType: 'thought',
+                    bubbleText: '（心跳……怎么会这么快……）',
+                    bubbleLayout: 'vertical',
+                },
+                {
+                    title: '递信特写 · 瞬间',
+                    shot: 'close-up focus',
+                    tags: 'focus on hands, holding love letter, white envelope, red wax seal, romantic tension',
+                    bubbleType: 'speech',
+                    bubbleText: '请、请收下这个！',
+                    bubbleLayout: 'horizontal',
+                },
+                {
+                    title: '神情骤变 · 泪光',
+                    shot: 'face close-up',
+                    tags: '1girl, chinami, wide eyed, tears prickling in eyes, fluttering hair, curtain blowing in wind, dramatic lighting',
+                    bubbleType: 'screaming',
+                    bubbleText: '……欸？！我、我吗？！',
+                    bubbleLayout: 'vertical',
+                }
+            ]
+        },
+        {
+            id: 'shonen-battle',
+            name: '热血对峙 · 4 格 (战斗高潮)',
+            desc: '风暴战场废墟 ➔ 拔刀蓄力斩击 ➔ 速度线怒吼爆发 ➔ 刀光落地残影。',
+            grammar: 'shonen',
+            panels: [
+                {
+                    title: '远景 · 废墟战云',
+                    shot: 'wide shot',
+                    tags: 'battlefield, storm, destroyed city, dark clouds, lightning, epic perspective, debris',
+                    bubbleType: 'caption',
+                    bubbleText: '终局之刻，在此降临。',
+                    bubbleLayout: 'horizontal',
+                },
+                {
+                    title: '中景 · 拔刀斩击',
+                    shot: 'medium shot',
+                    tags: 'focus on blade, unsheathing katana, electric sparks, motion blur, sharp eyes, intense glare',
+                    bubbleType: 'sfx',
+                    bubbleText: '锵——！！',
+                    bubbleLayout: 'vertical',
+                },
+                {
+                    title: '特写 · 怒吼爆发',
+                    shot: 'dynamic low angle',
+                    tags: 'leaping forward, sword slash, slashing motion, speed lines, shouting, furious expression, dramatic contrast',
+                    bubbleType: 'screaming',
+                    bubbleText: '接招吧——！',
+                    bubbleLayout: 'vertical',
+                },
+                {
+                    title: '收势 · 烟尘背影',
+                    shot: 'close-up back',
+                    tags: 'landing after attack, back view, cape fluttering, smoke rising, shattered ground, cool silhouette',
+                    bubbleType: 'thought',
+                    bubbleText: '（已经……结束了。）',
+                    bubbleLayout: 'horizontal',
+                }
+            ]
+        },
+        {
+            id: 'daily-4koma',
+            name: '日常轻喜 · 4 格 (经典四格)',
+            desc: '清晨自制吐司 ➔ 猛然惊见时钟 ➔ 狂奔上学大喊 ➔ 紧闭校门与星期天。',
+            grammar: '4koma',
+            panels: [
+                {
+                    title: '起 · 惬意早餐',
+                    shot: 'medium shot',
+                    tags: 'peaceful morning, kitchen, sunny day, smiling, holding plate, toast with butter, cheerful',
+                    bubbleType: 'speech',
+                    bubbleText: '今天做的是法式吐司哦~',
+                    bubbleLayout: 'horizontal',
+                },
+                {
+                    title: '承 · 惊愕一撇',
+                    shot: 'close-up',
+                    tags: 'looking at wall clock, eyes bulging, sweat drop on cheek, dumbfounded, trembling',
+                    bubbleType: 'speech',
+                    bubbleText: '等等……现在的时刻是？！',
+                    bubbleLayout: 'horizontal',
+                },
+                {
+                    title: '转 · 狂奔风暴',
+                    shot: 'wide shot',
+                    tags: 'running at full speed, toast in mouth, rushing down street, fluttering skirt, wind, frantic, panicked',
+                    bubbleType: 'screaming',
+                    bubbleText: '要迟到啦啊啊啊！',
+                    bubbleLayout: 'vertical',
+                },
+                {
+                    title: '合 · 闭门石化',
+                    shot: 'medium shot',
+                    tags: 'standing before closed school gate, calendar showing Sunday, blank white eyes, soul escaping mouth, comedic defeat',
+                    bubbleType: 'caption',
+                    bubbleText: '今天……是星期天。',
+                    bubbleLayout: 'horizontal',
+                }
+            ]
+        },
+        {
+            id: 'cinema-mystery',
+            name: '悬疑追索 · 2 格 (电影画卷)',
+            desc: '大远景雨夜侦探社 ➔ 放大镜微光与真相锁定。',
+            grammar: 'mystery',
+            panels: [
+                {
+                    title: '远景 · 雨夜长街',
+                    shot: 'wide establishing shot',
+                    tags: 'dimly lit office, rainy window, rain streaks, wet glass, night city lights, lonely cigarette smoke, chiaroscuro',
+                    bubbleType: 'caption',
+                    bubbleText: '案发后的第三个雨夜。',
+                    bubbleLayout: 'horizontal',
+                },
+                {
+                    title: '特写 · 瞳孔与微光',
+                    shot: 'face close-up',
+                    tags: 'sharp gaze, shadow covering upper face, glowing eyes, magnifying glass reflecting photo, intense atmosphere, cinematic lighting',
+                    bubbleType: 'thought',
+                    bubbleText: '（凶手……原来就是你。）',
+                    bubbleLayout: 'vertical',
+                }
+            ]
+        }
+    ];
+
+    function composeStudioPrompt(store) {
+        const studio = store.studio;
+        const grammarKey = store.grammar || 'cinema';
+        const grammarObj = COMIC_GRAMMARS[grammarKey] || COMIC_GRAMMARS.cinema;
+        const styleKey = store.style || 'monochrome';
+        const styleObj = COMIC_STYLES[styleKey] || COMIC_STYLES.monochrome;
+        const stylePos = styleKey === 'custom' ? (store.customPositive || '') : styleObj.positive;
+
+        let gutterTag = 'white border';
+        if (store.gutter === 'black_line') gutterTag = '太い黒い仕切り線, 余白なし';
+        else if (store.gutter === 'splash') gutterTag = '全面裁ち落とし, 余白なし';
+
+        const isDoubleSpread = studio.ratio === '1216x832';
+        const layoutTag = isDoubleSpread ? 'wide spread' : 'vertical layout';
+        const panelCountTag = `${studio.panels.length}panels`;
+
+        const baseParts = [
+            grammarObj.prefix,
+            stylePos,
+            'comic, 複数コマの漫画ページ, manga page layout',
+            layoutTag,
+            gutterTag,
+            'dynamic komawari',
+            panelCountTag
+        ].filter(Boolean);
+
+        const baseCaption = baseParts.join(', ');
+
+        const panelSegments = studio.panels.map((p) => {
+            const parts = [];
+            if (p.shot) parts.push(p.shot);
+            if (p.tags) parts.push(p.tags);
+
+            if (p.bubbleText && p.bubbleText.trim()) {
+                const bType = p.bubbleType || 'speech';
+                let typeTag = 'speech bubble';
+                if (bType === 'thought') typeTag = 'thought bubble';
+                else if (bType === 'screaming') typeTag = 'screaming bubble';
+                else if (bType === 'caption') typeTag = 'caption';
+                else if (bType === 'sfx') typeTag = 'sfx';
+
+                const layoutDir = p.bubbleLayout === 'horizontal' ? 'horizontal text' : 'vertical text';
+                parts.push(`BubbleType: ${typeTag}`);
+                parts.push(`Text: "${p.bubbleText.replace(/"/g, "'").trim()}"`);
+                parts.push(layoutDir);
+            }
+            return parts.join(', ');
+        });
+
+        if (panelSegments.length > 0) {
+            return [baseCaption, ...panelSegments].join(' | ');
+        }
+        return baseCaption;
+    }
+
+    async function callLlmStoryboardParser(storyText, grammar, language, onProgress) {
+        const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
+        const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
+        const apiKey = (sdtStore.openaiApiKey || '').trim();
+        const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
+
+        const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
+你的任务是将用户提供的自然语言剧情故事拆解为 1~4 个连续且具视觉冲击力的漫画画格（Panels）。
+必须输出纯 JSON，绝不要包含 Markdown 代码块（如 \`\`\`json）或任何额外文字。
+JSON 格式规范：
+{
+  "panels": [
+    {
+      "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
+      "shot": "景别英文（必须为以下之一：close-up | medium shot | wide shot | low angle | high angle | face close-up）",
+      "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词）",
+      "bubbleType": "speech | thought | screaming | caption | sfx",
+      "bubbleText": "画格内角色台词、心声或旁白文字",
+      "bubbleLayout": "vertical | horizontal"
+    }
+  ]
+}`;
+
+        const userContent = `【剧情叙事】：${storyText}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}`;
+
+        if (baseUrl) {
+            try {
+                if (onProgress) onProgress('正在调用大模型进行分镜剧情推演...');
+                const url = `${baseUrl}/chat/completions`;
+                const reqBody = {
+                    model,
+                    temperature: 0.3,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userContent }
+                    ]
+                };
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+                    },
+                    body: JSON.stringify(reqBody)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const rawReply = data.choices?.[0]?.message?.content || '';
+                    const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const parsed = JSON.parse(cleanJson);
+                    if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
+                        return parsed.panels;
+                    }
+                }
+            } catch (e) {
+                console.warn(`[Manga Studio] LLM API call failed, using heuristic:`, e);
+            }
+        }
+
+        if (onProgress) onProgress('正在应用漫画导演分镜文法推演...');
+        return runHeuristicStoryboardParser(storyText, grammar, language);
+    }
+
+    function runHeuristicStoryboardParser(text, grammar, language) {
+        if (!text || !text.trim()) {
+            text = '夕阳西下的教室，女主角红着脸低下头。男主角鼓起勇气递上一封情书。女主角惊慌地抬起头，眼睛里闪烁着泪光，窗外的风吹动窗帘。';
+        }
+        const sentences = text
+            .split(/(?<=[。！？!\?\n])/)
+            .map(s => s.trim())
+            .filter(s => s.length > 1);
+
+        const shotOptions = ['medium shot', 'close-up focus', 'face close-up', 'dynamic low angle', 'wide shot'];
+        const panelCount = Math.max(2, Math.min(4, sentences.length || 3));
+        const panels = [];
+
+        for (let i = 0; i < panelCount; i++) {
+            const sentence = sentences[i] || `场景片段 ${i + 1}`;
+            let bubbleType = 'speech';
+            let bubbleText = '';
+            let bubbleLayout = (i % 2 === 0) ? 'vertical' : 'horizontal';
+
+            const thoughtMatch = sentence.match(/[（\(](.+?)[）\)]/);
+            const speechMatch = sentence.match(/[“"「](.+?)[”"」]/);
+
+            if (thoughtMatch) {
+                bubbleType = 'thought';
+                bubbleText = thoughtMatch[1];
+            } else if (speechMatch) {
+                bubbleType = 'speech';
+                bubbleText = speechMatch[1];
+            } else if (sentence.includes('！') || sentence.includes('!')) {
+                bubbleType = 'screaming';
+                bubbleText = sentence.slice(0, 16);
+            } else {
+                bubbleType = (i === 0) ? 'caption' : 'speech';
+                bubbleText = sentence.slice(0, 18);
+            }
+
+            const tags = [];
+            if (/女|少女|妹|她/i.test(sentence)) tags.push('1girl');
+            if (/男|少年|他/i.test(sentence)) tags.push('1boy');
+            if (/红脸|害羞|羞/i.test(sentence)) tags.push('blushing');
+            if (/泪|哭|湿润/i.test(sentence)) tags.push('tears, tears prickling in eyes');
+            if (/黄昏|夕阳/i.test(sentence)) tags.push('sunset, orange light');
+            if (/教室|学校/i.test(sentence)) tags.push('classroom, school desk');
+            if (/信|信封|情书/i.test(sentence)) tags.push('focus on hands, holding love letter, white envelope');
+            if (/笑|微笑/i.test(sentence)) tags.push('gentle smile, expressive eyes');
+            if (/看|凝视|视线/i.test(sentence)) tags.push('looking at viewer');
+            if (/风|吹/i.test(sentence)) tags.push('fluttering hair, wind blowing');
+
+            if (tags.length === 0) {
+                tags.push('dramatic lighting', 'expressive eyes');
+            }
+
+            const shot = shotOptions[i % shotOptions.length];
+
+            panels.push({
+                title: `第 ${i + 1} 格 · ${sentence.slice(0, 8)}`,
+                shot: shot,
+                tags: tags.join(', '),
+                bubbleType: bubbleType,
+                bubbleText: bubbleText,
+                bubbleLayout: bubbleLayout
+            });
+        }
+        return panels;
+    }
+
+    function extractChatNarrative() {
+        try {
+            const ctx = RBQ.api.getContext?.();
+            const chat = ctx?.chat;
+            if (!Array.isArray(chat) || chat.length === 0) {
+                toastr.warning('当前酒馆会话为空，未找到对话内容', PLUGIN_NAME);
+                return '';
+            }
+            const recent = chat.slice(-3);
+            const lines = recent.map(m => {
+                const name = m.name || (m.is_user ? '你' : '角色');
+                const cleanMes = (m.mes || '')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/```[\s\S]*?```/g, '')
+                    .trim();
+                return cleanMes ? `【${name}】${cleanMes}` : '';
+            }).filter(Boolean);
+            return lines.join('\n\n');
+        } catch (e) {
+            console.error('[Manga Studio] 提取对话失败:', e);
+            return '';
+        }
+    }
+
+    function downloadGeneratedImage(url, filename = 'manga-page.png') {
+        if (!url) return;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        toastr.success('已开始下载漫画高清原图', PLUGIN_NAME);
+    }
+
+    function showMangaViewerModal(url, prompt) {
+        const old = document.getElementById('mw-viewer-modal');
+        if (old) old.remove();
+        const modal = document.createElement('div');
+        modal.id = 'mw-viewer-modal';
+        modal.className = 'mw-modal-mask';
+        modal.innerHTML = `
+            <div class="mw-viewer-box">
+                <div class="mw-viewer-hd">
+                    <span><i class="fa-solid fa-book-open" style="color:#f59e0b"></i> 漫画原画大图走查</span>
+                    <button class="mw-btn sm rd" id="mw-viewer-close"><i class="fa-solid fa-xmark"></i> 关闭</button>
+                </div>
+                <div class="mw-viewer-body">
+                    <img src="${RBQ.utils.escapeHtml(url)}" alt="Manga Page HD">
+                </div>
+                <div class="mw-viewer-ft">
+                    <div class="mw-code-block" style="max-height:60px;">${RBQ.utils.escapeHtml(prompt || '')}</div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button class="mw-btn sm cy" id="mw-viewer-copy"><i class="fa-regular fa-copy"></i> 复制完整 Prompt</button>
+                        <button class="mw-btn sm gn" id="mw-viewer-dl"><i class="fa-solid fa-download"></i> 下载原图</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#mw-viewer-close')?.addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        modal.querySelector('#mw-viewer-copy')?.addEventListener('click', () => {
+            RBQ.utils.copyToClipboard(prompt || '');
+            toastr.success('已复制完整提示词！', PLUGIN_NAME);
+        });
+        modal.querySelector('#mw-viewer-dl')?.addEventListener('click', () => downloadGeneratedImage(url));
+    }
+
+    function showPresetPickerModal(onSelect) {
+        const old = document.getElementById('mw-preset-modal');
+        if (old) old.remove();
+        const modal = document.createElement('div');
+        modal.id = 'mw-preset-modal';
+        modal.className = 'mw-modal-mask';
+        modal.innerHTML = `
+            <div class="mw-preset-box">
+                <div class="mw-preset-hd">
+                    <span><i class="fa-solid fa-bookmark" style="color:#f59e0b"></i> 常用漫画分镜模板</span>
+                    <button class="mw-btn sm rd" id="mw-preset-close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="mw-preset-list">
+                    ${STORYBOARD_PRESETS.map((p, idx) => `
+                        <div class="mw-preset-item" data-idx="${idx}">
+                            <div class="mw-preset-title">${RBQ.utils.escapeHtml(p.name)}</div>
+                            <div class="mw-preset-desc">${RBQ.utils.escapeHtml(p.desc)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.querySelector('#mw-preset-close')?.addEventListener('click', () => modal.remove());
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        modal.querySelectorAll('.mw-preset-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const idx = Number(item.dataset.idx);
+                const p = STORYBOARD_PRESETS[idx];
+                if (p && typeof onSelect === 'function') {
+                    onSelect(p);
+                }
+                modal.remove();
+            });
+        });
+    }
+
+    let refreshMangaWorkshop = null;
+
+    function renderMangaWorkshop(container) {
+        const store = getStore();
+        const studio = store.studio;
+
+        container.innerHTML = `
+            <div class="mw-wrap">
+                <!-- Header Quick Bar -->
+                <div class="mw-hdr">
+                    <div class="mw-brand">
+                        <div class="mw-logo"><i class="fa-solid fa-book-open"></i></div>
+                        <div class="mw-title-box">
+                            <div class="mw-title">漫画工作台 <span class="mw-badge">Manga Studio v${VERSION}</span></div>
+                            <div class="mw-subtitle">自然语言剧情转分镜 · 智能对白气泡 · 原画级单页出图</div>
+                        </div>
+                    </div>
+                    <div class="mw-hdr-controls">
+                        <div class="mw-control-group">
+                            <label><i class="fa-solid fa-brush" style="color:#f59e0b"></i> 画风:</label>
+                            <select id="mw-hdr-style" class="mw-sel">
+                                <option value="monochrome" ${store.style === 'monochrome' ? 'selected' : ''}>黑白 (画风-黑白)</option>
+                                <option value="soft_color" ${store.style === 'soft_color' ? 'selected' : ''}>柔光圆润 (画风-柔光圆润)</option>
+                                <option value="custom" ${store.style === 'custom' ? 'selected' : ''}>⚙️ 自定义画风</option>
+                            </select>
+                        </div>
+                        <div class="mw-control-group">
+                            <label><i class="fa-solid fa-clapperboard" style="color:#6366f1"></i> 文法:</label>
+                            <select id="mw-hdr-grammar" class="mw-sel">
+                                ${Object.keys(COMIC_GRAMMARS).map(k => `
+                                    <option value="${k}" ${store.grammar === k ? 'selected' : ''}>${COMIC_GRAMMARS[k].name}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <div class="mw-control-group">
+                            <label><i class="fa-solid fa-crop-simple" style="color:#10b981"></i> 画布:</label>
+                            <select id="mw-hdr-ratio" class="mw-sel">
+                                <option value="832x1216" ${studio.ratio === '832x1216' ? 'selected' : ''}>纵向单页 (832×1216)</option>
+                                <option value="1216x832" ${studio.ratio === '1216x832' ? 'selected' : ''}>跨页展开 (1216×832)</option>
+                                <option value="896x1152" ${studio.ratio === '896x1152' ? 'selected' : ''}>宽幅剧场 (896×1152)</option>
+                            </select>
+                        </div>
+                        <div class="mw-control-group">
+                            <label><i class="fa-solid fa-border-all" style="color:#ec4899"></i> 留白:</label>
+                            <select id="mw-hdr-gutter" class="mw-sel">
+                                <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>出血留白 (Bleed)</option>
+                                <option value="black_line" ${store.gutter === 'black_line' ? 'selected' : ''}>经典框线 (Framed)</option>
+                                <option value="splash" ${store.gutter === 'splash' ? 'selected' : ''}>跨页爆发 (Splash)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Body: Dual-Pane Layout -->
+                <div class="mw-body">
+                    <!-- Left Column: Storyboarder & Panels Stream -->
+                    <div class="mw-left-pane">
+                        <!-- Story Input Card -->
+                        <div class="mw-card mw-story-card">
+                            <div class="mw-card-hd">
+                                <span class="mw-card-tt"><i class="fa-solid fa-wand-magic-sparkles" style="color:#f59e0b"></i> 剧情故事 / 自然语言叙事描述</span>
+                                <div class="mw-card-actions">
+                                    <button id="mw-btn-extract-chat" class="mw-btn sm cy" title="提取当前对话最新剧情"><i class="fa-solid fa-comments"></i> 提取当前对话</button>
+                                </div>
+                            </div>
+                            <textarea id="mw-story-input" placeholder="在此输入自然语言故事片段、对话或场景描写，点击「AI 智能分镜推演」自动拆解为画格与镜头机位...">${RBQ.utils.escapeHtml(studio.storyText || '')}</textarea>
+                            <div class="mw-story-ft">
+                                <div class="mw-opts">
+                                    <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-anti-hijack" ${studio.antiHijack !== false ? 'checked' : ''}> <span>角色防夺舍</span></label>
+                                    <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-auto-sfx" ${studio.autoSfx !== false ? 'checked' : ''}> <span>生成拟音词 (SFX)</span></label>
+                                </div>
+                                <button id="mw-btn-ai-storyboard" class="mw-btn pri"><i class="fa-solid fa-brain"></i> AI 智能分镜推演</button>
+                            </div>
+                        </div>
+
+                        <!-- Panels Stream Card -->
+                        <div class="mw-card">
+                            <div class="mw-card-hd">
+                                <span class="mw-card-tt"><i class="fa-solid fa-layer-group" style="color:#f59e0b"></i> 分镜画格序列 (<span id="mw-panel-count-badge">3</span> 格)</span>
+                                <div class="mw-card-actions">
+                                    <button id="mw-btn-template" class="mw-btn sm cy"><i class="fa-solid fa-bookmark"></i> 常用分镜模板</button>
+                                    <button id="mw-btn-add-panel" class="mw-btn sm am"><i class="fa-solid fa-plus"></i> 添加画格</button>
+                                    <button id="mw-btn-reset-panels" class="mw-btn sm rd"><i class="fa-solid fa-rotate-left"></i> 重置</button>
+                                </div>
+                            </div>
+                            <div id="mw-panels-list" class="mw-panels-list"></div>
+                        </div>
+
+                        <!-- Assembly Prompt Preview Card -->
+                        <div class="mw-card">
+                            <div class="mw-card-hd">
+                                <span class="mw-card-tt"><i class="fa-solid fa-code" style="color:#f59e0b"></i> NAI 原生装配提示词 (Final Prompt Preview)</span>
+                                <button id="mw-btn-copy-prompt" class="mw-btn sm"><i class="fa-regular fa-copy"></i> 复制完整 Prompt</button>
+                            </div>
+                            <div id="mw-assembled-prompt" class="mw-code-block"></div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Live Viewport & Generation Console -->
+                    <div class="mw-right-pane">
+                        <div class="mw-card">
+                            <div class="mw-card-hd">
+                                <span class="mw-card-tt"><i class="fa-solid fa-eye" style="color:#f59e0b"></i> 原画级漫画预览画布 (Zero-CLS Viewport)</span>
+                                <span id="mw-canvas-res-badge" class="mw-badge">832 × 1216 PX</span>
+                            </div>
+
+                            <div class="mw-canvas-wrapper">
+                                <div id="mw-canvas-viewport" class="mw-canvas-viewport"></div>
+                            </div>
+
+                            <div class="mw-gen-box">
+                                <button id="mw-btn-generate" class="mw-btn pri lg"><i class="fa-solid fa-paintbrush"></i> 🎨 一键生成漫画单页</button>
+                                <div class="mw-action-row">
+                                    <button id="mw-btn-send-chat" class="mw-btn cy" ${studio.lastGeneratedUrl ? '' : 'disabled'}><i class="fa-solid fa-paper-plane"></i> 发送到聊天</button>
+                                    <button id="mw-btn-download" class="mw-btn gn" ${studio.lastGeneratedUrl ? '' : 'disabled'}><i class="fa-solid fa-download"></i> 下载原图</button>
+                                    <button id="mw-btn-zoom" class="mw-btn" ${studio.lastGeneratedUrl ? '' : 'disabled'}><i class="fa-solid fa-expand"></i> 全屏查看</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const panelsListEl = container.querySelector('#mw-panels-list');
+        const promptPreviewEl = container.querySelector('#mw-assembled-prompt');
+        const countBadgeEl = container.querySelector('#mw-panel-count-badge');
+        const viewportEl = container.querySelector('#mw-canvas-viewport');
+        const resBadgeEl = container.querySelector('#mw-canvas-res-badge');
+        const btnSendChat = container.querySelector('#mw-btn-send-chat');
+        const btnDownload = container.querySelector('#mw-btn-download');
+        const btnZoom = container.querySelector('#mw-btn-zoom');
+        const btnGenerate = container.querySelector('#mw-btn-generate');
+
+        function updatePromptPreview() {
+            if (promptPreviewEl) {
+                promptPreviewEl.textContent = composeStudioPrompt(store);
+            }
+        }
+
+        function updateViewport() {
+            if (!viewportEl) return;
+            const resText = (studio.ratio || '832x1216').replace('x', ' × ') + ' PX';
+            if (resBadgeEl) resBadgeEl.textContent = resText;
+
+            if (studio.lastGeneratedUrl) {
+                viewportEl.innerHTML = `<img src="${RBQ.utils.escapeHtml(studio.lastGeneratedUrl)}" alt="Generated Manga Page" title="双击大图全屏走查">`;
+                viewportEl.querySelector('img')?.addEventListener('dblclick', () => {
+                    showMangaViewerModal(studio.lastGeneratedUrl, studio.lastGeneratedPrompt);
+                });
+                if (btnSendChat) btnSendChat.disabled = false;
+                if (btnDownload) btnDownload.disabled = false;
+                if (btnZoom) btnZoom.disabled = false;
+            } else {
+                viewportEl.innerHTML = `
+                    <div class="mw-blueprint-placeholder">
+                        <div class="mw-bp-panel">Panel 1 · 漫画分镜预览位</div>
+                        <div style="display:flex;gap:6px;flex:1;">
+                            <div class="mw-bp-panel">Panel 2 · 特写机位</div>
+                            <div class="mw-bp-panel">Panel 3 · 对白气泡位</div>
+                        </div>
+                    </div>
+                `;
+                if (btnSendChat) btnSendChat.disabled = true;
+                if (btnDownload) btnDownload.disabled = true;
+                if (btnZoom) btnZoom.disabled = true;
+            }
+        }
+
+        function renderPanelCards() {
+            if (!panelsListEl) return;
+            countBadgeEl.textContent = String(studio.panels.length);
+            panelsListEl.innerHTML = studio.panels.map((p, idx) => `
+                <div class="mw-panel-card" data-idx="${idx}">
+                    <div class="mw-panel-hd">
+                        <div class="mw-panel-info">
+                            <span class="mw-panel-num">#${idx + 1}</span>
+                            <input type="text" class="mw-panel-title-in" value="${RBQ.utils.escapeHtml(p.title || '')}" placeholder="画格描述...">
+                            <select class="mw-panel-shot-sel">
+                                <option value="medium shot" ${p.shot === 'medium shot' ? 'selected' : ''}>中景 (Medium Shot)</option>
+                                <option value="close-up focus" ${p.shot === 'close-up focus' || p.shot === 'close-up' ? 'selected' : ''}>特写聚焦 (Close-up)</option>
+                                <option value="face close-up" ${p.shot === 'face close-up' ? 'selected' : ''}>面部大特写 (Face Close-up)</option>
+                                <option value="wide shot" ${p.shot === 'wide shot' || p.shot === 'wide establishing shot' ? 'selected' : ''}>全景远景 (Wide Shot)</option>
+                                <option value="dynamic low angle" ${p.shot === 'dynamic low angle' ? 'selected' : ''}>仰视爆发 (Low Angle)</option>
+                                <option value="high angle" ${p.shot === 'high angle' ? 'selected' : ''}>俯视机位 (High Angle)</option>
+                            </select>
+                        </div>
+                        <div class="mw-panel-btns">
+                            <button class="mw-btn sm mw-panel-up" ${idx === 0 ? 'disabled' : ''} title="上移画格"><i class="fa-solid fa-arrow-up"></i></button>
+                            <button class="mw-btn sm mw-panel-down" ${idx === studio.panels.length - 1 ? 'disabled' : ''} title="下移画格"><i class="fa-solid fa-arrow-down"></i></button>
+                            <button class="mw-btn sm mw-panel-dup" title="复制画格"><i class="fa-regular fa-copy"></i></button>
+                            <button class="mw-btn sm rd mw-panel-del" ${studio.panels.length <= 1 ? 'disabled' : ''} title="删除画格"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+
+                    <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入该画格专属英文 Danbooru / NAI tags...">
+
+                    <div class="mw-bubble-row">
+                        <select class="mw-bubble-type-sel">
+                            <option value="speech" ${p.bubbleType === 'speech' ? 'selected' : ''}>对白框 (Speech)</option>
+                            <option value="thought" ${p.bubbleType === 'thought' ? 'selected' : ''}>心声气泡 (Thought)</option>
+                            <option value="screaming" ${p.bubbleType === 'screaming' ? 'selected' : ''}>呐喊爆发 (Scream)</option>
+                            <option value="caption" ${p.bubbleType === 'caption' ? 'selected' : ''}>矩形旁白 (Caption)</option>
+                            <option value="sfx" ${p.bubbleType === 'sfx' ? 'selected' : ''}>拟音词 (SFX)</option>
+                        </select>
+                        <input type="text" class="mw-bubble-text-in" value="${RBQ.utils.escapeHtml(p.bubbleText || '')}" placeholder="输入气泡内台词或独白文字...">
+                        <select class="mw-bubble-dir-sel">
+                            <option value="vertical" ${p.bubbleLayout !== 'horizontal' ? 'selected' : ''}>竖排</option>
+                            <option value="horizontal" ${p.bubbleLayout === 'horizontal' ? 'selected' : ''}>横排</option>
+                        </select>
+                    </div>
+                </div>
+            `).join('');
+
+            // Bind card input events
+            panelsListEl.querySelectorAll('.mw-panel-card').forEach(card => {
+                const idx = Number(card.dataset.idx);
+                const p = studio.panels[idx];
+                if (!p) return;
+
+                card.querySelector('.mw-panel-title-in')?.addEventListener('input', (e) => {
+                    p.title = e.target.value;
+                    save();
+                });
+                card.querySelector('.mw-panel-shot-sel')?.addEventListener('change', (e) => {
+                    p.shot = e.target.value;
+                    updatePromptPreview();
+                    save();
+                });
+                card.querySelector('.mw-panel-tag-in')?.addEventListener('input', (e) => {
+                    p.tags = e.target.value;
+                    updatePromptPreview();
+                    save();
+                });
+                card.querySelector('.mw-bubble-type-sel')?.addEventListener('change', (e) => {
+                    p.bubbleType = e.target.value;
+                    updatePromptPreview();
+                    save();
+                });
+                card.querySelector('.mw-bubble-text-in')?.addEventListener('input', (e) => {
+                    p.bubbleText = e.target.value;
+                    updatePromptPreview();
+                    save();
+                });
+                card.querySelector('.mw-bubble-dir-sel')?.addEventListener('change', (e) => {
+                    p.bubbleLayout = e.target.value;
+                    updatePromptPreview();
+                    save();
+                });
+
+                card.querySelector('.mw-panel-up')?.addEventListener('click', () => {
+                    if (idx > 0) {
+                        const temp = studio.panels[idx];
+                        studio.panels[idx] = studio.panels[idx - 1];
+                        studio.panels[idx - 1] = temp;
+                        renderPanelCards();
+                        updatePromptPreview();
+                        save();
+                    }
+                });
+                card.querySelector('.mw-panel-down')?.addEventListener('click', () => {
+                    if (idx < studio.panels.length - 1) {
+                        const temp = studio.panels[idx];
+                        studio.panels[idx] = studio.panels[idx + 1];
+                        studio.panels[idx + 1] = temp;
+                        renderPanelCards();
+                        updatePromptPreview();
+                        save();
+                    }
+                });
+                card.querySelector('.mw-panel-dup')?.addEventListener('click', () => {
+                    if (studio.panels.length >= 5) {
+                        return toastr.warning('最多支持添加 5 个画格', PLUGIN_NAME);
+                    }
+                    const clone = JSON.parse(JSON.stringify(p));
+                    clone.title += ' (副本)';
+                    studio.panels.splice(idx + 1, 0, clone);
+                    renderPanelCards();
+                    updatePromptPreview();
+                    save();
+                });
+                card.querySelector('.mw-panel-del')?.addEventListener('click', () => {
+                    if (studio.panels.length <= 1) return;
+                    studio.panels.splice(idx, 1);
+                    renderPanelCards();
+                    updatePromptPreview();
+                    save();
+                });
+            });
+        }
+
+        // Header controls bindings
+        container.querySelector('#mw-hdr-style')?.addEventListener('change', (e) => {
+            store.style = e.target.value;
+            save();
+            syncMangaToSdt(store);
+            updatePromptPreview();
+        });
+        container.querySelector('#mw-hdr-grammar')?.addEventListener('change', (e) => {
+            store.grammar = e.target.value;
+            save();
+            syncMangaToSdt(store);
+            updatePromptPreview();
+        });
+        container.querySelector('#mw-hdr-ratio')?.addEventListener('change', (e) => {
+            studio.ratio = e.target.value;
+            save();
+            updateViewport();
+            updatePromptPreview();
+        });
+        container.querySelector('#mw-hdr-gutter')?.addEventListener('change', (e) => {
+            store.gutter = e.target.value;
+            save();
+            syncMangaToSdt(store);
+            updatePromptPreview();
+        });
+
+        // Story input & options
+        const storyInputEl = container.querySelector('#mw-story-input');
+        storyInputEl?.addEventListener('input', (e) => {
+            studio.storyText = e.target.value;
+            save();
+        });
+        container.querySelector('#mw-chk-anti-hijack')?.addEventListener('change', (e) => {
+            studio.antiHijack = e.target.checked;
+            save();
+        });
+        container.querySelector('#mw-chk-auto-sfx')?.addEventListener('change', (e) => {
+            studio.autoSfx = e.target.checked;
+            save();
+        });
+
+        // Extract chat narrative
+        container.querySelector('#mw-btn-extract-chat')?.addEventListener('click', () => {
+            const narrative = extractChatNarrative();
+            if (narrative) {
+                studio.storyText = narrative;
+                if (storyInputEl) storyInputEl.value = narrative;
+                save();
+                toastr.success('已提取当前酒馆会话的最新剧情！', PLUGIN_NAME);
+            }
+        });
+
+        // AI Storyboard breakdown
+        const btnAi = container.querySelector('#mw-btn-ai-storyboard');
+        btnAi?.addEventListener('click', async () => {
+            const storyText = (storyInputEl?.value || studio.storyText || '').trim();
+            if (!storyText) {
+                return toastr.warning('请先输入剧情故事或点击「提取当前对话」', PLUGIN_NAME);
+            }
+            const origHtml = btnAi.innerHTML;
+            btnAi.disabled = true;
+            btnAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在解析分镜与镜头机位...';
+            try {
+                const parsedPanels = await callLlmStoryboardParser(
+                    storyText,
+                    store.grammar,
+                    store.language,
+                    (status) => {
+                        btnAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${status}`;
+                    }
+                );
+                if (Array.isArray(parsedPanels) && parsedPanels.length > 0) {
+                    studio.panels = parsedPanels;
+                    renderPanelCards();
+                    updatePromptPreview();
+                    save();
+                    toastr.success(`🎉 AI 智能分镜解析完成，已构建 ${parsedPanels.length} 格分镜！`, PLUGIN_NAME);
+                }
+            } catch (err) {
+                console.error('[Manga Studio] AI Storyboard Error:', err);
+                toastr.error('分镜解析出现异常: ' + (err.message || String(err)), PLUGIN_NAME);
+            } finally {
+                btnAi.disabled = false;
+                btnAi.innerHTML = origHtml;
+            }
+        });
+
+        // Add panel button
+        container.querySelector('#mw-btn-add-panel')?.addEventListener('click', () => {
+            if (studio.panels.length >= 5) {
+                return toastr.warning('单页漫画最多支持 5 个画格', PLUGIN_NAME);
+            }
+            studio.panels.push({
+                title: `第 ${studio.panels.length + 1} 格 · 画面`,
+                shot: 'medium shot',
+                tags: '1girl, expressive eyes',
+                bubbleType: 'speech',
+                bubbleText: '',
+                bubbleLayout: 'vertical'
+            });
+            renderPanelCards();
+            updatePromptPreview();
+            save();
+        });
+
+        // Preset templates button
+        container.querySelector('#mw-btn-template')?.addEventListener('click', () => {
+            showPresetPickerModal((preset) => {
+                studio.panels = JSON.parse(JSON.stringify(preset.panels));
+                if (preset.grammar && COMIC_GRAMMARS[preset.grammar]) {
+                    store.grammar = preset.grammar;
+                    const gSel = container.querySelector('#mw-hdr-grammar');
+                    if (gSel) gSel.value = preset.grammar;
+                }
+                renderPanelCards();
+                updatePromptPreview();
+                save();
+                toastr.success(`已载入分镜模板「${preset.name}」`, PLUGIN_NAME);
+            });
+        });
+
+        // Reset panels button
+        container.querySelector('#mw-btn-reset-panels')?.addEventListener('click', () => {
+            if (!confirm('确定要重置当前工作台的分镜画格吗？')) return;
+            const defaultPreset = STORYBOARD_PRESETS[0];
+            studio.panels = JSON.parse(JSON.stringify(defaultPreset.panels));
+            renderPanelCards();
+            updatePromptPreview();
+            save();
+            toastr.info('分镜画格已重置为初始状态', PLUGIN_NAME);
+        });
+
+        // Copy assembled prompt button
+        container.querySelector('#mw-btn-copy-prompt')?.addEventListener('click', () => {
+            const prompt = composeStudioPrompt(store);
+            RBQ.utils.copyToClipboard(prompt);
+            toastr.success('已复制完整 NAI 漫画装配提示词！', PLUGIN_NAME);
+        });
+
+        // Generate Manga Single Page button
+        btnGenerate?.addEventListener('click', async () => {
+            if (!RBQ.api || typeof RBQ.api.generateImage !== 'function') {
+                return toastr.error('RBQ Core 生图接口不可用', PLUGIN_NAME);
+            }
+            const prompt = composeStudioPrompt(store);
+            const origHtml = btnGenerate.innerHTML;
+            btnGenerate.disabled = true;
+            btnGenerate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向生图引擎提交漫画任务...';
+
+            isStudioGenerating = true;
+            studioGenerationRatio = studio.ratio || '832x1216';
+
+            try {
+                const result = await RBQ.api.generateImage(prompt, 'manga-workshop', {}, (progress) => {
+                    if (typeof progress === 'string') {
+                        btnGenerate.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 16)}...`;
+                    }
+                });
+
+                if (result && result.url) {
+                    studio.lastGeneratedUrl = result.url;
+                    studio.lastGeneratedPrompt = prompt;
+                    save();
+                    updateViewport();
+                    toastr.success('🎉 漫画单页生成完毕！', PLUGIN_NAME);
+                } else {
+                    throw new Error('未返回有效图像地址');
+                }
+            } catch (err) {
+                console.error('[Manga Studio] 出图失败:', err);
+                toastr.error('漫画单页生成失败: ' + (err.message || String(err)), PLUGIN_NAME);
+            } finally {
+                isStudioGenerating = false;
+                studioGenerationRatio = null;
+                btnGenerate.disabled = false;
+                btnGenerate.innerHTML = origHtml;
+            }
+        });
+
+        // Send to current tavern chat
+        btnSendChat?.addEventListener('click', () => {
+            if (!studio.lastGeneratedUrl) return;
+            try {
+                const ctx = RBQ.api.getContext?.();
+                const chat = ctx?.chat;
+                const latestId = Array.isArray(chat) && chat.length > 0 ? chat.length - 1 : 0;
+
+                const wrapper = RBQ.api.createPromptCard({
+                    messageId: latestId,
+                    prompt: studio.lastGeneratedPrompt,
+                    id: `manga-studio:${Date.now()}`,
+                    label: 'manga-studio'
+                });
+
+                if (wrapper && typeof RBQ.api.renderInlineGeneratedImage === 'function') {
+                    RBQ.api.renderInlineGeneratedImage(wrapper, {
+                        url: studio.lastGeneratedUrl,
+                        prompt: studio.lastGeneratedPrompt
+                    });
+                    toastr.success('已将漫画单页插入当前会话最新消息下方！', PLUGIN_NAME);
+                } else {
+                    toastr.info('已将漫画单页加入图库记录', PLUGIN_NAME);
+                }
+            } catch (e) {
+                console.error('[Manga Studio] 发送到聊天失败:', e);
+                toastr.error('发送到聊天失败: ' + (e.message || String(e)), PLUGIN_NAME);
+            }
+        });
+
+        // Download HD PNG
+        btnDownload?.addEventListener('click', () => {
+            downloadGeneratedImage(studio.lastGeneratedUrl);
+        });
+
+        // Fullscreen zoom viewer
+        btnZoom?.addEventListener('click', () => {
+            if (studio.lastGeneratedUrl) {
+                showMangaViewerModal(studio.lastGeneratedUrl, studio.lastGeneratedPrompt);
+            }
+        });
+
+        // Initial Renders
+        renderPanelCards();
+        updatePromptPreview();
+        updateViewport();
+
+        refreshMangaWorkshop = () => {
+            try {
+                updatePromptPreview();
+                updateViewport();
+            } catch (_e) {}
+        };
+    }
+
+    // 注册侧边栏独立 Tab: 漫画工作台 (Manga Studio)
+    if (RBQ.ui && typeof RBQ.ui.addSettingPanel === 'function') {
+        RBQ.ui.addSettingPanel('manga-workshop', '<i class="fa-solid fa-book-open"></i><span>漫画工作台</span>', () => {
+            const w = document.createElement('div');
+            w.id = 'mw-root-container';
+            w.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;';
+            renderMangaWorkshop(w);
+            return w;
+        });
+    }
+
+    // 监听进入漫画工作台的切换事件
+    document.addEventListener('rbq-tab-switched', (e) => {
+        if (e.detail?.tab === 'manga-workshop' && typeof refreshMangaWorkshop === 'function') {
+            refreshMangaWorkshop();
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        const t = e.target;
+        if (t && t.closest && t.closest('[data-kite-tab="manga-workshop"]') && typeof refreshMangaWorkshop === 'function') {
+            setTimeout(refreshMangaWorkshop, 40);
+        }
+    });
+
+    // ── 8. DOM Mounting & Lifecycle Guard ─────────────────────────
     try {
         injectStyles();
     } catch (e) {
@@ -1148,6 +2752,14 @@ ${antiHijackRule}
         if (styleEl) styleEl.remove();
         const cardEl = document.getElementById('rbq-manga-mode-card');
         if (cardEl) cardEl.remove();
+
+        // 移除漫画工作台面板与临时弹窗
+        if (RBQ.ui && typeof RBQ.ui.removeSettingPanel === 'function') {
+            RBQ.ui.removeSettingPanel('manga-workshop');
+        }
+        document.getElementById('mw-root-container')?.remove();
+        document.getElementById('mw-viewer-modal')?.remove();
+        document.getElementById('mw-preset-modal')?.remove();
 
         // 还原 SDT 提示词预设下拉框
         const sysPresetSelect = document.getElementById('rbq-sdt-system-preset');

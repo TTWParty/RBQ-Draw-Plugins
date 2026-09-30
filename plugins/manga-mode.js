@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.1';
+        const VERSION = '1.4.2';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -41,7 +41,7 @@
                         shot: 'medium shot',
                         tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
                         bubbleType: 'thought',
-                        bubbleText: '（心跳……怎么会这么快……）',
+                        bubbleText: '心跳……怎么会这么快……',
                         bubbleLayout: 'vertical',
                     },
                     {
@@ -1847,7 +1847,7 @@ ${antiHijackRule}
                     shot: 'medium shot',
                     tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
                     bubbleType: 'thought',
-                    bubbleText: '（心跳……怎么会这么快……）',
+                    bubbleText: '心跳……怎么会这么快……',
                     bubbleLayout: 'vertical',
                 },
                 {
@@ -1909,7 +1909,7 @@ ${antiHijackRule}
                     shot: 'from behind',
                     tags: 'landing after attack, back view, cape fluttering, smoke rising, shattered ground, cool silhouette',
                     bubbleType: 'thought',
-                    bubbleText: '（已经……结束了。）',
+                    bubbleText: '已经……结束了。',
                     bubbleLayout: 'horizontal',
                 }
             ]
@@ -1979,12 +1979,41 @@ ${antiHijackRule}
                     shot: 'face close-up',
                     tags: 'sharp gaze, shadow covering upper face, glowing eyes, magnifying glass reflecting photo, intense atmosphere, cinematic lighting',
                     bubbleType: 'thought',
-                    bubbleText: '（凶手……原来就是你。）',
+                    bubbleText: '凶手……原来就是你。',
                     bubbleLayout: 'vertical',
                 }
             ]
         }
     ];
+
+    function cleanBubbleText(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        let t = raw.trim();
+        // 剥离首尾各种中英文括号与引号
+        t = t.replace(/^["'“”‘’「」『』\(\)（）\[\]【】《》\{\}\s]+|["'“”‘’「」『』\(\)（）\[\]【】《》\{\}\s]+$/g, '');
+        // 剔除可能混入的内外双引号、单引号，防止 NAI OCR 误将引号作为文字画入气泡
+        t = t.replace(/["“”'‘’]/g, '');
+        return t.trim();
+    }
+
+    function resolveBubbleTypeTag(bType) {
+        if (!bType) return '通常吹き出し';
+        const lower = String(bType).toLowerCase().trim();
+        if (lower.includes('thought') || lower.includes('思考')) return '思考の吹き出し';
+        if (lower.includes('scream') || lower.includes('叫び') || lower.includes('怒')) return '叫び吹き出し';
+        if (lower.includes('caption') || lower.includes('旁白') || lower.includes('ナレーション')) return 'ナレーション枠';
+        if (lower.includes('sfx') || lower.includes('拟音') || lower.includes('擬音')) return '擬音, 吹き出しなし';
+        if (lower.includes('whisper') || lower.includes('破線')) return '破線吹き出し';
+        if (lower.includes('shiver') || lower.includes('波打つ')) return '波打つ吹き出し';
+        return '通常吹き出し';
+    }
+
+    function resolveBubbleLayoutTag(layout, bType) {
+        if (layout === 'horizontal' || bType === 'caption' || String(bType).includes('ナレーション')) {
+            return 'Layout: 横書き';
+        }
+        return 'Layout: 縦書き';
+    }
 
     function composeStudioPrompt(store) {
         const studio = store.studio;
@@ -1995,7 +2024,7 @@ ${antiHijackRule}
         const stylePos = styleKey === 'custom' ? (store.customPositive || '') : styleObj.positive;
 
         let gutterTag = 'white border';
-        if (store.gutter === 'black_line') gutterTag = '太い黒い仕切り线, 余白なし';
+        if (store.gutter === 'black_line') gutterTag = '太い黒い仕切り線, 余白なし';
         else if (store.gutter === 'splash') gutterTag = '全面裁ち落とし, 余白なし';
 
         const isDoubleSpread = studio.ratio === '1216x832';
@@ -2019,18 +2048,21 @@ ${antiHijackRule}
             if (p.shot) parts.push(p.shot);
             if (p.tags) parts.push(p.tags);
 
-            if (p.bubbleText && p.bubbleText.trim()) {
+            const cleanText = cleanBubbleText(p.bubbleText);
+            if (cleanText) {
                 const bType = p.bubbleType || 'speech';
-                let typeTag = 'speech bubble';
-                if (bType === 'thought') typeTag = 'thought bubble';
-                else if (bType === 'screaming') typeTag = 'screaming bubble';
-                else if (bType === 'caption') typeTag = 'caption';
-                else if (bType === 'sfx') typeTag = 'sfx';
+                const typeTag = resolveBubbleTypeTag(bType);
+                const layoutTag = resolveBubbleLayoutTag(p.bubbleLayout, bType);
 
-                const layoutDir = p.bubbleLayout === 'horizontal' ? 'horizontal text' : 'vertical text';
-                parts.push(`BubbleType: ${typeTag}`);
-                parts.push(`Text: "${p.bubbleText.replace(/"/g, "'").trim()}"`);
-                parts.push(layoutDir);
+                if (typeTag === '擬音, 吹き出しなし' || bType === 'sfx') {
+                    parts.push('SFX: 擬音, 吹き出しなし');
+                    parts.push(layoutTag);
+                    parts.push(`Text: ${cleanText}`);
+                } else {
+                    parts.push(`BubbleType: ${typeTag}`);
+                    parts.push(layoutTag);
+                    parts.push(`Text: ${cleanText}`);
+                }
             }
             return parts.join(', ');
         });
@@ -2065,7 +2097,7 @@ JSON 格式规范：
       "shot": "景别机位英文（支持从以下专业漫画镜头中挑选最契合剧情的词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
       "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词）",
       "bubbleType": "speech | thought | screaming | caption | sfx",
-      "bubbleText": "画格内角色台词、心声或旁白文字",
+      "bubbleText": "画格内角色台词、心声或旁白文字（直接写台词原文，严禁外包任何引号或括号）",
       "bubbleLayout": "vertical | horizontal"
     }
   ]
@@ -2101,6 +2133,7 @@ JSON 格式规范：
                     if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
                         parsed.panels.forEach((p, idx) => {
                             if (!p.desc) p.desc = p.title || `画格 #${idx + 1}`;
+                            if (p.bubbleText) p.bubbleText = cleanBubbleText(p.bubbleText);
                         });
                         return parsed.panels;
                     }
@@ -2146,16 +2179,16 @@ JSON 格式规范：
 
         if (thoughtMatch) {
             bubbleType = 'thought';
-            bubbleText = thoughtMatch[1];
+            bubbleText = cleanBubbleText(thoughtMatch[1]);
         } else if (speechMatch) {
             bubbleType = 'speech';
-            bubbleText = speechMatch[1];
+            bubbleText = cleanBubbleText(speechMatch[1]);
         } else if (sentence.includes('！') || sentence.includes('!')) {
             bubbleType = 'screaming';
-            bubbleText = sentence.slice(0, 16);
+            bubbleText = cleanBubbleText(sentence.slice(0, 16));
         } else {
             bubbleType = (i === 0) ? 'caption' : 'speech';
-            bubbleText = sentence.slice(0, 18);
+            bubbleText = cleanBubbleText(sentence.slice(0, 18));
         }
 
         const tags = [];
@@ -2238,7 +2271,7 @@ JSON 格式规范：
   "shot": "景别机位英文（支持：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
   "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词）",
   "bubbleType": "speech | thought | screaming | caption | sfx",
-  "bubbleText": "画格内角色台词或心声文字",
+  "bubbleText": "画格内角色台词或心声文字（直接写台词原文，严禁外包任何引号或括号）",
   "bubbleLayout": "vertical | horizontal"
 }`;
 
@@ -2269,6 +2302,7 @@ JSON 格式规范：
                     const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
                     const parsed = JSON.parse(cleanJson);
                     if (parsed && (parsed.tags || parsed.shot)) {
+                        if (parsed.bubbleText) parsed.bubbleText = cleanBubbleText(parsed.bubbleText);
                         return parsed;
                     }
                 }
@@ -2294,7 +2328,7 @@ JSON 格式规范：
 2. shot: 从以下 19 种专业漫画镜头中挑选最契合剧情的词（close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）
 3. tags: 纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，保持同一角色在各画格间的外观特征连贯，不要画风词）
 4. bubbleType: speech | thought | screaming | caption | sfx
-5. bubbleText: 提炼出的画格内角色台词、心声或旁白
+5. bubbleText: 提炼出的画格内角色台词、心声或旁白（直接写台词原文，严禁外包任何引号或括号）
 6. bubbleLayout: vertical | horizontal
 
 必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
@@ -2341,6 +2375,9 @@ JSON 格式规范：
                     const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
                     const parsed = JSON.parse(cleanJson);
                     if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
+                        parsed.panels.forEach(p => {
+                            if (p.bubbleText) p.bubbleText = cleanBubbleText(p.bubbleText);
+                        });
                         return parsed.panels;
                     }
                 }

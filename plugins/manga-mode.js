@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.7';
+        const VERSION = '1.0.8';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -609,13 +609,11 @@ ${antiHijackRule}
             if (sdtStore.customSystemPrompt && sdtStore.systemPromptPreset === 'custom' && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedCustomPrompt = sdtStore.customSystemPrompt;
             }
-            // 备份并锁定前情增强分析 (锁定至 V13 全息节拍推演，确保剧情与分镜锚点精准)
+            // 备份并锁定前情增强分析 (锁定至 v_manga 动态事件驱动推演，原版条目33)
             if (sdtStore.enhancedContext && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedEnhancedContext = sdtStore.enhancedContext;
             }
-            if (!sdtStore.enhancedContext || sdtStore.enhancedContext === 'off') {
-                sdtStore.enhancedContext = 'v13';
-            }
+            sdtStore.enhancedContext = 'v_manga';
             // 自动开启多角色独立生图以确保 char_captions 注入
             if (sdtStore.multiCharOutput === false) {
                 sdtStore._mangaSavedMultiChar = false;
@@ -633,6 +631,8 @@ ${antiHijackRule}
                 if (sdtStore._mangaSavedEnhancedContext) {
                     sdtStore.enhancedContext = sdtStore._mangaSavedEnhancedContext;
                     delete sdtStore._mangaSavedEnhancedContext;
+                } else if (sdtStore.enhancedContext === 'v_manga') {
+                    sdtStore.enhancedContext = 'v13';
                 }
                 if (typeof sdtStore._mangaSavedMultiChar === 'boolean') {
                     sdtStore.multiCharOutput = sdtStore._mangaSavedMultiChar;
@@ -704,19 +704,26 @@ ${antiHijackRule}
             }
         }
 
-        // 锁定/解锁前情增强分析 (锁定至 V13 全息节拍推演，确保剧情与分镜锚点精准)
+        // 锁定/解锁前情增强分析 (锁定至 v_manga 动态事件驱动推演，原版条目33)
         const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
         const ecField = ecSelect ? ecSelect.closest('.st-scene-trigger-field') : null;
         if (ecSelect && ecField) {
+            // 防御性补齐：若 DOM 选项中尚未包含 v_manga，自动动态追加
+            if (!ecSelect.querySelector('option[value="v_manga"]')) {
+                const opt = document.createElement('option');
+                opt.value = 'v_manga';
+                opt.textContent = '漫画 · 动态事件驱动推演 (原版条目33)';
+                ecSelect.appendChild(opt);
+            }
             if (store.enabled) {
-                if (ecSelect.value === 'off') ecSelect.value = 'v13';
+                if (ecSelect.value !== 'v_manga') ecSelect.value = 'v_manga';
                 ecSelect.disabled = true;
                 ecField.classList.add('rbq-sdt-preset-locked');
                 let badge = ecField.querySelector('.rbq-sdt-preset-lock-badge');
                 if (!badge) {
                     badge = document.createElement('span');
                     badge.className = 'rbq-sdt-preset-lock-badge';
-                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (节拍推演)';
+                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (条目33事件驱动)';
                     const titleSpan = ecField.querySelector('span');
                     if (titleSpan) titleSpan.appendChild(badge);
                 }
@@ -1040,6 +1047,18 @@ ${antiHijackRule}
         if (sysPresetSelect) {
             sysPresetSelect.disabled = false;
             const field = sysPresetSelect.closest('.st-scene-trigger-field');
+            if (field) {
+                field.classList.remove('rbq-sdt-preset-locked');
+                const badge = field.querySelector('.rbq-sdt-preset-lock-badge');
+                if (badge) badge.remove();
+            }
+        }
+
+        // 还原 SDT 前情增强分析下拉框
+        const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
+        if (ecSelect) {
+            ecSelect.disabled = false;
+            const field = ecSelect.closest('.st-scene-trigger-field');
             if (field) {
                 field.classList.remove('rbq-sdt-preset-locked');
                 const badge = field.querySelector('.rbq-sdt-preset-lock-badge');

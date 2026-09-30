@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.3';
+        const VERSION = '1.4.4';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -191,20 +191,42 @@
         ecchi: 'sensual manga, body contour framing'
     };
 
+    const GUTTER_PRESETS = {
+        bleed: {
+            name: '天地出血 (Top-Bottom Bleed)',
+            tag: 'white border, top-bottom bleed',
+            instruction: `[GUTTER-BLEED: TOP-BOTTOM-BLEED]
+天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。`
+        },
+        framed: {
+            name: '全封闭白边内枠 (Fully-Framed)',
+            tag: 'white border, fully framed panels',
+            instruction: `[GUTTER-BLEED: FULLY-FRAMED]
+全封闭内枠：四周带经典漫画白边框架，格与格之间边界清晰分明。`
+        },
+        splash: {
+            name: '沉浸全出血 (Immersive-Splash)',
+            tag: '全面裁ち落とし, 余白なし',
+            instruction: `[GUTTER-BLEED: IMMERSIVE-SPLASH]
+沉浸全出血：整幅画格完全贴边撑满画面，极大增强画面代入感。`
+        },
+        black_line: {
+            name: '纯黑线无白边 (Zero-White-Border)',
+            tag: '太い黒い仕切り線, 余白なし',
+            instruction: `[GUTTER-BLEED: ZERO-WHITE-BORDER]
+全幅零白留白：画格之间无白色缝隙，画布边缘无外白边，完全由粗黑墨线（太い黒い仕切り線, 太いインクの枠, 余白なし, コマが密着）密着切分。`
+        }
+    };
+
     // ── 4. Prompt Assembly for SDT Tagger LLM ──────────────────────
     function buildMangaSystemPrompt(store) {
         const grammarObj = GRAMMAR_PRESETS[store.grammar] || GRAMMAR_PRESETS.cinema;
+        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
         const langRule = store.language === 'ja'
             ? '[TEXT-LANG: JA]\n对白、心声、旁白与拟音文字一律转译为地道标准的日文，并在对应人物槽位末尾写入 Text: [日文文本]。'
             : '[TEXT-LANG: ZH-HANS]\n对白、心声、旁白与拟音文字一律写成简体中文，并在对应人物槽位末尾写入 Text: [中文文本]。';
 
-        const gutterRule = store.gutter === 'framed'
-            ? '[GUTTER-BLEED: FULLY-FRAMED]\n全封闭内枠：四周带经典漫画白边框架，格与格之间边界清晰分明。'
-            : (store.gutter === 'splash'
-                ? '[GUTTER-BLEED: IMMERSIVE-SPLASH]\n沉浸全出血：整幅画格完全贴边撑满画面，极大增强画面代入感。'
-                : (store.gutter === 'black_line'
-                    ? '[GUTTER-BLEED: ZERO-WHITE-BORDER]\n全幅零白留白：画格之间无白色缝隙，画布边缘无外白边，完全由粗黑墨线（太い黒い仕切り線, 太いインクの枠, 余白なし, コマが密着）密着切分。'
-                    : '[GUTTER-BLEED: TOP-BOTTOM-BLEED]\n天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。'));
+        const gutterRule = gutterObj.instruction;
 
         const colorRule = (store.style === 'monochrome')
             ? `9. 色彩模式（来自原版 v1.1.json 条目 23 [COLOR-MODE: MONOCHROME]）：
@@ -503,7 +525,8 @@ ${antiHijackRule}
                     );
                 } else {
                     const layoutTag = isDoubleSpread ? 'wide spread' : 'vertical layout';
-                    const gutterTag = store.gutter === 'black_line' ? '太い黒い仕切り線, 余白なし' : (store.gutter === 'splash' ? '全面裁ち落とし, 余白なし' : 'white border');
+                    const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
+                    const gutterTag = gutterObj.tag;
                     v4Prompt.base_caption = `comic, 複数コマの漫画ページ, manga page layout, ${layoutTag}, ${gutterTag}, dynamic komawari, ${v4Prompt.base_caption}`;
                 }
             }
@@ -2013,9 +2036,8 @@ ${antiHijackRule}
         const styleObj = COMIC_STYLES[styleKey] || COMIC_STYLES.monochrome;
         const stylePos = styleKey === 'custom' ? (store.customPositive || '') : styleObj.positive;
 
-        let gutterTag = 'white border';
-        if (store.gutter === 'black_line') gutterTag = '太い黒い仕切り線, 余白なし';
-        else if (store.gutter === 'splash') gutterTag = '全面裁ち落とし, 余白なし';
+        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
+        const gutterTag = gutterObj.tag;
 
         const isDoubleSpread = studio.ratio === '1216x832';
         const layoutTag = isDoubleSpread ? 'wide spread' : 'vertical layout';
@@ -2079,6 +2101,8 @@ ${antiHijackRule}
         const store = getStore();
         const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
         const grammarInstruction = grammarObj.instruction || '';
+        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
+        const gutterInstruction = gutterObj.instruction || '';
         const colorRule = (store.style === 'monochrome')
             ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗与光影词汇。`
             : '';
@@ -2089,7 +2113,9 @@ ${antiHijackRule}
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
 ${panelCountInstruction}
 【当前分镜文法纲领】：
-${grammarInstruction}${colorRule}
+${grammarInstruction}
+【当前排版留白与出血规则】：
+${gutterInstruction}${colorRule}
 必须输出纯 JSON，绝不要包含 Markdown 代码块（如 \`\`\`json）或任何额外文字。
 JSON 格式规范：
 {
@@ -2105,7 +2131,7 @@ JSON 格式规范：
   ]
 }`;
 
-        const userContent = `【剧情叙事】：${storyText}\n【画格数规划要求】：${countReq}\n【分镜文法风格】：${grammarObj.name}\n${langInstruction}`;
+        const userContent = `【剧情叙事】：${storyText}\n【画格数规划要求】：${countReq}\n【分镜文法风格】：${grammarObj.name}\n【边框留白排版】：${gutterObj.name}\n${langInstruction}`;
 
         if (baseUrl) {
             try {
@@ -2266,6 +2292,8 @@ JSON 格式规范：
 
         const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
         const grammarInstruction = grammarObj.instruction || '';
+        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
+        const gutterInstruction = gutterObj.instruction || '';
         const colorRule = (store.style === 'monochrome')
             ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗词汇。`
             : '';
@@ -2277,7 +2305,9 @@ JSON 格式规范：
 你的任务是将用户提供的单一漫画画格剧情句子转换为专业的 NAI 提示词。
 如果提供了其他画格的参考内容，请务必继承已确立的角色外貌（例如角色名、发色发型、瞳色、服装等），保持同一漫画单页内人设连贯，在此基础上根据本格剧情生成动作、神态、光影和机位！
 【分镜文法参考】：
-${grammarInstruction}${colorRule}
+${grammarInstruction}
+【排版留白与出血规则】：
+${gutterInstruction}${colorRule}
 必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
 JSON 格式规范：
 {
@@ -2289,7 +2319,7 @@ JSON 格式规范：
   "bubbleLayout": "vertical | horizontal"
 }`;
 
-        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammarObj.name}\n${langInstruction}${otherContext}`;
+        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammarObj.name}\n【边框留白排版】：${gutterObj.name}\n${langInstruction}${otherContext}`;
 
         if (baseUrl) {
             try {
@@ -2336,6 +2366,8 @@ JSON 格式规范：
 
         const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
         const grammarInstruction = grammarObj.instruction || '';
+        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
+        const gutterInstruction = gutterObj.instruction || '';
         const colorRule = (store.style === 'monochrome')
             ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗词汇。`
             : '';
@@ -2348,7 +2380,9 @@ JSON 格式规范：
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
 用户已经确定了整页漫画包含 ${panels.length} 个画格，并给出了每一个画格的具体剧情/动作描写。
 【分镜文法参考】：
-${grammarInstruction}${colorRule}
+${grammarInstruction}
+【排版留白与出血规则】：
+${gutterInstruction}${colorRule}
 你的任务是为每个画格分别生成：
 1. title: 画格概括（中文，5-10字）
 2. shot: 从以下 19 种专业漫画镜头中挑选最契合剧情的词（close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）
@@ -2373,7 +2407,7 @@ JSON 格式规范：
   ]
 }`;
 
-        const userContent = `【分镜文法风格】：${grammarObj.name}\n${langInstruction}\n【用户指定的逐格剧情如下】：\n${promptList}`;
+        const userContent = `【分镜文法风格】：${grammarObj.name}\n【边框留白排版】：${gutterObj.name}\n${langInstruction}\n【用户指定的逐格剧情如下】：\n${promptList}`;
 
         if (baseUrl) {
             try {
@@ -2567,9 +2601,10 @@ JSON 格式规范：
                         <div class="mw-control-group">
                             <label><i class="fa-solid fa-border-all" style="color:#ec4899"></i> 留白:</label>
                             <select id="mw-hdr-gutter" class="mw-sel">
-                                <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>出血留白 (Bleed)</option>
-                                <option value="black_line" ${store.gutter === 'black_line' ? 'selected' : ''}>经典框线 (Framed)</option>
-                                <option value="splash" ${store.gutter === 'splash' ? 'selected' : ''}>跨页爆发 (Splash)</option>
+                                <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>天地出血 (Bleed)</option>
+                                <option value="framed" ${store.gutter === 'framed' ? 'selected' : ''}>全封闭白边 (Framed)</option>
+                                <option value="splash" ${store.gutter === 'splash' ? 'selected' : ''}>沉浸全出血 (Splash)</option>
+                                <option value="black_line" ${store.gutter === 'black_line' ? 'selected' : ''}>纯黑线无白边 (Black Line)</option>
                             </select>
                         </div>
                     </div>

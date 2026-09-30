@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.1.1';
+        const VERSION = '1.1.2';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -426,10 +426,14 @@ ${antiHijackRule}
 
             // 6.3 确保 base_caption 带有 dynamic komawari 与 manga page layout
             if (v4Prompt.base_caption && !/dynamic komawari/i.test(v4Prompt.base_caption)) {
-                v4Prompt.base_caption = v4Prompt.base_caption.replace(
-                    /(?:vertical layout|white border|複数コマの漫画ページ)/i,
-                    '$&, manga page layout, dynamic komawari'
-                );
+                if (/(?:vertical layout|white border|複数コマの漫画ページ)/i.test(v4Prompt.base_caption)) {
+                    v4Prompt.base_caption = v4Prompt.base_caption.replace(
+                        /(?:vertical layout|white border|複数コマの漫画ページ)/i,
+                        '$&, manga page layout, dynamic komawari'
+                    );
+                } else {
+                    v4Prompt.base_caption = `comic, 複数コマの漫画ページ, manga page layout, vertical layout, white border, dynamic komawari, ${v4Prompt.base_caption}`;
+                }
             }
         }
 

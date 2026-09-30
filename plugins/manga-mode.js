@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.9';
+        const VERSION = '1.1.0';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -41,15 +41,15 @@
     const COMIC_STYLES = {
         monochrome: {
             name: '经典黑白网点漫 (Monochrome Screentone)',
-            positive: 'greyscale, monochrome, screentone, manga, bold linework, incredibly absurdres, highres, masterpiece, best quality, amazing quality, best illustration',
-            negative: '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo',
-            desc: '还原经典实体单行本质感：细腻网点纸、深邃墨线、灰阶黑白对比与纯正日漫印刷风。'
+            positive: 'artist:2015x127, 0.5::artist:du_nyak::, 0.5::artist:yujo_kei::, greyscale, monochrome, screentone, manga, bold linework, incredibly absurdres, very aesthetic, highres, masterpiece, best quality, amazing quality, best illustration',
+            negative: '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo, logo, watermark, too many watermarks, reference, signature, artist name, dated, chibi, artistic error, scan artifacts, jpeg artifacts, aliasing, chromatic aberration, digital dissolve, artist collaboration, one-hour drawing challenge, mutated, mutation, deformed, distorted, disfigured, bad anatomy, unnatural hair, bad face, mob face, cloned face, distorted face, poorly drawn face, ugly, bad eyes, empty eyes, extra eyes, lazy eye, asymmetrical eyes, cross-eyed, bad proportions, wrong body proportions, unrealistic proportions, distorted body, long neck, wrong head size, bad limbs, missing limbs, extra limbs, amputee, bad arm, bad hands, malformed hands, poorly drawn hands, bad hand structure, extra digits, fewer digits, extra fingers, fused fingers, bad leg, extra leg, distorted composition, bad perspective, disorganized colors, unfinished, incomplete, duplicate, worst quality, bad quality, messy details, fewer details, bad portrait, awkward, bad posture',
+            desc: '100% 对齐原版 v1.1.json (条目64)：细腻网点纸、三大漫画名家混血质感、墨线张力与纯正日漫单行本质感。'
         },
         soft_color: {
             name: '柔光全彩赛璐璐 (Soft Cel Shaded Anime)',
-            positive: 'artist:a20190422,0.5::artist:simuyutou::,1.2::artist:unajyudayo::,0.5::artist:Zero Q 0q::,1.8::masterpiece, best quality::, 1.3::2d anime::, 1.2::cel shaded anime characters::,year 2025, year 2026,amber tones,soft skin,bold linework,blurry background,2::solo artist ::',
-            negative: '1.5::chibi::, blank page, logo, watermark, 3D, lowres, bad anatomy, bad hands, blurry, very displeasing, malformed limbs, fused fingers, 3::simple illustration::, 2::artist collaboration::, censored',
-            desc: '吸收自 v1.1.json 原版经典：剧场版柔和色彩、温润肤色质感、清透赛璐璐阴影。'
+            positive: 'artist:a20190422,0.5::artist:simuyutou::,1.2::artist:unajyudayo::,0.5::artist:Zero Q 0q::, 1.8::masterpiece, best quality::, 1.3::2d anime::, 1.2::cel shaded anime characters::, year 2025, year 2026,amber tones,soft skin,bold linework, blurry background,2::solo artist ::',
+            negative: '1.5::chibi::, blank page, logo, watermark, too many watermarks, reference, signature, artist name, dated, chibi, artistic error, scan artifacts, jpeg artifacts, aliasing, film grain, heavy film grain, dithering, chromatic aberration, digital dissolve, 3D, lowres, bad anatomy, bad hands, error, missing fingers, extra digits, fewer digits, worst quality, low quality, normal quality, jpeg artifacts, watermark, signature, username, blurry, artist name, very displeasing, malformed limbs, fused fingers, too many fingers, 3::simple illustration::, 3::signature ::, 2::artist collaboration::, censored',
+            desc: '100% 对齐原版 v1.1.json (条目63)：剧场版柔和色彩、温润肤色质感、清透赛璐璐阴影。'
         },
         webtoon: {
             name: '现代彩色条漫 (Webtoon Aesthetic)',

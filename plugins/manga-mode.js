@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.3.1';
+        const VERSION = '1.3.2';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -1710,6 +1710,63 @@ ${antiHijackRule}
     }
 
     // ── 7. 漫画工作台 (Manga Studio) 核心引擎与面板挂载 ────────────
+    const MANGA_SHOT_PRESETS = [
+        {
+            group: '📐 距离景别 (Framing & Distance)',
+            options: [
+                { value: 'medium shot', label: '中景胸像 (Medium Shot)' },
+                { value: 'close-up focus', label: '特写聚焦 (Close-up)', aliases: ['close-up'] },
+                { value: 'face close-up', label: '面部大特写 (Face Close-up)' },
+                { value: 'extreme close-up on eyes', label: '眼神极近特写 (Eyes Close-up)' },
+                { value: 'cowboy shot', label: '半身膝上 (Cowboy Shot)' },
+                { value: 'full body', label: '全身立像 (Full Body)' },
+                { value: 'wide establishing shot', label: '广角大远景 (Wide Shot)', aliases: ['wide shot'] }
+            ]
+        },
+        {
+            group: '🌐 空间机位 (Vertical Angles)',
+            options: [
+                { value: 'eye-level shot', label: '平视平位 (Eye-level)' },
+                { value: 'dynamic low angle', label: '仰角冲击 (Low Angle / From Below)' },
+                { value: 'high angle', label: '俯视角度 (High Angle / From Above)' },
+                { value: 'bird\'s-eye view', label: '顶视鸟瞰 (Bird\'s-eye / Top-down)' },
+                { value: 'ground angle', label: '贴地极低机位 (Worm\'s-eye / Ground)' }
+            ]
+        },
+        {
+            group: '🎬 叙事视点与特色镜头 (Cinematic & POV)',
+            options: [
+                { value: 'dutch angle', label: '倾斜角/窥视惊悚 (Dutch Angle)' },
+                { value: 'from behind', label: '背后追踪视线 (From Behind / Back)' },
+                { value: 'over-the-shoulder', label: '越肩对峙 (Over-the-shoulder)' },
+                { value: 'pov, first-person view', label: '第一人称主视角 (POV)' },
+                { value: 'profile', label: '正侧面剪影 (Side Profile)' },
+                { value: 'fisheye lens', label: '鱼眼透视畸变 (Fisheye Lens)' },
+                { value: 'foreshortening', label: '强透视伸向镜头 (Foreshortening)' }
+            ]
+        }
+    ];
+
+    function renderShotOptions(selectedShot) {
+        let hasMatched = false;
+        const groupsHtml = MANGA_SHOT_PRESETS.map(grp => `
+            <optgroup label="${grp.group}">
+                ${grp.options.map(opt => {
+                    const isSel = (opt.value === selectedShot || (opt.aliases && opt.aliases.includes(selectedShot)));
+                    if (isSel) hasMatched = true;
+                    return `<option value="${opt.value}" ${isSel ? 'selected' : ''}>${opt.label}</option>`;
+                }).join('')}
+            </optgroup>
+        `).join('');
+
+        let customOptionHtml = '';
+        if (selectedShot && !hasMatched && selectedShot !== '__custom__') {
+            customOptionHtml = `<option value="${RBQ.utils.escapeHtml(selectedShot)}" selected>⚙️ 自定义机位 (${RBQ.utils.escapeHtml(selectedShot)})</option>`;
+        }
+
+        return customOptionHtml + groupsHtml + `<option value="__custom__">✏️ 手动输入自定义机位...</option>`;
+    }
+
     const STORYBOARD_PRESETS = [
         {
             id: 'sunset-confession',
@@ -1918,7 +1975,7 @@ JSON 格式规范：
   "panels": [
     {
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
-      "shot": "景别英文（必须为以下之一：close-up | medium shot | wide shot | low angle | high angle | face close-up）",
+      "shot": "景别机位英文（支持从以下专业漫画镜头中挑选最契合剧情的词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
       "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词）",
       "bubbleType": "speech | thought | screaming | caption | sfx",
       "bubbleText": "画格内角色台词、心声或旁白文字",
@@ -1976,7 +2033,6 @@ JSON 格式规范：
             .map(s => s.trim())
             .filter(s => s.length > 1);
 
-        const shotOptions = ['medium shot', 'close-up focus', 'face close-up', 'dynamic low angle', 'wide shot'];
         const panelCount = Math.max(2, Math.min(4, sentences.length || 3));
         const panels = [];
 
@@ -1985,6 +2041,27 @@ JSON 格式规范：
             let bubbleType = 'speech';
             let bubbleText = '';
             let bubbleLayout = (i % 2 === 0) ? 'vertical' : 'horizontal';
+
+            // 智能根据叙事情绪分配专业漫画机位
+            let shot = 'medium shot';
+            if (/尾随|跟踪|背后|后面|跟随|脚步声/i.test(sentence)) {
+                shot = 'from behind';
+            } else if (/小巷|街道|教室|天台|黑夜|城市|废墟|远/i.test(sentence) && (i === 0 || i === panelCount - 1)) {
+                shot = 'wide establishing shot';
+            } else if (/恐慌|害怕|惊恐|惊慌|颤抖|冷汗|发抖|逃/i.test(sentence)) {
+                shot = 'dutch angle';
+            } else if (/眼神|凝视|盯着|瞳孔|惊愕|睁大/i.test(sentence)) {
+                shot = 'extreme close-up on eyes';
+            } else if (/泪|哭|红脸|脸|喘息|微笑|神情/i.test(sentence)) {
+                shot = 'face close-up';
+            } else if (/抓|拉|拖|按|推|倒|斩|冲|击|伸出/i.test(sentence)) {
+                shot = 'foreshortening';
+            } else if (/对峙|对话|问|说|转过身|看着/i.test(sentence)) {
+                shot = 'over-the-shoulder';
+            } else {
+                const defaultFlow = ['wide establishing shot', 'face close-up', 'dutch angle', 'foreshortening'];
+                shot = defaultFlow[i % defaultFlow.length];
+            }
 
             const thoughtMatch = sentence.match(/[（\(](.+?)[）\)]/);
             const speechMatch = sentence.match(/[“"「](.+?)[”"」]/);
@@ -2018,8 +2095,6 @@ JSON 格式规范：
             if (tags.length === 0) {
                 tags.push('dramatic lighting', 'expressive eyes');
             }
-
-            const shot = shotOptions[i % shotOptions.length];
 
             panels.push({
                 title: `第 ${i + 1} 格 · ${sentence.slice(0, 8)}`,
@@ -2318,12 +2393,7 @@ JSON 格式规范：
                             <span class="mw-panel-num">#${idx + 1}</span>
                             <input type="text" class="mw-panel-title-in" value="${RBQ.utils.escapeHtml(p.title || '')}" placeholder="画格描述...">
                             <select class="mw-panel-shot-sel">
-                                <option value="medium shot" ${p.shot === 'medium shot' ? 'selected' : ''}>中景 (Medium Shot)</option>
-                                <option value="close-up focus" ${p.shot === 'close-up focus' || p.shot === 'close-up' ? 'selected' : ''}>特写聚焦 (Close-up)</option>
-                                <option value="face close-up" ${p.shot === 'face close-up' ? 'selected' : ''}>面部大特写 (Face Close-up)</option>
-                                <option value="wide shot" ${p.shot === 'wide shot' || p.shot === 'wide establishing shot' ? 'selected' : ''}>全景远景 (Wide Shot)</option>
-                                <option value="dynamic low angle" ${p.shot === 'dynamic low angle' ? 'selected' : ''}>仰视爆发 (Low Angle)</option>
-                                <option value="high angle" ${p.shot === 'high angle' ? 'selected' : ''}>俯视机位 (High Angle)</option>
+                                ${renderShotOptions(p.shot)}
                             </select>
                         </div>
                         <div class="mw-panel-btns">
@@ -2364,7 +2434,15 @@ JSON 格式规范：
                     save();
                 });
                 card.querySelector('.mw-panel-shot-sel')?.addEventListener('change', (e) => {
-                    p.shot = e.target.value;
+                    if (e.target.value === '__custom__') {
+                        const customVal = prompt('请输入自定义机位视角（英文 Tag，例如：dutch angle, extreme low angle, over-the-shoulder）：', p.shot || '');
+                        if (customVal && customVal.trim()) {
+                            p.shot = customVal.trim();
+                        }
+                        renderPanelCards();
+                    } else {
+                        p.shot = e.target.value;
+                    }
                     updatePromptPreview();
                     save();
                 });

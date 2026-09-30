@@ -812,73 +812,79 @@ ${antiHijackRule}
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            padding: 10px 16px !important;
+            padding: 6px 12px !important;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
             background: rgba(18, 22, 34, 0.95) !important;
             backdrop-filter: blur(12px) !important;
-            gap: 12px !important;
-            flex-wrap: wrap !important;
+            gap: 10px !important;
             flex-shrink: 0 !important;
             box-sizing: border-box !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
         }
         .mw-brand {
             display: flex !important;
             align-items: center !important;
-            gap: 10px !important;
+            gap: 8px !important;
             flex-shrink: 0 !important;
         }
         .mw-logo {
-            width: 34px !important;
-            height: 34px !important;
-            border-radius: 9px !important;
+            width: 26px !important;
+            height: 26px !important;
+            border-radius: 7px !important;
             background: linear-gradient(135deg, #f59e0b, #d97706) !important;
             color: #000 !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            font-size: 16px !important;
-            box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3) !important;
+            font-size: 13px !important;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
         }
         .mw-title-box {
             display: flex !important;
             flex-direction: column !important;
-            gap: 1px !important;
+            gap: 0 !important;
         }
         .mw-title {
-            font-size: 14px !important;
+            font-size: 13px !important;
             font-weight: 700 !important;
             color: #fff !important;
             display: flex !important;
             align-items: center !important;
             gap: 6px !important;
+            white-space: nowrap !important;
         }
         .mw-badge {
-            font-size: 10px !important;
+            font-size: 9px !important;
             font-weight: 700 !important;
-            padding: 1px 6px !important;
+            padding: 1px 5px !important;
             border-radius: 999px !important;
             background: rgba(245, 158, 11, 0.18) !important;
             color: #fcd34d !important;
             border: 1px solid rgba(245, 158, 11, 0.35) !important;
         }
         .mw-subtitle {
-            font-size: 11px !important;
-            color: #94a3b8 !important;
+            font-size: 10px !important;
+            color: #64748b !important;
+            display: none !important;
         }
         .mw-hdr-controls {
             display: flex !important;
             align-items: center !important;
-            gap: 6px !important;
-            flex-wrap: wrap !important;
+            gap: 5px !important;
+            flex-wrap: nowrap !important;
+            flex-shrink: 1 !important;
+            min-width: 0 !important;
         }
         .mw-hdr-pill {
             display: inline-flex !important;
             align-items: center !important;
             background: rgba(255, 255, 255, 0.04) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
             border-radius: 999px !important;
-            padding: 2px 8px 2px 10px !important;
-            gap: 6px !important;
+            padding: 2px 6px 2px 8px !important;
+            gap: 4px !important;
+            flex-shrink: 0 !important;
             transition: border-color 0.2s, background 0.2s !important;
         }
         .mw-hdr-pill:hover, .mw-hdr-pill:focus-within {
@@ -886,23 +892,24 @@ ${antiHijackRule}
             border-color: rgba(245, 158, 11, 0.45) !important;
         }
         .mw-hdr-pill label {
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-weight: 600 !important;
             color: #94a3b8 !important;
             display: flex !important;
             align-items: center !important;
-            gap: 4px !important;
+            gap: 3px !important;
             white-space: nowrap !important;
         }
         .mw-hdr-pill select.mw-sel {
             background: transparent !important;
             border: none !important;
             color: #f1f5f9 !important;
-            font-size: 11.5px !important;
+            font-size: 11px !important;
             font-weight: 500 !important;
             cursor: pointer !important;
             outline: none !important;
-            padding: 3px 2px !important;
+            padding: 2px 0 !important;
+            max-width: 160px !important;
         }
         .mw-control-group {
             display: flex !important;
@@ -1004,19 +1011,19 @@ ${antiHijackRule}
             min-height: 26px !important;
         }
         .mw-btn.lg {
-            padding: 10px 16px !important;
-            font-size: 13.5px !important;
+            padding: 8px 14px !important;
+            font-size: 13px !important;
             font-weight: 800 !important;
-            min-height: 42px !important;
-            border-radius: 9px !important;
+            min-height: 36px !important;
+            border-radius: 8px !important;
         }
         /* 主体双栏拓扑 */
         .mw-body {
             flex: 1 !important;
             display: grid !important;
-            grid-template-columns: minmax(0, 7.2fr) minmax(0, 4.8fr) !important;
-            gap: 14px !important;
-            padding: 14px !important;
+            grid-template-columns: minmax(0, 6fr) minmax(240px, 3.5fr) !important;
+            gap: 10px !important;
+            padding: 10px !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
             box-sizing: border-box !important;
@@ -1026,51 +1033,61 @@ ${antiHijackRule}
                 grid-template-columns: 1fr !important;
             }
         }
-        .mw-left-pane, .mw-right-pane {
+        .mw-left-pane {
             display: flex !important;
             flex-direction: column !important;
-            gap: 12px !important;
+            gap: 10px !important;
             min-width: 0 !important;
+        }
+        .mw-right-pane {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+            min-width: 0 !important;
+            position: sticky !important;
+            top: 0 !important;
+            align-self: start !important;
         }
         .mw-card {
             background: rgba(24, 28, 42, 0.65) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 11px !important;
-            padding: 12px !important;
+            border-radius: 9px !important;
+            padding: 10px !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 9px !important;
+            gap: 7px !important;
             box-sizing: border-box !important;
         }
         .mw-card-hd {
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            gap: 8px !important;
+            gap: 6px !important;
             flex-wrap: wrap !important;
         }
         .mw-card-tt {
-            font-size: 12.5px !important;
+            font-size: 12px !important;
             font-weight: 700 !important;
             display: inline-flex !important;
             align-items: center !important;
-            gap: 6px !important;
+            gap: 5px !important;
             color: #e2e8f0 !important;
         }
         .mw-card-actions {
             display: flex !important;
             align-items: center !important;
-            gap: 6px !important;
+            gap: 5px !important;
             flex-wrap: wrap !important;
         }
         .mw-story-card textarea {
             width: 100% !important;
-            min-height: 64px !important;
+            min-height: 56px !important;
+            max-height: 120px !important;
             background: rgba(12, 15, 24, 0.8) !important;
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
-            border-radius: 8px !important;
+            border-radius: 6px !important;
             color: #fff !important;
-            padding: 8px 10px !important;
+            padding: 6px 8px !important;
             font-size: 12px !important;
             line-height: 1.5 !important;
             resize: vertical !important;
@@ -1083,15 +1100,14 @@ ${antiHijackRule}
         }
         .mw-story-ft {
             display: flex !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            gap: 10px !important;
-            flex-wrap: wrap !important;
+            align-items: stretch !important;
+            flex-direction: column !important;
+            gap: 6px !important;
         }
         .mw-opts {
             display: flex !important;
             align-items: center !important;
-            gap: 8px !important;
+            gap: 6px !important;
             flex-wrap: wrap !important;
         }
         .mw-count-pill {
@@ -1101,15 +1117,15 @@ ${antiHijackRule}
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
             border-radius: 6px !important;
             padding: 2px 6px !important;
-            gap: 6px !important;
+            gap: 4px !important;
         }
         .mw-pill-label {
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-weight: 600 !important;
             color: #cbd5e1 !important;
             display: flex !important;
             align-items: center !important;
-            gap: 4px !important;
+            gap: 3px !important;
             white-space: nowrap !important;
         }
         .mw-count-sel {
@@ -1132,13 +1148,13 @@ ${antiHijackRule}
         .mw-chip-body {
             display: inline-flex !important;
             align-items: center !important;
-            gap: 6px !important;
-            padding: 4px 10px !important;
+            gap: 5px !important;
+            padding: 3px 8px !important;
             border-radius: 999px !important;
             background: rgba(255, 255, 255, 0.05) !important;
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
             color: #94a3b8 !important;
-            font-size: 11.5px !important;
+            font-size: 10.5px !important;
             font-weight: 500 !important;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
@@ -1417,23 +1433,23 @@ ${antiHijackRule}
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            padding: 8px 0 !important;
+            padding: 4px 0 !important;
         }
         .mw-canvas-viewport {
             width: 100% !important;
-            max-width: 280px !important;
-            max-height: clamp(240px, 45vh, 420px) !important;
+            max-width: 220px !important;
+            max-height: clamp(180px, 35vh, 340px) !important;
             aspect-ratio: 832 / 1216 !important;
             background: #05070a !important;
-            border: 2px solid rgba(255, 255, 255, 0.15) !important;
-            border-radius: 8px !important;
+            border: 2px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 6px !important;
             overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
             position: relative !important;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
         }
         .mw-canvas-viewport img {
             width: 100% !important;
@@ -1466,13 +1482,13 @@ ${antiHijackRule}
         .mw-gen-box {
             display: flex !important;
             flex-direction: column !important;
-            gap: 8px !important;
-            margin-top: 4px !important;
+            gap: 6px !important;
+            margin-top: 2px !important;
         }
         .mw-action-row {
             display: grid !important;
             grid-template-columns: 1fr 1fr 1fr !important;
-            gap: 6px !important;
+            gap: 5px !important;
         }
         /* 查看器与预设模态框 */
         .mw-modal-mask {
@@ -2904,7 +2920,7 @@ JSON 格式规范：
                     <div class="mw-right-pane">
                         <div class="mw-card">
                             <div class="mw-card-hd">
-                                <span class="mw-card-tt"><i class="fa-solid fa-eye" style="color:#f59e0b"></i> 原画级漫画预览画布 (Zero-CLS Viewport)</span>
+                                <span class="mw-card-tt"><i class="fa-solid fa-eye" style="color:#f59e0b"></i> 漫画预览</span>
                                 <span id="mw-canvas-res-badge" class="mw-badge">832 × 1216 PX</span>
                             </div>
 
@@ -2948,7 +2964,7 @@ JSON 格式规范：
             const [w, h] = ratio.split('x').map(Number);
             if (w && h) {
                 viewportEl.style.aspectRatio = `${w} / ${h}`;
-                viewportEl.style.maxWidth = (w > h) ? '420px' : '280px';
+                viewportEl.style.maxWidth = (w > h) ? '300px' : '220px';
             }
             const resText = ratio.replace('x', ' × ') + ' PX';
             if (resBadgeEl) resBadgeEl.textContent = resText;

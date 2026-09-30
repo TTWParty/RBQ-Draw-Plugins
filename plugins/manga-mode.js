@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.6';
+        const VERSION = '1.4.7';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -868,8 +868,41 @@ ${antiHijackRule}
         .mw-hdr-controls {
             display: flex !important;
             align-items: center !important;
-            gap: 8px !important;
+            gap: 6px !important;
             flex-wrap: wrap !important;
+        }
+        .mw-hdr-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            background: rgba(255, 255, 255, 0.04) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 999px !important;
+            padding: 2px 8px 2px 10px !important;
+            gap: 6px !important;
+            transition: border-color 0.2s, background 0.2s !important;
+        }
+        .mw-hdr-pill:hover, .mw-hdr-pill:focus-within {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border-color: rgba(245, 158, 11, 0.45) !important;
+        }
+        .mw-hdr-pill label {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #94a3b8 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            white-space: nowrap !important;
+        }
+        .mw-hdr-pill select.mw-sel {
+            background: transparent !important;
+            border: none !important;
+            color: #f1f5f9 !important;
+            font-size: 11.5px !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            outline: none !important;
+            padding: 3px 2px !important;
         }
         .mw-control-group {
             display: flex !important;
@@ -1058,9 +1091,76 @@ ${antiHijackRule}
         .mw-opts {
             display: flex !important;
             align-items: center !important;
-            gap: 12px !important;
+            gap: 8px !important;
+            flex-wrap: wrap !important;
+        }
+        .mw-count-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            background: rgba(0, 0, 0, 0.4) !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 6px !important;
+            padding: 2px 6px !important;
+            gap: 6px !important;
+        }
+        .mw-pill-label {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #cbd5e1 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            white-space: nowrap !important;
+        }
+        .mw-count-sel {
+            color: #fcd34d !important;
+            font-weight: 600 !important;
             font-size: 11.5px !important;
+            padding: 2px !important;
+            cursor: pointer !important;
+        }
+        .mw-chip-toggle {
+            display: inline-flex !important;
+            align-items: center !important;
+            cursor: pointer !important;
+            user-select: none !important;
+            margin: 0 !important;
+        }
+        .mw-chip-toggle input[type="checkbox"] {
+            display: none !important;
+        }
+        .mw-chip-body {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            padding: 4px 10px !important;
+            border-radius: 999px !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
             color: #94a3b8 !important;
+            font-size: 11.5px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        .mw-chip-dot {
+            width: 6px !important;
+            height: 6px !important;
+            border-radius: 50% !important;
+            background: #64748b !important;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        .mw-chip-toggle:hover .mw-chip-body {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+        .mw-chip-toggle input:checked + .mw-chip-body {
+            background: rgba(245, 158, 11, 0.15) !important;
+            border-color: rgba(245, 158, 11, 0.45) !important;
+            color: #fef08a !important;
+        }
+        .mw-chip-toggle input:checked + .mw-chip-body .mw-chip-dot {
+            background: #f59e0b !important;
+            box-shadow: 0 0 8px #f59e0b !important;
         }
         .mw-chk-lbl {
             display: inline-flex !important;
@@ -1072,91 +1172,93 @@ ${antiHijackRule}
         .mw-chk-lbl input {
             accent-color: #f59e0b !important;
         }
-        /* 画格序列卡片流 */
+        /* 画格序列卡片流 (Storyboard Frames) */
         .mw-panels-list {
             display: flex !important;
             flex-direction: column !important;
-            gap: 9px !important;
+            gap: 10px !important;
         }
         .mw-panel-card {
-            background: rgba(15, 18, 28, 0.75) !important;
+            background: rgba(15, 18, 28, 0.85) !important;
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 9px !important;
-            padding: 10px !important;
+            border-left: 3px solid rgba(245, 158, 11, 0.6) !important;
+            border-radius: 8px !important;
+            padding: 10px 12px !important;
             display: flex !important;
             flex-direction: column !important;
             gap: 8px !important;
-            transition: border-color 0.15s ease !important;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
             overflow: hidden !important;
             box-sizing: border-box !important;
         }
         .mw-panel-card:hover {
-            border-color: rgba(245, 158, 11, 0.4) !important;
+            border-color: rgba(245, 158, 11, 0.5) !important;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
         }
         .mw-panel-hd {
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
-            gap: 6px !important;
+            gap: 8px !important;
             width: 100% !important;
             min-width: 0 !important;
         }
         .mw-panel-info {
             display: flex !important;
             align-items: center !important;
-            gap: 6px !important;
+            gap: 8px !important;
             flex: 1 1 auto !important;
             min-width: 0 !important;
-            overflow: hidden !important;
         }
         .mw-panel-num {
-            width: 22px !important;
-            height: 22px !important;
+            padding: 2px 7px !important;
             border-radius: 5px !important;
-            background: rgba(245, 158, 11, 0.2) !important;
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.15)) !important;
+            border: 1px solid rgba(245, 158, 11, 0.4) !important;
             color: #fcd34d !important;
             font-size: 11px !important;
-            font-weight: 700 !important;
-            display: flex !important;
+            font-weight: 800 !important;
+            font-family: monospace !important;
+            display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
             flex-shrink: 0 !important;
         }
         .mw-panel-title-in {
-            background: transparent !important;
-            border: 1px solid transparent !important;
+            background: rgba(0, 0, 0, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
             color: #fff !important;
             font-size: 12px !important;
             font-weight: 600 !important;
-            padding: 2px 4px !important;
-            border-radius: 4px !important;
-            flex: 0 1 120px !important;
-            min-width: 45px !important;
-            max-width: 130px !important;
+            padding: 3px 8px !important;
+            border-radius: 5px !important;
+            flex: 1 1 140px !important;
+            min-width: 80px !important;
+            max-width: 200px !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
             box-sizing: border-box !important;
         }
         .mw-panel-title-in:focus {
-            background: rgba(0, 0, 0, 0.4) !important;
-            border-color: rgba(255, 255, 255, 0.2) !important;
+            background: rgba(0, 0, 0, 0.5) !important;
+            border-color: rgba(245, 158, 11, 0.4) !important;
         }
         .mw-panel-shot-sel {
-            background: rgba(0, 0, 0, 0.4) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            color: #a5b4fc !important;
+            background: rgba(99, 102, 241, 0.1) !important;
+            border: 1px solid rgba(99, 102, 241, 0.3) !important;
+            color: #c7d2fe !important;
             font-size: 11px !important;
-            padding: 2px 6px !important;
-            border-radius: 5px !important;
+            padding: 3px 8px !important;
+            border-radius: 6px !important;
             cursor: pointer !important;
-            flex: 1 1 130px !important;
-            min-width: 80px !important;
-            max-width: 165px !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            white-space: nowrap !important;
+            flex: 0 0 170px !important;
+            min-width: 140px !important;
+            max-width: 220px !important;
             box-sizing: border-box !important;
+        }
+        .mw-panel-shot-sel:hover {
+            border-color: rgba(99, 102, 241, 0.5) !important;
         }
         .mw-panel-btns {
             display: flex !important;
@@ -1174,7 +1276,8 @@ ${antiHijackRule}
             justify-content: center !important;
             min-height: unset !important;
             flex-shrink: 0 !important;
-            font-size: 10px !important;
+            font-size: 10.5px !important;
+            border-radius: 5px !important;
         }
         .mw-panel-desc-row {
             display: flex !important;
@@ -1187,11 +1290,11 @@ ${antiHijackRule}
             flex: 1 1 auto !important;
             min-width: 0 !important;
             background: rgba(0, 0, 0, 0.45) !important;
-            border: 1px solid rgba(245, 158, 11, 0.35) !important;
+            border: 1px solid rgba(245, 158, 11, 0.3) !important;
             border-radius: 6px !important;
             color: #fef08a !important;
-            padding: 5px 8px !important;
-            font-size: 11.5px !important;
+            padding: 6px 10px !important;
+            font-size: 12px !important;
             box-sizing: border-box !important;
             outline: none !important;
             transition: border-color 0.2s, background-color 0.2s !important;
@@ -1205,56 +1308,94 @@ ${antiHijackRule}
             white-space: nowrap !important;
             flex-shrink: 0 !important;
         }
-        .mw-panel-tag-in {
-            width: 100% !important;
-            background: rgba(0, 0, 0, 0.35) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        .mw-panel-tags-box {
+            display: flex !important;
+            align-items: center !important;
+            background: rgba(0, 0, 0, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
             border-radius: 6px !important;
-            color: #cbd5e1 !important;
+            overflow: hidden !important;
+        }
+        .mw-tags-badge {
+            padding: 4px 8px !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+            font-size: 10px !important;
+            font-weight: 700 !important;
+            color: #64748b !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            white-space: nowrap !important;
+        }
+        .mw-panel-tag-in {
+            flex: 1 !important;
+            width: 100% !important;
+            background: transparent !important;
+            border: none !important;
+            color: #93c5fd !important;
             padding: 5px 8px !important;
             font-size: 11px !important;
-            font-family: monospace !important;
+            font-family: 'SF Mono', Consolas, Monaco, monospace !important;
             box-sizing: border-box !important;
             outline: none !important;
         }
-        .mw-panel-tag-in:focus {
-            border-color: #f59e0b !important;
+        .mw-panel-tags-box:focus-within {
+            border-color: rgba(245, 158, 11, 0.45) !important;
         }
         .mw-bubble-row {
-            display: grid !important;
-            grid-template-columns: 140px 1fr 70px !important;
+            display: flex !important;
             gap: 6px !important;
-            background: rgba(0, 0, 0, 0.25) !important;
-            padding: 6px !important;
+            background: rgba(14, 165, 233, 0.05) !important;
+            padding: 5px 7px !important;
             border-radius: 6px !important;
-            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(14, 165, 233, 0.15) !important;
             align-items: center !important;
         }
-        @media (max-width: 600px) {
-            .mw-bubble-row {
-                grid-template-columns: 1fr 1fr !important;
-            }
-        }
-        .mw-bubble-type-sel, .mw-bubble-dir-sel {
-            background: rgba(0, 0, 0, 0.4) !important;
+        .mw-bubble-type-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            background: rgba(0, 0, 0, 0.3) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            color: #fff !important;
-            font-size: 11px !important;
-            padding: 3px 5px !important;
             border-radius: 4px !important;
+            padding: 2px 6px !important;
+            flex-shrink: 0 !important;
+        }
+        .mw-bubble-type-sel {
+            background: transparent !important;
+            border: none !important;
+            color: #7dd3fc !important;
+            font-size: 11px !important;
+            font-weight: 500 !important;
+            outline: none !important;
+            cursor: pointer !important;
+            padding: 2px 0 !important;
         }
         .mw-bubble-text-in {
-            background: rgba(0, 0, 0, 0.4) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            flex: 1 !important;
+            background: rgba(0, 0, 0, 0.35) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
             color: #fff !important;
             font-size: 11.5px !important;
-            padding: 3px 8px !important;
+            padding: 4px 8px !important;
             border-radius: 4px !important;
-            width: 100% !important;
+            outline: none !important;
+            transition: border-color 0.2s !important;
             box-sizing: border-box !important;
         }
         .mw-bubble-text-in:focus {
-            border-color: #f59e0b !important;
+            border-color: #38bdf8 !important;
+        }
+        .mw-bubble-dir-sel {
+            background: rgba(0, 0, 0, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #94a3b8 !important;
+            font-size: 11px !important;
+            padding: 3px 6px !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+            flex-shrink: 0 !important;
         }
         /* 组装提示词预览 */
         .mw-code-block {
@@ -1280,10 +1421,11 @@ ${antiHijackRule}
         }
         .mw-canvas-viewport {
             width: 100% !important;
-            max-width: 320px !important;
+            max-width: 280px !important;
+            max-height: clamp(240px, 45vh, 420px) !important;
             aspect-ratio: 832 / 1216 !important;
             background: #05070a !important;
-            border: 3px solid rgba(255, 255, 255, 0.15) !important;
+            border: 2px solid rgba(255, 255, 255, 0.15) !important;
             border-radius: 8px !important;
             overflow: hidden !important;
             display: flex !important;
@@ -1291,7 +1433,7 @@ ${antiHijackRule}
             align-items: center !important;
             justify-content: center !important;
             position: relative !important;
-            box-shadow: 0 8px 26px rgba(0, 0, 0, 0.7) !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
         }
         .mw-canvas-viewport img {
             width: 100% !important;
@@ -2655,13 +2797,13 @@ JSON 格式规范：
                         </div>
                     </div>
                     <div class="mw-hdr-controls">
-                        <div class="mw-control-group">
+                        <div class="mw-hdr-pill">
                             <label><i class="fa-solid fa-brush" style="color:#f59e0b"></i> 画风:</label>
                             <select id="mw-hdr-style" class="mw-sel">
                                 ${Object.entries(COMIC_STYLES).map(([k, v]) => `<option value="${k}" ${store.style === k ? 'selected' : ''}>${v.name}</option>`).join('')}
                             </select>
                         </div>
-                        <div class="mw-control-group">
+                        <div class="mw-hdr-pill">
                             <label><i class="fa-solid fa-clapperboard" style="color:#6366f1"></i> 文法:</label>
                             <select id="mw-hdr-grammar" class="mw-sel">
                                 ${Object.keys(COMIC_GRAMMARS).map(k => `
@@ -2669,7 +2811,7 @@ JSON 格式规范：
                                 `).join('')}
                             </select>
                         </div>
-                        <div class="mw-control-group">
+                        <div class="mw-hdr-pill">
                             <label><i class="fa-solid fa-crop-simple" style="color:#10b981"></i> 画布:</label>
                             <select id="mw-hdr-ratio" class="mw-sel">
                                 <option value="832x1216" ${studio.ratio === '832x1216' ? 'selected' : ''}>纵向单页 (832×1216)</option>
@@ -2677,7 +2819,7 @@ JSON 格式规范：
                                 <option value="896x1152" ${studio.ratio === '896x1152' ? 'selected' : ''}>宽幅剧场 (896×1152)</option>
                             </select>
                         </div>
-                        <div class="mw-control-group">
+                        <div class="mw-hdr-pill">
                             <label><i class="fa-solid fa-border-all" style="color:#ec4899"></i> 留白:</label>
                             <select id="mw-hdr-gutter" class="mw-sel">
                                 <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>天地出血 (Bleed)</option>
@@ -2704,9 +2846,9 @@ JSON 格式规范：
                             <textarea id="mw-story-input" placeholder="在此输入自然语言故事片段、对话或场景描写，点击「AI 智能分镜推演」自动拆解为画格与镜头机位...">${RBQ.utils.escapeHtml(studio.storyText || '')}</textarea>
                             <div class="mw-story-ft">
                                 <div class="mw-opts">
-                                    <div style="display:inline-flex;align-items:center;gap:4px;">
-                                        <span style="font-size:11.5px;color:#cbd5e1;"><i class="fa-solid fa-table-cells-large" style="color:#f59e0b"></i> 画格数:</span>
-                                        <select id="mw-story-panel-count" class="mw-sel" style="padding:2px 6px;font-size:11px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:5px;color:#fcd34d;cursor:pointer;">
+                                    <div class="mw-count-pill">
+                                        <span class="mw-pill-label"><i class="fa-solid fa-table-cells-large" style="color:#f59e0b"></i> 画格数:</span>
+                                        <select id="mw-story-panel-count" class="mw-sel mw-count-sel">
                                             <option value="auto" ${(!studio.panelCountMode || studio.panelCountMode === 'auto') ? 'selected' : ''}>🤖 自动规划 (自适应)</option>
                                             <option value="1" ${studio.panelCountMode === '1' ? 'selected' : ''}>1 格 (单格大画幅)</option>
                                             <option value="2" ${studio.panelCountMode === '2' ? 'selected' : ''}>2 格 (起承 / 对峙)</option>
@@ -2715,8 +2857,20 @@ JSON 格式规范：
                                             <option value="5" ${studio.panelCountMode === '5' ? 'selected' : ''}>5 格 (密集分镜)</option>
                                         </select>
                                     </div>
-                                    <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-anti-hijack" ${studio.antiHijack !== false ? 'checked' : ''}> <span>角色防夺舍</span></label>
-                                    <label class="mw-chk-lbl"><input type="checkbox" id="mw-chk-auto-sfx" ${studio.autoSfx !== false ? 'checked' : ''}> <span>拟音词 (SFX)</span></label>
+                                    <label class="mw-chip-toggle">
+                                        <input type="checkbox" id="mw-chk-anti-hijack" ${studio.antiHijack !== false ? 'checked' : ''}>
+                                        <span class="mw-chip-body">
+                                            <span class="mw-chip-dot"></span>
+                                            <span>角色防夺舍</span>
+                                        </span>
+                                    </label>
+                                    <label class="mw-chip-toggle">
+                                        <input type="checkbox" id="mw-chk-auto-sfx" ${studio.autoSfx !== false ? 'checked' : ''}>
+                                        <span class="mw-chip-body">
+                                            <span class="mw-chip-dot"></span>
+                                            <span>拟音词 (SFX)</span>
+                                        </span>
+                                    </label>
                                 </div>
                                 <button id="mw-btn-ai-storyboard" class="mw-btn pri"><i class="fa-solid fa-brain"></i> AI 智能分镜推演</button>
                             </div>
@@ -2794,7 +2948,7 @@ JSON 格式规范：
             const [w, h] = ratio.split('x').map(Number);
             if (w && h) {
                 viewportEl.style.aspectRatio = `${w} / ${h}`;
-                viewportEl.style.maxWidth = (w > h) ? '480px' : '320px';
+                viewportEl.style.maxWidth = (w > h) ? '420px' : '280px';
             }
             const resText = ratio.replace('x', ' × ') + ' PX';
             if (resBadgeEl) resBadgeEl.textContent = resText;
@@ -2849,18 +3003,24 @@ JSON 格式规范：
                         <button class="mw-btn sm cy mw-panel-ai-single" title="针对本格填入的句子，单独调用 AI 生成 Tag、机位与对白"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 润色本格</button>
                     </div>
 
-                    <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入该画格专属英文 Danbooru / NAI tags...">
+                    <div class="mw-panel-tags-box">
+                        <span class="mw-tags-badge"><i class="fa-solid fa-tags"></i> TAGS</span>
+                        <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入该画格专属英文 Danbooru / NAI tags...">
+                    </div>
 
                     <div class="mw-bubble-row">
-                        <select class="mw-bubble-type-sel">
-                            <option value="speech" ${p.bubbleType === 'speech' ? 'selected' : ''}>对白框 (Speech)</option>
-                            <option value="thought" ${p.bubbleType === 'thought' ? 'selected' : ''}>心声气泡 (Thought)</option>
-                            <option value="screaming" ${p.bubbleType === 'screaming' ? 'selected' : ''}>呐喊爆发 (Scream)</option>
-                            <option value="caption" ${p.bubbleType === 'caption' ? 'selected' : ''}>矩形旁白 (Caption)</option>
-                            <option value="sfx" ${p.bubbleType === 'sfx' ? 'selected' : ''}>拟音词 (SFX)</option>
-                        </select>
+                        <div class="mw-bubble-type-pill">
+                            <i class="fa-regular fa-comment-dots" style="color:#38bdf8"></i>
+                            <select class="mw-bubble-type-sel">
+                                <option value="speech" ${p.bubbleType === 'speech' ? 'selected' : ''}>对白框 (Speech)</option>
+                                <option value="thought" ${p.bubbleType === 'thought' ? 'selected' : ''}>心声气泡 (Thought)</option>
+                                <option value="screaming" ${p.bubbleType === 'screaming' ? 'selected' : ''}>呐喊爆发 (Scream)</option>
+                                <option value="caption" ${p.bubbleType === 'caption' ? 'selected' : ''}>矩形旁白 (Caption)</option>
+                                <option value="sfx" ${p.bubbleType === 'sfx' ? 'selected' : ''}>拟音词 (SFX)</option>
+                            </select>
+                        </div>
                         <input type="text" class="mw-bubble-text-in" value="${RBQ.utils.escapeHtml(p.bubbleText || '')}" placeholder="输入气泡内台词或独白文字...">
-                        <select class="mw-bubble-dir-sel">
+                        <select class="mw-bubble-dir-sel" title="文字排版方向">
                             <option value="vertical" ${p.bubbleLayout !== 'horizontal' ? 'selected' : ''}>竖排</option>
                             <option value="horizontal" ${p.bubbleLayout === 'horizontal' ? 'selected' : ''}>横排</option>
                         </select>

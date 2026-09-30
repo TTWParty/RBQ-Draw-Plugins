@@ -5,7 +5,7 @@
     const PLUGIN_NAME = '漫画模式 (Manga Mode)';
     const STORAGE_KEY = '_mangaMode';
     const SDT_KEY = '_smartDrawTrigger';
-    const VERSION = '1.0.0';
+    const VERSION = '1.0.1';
 
     // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -117,7 +117,9 @@
             ? '[GUTTER-BLEED: FULLY-FRAMED]\n全封闭内枠：四周带经典漫画白边框架，格与格之间边界清晰分明。'
             : (store.gutter === 'splash'
                 ? '[GUTTER-BLEED: IMMERSIVE-SPLASH]\n沉浸全出血：整幅画格完全贴边撑满画面，极大增强画面代入感。'
-                : '[GUTTER-BLEED: TOP-BOTTOM-BLEED]\n天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。');
+                : (store.gutter === 'black_line'
+                    ? '[GUTTER-BLEED: ZERO-WHITE-BORDER]\n全幅零白留白：画格之间无白色缝隙，画布边缘无外白边，完全由粗黑墨线（太い黒い仕切り線, 太いインクの枠, 余白なし, コマが密着）密着切分。'
+                    : '[GUTTER-BLEED: TOP-BOTTOM-BLEED]\n天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。'));
 
         const antiHijackRule = store.antiHijack
             ? '[ANTI-FRANCHISE-HIJACK]\n同人角色出场时，仅将其特征作为固有外貌DNA使用，严格禁止同人角色的游戏原作官方立绘画风覆盖选定的漫画黑白/网点风格。'
@@ -127,10 +129,10 @@
 你现在是专业漫画分镜导演（Comic Director）。你的职责是将输入的剧情对话与小说场景，转译为高水准的 NovelAI V5 漫画分镜。
 
 [PAGE-LAYOUT-RULES]
-1. 页面形态：
+1. 页面形态与画格：
    - 默认根据戏剧冲突规划为 2~3 格漫画页；
    - 若遇到宏大决战、广阔天地或全景展示，可规划为单格大画幅或横向跨页（見開きページ / double-page spread）；
-   - 普通分格页在 page.base 中必须明确画格数与页面类型，例如: comic, 複数コマの漫画ページ, 3 panels, vertical layout, white border。
+   - 普通分格页必须在 scene 字段明确写明画格数与页面类型，例如: comic, 複数コマの漫画ページ, 3 panels, vertical layout, white border。
 
 2. 画格构图与分镜文法：
 ${grammarObj.instruction}
@@ -140,18 +142,33 @@ ${gutterRule}
 
 4. 气泡与对白契约（V5 核心语法）：
 - 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, Layout: 縦書き, Text: [原句]
-- 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し, Layout: 縦書き, Text: [原句]
+- 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し 或 ギザギザ吹き出し, Layout: 縦書き, Text: [原句]
 - 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, Layout: 縦書き, Text: [原句]
+- 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, Layout: 縦書き, Text: [原句]
+- 发颤/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, Layout: 縦書き, Text: [原句]
+- 电话/广播/机械音 ➔ 标注 BubbleType: 四角い吹き出し, Layout: 縦書き, Text: [原句]
 - 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, Layout: 横書き, Text: [原句]
 - 拟声拟态词 ➔ 标注 SFX: 擬音, 吹き出しなし, Text: [拟声词]
-- 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；Text: 后直接跟台词原文，不要外包引号。
+- 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；Text: 后直接跟台词原文，严禁外包引号。
 
 5. 语言规范：
 ${langRule}
 
 ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
-[OUTPUT-FORMAT]
-请在你的输出结果中，将提炼出的漫画描述与人物槽位整合输出。在场景描述中写明画格数量与布局，在角色描述中写明动作表情并追加对应的 BubbleType 与 Text: 台词段落。输出严格基于剧情正文，禁止凭空捏造未发生的情节。`;
+[JSON 输出字段映射规范 - 务必严格遵守]
+你必须输出符合系统指定的 JSON 结构：
+1. \`scene\` 字段：
+   - 必须包含漫画分格与排版 Tag（例如: comic, 複数コマの漫画ページ, 2 panels, vertical layout, white border 等）；
+   - 紧接着写入背景环境、灯光与构图 Danbooru Tag；
+   - 若有全景拟声词或时空旁白，可在末尾追加 SFX 或 ナレーション枠。
+2. \`characters[].action\` 字段：
+   - 先写入角色的当前动作、姿态与表情（英文 Danbooru 风格 Tag）；
+   - 若该角色在本格有台词，紧随动作后以半角逗号追加气泡契约与台词原文，格式为：
+     \`, BubbleType: [类型], Layout: 縦書き, Text: [台词原文]\`
+     例如：\`sitting at desk, looking at viewer, gentle smile, BubbleType: 通常吹き出し, Layout: 縦書き, Text: 那个……明天见！\`
+   - 若角色在该格无台词，只写动作表情，切勿追加 BubbleType 与 Text；
+   - 若同一角色在同一格连续说两句台词，台词写在同一个 Text: 后用换行分隔（例如: \`Text: 第一句\\n第二句\`）。
+3. \`characters[].base\` 与 \`characters[].outfit\` 字段：保持正常的人物基本外貌特征与服装提示词。`;
     }
 
     // ── 5. Payload Sanitizer & Comic Assembler for NAI V5 ──────────
@@ -161,6 +178,7 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
         const forbiddenPatterns = [
             /\bcomic\b/gi,
             /\bcomic\s*panel(?:s)?\b/gi,
+            /\bcomic\s*book\b/gi,
             /\bpanels\b/gi,
             /\b4koma\b/gi,
             /\b2koma\b/gi,
@@ -171,11 +189,14 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
             /\bhalftone\b/gi,
             /\bdithering\b/gi,
             /\bmultiple\s*views\b/gi,
+            /\bmultiple\s*scenes\b/gi,
             /\bsequence\b/gi,
             /\bborder\b/gi,
             /\bframe\b/gi,
             /\boutline\b/gi,
-            /\bmargins\b/gi
+            /\bmargins\b/gi,
+            /\bnegative\s*space\b/gi,
+            /\bfurryFocus\b/gi
         ];
         let cleaned = rawNegative;
         forbiddenPatterns.forEach(pat => {
@@ -206,6 +227,14 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
             payload.parameters.negative_prompt = cleanedNeg;
             if (payload.parameters.v4_negative_prompt?.caption) {
                 payload.parameters.v4_negative_prompt.caption.base_caption = cleanedNeg;
+                // 净化每一个角色的负面词
+                if (Array.isArray(payload.parameters.v4_negative_prompt.caption.char_captions)) {
+                    payload.parameters.v4_negative_prompt.caption.char_captions.forEach(cc => {
+                        if (cc && cc.char_caption) {
+                            cc.char_caption = sanitizeMangaNegativePrompt(cc.char_caption);
+                        }
+                    });
+                }
             }
         }
 
@@ -236,6 +265,31 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
         // 5. 确保模型版本锁定在支持漫画文字的 NAI V5 Full
         if (payload.parameters && (!payload.parameters.model || !payload.parameters.model.includes('nai-diffusion-5'))) {
             payload.parameters.model = 'nai-diffusion-5-full';
+        }
+
+        // 6. 兜底保护：如果 char_captions 为空但输入中包含对白气泡 Text:，自动解析补全 char_captions
+        if (payload.parameters?.v4_prompt?.caption) {
+            const v4Prompt = payload.parameters.v4_prompt.caption;
+            if (!Array.isArray(v4Prompt.char_captions) || v4Prompt.char_captions.length === 0) {
+                const rawText = v4Prompt.base_caption || payload.input || '';
+                if (/\b(?:BubbleType|Text)[ \t]*[:：]/i.test(rawText)) {
+                    const segments = rawText.split(/\s*\|\s*/);
+                    if (segments.length > 1) {
+                        v4Prompt.base_caption = segments[0];
+                        v4Prompt.char_captions = segments.slice(1).map(seg => ({
+                            char_caption: seg,
+                            centers: [{ x: 0.5, y: 0.5 }]
+                        }));
+                        if (payload.parameters.v4_negative_prompt?.caption) {
+                            payload.parameters.v4_negative_prompt.caption.char_captions = segments.slice(1).map(() => ({
+                                char_caption: '',
+                                centers: [{ x: 0.5, y: 0.5 }]
+                            }));
+                        }
+                        console.info(`[${PLUGIN_NAME}] 自动从提示词中提取了 ${segments.length - 1} 个漫画气泡角色槽位`);
+                    }
+                }
+            }
         }
 
         return payload;
@@ -403,6 +457,11 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
             if (sdtStore.customSystemPrompt && sdtStore.systemPromptPreset === 'custom' && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedCustomPrompt = sdtStore.customSystemPrompt;
             }
+            // 自动开启多角色独立生图以确保 char_captions 注入
+            if (sdtStore.multiCharOutput === false) {
+                sdtStore._mangaSavedMultiChar = false;
+                sdtStore.multiCharOutput = true;
+            }
             sdtStore._mangaActive = true;
             sdtStore.systemPromptPreset = 'custom';
             sdtStore.customSystemPrompt = buildMangaSystemPrompt(store);
@@ -412,6 +471,10 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
                 sdtStore._mangaActive = false;
                 sdtStore.systemPromptPreset = sdtStore._mangaSavedPreset || 'v40_worldbook_97_opt';
                 sdtStore.customSystemPrompt = sdtStore._mangaSavedCustomPrompt || '';
+                if (typeof sdtStore._mangaSavedMultiChar === 'boolean') {
+                    sdtStore.multiCharOutput = sdtStore._mangaSavedMultiChar;
+                    delete sdtStore._mangaSavedMultiChar;
+                }
                 delete sdtStore._mangaSavedPreset;
                 delete sdtStore._mangaSavedCustomPrompt;
             }
@@ -441,6 +504,7 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
         // 锁定/解锁原提示词预设
         if (sysPresetSelect && sysPresetField) {
             if (store.enabled) {
+                sysPresetSelect.value = 'custom';
                 sysPresetSelect.disabled = true;
                 sysPresetField.classList.add('rbq-sdt-preset-locked');
                 let badge = sysPresetField.querySelector('.rbq-sdt-preset-lock-badge');
@@ -453,6 +517,8 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
                 }
                 if (customPromptField) customPromptField.style.display = 'none';
             } else {
+                const sdtStore = getSdtStore();
+                sysPresetSelect.value = sdtStore.systemPromptPreset || 'v40_worldbook_97_opt';
                 sysPresetSelect.disabled = false;
                 sysPresetField.classList.remove('rbq-sdt-preset-locked');
                 const badge = sysPresetField.querySelector('.rbq-sdt-preset-lock-badge');
@@ -478,6 +544,21 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
     function injectUiIntoSdt() {
         const sysPresetSelect = document.getElementById('rbq-sdt-system-preset');
         if (!sysPresetSelect) return;
+
+        // 监听并拦截 SDT 保存按钮，防止保存时覆盖漫画模式设置
+        const sdtSaveBtn = document.getElementById('rbq-sdt-save');
+        if (sdtSaveBtn && !sdtSaveBtn.dataset.mangaHooked) {
+            sdtSaveBtn.dataset.mangaHooked = '1';
+            sdtSaveBtn.addEventListener('click', () => {
+                setTimeout(() => {
+                    const s = getStore();
+                    if (s.enabled) {
+                        syncMangaToSdt(s);
+                        updateUiState();
+                    }
+                }, 50);
+            });
+        }
 
         // 如果已经注入过，则只更新状态
         if (document.getElementById('rbq-manga-mode-card')) {
@@ -552,6 +633,7 @@ ${antiHijackRule ? ('6. 画风保护：\n' + antiHijackRule + '\n') : ''}
                             <option value="bleed" ${store.gutter === 'bleed' ? 'selected' : ''}>天地出血 (现代紧凑贴边)</option>
                             <option value="framed" ${store.gutter === 'framed' ? 'selected' : ''}>全封闭白边内枠 (传统漫画框)</option>
                             <option value="splash" ${store.gutter === 'splash' ? 'selected' : ''}>沉浸全出血 (大画幅满格)</option>
+                            <option value="black_line" ${store.gutter === 'black_line' ? 'selected' : ''}>纯黑线无白边 (零白边粗黑墨线密着切分)</option>
                         </select>
                     </div>
                 </div>

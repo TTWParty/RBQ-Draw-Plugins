@@ -1,13 +1,14 @@
 (function(RBQ, $, toastr) {
     if (!RBQ) return console.error('[Manga Mode] RBQ Core API missing');
 
-    const PLUGIN_ID = 'rbq-manga-mode';
-    const PLUGIN_NAME = '漫画模式 (Manga Mode)';
-    const STORAGE_KEY = '_mangaMode';
-    const SDT_KEY = '_smartDrawTrigger';
-    const VERSION = '1.0.2';
+    try {
+        const PLUGIN_ID = 'rbq-manga-mode';
+        const PLUGIN_NAME = '漫画模式 (Manga Mode)';
+        const STORAGE_KEY = '_mangaMode';
+        const SDT_KEY = '_smartDrawTrigger';
+        const VERSION = '1.0.3';
 
-    // ── 1. Storage & State Management ──────────────────────────────
+        // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
         const s = RBQ.api.getSettings();
         if (!s[STORAGE_KEY]) {
@@ -503,7 +504,7 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
             font-weight: 500 !important;
         }
         `;
-        document.head.appendChild(style);
+        (document.head || document.documentElement || document.body)?.appendChild(style);
     }
 
     function syncMangaToSdt(store) {
@@ -794,31 +795,60 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
     }
 
     // ── 7. DOM Observation & Lifecycle Guard ───────────────────────
-    injectStyles();
+    try {
+        injectStyles();
+    } catch (e) {
+        console.warn(`[${PLUGIN_NAME}] injectStyles error:`, e);
+    }
 
     // 监听 SDT 设置模态框或控制台加载
     const observer = new MutationObserver(() => {
-        if (document.getElementById('rbq-sdt-system-preset')) {
-            injectUiIntoSdt();
+        try {
+            if (document.getElementById('rbq-sdt-system-preset')) {
+                injectUiIntoSdt();
+            }
+        } catch (e) {
+            console.warn(`[${PLUGIN_NAME}] Observer callback error:`, e);
         }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    function initObserver() {
+        if (!document.body) {
+            document.addEventListener('DOMContentLoaded', initObserver);
+            return;
+        }
+        try {
+            observer.observe(document.body, { childList: true, subtree: true });
+        } catch (e) {
+            console.warn(`[${PLUGIN_NAME}] Observer registration error:`, e);
+        }
+    }
+    initObserver();
 
     // 初始化运行一次，如果 SDT 当前已经展开
-    if (document.getElementById('rbq-sdt-system-preset')) {
-        injectUiIntoSdt();
+    try {
+        if (document.getElementById('rbq-sdt-system-preset')) {
+            injectUiIntoSdt();
+        }
+    } catch (e) {
+        console.warn(`[${PLUGIN_NAME}] Initial UI injection error:`, e);
     }
 
     // 如果一开始就处于开启状态，确保 SDT 同步
-    const currentStore = getStore();
-    if (currentStore.enabled) {
-        syncMangaToSdt(currentStore);
+    try {
+        const currentStore = getStore();
+        if (currentStore.enabled) {
+            syncMangaToSdt(currentStore);
+        }
+    } catch (e) {
+        console.warn(`[${PLUGIN_NAME}] Initial store sync error:`, e);
     }
 
     // 卸载与清理函数
     function cleanup() {
-        observer.disconnect();
+        try {
+            observer.disconnect();
+        } catch (_e) {}
         const styleEl = document.getElementById(STYLE_TAG_ID);
         if (styleEl) styleEl.remove();
         const cardEl = document.getElementById('rbq-manga-mode-card');
@@ -837,9 +867,11 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
         }
 
         // 还原 SDT 后台预设
-        const s = getStore();
-        s.enabled = false;
-        syncMangaToSdt(s);
+        try {
+            const s = getStore();
+            s.enabled = false;
+            syncMangaToSdt(s);
+        } catch (_e) {}
 
         console.info(`[${PLUGIN_NAME}] 插件已彻底卸载并清理`);
     }
@@ -847,4 +879,7 @@ ${antiHijackRule ? ('9. 画风保护：\n' + antiHijackRule + '\n') : ''}
     RBQ.registerCleanup(PLUGIN_ID, cleanup);
     console.info(`[${PLUGIN_NAME}] v${VERSION} 已就绪`);
 
+    } catch (err) {
+        console.error('[Manga Mode] Uncaught initialization error:', err);
+    }
 })((typeof RBQ !== 'undefined' ? RBQ : (window.RBQ || null)), (typeof jQuery !== 'undefined' ? jQuery : window.$), (typeof toastr !== 'undefined' ? toastr : { success: console.log, warning: console.warn, error: console.error, info: console.info }));

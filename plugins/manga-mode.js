@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.0.8';
+        const VERSION = '1.0.9';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -246,24 +246,58 @@ ${langRule}
 ${colorRule}
 
 ${antiHijackRule}
-[JSON 输出字段映射规范 - 务必严格遵守]
-你必须输出符合系统指定的 JSON 结构：
-1. \`scene\` 字段：
-   - 必须包含漫画分格与排版 Tag（例如: comic, 複数コマの漫画ページ, 4 panels (依实际分格填写), vertical layout, white border 等）；
-   - 紧接着写入背景环境、灯光氛围与构图机位 Danbooru Tag；
-   - 若有全景拟声词或时空旁白，可在末尾追加 SFX 或 ナレーション枠。
-2. \`characters[].action\` 字段：
-   - 先写入角色的当前动作、姿态与表情（英文 Danbooru 风格 Tag）；
-   - 若该角色在本格有台词，紧随动作后以半角逗号追加气泡契约与台词原文，格式为：
-     \`, BubbleType: [类型], Layout: 縦書き, Text: [台词原文]\`
-     例如：\`sitting at desk, looking at viewer, gentle smile, BubbleType: 通常吹き出し, Layout: 縦書き, Text: 那个……明天见！\`
-   - 若角色在该格无台词，只写动作表情，切勿追加 BubbleType 与 Text；
-   - 若同一角色在同一格连续说两句台词，台词写在同一个 Text: 后用换行分隔（例如: \`Text: 第一句\\n第二句\`）。
-3. \`characters[].base\` 与 \`characters[].outfit\` 字段：保持正常的人物基本外貌特征（发型发色瞳色等）与服装提示词。
-4. \`characters[].uc\` 字段：写入该角色专属的排除词，多角色同框时填入对方的互斥特征防止串色。`;
+[JSON 输出字段映射规范 - 务必严格遵守 (Universal Komawari 规范)]
+在漫画模式下，系统输出的每一个分镜卡片（segment）对应一整页分格漫画：
+
+1. \`scene\` 字段（页面全局排版与环境）：
+   - 必须以完整的漫画页面排版词开头，格式为：
+     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), manga page layout, vertical layout, white border, dynamic komawari, greyscale, monochrome, screentone, bold linework, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
+   - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
+
+2. \`characters\` 数组（逐画格演出槽位分配）：
+   - 【核心铁律】：\`characters\` 数组中的每一项代表一个【独立画格 (Panel)】！数组长度必须严格等于本页规划的画格总数 N（例如规划了 3 panels，characters 数组必须恰好有 3 项：Panel 1、Panel 2、Panel 3）！
+   - 每一格的 \`action\` 字段必须以【画格面积与构图类型】开头：
+     * \`focal panel, medium shot\`（核心高潮主格，占据 35%~45% 大面积）
+     * \`reaction panel, close-up\`（对手/旁人反应特写格）
+     * \`small panel, looking down\`（局部动作/情绪转折小格）
+     * \`wide shot, distant view\`（远景空镜格）
+     * \`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（独立拟声词格）
+   - 紧随构图词后写入本格出场主体的动作与姿势；
+   - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], Layout: 縦書き, Text: [台词原文]\`；若本格无台词则切勿添加 BubbleType 与 Text；
+   - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。若本格为环境格或拟声词格，base 与 outfit 写 \`solo\` 或留空；
+   - 【黑白漫画脱色铁律】：当前处于黑白漫画模式，严禁输出任何具体颜色词（如 brown, blonde, pink, blue, red 等），所有发色外貌必须脱色为 dark hair, light hair, pale, white, black；
+   - center 统一填写 \`C3\`（排版由画格关键词控制，无需手动计算坐标）。`;
     }
 
     // ── 5. Payload Sanitizer & Comic Assembler for NAI V5 ──────────
+    function decolorizeTags(str) {
+        if (!str || typeof str !== 'string') return '';
+        return str
+            .replace(/\b(blonde|blond|yellow)\s+hair\b/gi, 'light hair')
+            .replace(/\b(brown|brunette|chestnut)\s+hair\b/gi, 'dark hair')
+            .replace(/\b(pink|red|green|blue|purple|orange)\s+hair\b/gi, 'hair')
+            .replace(/\b(blue|green|red|purple|yellow|amber|brown|pink)\s+eyes\b/gi, 'eyes')
+            .replace(/\b(pink|red|blue|purple)\s+(eyeshadow|lipstick|makeup)\b/gi, '$2')
+            .replace(/\b(pink|red|brown)\s+(nipples|areolae|areola|pussy|labia)\b/gi, '$2')
+            .replace(/\bred[ _]soles\b/gi, 'dark soles')
+            .replace(/\b(pink|red|blue|green|yellow|purple|orange)\s+(ribbon|bow|tie|scarf)\b/gi, '$2')
+            .replace(/\b(pink|red|blue|green|yellow|purple|orange)\s+(dress|shirt|skirt|uniform|jacket|coat|sweater|panties|bra|pantyhose|socks|shoes|boots)\b/gi, '$2')
+            .replace(/\b(color|colorful|vibrant|vivid|pastel|watercolor|rainbow)\b/gi, '')
+            .replace(/,\s*,/g, ',')
+            .replace(/^[\s,]+|[\s,]+$/g, '')
+            .trim();
+    }
+
+    function recoverPanelFromBase(baseCaption) {
+        if (!baseCaption || typeof baseCaption !== 'string') return { cleanBase: baseCaption, extraPanel: null };
+        if (!/\b(?:BubbleType|SFX|Text)[ \t]*[:：]/i.test(baseCaption)) return { cleanBase: baseCaption, extraPanel: null };
+        const match = baseCaption.match(/^(.*?)(?:,\s*)((?:(?:focal|reaction|small)\s+panel|\d+(?:dog|cat|boy|girl|man|woman|people|person|other)|wide shot|silhouette|close-up|medium shot|SFX[:：]|BubbleType[:：]).*?\b(?:BubbleType|SFX|Text)[ \t]*[:：].*)$/i);
+        if (match) {
+            return { cleanBase: match[1].trim(), extraPanel: match[2].trim() };
+        }
+        return { cleanBase: baseCaption, extraPanel: null };
+    }
+
     function sanitizeMangaNegativePrompt(rawNegative) {
         if (!rawNegative) return '';
         // 关键防护：绝对不能在负面词里包含破坏分镜、气泡和网点的词汇！
@@ -359,13 +393,15 @@ ${antiHijackRule}
             payload.parameters.model = 'nai-diffusion-5-full';
         }
 
-        // 6. 兜底保护：如果 char_captions 为空但输入中包含对白气泡 Text:，自动解析补全 char_captions
+        // 6. 核心画格重组与兜底保护 (Universal Komawari Assembler)
         if (payload.parameters?.v4_prompt?.caption) {
             const v4Prompt = payload.parameters.v4_prompt.caption;
+            const baseText = v4Prompt.base_caption || payload.input || '';
+
+            // 6.1 若 char_captions 为空但输入中包含 | 或 Text:，按 | 分割出各格
             if (!Array.isArray(v4Prompt.char_captions) || v4Prompt.char_captions.length === 0) {
-                const rawText = v4Prompt.base_caption || payload.input || '';
-                if (/\b(?:BubbleType|Text)[ \t]*[:：]/i.test(rawText)) {
-                    const segments = rawText.split(/\s*\|\s*/);
+                if (/\b(?:BubbleType|Text)[ \t]*[:：]/i.test(baseText)) {
+                    const segments = baseText.split(/\s*\|\s*/);
                     if (segments.length > 1) {
                         v4Prompt.base_caption = segments[0];
                         v4Prompt.char_captions = segments.slice(1).map(seg => ({
@@ -378,8 +414,84 @@ ${antiHijackRule}
                                 centers: [{ x: 0.5, y: 0.5 }]
                             }));
                         }
-                        console.info(`[${PLUGIN_NAME}] 自动从提示词中提取了 ${segments.length - 1} 个漫画气泡角色槽位`);
+                        console.info(`[${PLUGIN_NAME}] 自动从提示词 | 中分离出 ${segments.length - 1} 个漫画画格槽位`);
                     }
+                }
+            } else {
+                // 6.2 若 char_captions 已经存在，但 base_caption 仍夹带了带 Text/SFX 的动作格，自动剥离还原入 char_captions
+                const recovered = recoverPanelFromBase(v4Prompt.base_caption);
+                if (recovered.extraPanel) {
+                    v4Prompt.base_caption = recovered.cleanBase;
+                    v4Prompt.char_captions.unshift({
+                        char_caption: recovered.extraPanel,
+                        centers: [{ x: 0.5, y: 0.5 }]
+                    });
+                    if (Array.isArray(payload.parameters.v4_negative_prompt?.caption?.char_captions)) {
+                        payload.parameters.v4_negative_prompt.caption.char_captions.unshift({
+                            char_caption: '',
+                            centers: [{ x: 0.5, y: 0.5 }]
+                        });
+                    }
+                    console.info(`[${PLUGIN_NAME}] 成功从 base_caption 剥离并回填首个画格槽位 (Panel 1)`);
+                }
+            }
+
+            // 6.3 确保 base_caption 带有 dynamic komawari 与 manga page layout
+            if (v4Prompt.base_caption && !/dynamic komawari/i.test(v4Prompt.base_caption)) {
+                v4Prompt.base_caption = v4Prompt.base_caption.replace(
+                    /(?:vertical layout|white border|複数コマの漫画ページ)/i,
+                    '$&, manga page layout, dynamic komawari'
+                );
+            }
+        }
+
+        // 7. ⛔ 强制解除 2D 坐标束缚，全面切换为漫画画格流 (use_coords: false, use_order: true)
+        if (payload.parameters?.v4_prompt) {
+            payload.parameters.v4_prompt.use_coords = false;
+            payload.parameters.v4_prompt.use_order = true;
+            if (Array.isArray(payload.parameters.v4_prompt.caption?.char_captions)) {
+                payload.parameters.v4_prompt.caption.char_captions.forEach(cc => {
+                    cc.centers = [{ x: 0.5, y: 0.5 }];
+                });
+            }
+        }
+
+        // 8. 🎨 黑白漫画严格脱色净化 (彻底消除角色卡/世界书带入的颜色污染)
+        const isMonochrome = (store.style === 'monochrome' || store.style === 'shonen_action');
+        if (isMonochrome) {
+            if (payload.parameters?.v4_prompt?.caption) {
+                const v4Prompt = payload.parameters.v4_prompt.caption;
+                if (v4Prompt.base_caption) {
+                    v4Prompt.base_caption = decolorizeTags(v4Prompt.base_caption);
+                }
+                if (Array.isArray(v4Prompt.char_captions)) {
+                    v4Prompt.char_captions.forEach(cc => {
+                        if (cc && cc.char_caption) {
+                            cc.char_caption = decolorizeTags(cc.char_caption);
+                        }
+                    });
+                }
+            }
+            if (payload.input) {
+                payload.input = decolorizeTags(payload.input);
+            }
+
+            // 在所有画格负面词中强制注入色彩抑制契约
+            const COLOR_UC = '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo';
+            if (payload.parameters?.v4_negative_prompt?.caption) {
+                const negPrompt = payload.parameters.v4_negative_prompt.caption;
+                if (negPrompt.base_caption && !negPrompt.base_caption.includes('color::')) {
+                    negPrompt.base_caption = [negPrompt.base_caption, COLOR_UC].filter(Boolean).join(', ');
+                }
+                if (Array.isArray(negPrompt.char_captions)) {
+                    negPrompt.char_captions.forEach(cc => {
+                        if (cc && typeof cc === 'object') {
+                            cc.centers = [{ x: 0.5, y: 0.5 }];
+                            if (!cc.char_caption || !cc.char_caption.includes('color::')) {
+                                cc.char_caption = [sanitizeMangaNegativePrompt(cc.char_caption || ''), COLOR_UC].filter(Boolean).join(', ');
+                            }
+                        }
+                    });
                 }
             }
         }

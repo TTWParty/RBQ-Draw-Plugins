@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.2';
+        const VERSION = '1.4.3';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -1986,16 +1986,6 @@ ${antiHijackRule}
         }
     ];
 
-    function cleanBubbleText(raw) {
-        if (!raw || typeof raw !== 'string') return '';
-        let t = raw.trim();
-        // 剥离首尾各种中英文括号与引号
-        t = t.replace(/^["'“”‘’「」『』\(\)（）\[\]【】《》\{\}\s]+|["'“”‘’「」『』\(\)（）\[\]【】《》\{\}\s]+$/g, '');
-        // 剔除可能混入的内外双引号、单引号，防止 NAI OCR 误将引号作为文字画入气泡
-        t = t.replace(/["“”'‘’]/g, '');
-        return t.trim();
-    }
-
     function resolveBubbleTypeTag(bType) {
         if (!bType) return '通常吹き出し';
         const lower = String(bType).toLowerCase().trim();
@@ -2048,8 +2038,8 @@ ${antiHijackRule}
             if (p.shot) parts.push(p.shot);
             if (p.tags) parts.push(p.tags);
 
-            const cleanText = cleanBubbleText(p.bubbleText);
-            if (cleanText) {
+            const text = (p.bubbleText || '').trim();
+            if (text) {
                 const bType = p.bubbleType || 'speech';
                 const typeTag = resolveBubbleTypeTag(bType);
                 const layoutTag = resolveBubbleLayoutTag(p.bubbleLayout, bType);
@@ -2057,11 +2047,11 @@ ${antiHijackRule}
                 if (typeTag === '擬音, 吹き出しなし' || bType === 'sfx') {
                     parts.push('SFX: 擬音, 吹き出しなし');
                     parts.push(layoutTag);
-                    parts.push(`Text: ${cleanText}`);
+                    parts.push(`Text: ${text}`);
                 } else {
                     parts.push(`BubbleType: ${typeTag}`);
                     parts.push(layoutTag);
-                    parts.push(`Text: ${cleanText}`);
+                    parts.push(`Text: ${text}`);
                 }
             }
             return parts.join(', ');
@@ -2086,8 +2076,20 @@ ${antiHijackRule}
 
         const countReq = isFixed ? `必须严格规划为恰好 ${panelCountMode} 个画格（panels 数组必须恰好有 ${panelCountMode} 项）` : `自动规划（根据情节容量自适应 1~4 格）`;
 
+        const store = getStore();
+        const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
+        const grammarInstruction = grammarObj.instruction || '';
+        const colorRule = (store.style === 'monochrome')
+            ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗与光影词汇。`
+            : '';
+        const langInstruction = language === 'ja'
+            ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
+            : '【台词偏好语言】：简体中文 (Chinese) - 保留或输出生动贴切的中文漫画对白。';
+
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
 ${panelCountInstruction}
+【当前分镜文法纲领】：
+${grammarInstruction}${colorRule}
 必须输出纯 JSON，绝不要包含 Markdown 代码块（如 \`\`\`json）或任何额外文字。
 JSON 格式规范：
 {
@@ -2097,13 +2099,13 @@ JSON 格式规范：
       "shot": "景别机位英文（支持从以下专业漫画镜头中挑选最契合剧情的词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
       "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词）",
       "bubbleType": "speech | thought | screaming | caption | sfx",
-      "bubbleText": "画格内角色台词、心声或旁白文字（直接写台词原文，严禁外包任何引号或括号）",
+      "bubbleText": "画格内角色台词、心声或旁白文字",
       "bubbleLayout": "vertical | horizontal"
     }
   ]
 }`;
 
-        const userContent = `【剧情叙事】：${storyText}\n【画格数规划要求】：${countReq}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}`;
+        const userContent = `【剧情叙事】：${storyText}\n【画格数规划要求】：${countReq}\n【分镜文法风格】：${grammarObj.name}\n${langInstruction}`;
 
         if (baseUrl) {
             try {
@@ -2133,7 +2135,7 @@ JSON 格式规范：
                     if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
                         parsed.panels.forEach((p, idx) => {
                             if (!p.desc) p.desc = p.title || `画格 #${idx + 1}`;
-                            if (p.bubbleText) p.bubbleText = cleanBubbleText(p.bubbleText);
+                            if (p.bubbleText) p.bubbleText = String(p.bubbleText).trim();
                         });
                         return parsed.panels;
                     }
@@ -2179,16 +2181,16 @@ JSON 格式规范：
 
         if (thoughtMatch) {
             bubbleType = 'thought';
-            bubbleText = cleanBubbleText(thoughtMatch[1]);
+            bubbleText = (thoughtMatch[1] || '').trim();
         } else if (speechMatch) {
             bubbleType = 'speech';
-            bubbleText = cleanBubbleText(speechMatch[1]);
+            bubbleText = (speechMatch[1] || '').trim();
         } else if (sentence.includes('！') || sentence.includes('!')) {
             bubbleType = 'screaming';
-            bubbleText = cleanBubbleText(sentence.slice(0, 16));
+            bubbleText = (sentence.slice(0, 16) || '').trim();
         } else {
             bubbleType = (i === 0) ? 'caption' : 'speech';
-            bubbleText = cleanBubbleText(sentence.slice(0, 18));
+            bubbleText = (sentence.slice(0, 18) || '').trim();
         }
 
         const tags = [];
@@ -2241,6 +2243,7 @@ JSON 格式规范：
     }
 
     async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0) {
+        const store = getStore();
         const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
         const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const apiKey = (sdtStore.openaiApiKey || '').trim();
@@ -2261,9 +2264,20 @@ JSON 格式规范：
             }
         }
 
+        const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
+        const grammarInstruction = grammarObj.instruction || '';
+        const colorRule = (store.style === 'monochrome')
+            ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗词汇。`
+            : '';
+        const langInstruction = language === 'ja'
+            ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
+            : '【台词偏好语言】：简体中文 (Chinese) - 保留或输出生动贴切的中文漫画对白。';
+
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
 你的任务是将用户提供的单一漫画画格剧情句子转换为专业的 NAI 提示词。
 如果提供了其他画格的参考内容，请务必继承已确立的角色外貌（例如角色名、发色发型、瞳色、服装等），保持同一漫画单页内人设连贯，在此基础上根据本格剧情生成动作、神态、光影和机位！
+【分镜文法参考】：
+${grammarInstruction}${colorRule}
 必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
 JSON 格式规范：
 {
@@ -2271,11 +2285,11 @@ JSON 格式规范：
   "shot": "景别机位英文（支持：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
   "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词）",
   "bubbleType": "speech | thought | screaming | caption | sfx",
-  "bubbleText": "画格内角色台词或心声文字（直接写台词原文，严禁外包任何引号或括号）",
+  "bubbleText": "画格内角色台词或心声文字",
   "bubbleLayout": "vertical | horizontal"
 }`;
 
-        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}${otherContext}`;
+        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammarObj.name}\n${langInstruction}${otherContext}`;
 
         if (baseUrl) {
             try {
@@ -2302,7 +2316,7 @@ JSON 格式规范：
                     const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
                     const parsed = JSON.parse(cleanJson);
                     if (parsed && (parsed.tags || parsed.shot)) {
-                        if (parsed.bubbleText) parsed.bubbleText = cleanBubbleText(parsed.bubbleText);
+                        if (parsed.bubbleText) parsed.bubbleText = String(parsed.bubbleText).trim();
                         return parsed;
                     }
                 }
@@ -2314,21 +2328,33 @@ JSON 格式规范：
     }
 
     async function callLlmBatchSentenceExpander(panels, grammar, language, onProgress) {
+        const store = getStore();
         const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
         const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const apiKey = (sdtStore.openaiApiKey || '').trim();
         const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
 
+        const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
+        const grammarInstruction = grammarObj.instruction || '';
+        const colorRule = (store.style === 'monochrome')
+            ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗词汇。`
+            : '';
+        const langInstruction = language === 'ja'
+            ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
+            : '【台词偏好语言】：简体中文 (Chinese) - 保留或输出生动贴切的中文漫画对白。';
+
         const promptList = panels.map((p, idx) => `画格 #${idx + 1}: ${p.desc || p.title || '（未输入描述）'}`).join('\n');
 
         const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
 用户已经确定了整页漫画包含 ${panels.length} 个画格，并给出了每一个画格的具体剧情/动作描写。
+【分镜文法参考】：
+${grammarInstruction}${colorRule}
 你的任务是为每个画格分别生成：
 1. title: 画格概括（中文，5-10字）
 2. shot: 从以下 19 种专业漫画镜头中挑选最契合剧情的词（close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）
 3. tags: 纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，保持同一角色在各画格间的外观特征连贯，不要画风词）
 4. bubbleType: speech | thought | screaming | caption | sfx
-5. bubbleText: 提炼出的画格内角色台词、心声或旁白（直接写台词原文，严禁外包任何引号或括号）
+5. bubbleText: 提炼出的画格内角色台词、心声或旁白
 6. bubbleLayout: vertical | horizontal
 
 必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
@@ -2347,7 +2373,7 @@ JSON 格式规范：
   ]
 }`;
 
-        const userContent = `【分镜文法风格】：${grammar}\n【台词偏好语言】：${language === 'ja' ? '日文 (Japanese)' : '中文 (Chinese)'}\n【用户指定的逐格剧情如下】：\n${promptList}`;
+        const userContent = `【分镜文法风格】：${grammarObj.name}\n${langInstruction}\n【用户指定的逐格剧情如下】：\n${promptList}`;
 
         if (baseUrl) {
             try {
@@ -2376,7 +2402,7 @@ JSON 格式规范：
                     const parsed = JSON.parse(cleanJson);
                     if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
                         parsed.panels.forEach(p => {
-                            if (p.bubbleText) p.bubbleText = cleanBubbleText(p.bubbleText);
+                            if (p.bubbleText) p.bubbleText = String(p.bubbleText).trim();
                         });
                         return parsed.panels;
                     }

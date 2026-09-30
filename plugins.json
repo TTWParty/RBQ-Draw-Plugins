@@ -91,8 +91,8 @@
     "id": "rbq-manga-mode",
     "name": "漫画模式 (Manga Mode)",
     "description": "为智能生图（SDT）深度赋能 NovelAI V5 漫画分镜能力。在提示词预设旁一键开启漫画模式，智能接管并锁定普通预设，展开专属漫画画风（黑白网点/全彩漫）、8种分镜文法、对白气泡与留白排版控制，自动生成带原生台词气泡与分格的连载漫画页。",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "author": "TTWP-09",
-    "main": "plugins/manga-mode.js?v=1.1.0"
+    "main": "plugins/manga-mode.js?v=1.1.1"
   }
 ]

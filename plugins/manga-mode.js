@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.1.0';
+        const VERSION = '1.1.1';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -14,7 +14,7 @@
         if (!s[STORAGE_KEY]) {
             s[STORAGE_KEY] = {
                 enabled: false,
-                style: 'monochrome', // monochrome | soft_color | webtoon | shonen_action | custom
+                style: 'monochrome', // monochrome | soft_color | custom
                 customPositive: '',
                 customNegative: '',
                 grammar: 'cinema', // cinema | 4koma | shonen | mystery | shojo | daily | comedy | ecchi
@@ -37,34 +37,22 @@
         RBQ.api.saveSettings();
     }
 
-    // ── 2. Built-in Comic Art Styles (from v1.1.json & NAI V5 Specs) ──
+    // ── 2. Built-in Comic Art Styles (100% 对齐原版 v1.1.json 条目 64 与 63) ──
     const COMIC_STYLES = {
         monochrome: {
-            name: '经典黑白网点漫 (Monochrome Screentone)',
+            name: '黑白 (画风-黑白)',
             positive: 'artist:2015x127, 0.5::artist:du_nyak::, 0.5::artist:yujo_kei::, greyscale, monochrome, screentone, manga, bold linework, incredibly absurdres, very aesthetic, highres, masterpiece, best quality, amazing quality, best illustration',
             negative: '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo, logo, watermark, too many watermarks, reference, signature, artist name, dated, chibi, artistic error, scan artifacts, jpeg artifacts, aliasing, chromatic aberration, digital dissolve, artist collaboration, one-hour drawing challenge, mutated, mutation, deformed, distorted, disfigured, bad anatomy, unnatural hair, bad face, mob face, cloned face, distorted face, poorly drawn face, ugly, bad eyes, empty eyes, extra eyes, lazy eye, asymmetrical eyes, cross-eyed, bad proportions, wrong body proportions, unrealistic proportions, distorted body, long neck, wrong head size, bad limbs, missing limbs, extra limbs, amputee, bad arm, bad hands, malformed hands, poorly drawn hands, bad hand structure, extra digits, fewer digits, extra fingers, fused fingers, bad leg, extra leg, distorted composition, bad perspective, disorganized colors, unfinished, incomplete, duplicate, worst quality, bad quality, messy details, fewer details, bad portrait, awkward, bad posture',
-            desc: '100% 对齐原版 v1.1.json (条目64)：细腻网点纸、三大漫画名家混血质感、墨线张力与纯正日漫单行本质感。'
+            desc: '原版 v1.1.json 条目 64：细腻网点纸、三大名家混血质感、墨线张力与纯正日漫印刷风。'
         },
         soft_color: {
-            name: '柔光全彩赛璐璐 (Soft Cel Shaded Anime)',
+            name: '柔光圆润 (画风-柔光圆润)',
             positive: 'artist:a20190422,0.5::artist:simuyutou::,1.2::artist:unajyudayo::,0.5::artist:Zero Q 0q::, 1.8::masterpiece, best quality::, 1.3::2d anime::, 1.2::cel shaded anime characters::, year 2025, year 2026,amber tones,soft skin,bold linework, blurry background,2::solo artist ::',
             negative: '1.5::chibi::, blank page, logo, watermark, too many watermarks, reference, signature, artist name, dated, chibi, artistic error, scan artifacts, jpeg artifacts, aliasing, film grain, heavy film grain, dithering, chromatic aberration, digital dissolve, 3D, lowres, bad anatomy, bad hands, error, missing fingers, extra digits, fewer digits, worst quality, low quality, normal quality, jpeg artifacts, watermark, signature, username, blurry, artist name, very displeasing, malformed limbs, fused fingers, too many fingers, 3::simple illustration::, 3::signature ::, 2::artist collaboration::, censored',
-            desc: '100% 对齐原版 v1.1.json (条目63)：剧场版柔和色彩、温润肤色质感、清透赛璐璐阴影。'
-        },
-        webtoon: {
-            name: '现代彩色条漫 (Webtoon Aesthetic)',
-            positive: 'webtoon, full color, modern manhwa aesthetic, vibrant colors, clean lineart, soft cinematic lighting, dynamic anime style, masterpiece, best quality',
-            negative: 'greyscale, monochrome, dull colors, lowres, bad anatomy, bad hands, artifacts, 3d render',
-            desc: '适合现代彩色条漫/网络连载：色彩鲜亮活泼、线条工整干净、光影对比鲜明。'
-        },
-        shonen_action: {
-            name: '热血高张力黑白 (Shonen Action Comic)',
-            positive: 'intense manga style, high contrast, heavy ink shadows, dynamic speed lines, bold linework, dramatic composition, screentone, monochrome, masterpiece',
-            negative: '10::color::, pastel, soft lighting, cute, chibi, lowres, bad anatomy',
-            desc: '大开大合的热血战斗：粗重墨线阴影、速度线、大反差张力与震撼魄力。'
+            desc: '原版 v1.1.json 条目 63：剧场版柔和色彩、温润肤色质感、清透赛璐璐阴影。'
         },
         custom: {
-            name: '⚙️ 自定义画风 (Custom Comic Style)',
+            name: '⚙️ 自定义画风 (Custom)',
             positive: '',
             negative: '',
             desc: '自由定义专属漫画正面风格 Tag 与针对性负面词。'
@@ -161,7 +149,7 @@
                     ? '[GUTTER-BLEED: ZERO-WHITE-BORDER]\n全幅零白留白：画格之间无白色缝隙，画布边缘无外白边，完全由粗黑墨线（太い黒い仕切り線, 太いインクの枠, 余白なし, コマが密着）密着切分。'
                     : '[GUTTER-BLEED: TOP-BOTTOM-BLEED]\n天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。'));
 
-        const colorRule = (store.style === 'monochrome' || store.style === 'shonen_action')
+        const colorRule = (store.style === 'monochrome')
             ? `9. 黑白漫画脱色契约（来自原版 v1.1.json [COLOR-MODE: MONOCHROME]）：
 - 当前处于黑白漫画模式：严禁在 scene、characters 的服装外貌或动作中输出任何具体彩色词（如 yellow, bright yellow, blue, red, pink, green, brown, purple 等）！
 - 所有服装与外貌颜色必须脱色转写为灰阶明暗词：dark, light, white, black, grey/gray（例如 bright yellow shirt 必须转写为 light shirt 或 pale shirt）！
@@ -457,7 +445,7 @@ ${antiHijackRule}
         }
 
         // 8. 🎨 黑白漫画严格脱色净化 (彻底消除角色卡/世界书带入的颜色污染)
-        const isMonochrome = (store.style === 'monochrome' || store.style === 'shonen_action');
+        const isMonochrome = (store.style === 'monochrome');
         if (isMonochrome) {
             if (payload.parameters?.v4_prompt?.caption) {
                 const v4Prompt = payload.parameters.v4_prompt.caption;

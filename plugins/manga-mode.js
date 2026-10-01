@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.9';
+        const VERSION = '1.4.10';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -773,26 +773,104 @@ ${antiHijackRule}
             height: 14px !important;
             cursor: pointer !important;
         }
-        /* 当漫画模式激活时，原有预设下拉框锁定置灰 */
+        /* 当漫画模式激活时，受托管的 SDT 控件高级锁定态 (Game HUD Lock State) */
         .rbq-sdt-preset-locked {
-            opacity: 0.45 !important;
             pointer-events: none !important;
-            filter: grayscale(80%) !important;
-            transition: all 0.2s ease !important;
+            cursor: not-allowed !important;
+            transition: all 0.25s ease !important;
             position: relative !important;
         }
+        /* 普通输入/下拉框保留优雅的暗色半透明禁用态，不污染外层卡片 */
+        .rbq-sdt-preset-locked:not(.switch) {
+            opacity: 0.72 !important;
+        }
+        .rbq-sdt-preset-locked:not(.switch) select,
+        .rbq-sdt-preset-locked:not(.switch) input:not([type="checkbox"]),
+        .rbq-sdt-preset-locked:not(.switch) textarea {
+            opacity: 0.7 !important;
+            background: rgba(255, 255, 255, 0.03) !important;
+            color: rgba(240, 246, 252, 0.6) !important;
+            border-color: rgba(255, 255, 255, 0.08) !important;
+            cursor: not-allowed !important;
+        }
+        /* 微型高亮状态药丸徽章 (Status Capsule / Pill) */
         .rbq-sdt-preset-lock-badge {
             display: inline-flex !important;
             align-items: center !important;
             gap: 4px !important;
-            font-size: 11px !important;
-            color: #ff9f43 !important;
-            background: rgba(255, 159, 67, 0.15) !important;
-            border: 1px solid rgba(255, 159, 67, 0.35) !important;
-            padding: 1px 6px !important;
-            border-radius: 6px !important;
+            font-size: 10px !important;
+            line-height: 1 !important;
+            color: #fbbf24 !important;
+            background: rgba(245, 158, 11, 0.14) !important;
+            border: 1px solid rgba(245, 158, 11, 0.35) !important;
+            padding: 2.5px 7px !important;
+            border-radius: 999px !important;
             margin-left: 6px !important;
-            font-weight: 500 !important;
+            font-weight: 600 !important;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            letter-spacing: 0.02em !important;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.12) !important;
+            vertical-align: middle !important;
+        }
+        .rbq-sdt-preset-lock-badge.muted {
+            color: #94a3b8 !important;
+            background: rgba(148, 163, 184, 0.1) !important;
+            border-color: rgba(148, 163, 184, 0.25) !important;
+            box-shadow: none !important;
+        }
+        /* 开关卡片双行排版包装容器 */
+        .rbq-sdt-switch-lock-wrap {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 4px !important;
+            min-width: 0 !important;
+            flex: 1 1 auto !important;
+            justify-content: center !important;
+        }
+        .rbq-sdt-switch-title-row {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            flex-wrap: nowrap !important;
+            min-width: 0 !important;
+        }
+        .rbq-sdt-switch-title-text {
+            color: var(--linear-text-primary, #f7f8f8) !important;
+            font-size: 13.5px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.01em !important;
+            white-space: nowrap !important;
+        }
+        .rbq-sdt-switch-lock-desc {
+            font-size: 11px !important;
+            color: var(--linear-text-secondary, #94a3b8) !important;
+            line-height: 1.35 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            opacity: 0.85 !important;
+        }
+        /* 锁定激活态开关（强制开启，如多角色输出模式）：醒目琥珀金托管高亮 */
+        .rbq-sdt-preset-locked.rbq-sdt-locked-on .st-scene-trigger-toggle-ui {
+            background: rgba(245, 158, 11, 0.22) !important;
+            border-color: rgba(245, 158, 11, 0.55) !important;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.18) !important;
+        }
+        .rbq-sdt-preset-locked.rbq-sdt-locked-on .st-scene-trigger-toggle-ui::before {
+            transform: translateX(26px) !important;
+            background: #fbbf24 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+        }
+        /* 锁定停用态开关（强制关闭，如多角色严格定位）：优雅暗色安全静默 */
+        .rbq-sdt-preset-locked.rbq-sdt-locked-off .st-scene-trigger-toggle-ui {
+            opacity: 0.4 !important;
+            background: rgba(255, 255, 255, 0.04) !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        .rbq-sdt-preset-locked.rbq-sdt-locked-off .st-scene-trigger-toggle-ui::before {
+            transform: translateX(0) !important;
+            background: rgba(255, 255, 255, 0.25) !important;
         }
 
         /* ════════════ 漫画工作台 (Manga Studio) 样式 ════════════ */
@@ -1754,7 +1832,7 @@ ${antiHijackRule}
                 if (!badge) {
                     badge = document.createElement('span');
                     badge.className = 'rbq-sdt-preset-lock-badge';
-                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (条目33事件驱动)';
+                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (条目33)';
                     const titleSpan = ecField.querySelector('span');
                     if (titleSpan) titleSpan.appendChild(badge);
                 }
@@ -1771,7 +1849,7 @@ ${antiHijackRule}
             }
         }
 
-        // 锁定/解锁多角色输出模式与 2D 坐标 (漫画模式按画格槽位接管)
+        // 锁定/解锁多角色输出模式与 2D 坐标 (漫画模式按画格槽位接管，Game HUD 双行信息流)
         const mcCheck = document.getElementById('rbq-sdt-multichar');
         const mcField = mcCheck ? mcCheck.closest('.st-scene-trigger-field') : null;
         const coordsCheck = document.getElementById('rbq-sdt-multichar-coords');
@@ -1781,20 +1859,36 @@ ${antiHijackRule}
             if (store.enabled) {
                 mcCheck.checked = true;
                 mcCheck.disabled = true;
-                mcField.classList.add('rbq-sdt-preset-locked');
-                let badge = mcField.querySelector('.rbq-sdt-preset-lock-badge');
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'rbq-sdt-preset-lock-badge';
-                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画画格流接管 (强制开启)';
-                    const titleSpan = mcField.querySelector('span');
-                    if (titleSpan) titleSpan.appendChild(badge);
+                mcField.setAttribute('aria-checked', 'true');
+                mcField.classList.add('rbq-sdt-preset-locked', 'rbq-sdt-locked-on');
+                mcField.classList.remove('rbq-sdt-locked-off');
+                let lockWrap = mcField.querySelector('.rbq-sdt-switch-lock-wrap');
+                if (!lockWrap) {
+                    lockWrap = document.createElement('div');
+                    lockWrap.className = 'rbq-sdt-switch-lock-wrap';
+                    lockWrap.innerHTML = `
+                        <div class="rbq-sdt-switch-title-row">
+                            <span class="rbq-sdt-switch-title-text">多角色输出模式</span>
+                            <span class="rbq-sdt-preset-lock-badge"><i class="fa-solid fa-lock"></i> 漫画托管</span>
+                        </div>
+                        <div class="rbq-sdt-switch-lock-desc">画格分镜流接管 · 强制开启</div>
+                    `;
+                    const origSpan = mcField.querySelector(':scope > span:not(.st-scene-trigger-toggle)');
+                    if (origSpan) {
+                        origSpan.style.display = 'none';
+                        mcField.insertBefore(lockWrap, origSpan.nextSibling);
+                    }
                 }
             } else {
                 const sdtStore = getSdtStore();
                 mcCheck.checked = !!sdtStore.multiCharOutput;
                 mcCheck.disabled = false;
-                mcField.classList.remove('rbq-sdt-preset-locked');
+                mcField.setAttribute('aria-checked', mcCheck.checked ? 'true' : 'false');
+                mcField.classList.remove('rbq-sdt-preset-locked', 'rbq-sdt-locked-on', 'rbq-sdt-locked-off');
+                const lockWrap = mcField.querySelector('.rbq-sdt-switch-lock-wrap');
+                if (lockWrap) lockWrap.remove();
+                const origSpan = mcField.querySelector(':scope > span:not(.st-scene-trigger-toggle)');
+                if (origSpan) origSpan.style.display = '';
                 const badge = mcField.querySelector('.rbq-sdt-preset-lock-badge');
                 if (badge) badge.remove();
             }
@@ -1804,20 +1898,36 @@ ${antiHijackRule}
             if (store.enabled) {
                 coordsCheck.checked = false;
                 coordsCheck.disabled = true;
-                coordsField.classList.add('rbq-sdt-preset-locked');
-                let badge = coordsField.querySelector('.rbq-sdt-preset-lock-badge');
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'rbq-sdt-preset-lock-badge';
-                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式禁用 2D 坐标 (按格序自动排版)';
-                    const titleSpan = coordsField.querySelector('span');
-                    if (titleSpan) titleSpan.appendChild(badge);
+                coordsField.setAttribute('aria-checked', 'false');
+                coordsField.classList.add('rbq-sdt-preset-locked', 'rbq-sdt-locked-off');
+                coordsField.classList.remove('rbq-sdt-locked-on');
+                let lockWrap = coordsField.querySelector('.rbq-sdt-switch-lock-wrap');
+                if (!lockWrap) {
+                    lockWrap = document.createElement('div');
+                    lockWrap.className = 'rbq-sdt-switch-lock-wrap';
+                    lockWrap.innerHTML = `
+                        <div class="rbq-sdt-switch-title-row">
+                            <span class="rbq-sdt-switch-title-text">多角色严格定位</span>
+                            <span class="rbq-sdt-preset-lock-badge muted"><i class="fa-solid fa-ban"></i> 漫画停用</span>
+                        </div>
+                        <div class="rbq-sdt-switch-lock-desc">按分镜格序排版 · 2D坐标已停用</div>
+                    `;
+                    const origSpan = coordsField.querySelector(':scope > span:not(.st-scene-trigger-toggle)');
+                    if (origSpan) {
+                        origSpan.style.display = 'none';
+                        coordsField.insertBefore(lockWrap, origSpan.nextSibling);
+                    }
                 }
             } else {
                 const sdtStore = getSdtStore();
                 coordsCheck.checked = !!sdtStore.multiCharUseCoords;
                 coordsCheck.disabled = false;
-                coordsField.classList.remove('rbq-sdt-preset-locked');
+                coordsField.setAttribute('aria-checked', coordsCheck.checked ? 'true' : 'false');
+                coordsField.classList.remove('rbq-sdt-preset-locked', 'rbq-sdt-locked-on', 'rbq-sdt-locked-off');
+                const lockWrap = coordsField.querySelector('.rbq-sdt-switch-lock-wrap');
+                if (lockWrap) lockWrap.remove();
+                const origSpan = coordsField.querySelector(':scope > span:not(.st-scene-trigger-toggle)');
+                if (origSpan) origSpan.style.display = '';
                 const badge = coordsField.querySelector('.rbq-sdt-preset-lock-badge');
                 if (badge) badge.remove();
             }
@@ -3662,7 +3772,12 @@ JSON 格式规范：
             mcCheck.disabled = false;
             const field = mcCheck.closest('.st-scene-trigger-field');
             if (field) {
-                field.classList.remove('rbq-sdt-preset-locked');
+                field.classList.remove('rbq-sdt-preset-locked', 'rbq-sdt-locked-on', 'rbq-sdt-locked-off');
+                field.setAttribute('aria-checked', mcCheck.checked ? 'true' : 'false');
+                const lockWrap = field.querySelector('.rbq-sdt-switch-lock-wrap');
+                if (lockWrap) lockWrap.remove();
+                const origSpan = field.querySelector(':scope > span:not(.st-scene-trigger-toggle)');
+                if (origSpan) origSpan.style.display = '';
                 const badge = field.querySelector('.rbq-sdt-preset-lock-badge');
                 if (badge) badge.remove();
             }
@@ -3672,7 +3787,12 @@ JSON 格式规范：
             coordsCheck.disabled = false;
             const field = coordsCheck.closest('.st-scene-trigger-field');
             if (field) {
-                field.classList.remove('rbq-sdt-preset-locked');
+                field.classList.remove('rbq-sdt-preset-locked', 'rbq-sdt-locked-on', 'rbq-sdt-locked-off');
+                field.setAttribute('aria-checked', coordsCheck.checked ? 'true' : 'false');
+                const lockWrap = field.querySelector('.rbq-sdt-switch-lock-wrap');
+                if (lockWrap) lockWrap.remove();
+                const origSpan = field.querySelector(':scope > span:not(.st-scene-trigger-toggle)');
+                if (origSpan) origSpan.style.display = '';
                 const badge = field.querySelector('.rbq-sdt-preset-lock-badge');
                 if (badge) badge.remove();
             }

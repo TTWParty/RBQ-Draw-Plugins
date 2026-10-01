@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.24';
+    const VERSION = '2.2.25';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -241,13 +241,21 @@
 
     function getSdtStore() {
         const s = RBQ.api.getSettings();
+        if (!s[SDT_KEY] && s['_smartDrawTriggerSettings']) {
+            s[SDT_KEY] = s['_smartDrawTriggerSettings'];
+        }
         if (!s[SDT_KEY]) s[SDT_KEY] = {};
+        s['_smartDrawTriggerSettings'] = s[SDT_KEY];
         return s[SDT_KEY];
     }
 
     function ensureProfileBucket() {
         const s = RBQ.api.getSettings();
+        if (!s[SDT_KEY] && s['_smartDrawTriggerSettings']) {
+            s[SDT_KEY] = s['_smartDrawTriggerSettings'];
+        }
         if (!s[SDT_KEY]) s[SDT_KEY] = {};
+        s['_smartDrawTriggerSettings'] = s[SDT_KEY];
         if (!s[SDT_KEY].characterProfiles) s[SDT_KEY].characterProfiles = {};
         const ck = getChatKey();
         if (!s[SDT_KEY].characterProfiles[ck]) s[SDT_KEY].characterProfiles[ck] = {};
@@ -267,7 +275,11 @@
             for (const chatDict of Object.values(sdt.characterProfiles)) {
                 if (chatDict && typeof chatDict === 'object') {
                     for (const [k, v] of Object.entries(chatDict)) {
-                        if (v && typeof v === 'object' && !fallback[k]) fallback[k] = v;
+                        if (v && typeof v === 'object') {
+                            if (!fallback[k] || (v.updatedAt && (!fallback[k].updatedAt || v.updatedAt > fallback[k].updatedAt))) {
+                                fallback[k] = v;
+                            }
+                        }
                     }
                 }
             }
@@ -582,20 +594,125 @@
         return null;
     }
 
-    function saveProfile(name, data) {
+    function saveProfile(name, data, scope = dossierScope) {
         if (!name) return;
         const bucket = ensureProfileBucket();
-        bucket[name] = { ...data, displayName: data.displayName || name, updatedAt: Date.now() };
-        if (!bucket[name].createdAt) bucket[name].createdAt = Date.now();
-        if (!Array.isArray(bucket[name].wardrobe)) bucket[name].wardrobe = [];
+        const profileData = { ...data, displayName: data.displayName || name, updatedAt: Date.now() };
+        if (!profileData.createdAt) profileData.createdAt = Date.now();
+        if (!Array.isArray(profileData.wardrobe)) profileData.wardrobe = [];
+        bucket[name] = profileData;
+
+        // 若在全局历史模式下保存，同步更新其他历史会话桶中已存在的同名角色副本，防止旧副本数据脱节
+        if (scope === 'all') {
+            const sdt = getSdtStore();
+            if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
+                for (const chatDict of Object.values(sdt.characterProfiles)) {
+                    if (chatDict && typeof chatDict === 'object' && chatDict !== bucket) {
+                        if (chatDict[name] || (data.displayName && chatDict[data.displayName])) {
+                            const targetKey = chatDict[name] ? name : data.displayName;
+                            chatDict[targetKey] = JSON.parse(JSON.stringify(profileData));
+                        }
+                    }
+                }
+            }
+        }
+
         RBQ.api.saveSettings();
     }
 
-    function deleteProfile(name) {
-        if (!name) return;
-        const bucket = ensureProfileBucket();
-        delete bucket[name];
-        RBQ.api.saveSettings();
+    function deleteProfile(name, scope = dossierScope) {
+        if (!name) return false;
+        const sdt = getSdtStore();
+        let deleted = false;
+
+        const currentChatBucket = ensureProfileBucket();
+        const globalProfiles = getAllGlobalProfiles();
+        const targetProf = currentChatBucket[name] || globalProfiles[name] || getProfile(name);
+        const targetDisplayName = targetProf?.displayName || '';
+
+        const norm = (s) => String(s || '').trim().toLowerCase();
+        const targetNorm = norm(name);
+        const targetDisplayNorm = norm(targetDisplayName);
+
+        const isMatch = (k, v) => {
+            const kNorm = norm(k);
+            if (kNorm === targetNorm) return true;
+            if (targetDisplayNorm && kNorm === targetDisplayNorm) return true;
+            if (v && typeof v === 'object') {
+                const dnNorm = norm(v.displayName);
+                if (dnNorm === targetNorm) return true;
+                if (targetDisplayNorm && dnNorm === targetDisplayNorm) return true;
+            }
+            return false;
+        };
+
+        if (scope === 'all') {
+            // 全局删除：遍历 sdt.characterProfiles 下所有历史会话桶彻底清理
+            if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
+                for (const chatDict of Object.values(sdt.characterProfiles)) {
+                    if (chatDict && typeof chatDict === 'object') {
+                        for (const [k, v] of Object.entries(chatDict)) {
+                            if (isMatch(k, v)) {
+                                delete chatDict[k];
+                                deleted = true;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // 当前会话删除：优先从当前会话桶中清理
+            const ck = getChatKey();
+            const bucket = sdt.characterProfiles?.[ck];
+            if (bucket && typeof bucket === 'object') {
+                for (const [k, v] of Object.entries(bucket)) {
+                    if (isMatch(k, v)) {
+                        delete bucket[k];
+                        deleted = true;
+                    }
+                }
+            }
+            if (bucket && bucket[name]) {
+                delete bucket[name];
+                deleted = true;
+            }
+            // 容错兜底：若在当前会话桶未命中，尝试从所有会话桶中查找并删除匹配项
+            if (!deleted && sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
+                for (const chatDict of Object.values(sdt.characterProfiles)) {
+                    if (chatDict && typeof chatDict === 'object') {
+                        for (const [k, v] of Object.entries(chatDict)) {
+                            if (isMatch(k, v)) {
+                                delete chatDict[k];
+                                deleted = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (deleted) break;
+                }
+            }
+        }
+
+        if (deleted) {
+            // 同步清理工作台舞台当前槽位中对该角色的引用
+            try {
+                const ws = getWs();
+                if (ws?.activeComposer?.slots) {
+                    let wsChanged = false;
+                    ws.activeComposer.slots.forEach(slot => {
+                        if (slot && (slot.charName === name || (targetDisplayName && slot.charName === targetDisplayName) || norm(slot.charName) === targetNorm)) {
+                            slot.charName = '';
+                            slot.outfitId = '';
+                            wsChanged = true;
+                        }
+                    });
+                    if (wsChanged) wsSave();
+                }
+            } catch (_) {}
+
+            RBQ.api.saveSettings();
+        }
+        return deleted;
     }
 
     function getOutfitTagsForSlot(profile, outfitId, customOutfit) {
@@ -2006,7 +2123,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const name = draft.displayName;
                 if (!name) return toastr.warning('请输入角色姓名', PLUGIN_NAME);
 
-                if (isEdit && editName !== name) deleteProfile(editName);
+                if (isEdit && editName !== name) deleteProfile(editName, dossierScope);
 
                 const activeW = draft.wardrobe.find(w => w.id === draft.currentOutfitId) || draft.wardrobe[0];
                 draft.currentOutfit = activeW?.outfit || activeW?.tags || '';
@@ -2019,7 +2136,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     currentOutfitId: draft.currentOutfitId,
                     avatarUrl: draft.avatarUrl,
                     wardrobe: draft.wardrobe,
-                });
+                }, dossierScope);
                 toastr.success('「' + name + '」已保存到 SDT 角色记忆！', PLUGIN_NAME);
                 mask.remove();
                 if (onSaved) onSaved(name);
@@ -2234,7 +2351,9 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 for (const name of selectedNames) {
                     const p = profilesDict[name];
                     if (p) {
-                        saveProfile(name, p);
+                        const toImport = { ...p };
+                        delete toImport.source;
+                        saveProfile(name, toImport);
                         count++;
                     }
                 }
@@ -2294,7 +2413,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         </div>` : names.map(n => {
                         const p = profiles[n];
                         if (!p || typeof p !== 'object') return '';
-                        const isFromLorebook = (p.source === 'lorebook' || dossierScope === 'lorebook');
+                        const isFromLorebook = (dossierScope === 'lorebook');
                         const wCount = Array.isArray(p.wardrobe) ? p.wardrobe.length : 0;
                         const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
                         const activeOutfitName = activeW?.name || '默认';
@@ -2305,7 +2424,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                 <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:2px">
                                     <div style="display:flex;align-items:center;gap:6px">
                                         <span style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.displayName || n)}</span>
-                                        ${isFromLorebook ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(192,132,252,0.25);border:1px solid rgba(192,132,252,0.5);color:#e9d5ff">同人库</span>` : ''}
+                                        ${(p.source === 'lorebook' || p.sourceName || isFromLorebook) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(192,132,252,0.25);border:1px solid rgba(192,132,252,0.5);color:#e9d5ff">同人库</span>` : ''}
                                     </div>
                                     <span style="font-size:11px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.baseTags)}"><span style="color:#79e4ff">外貌:</span> ${esc(p.baseTags || '未设置')}</span>
                                     <span style="font-size:10.5px;color:#ffb86c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👗 当前: <strong>${esc(activeOutfitName)}</strong> <span style="opacity:0.6">(${wCount}套)</span></span>
@@ -3416,7 +3535,9 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             const name = e.currentTarget.dataset.name;
             const p = getProfile(name);
             if (p) {
-                saveProfile(name, p);
+                const toImport = { ...p };
+                delete toImport.source;
+                saveProfile(name, toImport);
                 toastr.success(`已成功将「${name}」导入为当前会话常驻角色档案！可在「当前会话」中自由编辑与调教`, PLUGIN_NAME);
                 refresh('dossier');
             }
@@ -3437,7 +3558,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const outfit = activeW?.outfit || activeW?.tags || p.currentOutfit || '';
                 openPortraitTestModal(p.displayName || charName, p.baseTags, outfit, (newAvatarUrl) => {
                     p.avatarUrl = newAvatarUrl;
-                    saveProfile(charName, p);
+                    saveProfile(charName, p, dossierScope);
                     refresh('dossier');
                 }, btn);
             } catch (err) {
@@ -3468,9 +3589,14 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
         }));
 
         container.querySelectorAll('.cw-del-char').forEach(b => b.addEventListener('click', () => {
-            if (confirm(`确定删除角色「${b.dataset.name}」的档案记忆吗？`)) {
-                deleteProfile(b.dataset.name);
-                toastr.info('已删除', PLUGIN_NAME);
+            const charName = b.dataset.name;
+            const isGlobal = (dossierScope === 'all');
+            const confirmMsg = isGlobal
+                ? `确定从全局历史中彻底删除角色「${charName}」的档案记忆吗？\n（该角色在所有会话历史中的档案都将被清理）`
+                : `确定从当前会话中移除角色「${charName}」的档案记忆吗？`;
+            if (confirm(confirmMsg)) {
+                deleteProfile(charName, dossierScope);
+                toastr.success(isGlobal ? `角色「${charName}」已从全局历史彻底删除` : `角色「${charName}」已从当前会话移除`, PLUGIN_NAME);
                 refresh('dossier');
             }
         }));

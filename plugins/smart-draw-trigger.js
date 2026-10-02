@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.72';
+    const PLUGIN_VERSION = '6.0.73';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2729,9 +2729,130 @@ Zimage 擅长理解复杂的英文长句和语境。
         return String(str).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     }
 
+    function isJunkCharacterName(name) {
+        if (!name || typeof name !== 'string') return true;
+        const trimmed = name.trim();
+        if (!trimmed) return true;
+        // 匹配画格序号与标记：Panel 1, Panel 2, 画格 1, Frame 1, コマ 1, Shot 1 等
+        if (/^(?:Panel|画格|Frame|コマ|Shot)\s*\d+/i.test(trimmed)) return true;
+        // 常见由 LLM 输出的漫画排版格位中文词汇（防止误当角色名）
+        if (/\b(?:顶部横通栏|中段右侧|中段左侧|底部核心|底部宽画格|全页单格|横通栏|纵长长格|插入格|交代格|主格|反应格|拟声词格|静默格|天头出血)\b/.test(trimmed)) return true;
+        // 英文画格方位与镜头词
+        if (/^(?:top|middle|bottom|left|right|inset|wide|focal|reaction|establishing)\s+(?:panel|shot)/i.test(trimmed)) return true;
+        // 纯抽象占位符
+        if (/^(?:scenery|establishing|narrative|sound\s*effects?|sfx|none|null|undefined|blank|empty)$/i.test(trimmed)) return true;
+        // 包含气泡或排版协议标签
+        if (/\b(?:BubbleType|SFX|Layout|Text)[ \t]*[:：]/i.test(trimmed)) return true;
+        return false;
+    }
+
     function getCanonicalCharName(name) {
         if (!name) return '';
         return String(name).replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
+    }
+
+    function buildCharacterMemoryPromptModule(store) {
+        if (!store) store = getStore();
+        const profiles = getCharacterProfiles();
+        const profileEntries = Object.entries(profiles).filter(([k, p]) => p && !isJunkCharacterName(k));
+
+        let activeRegistrySection = '';
+        if (profileEntries.length > 0) {
+            const listText = profileEntries.map(([k, p]) => {
+                const name = p.displayName || k;
+                const base = String(p.baseTags || '').trim();
+                const outfit = String(p.currentOutfit || '').trim();
+                const wardrobe = Array.isArray(p.wardrobe) && p.wardrobe.length > 0
+                    ? `\n    - 可选衣柜: ${p.wardrobe.map(w => `${w.name} (${w.outfit})`).slice(0, 5).join(' | ')}`
+                    : '';
+                return `  * 角色「${name}」:
+    - base (固定外貌DNA · 跨图绝对锁定): ${base || '(首次登场提炼)'}
+    - outfit (当前服装签名 · 随换装剧情演进): ${outfit || '(根据剧情即时提炼)'}${wardrobe}`;
+            }).join('\n');
+
+            activeRegistrySection = `
+【🧠 当前会话已锁定的角色外貌记忆资产库 (Active Character Memory Registry)】
+以下角色已在系统中建档并锁定了永久视觉 DNA (L0 Base) 与当前服装 (L1 Outfit)。
+【核心资产复用契约】：
+1. 凡剧情中登场的角色与上述资产库匹配时，必须直接引用该角色的真实名称填入 name 字段；
+2. 必须 100% 原样复用其已锁定的 base 外貌标签，严禁在不同分镜或画格中随意改动或漂移其发色、瞳色、族裔与五官特征！
+3. 若剧情未发生换装/脱衣，outfit 默认沿用；若剧情发生明确解衣、湿身、撕裂或换装，则在本格更新 outfit。
+${listText}
+`;
+        } else {
+            const globalProfiles = getAllKnownCharacterProfiles();
+            const globalEntries = Object.entries(globalProfiles).filter(([k, p]) => p && !isJunkCharacterName(k));
+            if (globalEntries.length > 0) {
+                const globalListText = globalEntries.slice(0, 5).map(([k, p]) => {
+                    const name = p.displayName || k;
+                    const base = String(p.baseTags || '').trim();
+                    const outfit = String(p.currentOutfit || '').trim();
+                    return `  * 已知全局角色资产「${name}」:
+    - base (固定外貌DNA): ${base || '(首次登场提炼)'}
+    - outfit (典型服装): ${outfit || '(剧情提炼)'}`;
+                }).join('\n');
+                activeRegistrySection = `
+【🧠 角色外貌记忆资产库参考 (Known Global Character Profiles)】
+当前会话为新聊天，但系统中已收录以下全局角色资产。若本剧情中包含这些角色，请直接继承其真实 name 与 base：
+${globalListText}
+遇到其他新登场角色时，请严格按下述 7 维外貌防伪矩阵建立专属 base。
+`;
+            } else {
+                activeRegistrySection = `
+【🧠 角色外貌记忆建档指示 (Initial Profiling)】
+当前会话尚未记忆任何角色。遇到剧情中登场的角色时，请严格执行下述「7维外貌防伪矩阵」为该角色建立专属的 base DNA，并用「四要素签名法则」提炼其当前 outfit。系统将在生图后自动学习建档，使其成为一个可独立替换、全局复用的自洽角色资产。
+`;
+            }
+        }
+
+        return `【🧬 角色外貌记忆与视觉资产规格引擎 (Character Appearance Memory Specification)】
+本系统将每个出场角色视为一个自洽、独立、可全局复用与整体替换的「视觉实体资产」。严禁割裂或混淆角色的外貌基因与临时状态。所有分镜必须严格遵守以下规范：
+
+1. 【角色外貌 7 维防伪矩阵与同人皮肤 (7-Dimensional Holographic Base DNA)】：
+   - 命名标准：
+     * 同人角色：2::Name (Series)::（例如 2::Cartethyia (Wuthering Waves)::、2::Raiden Shogun (Genshin Impact)::）
+     * 同人官方皮肤：2::Name (Series) (skin name)::
+     * 原创角色：Name (original)（例如 Mira (original)、师尊 (original)）
+     * 次要配角/路人：faceless male / faceless female 或简要外貌，禁止喧宾夺主。
+   - 7 维外貌公式（写在 base 字段，纯净无临时服装与临时动作）：
+     ① 性别：girl / boy（严禁带数字如 1girl，防人数干扰）
+     ② 面相/族裔：japanese, delicate_face（日系二次元必带，锁定动漫秀气五官，防欧美化漂移）/ caucasian / western 等
+     ③ 年龄段：adolescent, teenager, young_girl, mature_female 等
+     ④ 发型发色：如 long hair, 1.2::black hair::, straight bangs, twintails
+     ⑤ 瞳色眼型：如 blue eyes, tsurime, large eyes, droopy eyes
+     ⑥ 胸型体态：如 large breasts, slender, petite, tall
+     ⑦ 肤色与永久特征：如 fair skin, mole under eye, freckles, fangs
+   - 纯净法则：base 字段专属于角色与生俱来的永久外貌基因，严禁在 base 中混入衣服（skirt/shirt/dress/boots）或姿势动作！
+   - 同人防幻觉与分级：自带固有认知，特征合理简述（同人角色基本4项+≥2项可选；若 OOC 脱离原作，用确定的基础标签+自然语言覆盖，并在 UC 中排除原设特征；原作画师标签进 UC 防止画风夺舍）。
+   - 原创丰富度：必须细腻丰富补全 7 维特征（原创角色基本4项+≥6项可选+≥1项专属配饰，辨识度越高，锚点越稳定）。
+
+2. 【服装签名法则 (Outfit Signature)】：
+   - 四要素公式：[颜色] [材质] [款式核心词] [长度/穿着状态] + [细节]。签名判定法：逐词自问「砍掉后 AI 还画同一件吗？不会 → 必须保留」。
+   - 长度铁律：裙（mini/knee-length/maxi/floor-length）、靴（ankle/knee-high/thigh-high）、袜（ankle socks/knee-high/thigh-high/pantyhose）、外套（cropped/waist-length/long）四类必须带长度词！
+   - 颜色铁律：每件服装必须带颜色词（纯透明 transparent 本身即视觉信息豁免）。
+   - 叠穿与透视：从内到外逐件独立列出（如 white t-shirt, blue denim open jacket）；透视内衣用 {} 轻微加权（如 {underwear visible through clothes, pink lace bra}）。
+
+3. 【L0~L2 一致性控制与状态延续性体系 (Consistency & States)】：
+   - L0 角色一致性（形象锚点）：[外貌特征] + [气质特征] + [着装签名]，跨图稳定。首次登场建立固定外貌基因（base），后续分镜或后续消息出场时绝对锁定，严禁在不同分镜中漂移改脸！
+   - L1 场景/服装一致性：同一剧情节点内服装（outfit）保持锁定，仅在剧情明确换装、解衣、撕裂、脱下时更新。
+   - L2 瞬时信息（无锚点）：单次画面的即时路人、临时物品、动作、体位、表情、视线，当场填写。
+   - 状态延续性法则：持久状态（汗水 sweat、红晕 blush、战损、体液 cum 残留、衣物移位、湿衣 wet clothes、散发）「禁止自动复原」，增减消退逐图渐进；仅明确触发（擦干/整理/换衣/休息/第二天）才清零。
+
+4. 【肢体动作碎化与手部微表情规则 (Action & Micro-expressions)】：
+   - 整体体位：standing / sitting / kneeling / lying / straddling。
+   - 左右手独立：每只手动作分别写清（哪个部位/怎么持有/持有什么/放在哪，如 left hand... 与 right hand...），严禁一只手覆盖另一只；画框外或遮挡时不编造。
+   - 动作加权：核心动作与交互关键动词使用 1.2~1.4::动作:: 加权。
+   - 复合微表情：视线（未直视镜头必须标注如 looking down, looking to the side）+ 嘴型 + 情绪生理反应。
+   - 多角色交互：使用 source#action / target#action / mutual#action 明确互动施受关系。
+   - 空间连续坐标：center 统一采用连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或网格 C3。
+
+5. 【漫画模式与分格画格适配铁律 (Manga Mode Character & Panel Decoupling)】：
+   - 核心解耦公理：画格（Panel）是舞台与机位，角色（Actor）是登台演员！
+   - ⛔【严禁以画格为名】：characters 数组中的 name 字段必须且只能是本格出场角色的【真实身份名称】（如 "师尊 (original)"、"Ami (original)" 或角色卡名称），绝对严禁把 "Panel 1"、"画格 1"、"Shot 1" 写为角色 name！
+   - 【同一角色跨格贯穿】：若本页漫画的多个画格（如 Panel 1、Panel 2、Panel 4）均有同一角色出镜，这几个画格槽位的 name 必须完全相同，且共享相同的锁定 base DNA，仅 action 随分格演进！系统将自动将其识别为同一角色的连续表演，绝不产生垃圾角色碎片。
+   - 【纯环境/空镜/拟声词格】：若本格为纯环境交代、远景空镜或独立拟声词格且无人物出场，name 必须留空 ""，base 与 outfit 也必须留空 ""，严禁填写 solo 或人物标签！
+   - 【画格方位与镜头归位】：画格的版面方位（top panel, middle-right panel, bottom panel 等）、景别（wide establishing shot, close-up 等）以及台词气泡（BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文）必须统一写在 action 字段的开头！
+${activeRegistrySection}`;
     }
 
     function getActiveCharacterName() {
@@ -2754,6 +2875,9 @@ Zimage 擅长理解复杂的英文长句和语境。
                 if (chatDict && typeof chatDict === 'object') {
                     for (const [name, prof] of Object.entries(chatDict)) {
                         if (name && prof && typeof prof === 'object') {
+                            if (isJunkCharacterName(name) || isJunkCharacterName(prof.displayName)) {
+                                continue;
+                            }
                             const canonical = getCanonicalCharName(prof.displayName || name);
                             if (canonical && !profiles[canonical]) {
                                 profiles[canonical] = prof;
@@ -2774,8 +2898,20 @@ Zimage 擅长理解复杂的英文长句和语境。
             store.characterProfiles[chatKey] = {};
         }
 
-        const dict = store.characterProfiles[chatKey];
+        // 彻底清理历史聊天桶中被污染的垃圾画格键（如 Panel 1、画格2 等）
         let changed = false;
+        for (const [cKey, dict] of Object.entries(store.characterProfiles)) {
+            if (!dict || typeof dict !== 'object') continue;
+            for (const k of Object.keys(dict)) {
+                if (isJunkCharacterName(k)) {
+                    delete dict[k];
+                    changed = true;
+                    debugInfo(`🧹 角色记忆自动净化：清理垃圾画格名「${k}」(chatKey: ${cKey})`);
+                }
+            }
+        }
+
+        const dict = store.characterProfiles[chatKey];
         for (const [k, p] of Object.entries(dict)) {
             if (!p || typeof p !== 'object') continue;
             // Fix "____" key
@@ -2884,9 +3020,9 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true) {
-        const profiles = getCharacterProfiles();
         const rawName = String(name || '').trim();
-        if (!rawName) return;
+        if (!rawName || isJunkCharacterName(rawName)) return;
+        const profiles = getCharacterProfiles();
         const canonical = getCanonicalCharName(rawName);
 
         let existing = getCharacterProfile(canonical);
@@ -3071,43 +3207,44 @@ Zimage 擅长理解复杂的英文长句和语境。
     function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
         const store = getStore();
         const chatKey = getChatKey();
-        const weightedName = weightCharacterName(name);
+        const isJunk = isJunkCharacterName(name);
+        const cleanName = isJunk ? '' : String(name || '').trim();
+        const weightedName = cleanName ? weightCharacterName(cleanName) : '';
 
         debugInfo(`角色「${name}」LLM 输出: base="${(llmBase || '').slice(0, 40)}", outfit="${(llmOutfit || '').slice(0, 40)}", action="${(llmAction || '').slice(0, 40)}"`);
         debugInfo(`角色记忆状态: ${store.characterMemoryEnabled ? '✅ 启用' : '❌ 禁用'}, chatKey="${chatKey}"`);
 
-        if (!store.characterMemoryEnabled) {
-            // No memory: fallback to old behavior (appearance + all LLM tags)
+        if (!store.characterMemoryEnabled || !cleanName) {
+            // 未开启角色记忆或为垃圾画格名/空名：降级为常规合并（绝不将垃圾画格名注入 NAI 提示词！）
             const allLlmTags = [weightedName, llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
             return [appearanceTags, allLlmTags].filter(Boolean).join(', ');
         }
 
-        const profile = getCharacterProfile(name);
+        const profile = getCharacterProfile(cleanName);
         let finalBase, finalOutfit;
 
         if (profile) {
             // Use stored base (immutable), update outfit from LLM
             finalBase = profile.baseTags;
             finalOutfit = llmOutfit || profile.currentOutfit;
-            if (llmOutfit) updateCharacterProfile(name, null, llmOutfit, null, true);
-            debugInfo(`角色记忆复用「${name}」: storedBase="${finalBase.slice(0, 40)}..."`);
+            if (llmOutfit) updateCharacterProfile(cleanName, null, llmOutfit, null, true);
+            debugInfo(`角色记忆复用「${cleanName}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
             // First time: learn from LLM and store (store clean name, not weighted)
-            finalBase = [name, llmBase].filter(Boolean).join(', ');
+            finalBase = [cleanName, llmBase].filter(Boolean).join(', ');
             finalOutfit = llmOutfit || '';
-            if (finalBase && name) {
-                updateCharacterProfile(name, finalBase, finalOutfit, null, true);
-            } else if (!finalBase && name) {
-                debugInfo(`⚠️ 角色「${name}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
+            if (finalBase && cleanName) {
+                updateCharacterProfile(cleanName, finalBase, finalOutfit, null, true);
+            } else if (!finalBase && cleanName) {
+                debugInfo(`⚠️ 角色「${cleanName}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
             }
         }
 
         // Build weighted base for NAI: apply name weight + memory base
         // For 同人 characters with stored memory, re-apply name weight to the stored base
         let displayBase = finalBase;
-        if (profile && name) {
+        if (profile && cleanName) {
             // Stored base already contains the clean name; replace with weighted version
-            const cleanName = name;
             if (displayBase.startsWith(cleanName)) {
                 displayBase = weightedName + displayBase.slice(cleanName.length);
             }
@@ -6391,12 +6528,30 @@ Zimage 擅长理解复杂的英文长句和语境。
                         ? item.character
                         : (item?.characters && typeof item.characters === 'object' ? [item.characters] : []));
                 const characters = rawChars.map((char, charIndex) => {
-                    const name = decodeUnicodeEscapes(String(char?.name || char?.char_name || char?.character || '').trim());
+                    let name = decodeUnicodeEscapes(String(char?.name || char?.char_name || char?.character || '').trim());
                     // V11: parse base/outfit/action separately; fallback to legacy 'action' field
                     const llmBase = decodeUnicodeEscapes(String(char?.base || '').trim());
                     const llmOutfit = decodeUnicodeEscapes(String(char?.outfit || '').trim());
                     const llmAction = decodeUnicodeEscapes(String(char?.action || '').trim());
                     let appearanceTags = '';
+
+                    // 严防画格名（如 Panel 1、画格2）污染角色名
+                    if (isJunkCharacterName(name)) {
+                        const cardName = getActiveCharacterName();
+                        const existingProfiles = getCharacterProfiles();
+                        const knownNames = Object.keys(existingProfiles).filter(k => !isJunkCharacterName(k));
+                        if (llmBase && !/^(?:scenery|establishing|narrative|sound\s*effects?|sfx)$/i.test(name)) {
+                            if (knownNames.length === 1) {
+                                name = knownNames[0];
+                            } else if (cardName) {
+                                name = cardName + ' (original)';
+                            } else {
+                                name = '';
+                            }
+                        } else {
+                            name = '';
+                        }
+                    }
 
                     if (name) {
                         const matched = matchedLorebooks.find(l => {
@@ -9591,32 +9746,32 @@ SCHEMA:
                         scene: 'string (页面排版与环境必须以漫画词开头: comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, classroom, sunset lighting)',
                         characters: [
                             {
-                                name: 'Panel 1 (顶部横通栏远景/交代格)',
-                                base: 'string (角色固定外貌DNA标签；若为纯环境/空镜/拟声词格则留空 "")',
-                                outfit: 'string (本格服装；若为纯环境/空镜/拟声词格则留空 "")',
-                                action: 'string (必须以版面方位+画格类型开头，如: top panel, wide establishing shot, looking outside, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文；BubbleType可选: 通常吹き出し | 叫び吹き出し | 思考の吹き出し | 破線吹き出し | 波打つ吹き出し | 四角い吹き出し | ナレーション枠 | SFX: 擬音, 吹き出しなし | 切り欠きのある吹き出し | しっぽなしの楕円吹き出し | 連結吹き出し，位置: 右上/左上/口元/画面外)',
+                                name: 'string (本格出场角色的真实名称，如 "师尊 (original)" 或角色卡名称；同一角色在多个画格出场必须填写完全相同的真实名称；纯环境/空镜/拟声词格留空 "")',
+                                base: 'string (角色7维固定外貌DNA标签，必须跨格跨图保持完全一致；纯环境/空镜格留空 "")',
+                                outfit: 'string (本格服装四要素签名；纯环境/空镜格留空 "")',
+                                action: 'string (必须以版面方位+画格类型开头，如: top panel, wide establishing shot, looking outside, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文；BubbleType可选: 通常吹き出し | 叫び吹き出し | 思考の吹き出し | 破線吹き出し | 波打つ吹き出し | 四角い吹き出し | ナレーション枠 | SFX: 擬音, 吹き出しなし | 切り欠きのある吹き出し | しっぽなしの楕円吹き出し | 連結吹き出し，位置: 右上/左上/口元/画面外；无对白静默格切勿加BubbleType与Text)',
                                 center: 'C3',
                                 uc: 'string (本格差分负面特征词)'
                             },
                             {
-                                name: 'Panel 2 (中段右侧中景动作·先读)',
-                                base: 'string (继承同一角色固定外貌标签)',
-                                outfit: 'string (继承同一服装)',
+                                name: 'string (如同一角色继续出场填完全相同的名字，换人填新角色名，纯环境格留空 "")',
+                                base: 'string (继承同一角色固定外貌标签；新角色填新DNA；纯环境留空 "")',
+                                outfit: 'string (继承同一服装；剧情换装则更新)',
                                 action: 'string (如: middle-right panel, medium shot, reaching hand, BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: 台词)',
                                 center: 'C3',
                                 uc: 'string'
                             },
                             {
-                                name: 'Panel 3 (中段左侧特写反应·后读·静默格)',
-                                base: 'string (继承同一角色固定外貌标签)',
-                                outfit: 'string (继承同一服装)',
+                                name: 'string (同上真实角色名或 "")',
+                                base: 'string (继承同一角色固定外貌标签或 "")',
+                                outfit: 'string (继承同一服装或 "")',
                                 action: 'string (如: middle-left panel, small panel, reaction panel, close-up, blush, looking away, no dialogue)',
                                 center: 'C3',
                                 uc: 'string'
                             },
                             {
-                                name: 'Panel 4 (底部核心高潮主格/动作爆发)',
-                                base: 'string (角色固定外貌标签)',
+                                name: 'string (同上真实角色名或 "")',
+                                base: 'string (角色固定外貌DNA标签)',
                                 outfit: 'string (服装标签)',
                                 action: 'string (如: bottom panel, focal panel, dramatic angle, dynamic pose, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: 爆发台词)',
                                 center: 'C3',
@@ -9694,13 +9849,27 @@ SCHEMA:
 
         const profiles = getCharacterProfiles();
         const wardrobeList = Object.entries(profiles)
-            .filter(([_, p]) => Array.isArray(p.wardrobe) && p.wardrobe.length > 0)
+            .filter(([k, p]) => !isJunkCharacterName(k) && Array.isArray(p.wardrobe) && p.wardrobe.length > 0)
             .map(([k, p]) => ({
                 character: p.displayName || k,
                 wardrobe: p.wardrobe.map(w => ({ name: w.name, outfit: w.outfit, triggers: w.triggers }))
             }));
         if (wardrobeList.length > 0) {
             payload.characterWardrobes = wardrobeList;
+        }
+
+        if (store.characterMemoryEnabled) {
+            const memoryList = Object.entries(profiles)
+                .filter(([k, p]) => p && !isJunkCharacterName(k) && (p.baseTags || p.currentOutfit))
+                .map(([k, p]) => ({
+                    name: p.displayName || k,
+                    base: p.baseTags || '',
+                    outfit: p.currentOutfit || '',
+                    wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
+                }));
+            if (memoryList.length > 0) {
+                payload.characterMemory = memoryList;
+            }
         }
 
         if (store.injectPresetsToTagger) {
@@ -9725,6 +9894,9 @@ SCHEMA:
         }
         if (store.injectCharacterCard && hasCardInfo) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
+        }
+        if (store.characterMemoryEnabled) {
+            systemPrompt += '\n\n' + buildCharacterMemoryPromptModule(store);
         }
         systemPrompt += '\n\n【👗 角色差分衣柜指示】\n当 payload 中包含 `characterWardrobes` 字段时，若剧情场景、动作或台词命中了角色的某套预设服装或触发词（如泳装、睡衣、战斗服等），请优先直接采用该套服装预设中的 `outfit` 提示词，保持角色服饰的一致性与高还原度。';
         if (store.injectPresetsToTagger) {
@@ -14222,10 +14394,10 @@ SCHEMA:
                         anchor: { text: 'string' },
                         scene: 'string (comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, [环境])',
                         characters: [
-                            { name: 'Panel 1 (顶部横通栏远景/交代格)', base: 'string', outfit: 'string', action: 'top panel, wide establishing shot, [动作], BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
-                            { name: 'Panel 2 (中段右侧中景动作·先读)', base: 'string', outfit: 'string', action: 'middle-right panel, medium shot, [动作], BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
-                            { name: 'Panel 3 (中段左侧特写反应·后读·静默格)', base: 'string', outfit: 'string', action: 'middle-left panel, small panel, reaction panel, close-up, no dialogue', center: 'C3', uc: 'string' },
-                            { name: 'Panel 4 (底部核心高潮主格/动作爆发)', base: 'string', outfit: 'string', action: 'bottom panel, focal panel, dramatic angle, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' }
+                            { name: 'string (真实角色名如 "师尊 (original)"，同角色多格保持同名，纯环境格留空 "")', base: 'string (7维外貌DNA)', outfit: 'string (服装四要素签名)', action: 'top panel, wide establishing shot, [动作], BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
+                            { name: 'string (真实角色名或 "")', base: 'string (7维外貌DNA)', outfit: 'string', action: 'middle-right panel, medium shot, [动作], BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
+                            { name: 'string (真实角色名或 "")', base: 'string', outfit: 'string', action: 'middle-left panel, small panel, reaction panel, close-up, no dialogue', center: 'C3', uc: 'string' },
+                            { name: 'string (真实角色名或 "")', base: 'string', outfit: 'string', action: 'bottom panel, focal panel, dramatic angle, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' }
                         ]
                     }]
                 } : {
@@ -14251,6 +14423,30 @@ SCHEMA:
             const cardInfo = collectCharacterCardInfo();
             if (cardInfo && cardInfo.length > 0) {
                 manualPayload.characterCardInfo = cardInfo;
+            }
+
+            if (store.characterMemoryEnabled) {
+                const manualProfiles = getCharacterProfiles();
+                const memList = Object.entries(manualProfiles)
+                    .filter(([k, p]) => p && !isJunkCharacterName(k) && (p.baseTags || p.currentOutfit))
+                    .map(([k, p]) => ({
+                        name: p.displayName || k,
+                        base: p.baseTags || '',
+                        outfit: p.currentOutfit || '',
+                        wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
+                    }));
+                if (memList.length > 0) {
+                    manualPayload.characterMemory = memList;
+                }
+                const wList = Object.entries(manualProfiles)
+                    .filter(([k, p]) => !isJunkCharacterName(k) && Array.isArray(p.wardrobe) && p.wardrobe.length > 0)
+                    .map(([k, p]) => ({
+                        character: p.displayName || k,
+                        wardrobe: p.wardrobe.map(w => ({ name: w.name, outfit: w.outfit, triggers: w.triggers }))
+                    }));
+                if (wList.length > 0) {
+                    manualPayload.characterWardrobes = wList;
+                }
             }
 
             logTaggerPayload('manual draw request', manualPayload);

@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.25';
+    const VERSION = '2.2.26';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -249,6 +249,18 @@
         return s[SDT_KEY];
     }
 
+    function isJunkCharacterName(name) {
+        if (!name || typeof name !== 'string') return true;
+        const trimmed = name.trim();
+        if (!trimmed) return true;
+        if (/^(?:Panel|画格|Frame|コマ|Shot)\s*\d+/i.test(trimmed)) return true;
+        if (/\b(?:顶部横通栏|中段右侧|中段左侧|底部核心|底部宽画格|全页单格|横通栏|纵长长格|插入格|交代格|主格|反应格|拟声词格|静默格|天头出血)\b/.test(trimmed)) return true;
+        if (/^(?:top|middle|bottom|left|right|inset|wide|focal|reaction|establishing)\s+(?:panel|shot)/i.test(trimmed)) return true;
+        if (/^(?:scenery|establishing|narrative|sound\s*effects?|sfx|none|null|undefined|blank|empty)$/i.test(trimmed)) return true;
+        if (/\b(?:BubbleType|SFX|Layout|Text)[ \t]*[:：]/i.test(trimmed)) return true;
+        return false;
+    }
+
     function ensureProfileBucket() {
         const s = RBQ.api.getSettings();
         if (!s[SDT_KEY] && s['_smartDrawTriggerSettings']) {
@@ -259,22 +271,47 @@
         if (!s[SDT_KEY].characterProfiles) s[SDT_KEY].characterProfiles = {};
         const ck = getChatKey();
         if (!s[SDT_KEY].characterProfiles[ck]) s[SDT_KEY].characterProfiles[ck] = {};
-        return s[SDT_KEY].characterProfiles[ck];
+        const bucket = s[SDT_KEY].characterProfiles[ck];
+        // 自动净化垃圾画格键
+        let changed = false;
+        for (const k of Object.keys(bucket)) {
+            if (isJunkCharacterName(k)) {
+                delete bucket[k];
+                changed = true;
+            }
+        }
+        if (changed) RBQ.api.saveSettings();
+        return bucket;
     }
 
     function getCurrentChatProfiles() {
         const sdt = getSdtStore();
         const ck = getChatKey();
-        return (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
+        const profiles = (sdt.characterProfiles && sdt.characterProfiles[ck]) || {};
+        let changed = false;
+        for (const k of Object.keys(profiles)) {
+            if (isJunkCharacterName(k)) {
+                delete profiles[k];
+                changed = true;
+            }
+        }
+        if (changed) RBQ.api.saveSettings();
+        return profiles;
     }
 
     function getAllGlobalProfiles() {
         const sdt = getSdtStore();
         const fallback = {};
+        let changed = false;
         if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
             for (const chatDict of Object.values(sdt.characterProfiles)) {
                 if (chatDict && typeof chatDict === 'object') {
                     for (const [k, v] of Object.entries(chatDict)) {
+                        if (isJunkCharacterName(k)) {
+                            delete chatDict[k];
+                            changed = true;
+                            continue;
+                        }
                         if (v && typeof v === 'object') {
                             if (!fallback[k] || (v.updatedAt && (!fallback[k].updatedAt || v.updatedAt > fallback[k].updatedAt))) {
                                 fallback[k] = v;
@@ -284,6 +321,7 @@
                 }
             }
         }
+        if (changed) RBQ.api.saveSettings();
         return fallback;
     }
 
@@ -595,7 +633,7 @@
     }
 
     function saveProfile(name, data, scope = dossierScope) {
-        if (!name) return;
+        if (!name || isJunkCharacterName(name)) return;
         const bucket = ensureProfileBucket();
         const profileData = { ...data, displayName: data.displayName || name, updatedAt: Date.now() };
         if (!profileData.createdAt) profileData.createdAt = Date.now();

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.20';
+        const VERSION = '1.4.21';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -335,8 +335,11 @@ ${antiHijackRule}
      \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), [本页可见去重总人数词如: 1girl / 2girls / 1boy, 1girl / no humans], manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
    - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
 
-2. \`characters\` 数组（逐画格演出槽位分配）：
-   - 【核心铁律】：\`characters\` 数组中的每一项代表一个【独立画格 (Panel)】！数组长度必须严格等于本页规划的画格总数 N（例如规划了 4 panels，characters 数组必须恰好有 4 项：Panel 1、Panel 2、Panel 3、Panel 4）！
+2. \`characters\` 数组（逐画格演出槽位与角色外貌记忆协同）：
+   - 【解耦公理：画格是舞台镜头，角色是登台演员】：\`characters\` 数组的长度严格等于本页规划的画格总数 N（每个画格对应数组中的 1 项）。
+   - ⛔【严禁以画格为名】：\`name\` 字段必须且只能填写本格出场角色的【真实身份名称】（如 "师尊 (original)" 或角色卡名称），绝对严禁把 "Panel 1"、"画格 1" 写为角色 name！
+   - 【同一角色跨格贯穿】：若同一角色在本页多个画格连续出镜（如 Panel 1、Panel 2、Panel 4），这些画格槽位的 \`name\` 必须填写完全相同的真实姓名，其 \`base\` 必须 100% 沿用相同的 7 维锁定外貌 DNA，保证同页同人绝不漂移变脸！
+   - 【纯环境/空镜/拟声词格】：若本格为纯环境交代、远景空镜或独立拟声词格且无人物出场，\`name\` 必须留空 ""，\`base\` 与 \`outfit\` 也必须留空 ""，绝对严禁写入 solo 或任何人物主体词，以防模型误画出人物！
    - 每一格的 \`action\` 字段必须以【本页唯一可辨的版面方位 + 构图大小/功能】严格开头（来自原版 v1.1 条目 35 & 57）：
      * ① 单列通栏段位：
        - 顶部整行：\`top panel, focal panel, medium shot\` 或 \`top panel, wide shot, establishing shot\`
@@ -355,7 +358,7 @@ ${antiHijackRule}
    - 紧随构图词后写入本格出场主体的具体动作与姿势 Danbooru 英文标签（如 looking at viewer, reaching hand, smirk, blushing；修辞转实体，严禁输出中文闲聊与比喻修辞！）；
    - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [台词原文]\`；
    - ⛔【静默格铁律】：若本格仅为动作反应、眼神对视、环境交代或沉思，切勿强行编造对白！无必要对白时，切勿添加 BubbleType 与 Text，保持画面留白与电影张力！
-   - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。⛔【环境与拟声词格铁律】：若本格为纯环境格、空镜格或独立拟声词格，base 与 outfit 必须全部留空（""）！绝对严禁写入 solo 或任何人物主体词，以防模型误画出人物！
+   - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。若为已有记忆角色，直接继承其固定 base 标签；
    - center 统一填写 \`C3\`（排版由画格关键词控制，无需手动计算坐标）。`;
     }
 

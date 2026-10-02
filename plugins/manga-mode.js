@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.19';
+        const VERSION = '1.4.20';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -2562,16 +2562,49 @@ ${panelCountInstruction}
 ${grammarInstruction}
 【当前排版留白与出血规则】：
 ${gutterInstruction}${colorRule}
+
+【漫画分镜分析规划五大导演核心法则】：
+1. 【戏剧主次与非对称画格规划 (Focal Panel & Asymmetry)】：
+   - 依据输入剧情的情感高潮与动作冲突，确立 1 个核心主画格（focal panel，占据半页以上面积或强烈视觉动势的大横通栏/纵长长格/大斜切格）；
+   - 其余格子作为辅助格（远景交代格 wide establishing shot、中景互动格 medium shot、特写反应格 close-up reaction、拟声词格 SFX）；
+   - ⛔【严禁套用死板三段式横条或四等分网格】：每个画格必须具有不同的尺寸与形态（错位分割、单列通栏、同层双并排、纵长长格或角部插入格），形成鲜明的视觉呼吸与节奏落差！
+2. 【映画阅读动线与版面方位 (Universal Komawari Spatial Flow)】：
+   - 严格遵循日式漫画正统阅读顺序（右至左、上至下）：先读上段，后读下段；同段先读右侧，后读左侧！
+   - 每个画格的 shot 开头必须包含该格在本页内的清晰版面方位与构图大小：
+     * 单列通栏：top panel / middle panel / bottom panel 单列通栏；
+     * 同层双列并排（右先左后）：top-right panel (先) / top-left panel (后)；middle-right panel (先) / middle-left panel (后)；bottom-right panel (先) / bottom-left panel (后)；
+     * 特殊形态格：left vertical panel (纵贯长格)；wide panel (大景深横通栏)；inset panel (角落插入特写格)。
+     * 紧随方位词挂载主次权重：focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词。
+3. 【修辞转实体与纯正 Danbooru Tag (Rhetoric to Entity)】：
+   - ⛔【绝对禁止文学比喻直译】：原文中的比喻描写（如“狂风暴雨般的进攻”、“眼神如万年寒冰”、“像猛兽一般”）绝对禁止直接输出带有 like a beast, ice in eyes 等破坏画面的词汇！必须转化为具象的动作、神态、光影与构图标签（如 fast punch, aggressive, shadow over eyes, intense gaze）；
+   - 纯英文 Danbooru/NAI Tag，动作、神态、光影、环境背景明确，严禁输出画风词（由全局画风层负责）；
+   - 纯背景空镜格或拟声词格，严禁写入 solo 或任何人物主体词。
+4. 【11 种日漫原生对白气泡精准匹配 (11 Bubble Types)】：
+   - speech: 普通对白（日常说话，平淡对白默认）
+   - screaming: 怒喊/惊呼/高声（带尖锐齿状边框 ギザギザ吹き出し）
+   - thought: 心理活动/心声/独白（雲形椭圆气泡，圆点尾巴）
+   - whisper: 耳语/心虚/虚弱微声（破线虚线气泡）
+   - shiver: 发颤/发虚/恐惧打颤（波浪状发抖气泡）
+   - broadcast: 电话/广播/机械/扩音音（矩形方框气泡）
+   - caption: 客观旁白/时空说明（矩形横排旁白框）
+   - sfx: 拟声拟态词（SFX 拟音文字格）
+   - offscreen: 画外对白（说话者在格外出声，气泡切角贴在格边）
+   - tailless: 旁白感自语/无尾气泡（纯椭圆无尾巴）
+   - connected: 同一角色连续两句紧凑相连气泡（双联气泡）
+5. 【静默格留白与台词呼吸拆分 (Silent Panels & Breath Splitting)】：
+   - ⛔【静默格留白】：纯动作格、眼神对峙格、环境交代格或情绪反应格，bubbleText 必须填写空字符串 ""，严禁无中生有硬编对白！
+   - 台词呼吸拆分：若同一角色有多段话，必须使用 \\n\\n 拆分为独立气泡；单句台词尽量控制在 25 字以内，避免气泡遮挡画面人脸。
+
 必须输出纯 JSON，绝不要包含 Markdown 代码块（如 \`\`\`json）或任何额外文字。
 JSON 格式规范：
 {
   "panels": [
     {
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
-      "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順：先上段后下段，同段先右后左。主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成固定四格！每个格子必须不同大小，采用错位分隔、通栏、纵格或插入格。支持：top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长通栏；wide panel 横通栏；inset panel 角落插入格。紧随方位词挂载 focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
-      "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词。修辞转实体：小说比喻转为具象动作神态Tag，严禁输出 like a beast 等比喻词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
+      "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順与非对称主格，如：top-right panel, focal panel, medium shot）",
+      "tags": "该画格专属英文 Danbooru/NAI Tag（纯动作/神态/光影/背景，修辞转实体，无画风词）",
       "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
-      "bubbleText": "画格内角色台词、心声或旁白文字（⛔ 若为纯动作/眼神/反应静默格，请保持留白填写 \"\"，严禁无中生有脑补台词！若同一人物连续两句请用 \\n\\n 分隔，单句控制在 25 字以内）",
+      "bubbleText": "画格内角色台词、心声或旁白文字（纯动作/眼神静默格保持留白填 \"\"，多句用 \\n\\n 分隔）",
       "bubbleLayout": "vertical | horizontal"
     }
   ]

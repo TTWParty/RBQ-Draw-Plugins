@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.14';
+        const VERSION = '1.4.15';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -1853,7 +1853,7 @@ ${antiHijackRule}
             if (!ecSelect.querySelector('option[value="v_manga"]')) {
                 const opt = document.createElement('option');
                 opt.value = 'v_manga';
-                opt.textContent = '漫画 · 动态事件驱动推演 (原版条目33)';
+                opt.textContent = '漫画 · 导演分镜与全息推演 (原版条目33&20&57 · 推荐)';
                 ecSelect.appendChild(opt);
             }
             if (store.enabled) {
@@ -1864,7 +1864,7 @@ ${antiHijackRule}
                 if (!badge) {
                     badge = document.createElement('span');
                     badge.className = 'rbq-sdt-preset-lock-badge';
-                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (条目33)';
+                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (条目33&20&57)';
                     const titleSpan = ecField.querySelector('span');
                     if (titleSpan) titleSpan.appendChild(badge);
                 }

@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.67';
+    const PLUGIN_VERSION = '6.0.68';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9434,7 +9434,7 @@ SCHEMA:
     function getEnhancedContextPayload(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
-            v_manga: "DYNAMIC EVENT-DRIVEN MANGA PACING (v1.1 [33] [20] [57]): Execute manga script-to-comic pacing before output: ① Segment original currentMessage into consecutive event units (U1, U2, U3...); ② Dynamic Page Count Decision: evaluate dramatic progression, emotional beats and turns (short single encounter/moment = 1~2 pages; multi-stage battle/transitions = 3~6 pages); ③ Page-to-Act Contract Allocation: distribute U1~Un across pages with verbatim anchor.text (10~40 chars exactly quoted from currentMessage for each page's dramatic peak); ④ Comic Beat Translation: convert metaphors/actions into visual manga panel layouts (establishing shots, reaction close-ups, climactic panels); ⑤ Each segment corresponds to one full manga page output with verbatim anchor text.",
+            v_manga: "DYNAMIC EVENT-DRIVEN MANGA PACING & KOMAWARI DIRECTOR (v1.1 [33][20][57]): Execute manga director 5-step storyboard reasoning before output: ① Script-to-Comic Pacing: divide currentMessage into consecutive event units (U1, U2, U3...), evaluate dramatic capacity to dynamically decide page count (1~2 pages for concise scenes, 3~6 for complex arcs/battles, 0 for idle talk); ② Verbatim Anchor Lock: quote 10~40 exact chars from currentMessage for each page's anchor.text; ③ Intra-Page Komawari Beats: design 3~5 panels per page, determine 1 primary focal panel (maximum dramatic weight & canvas area) with 2~3 supporting reaction/establishing/SFX panels; ④ Vertical Spatial Flow: top panel -> middle panel -> bottom panel with shot progression (close-up/medium/wide/dynamic); ⑤ Panel-to-Panel Continuity & Dialogue Choreography: maintain L0 character DNA, propagate L2 transient states (sweat/blush/tears/battle damage), map dialogue bubbles to panels with physical positions (右上/左上/口元/画面外) while preserving silent panels without fake dialogue.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
@@ -9445,35 +9445,44 @@ SCHEMA:
     function getEnhancedContextSystemPrompt(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
-            v_manga: `【原版 v1.1 动态事件驱动漫画分镜推演 (条目33 & 条目20 & 条目57)】
-在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行原版漫画分镜台本转译与动态页数推演：
+            v_manga: `【原版 v1.1 动态事件驱动漫画导演分镜推演 (条目33 & 条目20 & 条目57)】
+在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行专业漫画导演五步分镜推演：
 
-①【台本段落切分与剧情分配契约 (SCRIPT-TO-COMIC)】：
+①【台本段落切分与动态页数决策 (SCRIPT-TO-COMIC & DYNAMIC PAGES)】：
 - 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：将当前消息按剧情进展与时间推进划分为连续的事件单元（编号 U1、U2、U3...直至最后一段）；
-- 确立本轮主戏剧节拍（Beat）：明确冲突起点、动作交互过程、情感爆发高潮与结尾收束。
-
-②【动态事件驱动页数判定 (PAGE CONTRACT: DYNAMIC EVENT-DRIVEN PAGES)】：
-- 依据台本事件数量、文字量与戏剧容量自适应决定总页数（无需死板固定）：
-  * 短小情节 / 单一事件 / 局部交流互动：规划 1~2 页；
-  * 中长篇幅 / 包含场景转场、情绪递进、攻守交互：规划 2~4 页；
-  * 宏大长篇 / 激烈战斗演进、多阶段情感高潮爆发：规划 3~6 页；
+- 依据戏剧容量与情节密度自适应决定总页数（无需死板固定）：
+  * 短小情节 / 单一事件 / 局部交流互动：自适应规划 1~2 页；
+  * 中长篇幅 / 包含场景转场、情绪递进、攻守交互：自适应规划 2~4 页；
+  * 宏大长篇 / 激烈战斗演进、多阶段情感高潮爆发：自适应规划 3~6 页；
   * 纯抽象概念探讨 / 毫无画面变化的纯闲聊：判定为 0 页（shouldDraw: false）。
+- 跨页剧情分配：规划每一页承载的 U 编号范围与戏剧功能（Page 1: 铺垫/起因；Page 2: 冲突升级/对抗；Page 3+: 核心爆发/定格）。
+- 精准逐字正文锚点（VERBATIM ANCHOR LOCK）：每一页作为一个独立 segment 填入 segments 数组，label 规范如 "Page 1: [5~15字剧情小标题]"；anchor.text 必须 100% 从该页对应 U 段落中一字不差地摘录 10~40 字逐字正文原文！确保漫画卡片精准落位于事件发生的实际位置下方。
 
-③【逐页剧情分配契约 (PAGE-BY-PAGE ALLOCATION)】：
-- 规划每一页所承载的 U 编号范围与戏剧功能：
-  * Page 1: 呈现 U1~Ux（开场切入 / 气氛铺垫 / 起因动作）
-  * Page 2: 呈现 Ux+1~Uy（互动升级 / 肢体对抗 / 情绪转折）
-  * Page 3+: 呈现 Uy+1~Un（核心爆发 / 高潮对决 / 结局定格）
-- 跨页接点：上一页结尾与下一页开端无缝衔接，上一页尚未呈现的内容由下一页接续。
+②【单页画格戏剧结构推演 (INTRA-PAGE KOMAWARI BEAT BREAKDOWN)】：
+- 依据剧情容量自适应规划单页画格数 N（通常 3~5 panels；仅宏大决战/广阔全景才用单格 splash page 或 見開きページ）：
+  * 核心高潮主格（focal panel）：推演本页最具戏剧张力、最大视觉冲击或动作爆发的一格，赋予其最大视觉重心（focal panel）；
+  * 辅助画格（reaction / small / SFX panel）：规划 2~3 个辅助格，分别用于环境交代（wide shot）、情绪反应（reaction panel / close-up）或拟声词（SFX panel）；
+  * 【1:1 画格槽位铁律】：规划了 N panels，下方 characters 数组必须严格填入 N 个画格槽位（Panel 1, Panel 2... Panel N），严禁漏格或多格！
 
-④【精准逐字正文锚点 (VERBATIM ANCHOR LOCK)】：
-- 每一页作为一个独立 segment 填入 segments 数组，label 命名规范如 "Page 1: [5~15字剧情小标题]"；
-- 每一页的 anchor.text 必须 100% 从该页所分配的 U 段落正文中，一字不差地精准摘录 10~40 字逐字原文！严禁凭空概括或编造，保证漫画卡片精准落位于正文中事件发生的实际位置下方。
+③【垂直物理方位与视线流向推演 (VERTICAL SPATIAL FLOW & SHOT MATRIX)】：
+- 垂直物理方位严格顺应视线流：
+  * 第 1 格（顶部）：必须以 top panel 开头（如 top panel, focal panel, medium shot 或 top panel, wide shot）；
+  * 中间格（过渡/反应）：必须以 middle panel 开头（如 middle panel, reaction panel, close-up）；
+  * 末尾格（底部）：必须以 bottom panel 开头（如 bottom panel, focal panel, dramatic angle 或 bottom panel, close-up）；
+- 镜头景别递进：灵活穿插 close-up, bust shot, cowboy shot, wide shot, dynamic angle, from above, from below，严禁全页单一雷同机位！
 
-⑤【漫画视觉语言与原句落格】：
-- 叙述转画面：动作、姿态、表情、距离与环境变化落实为有效 Danbooru 漫画标签与画格演出；台本中的比喻/通感只取实际可见的本体；
-- 原生对白与气泡：将正文台词拆分为自然气泡，保留原句文字与情绪修辞；
-- 检查自洽性后，直接输出包含全部 Page segments 的合法 JSON，禁止输出任何多余标记。`,
+④【格间角色一致性与瞬态状态机 (PANEL-TO-PANEL L0~L2 CONTINUITY)】：
+- L0 角色固定外貌 DNA 跨格锁定：同人角色出场必须在每格的 base 中保留官方完整标识标签与固定外貌（发型发色瞳色）；原创角色保持细节丰满与辨识度；严禁同一人物在第 1 格与第 2 格特征串味或长相突变；
+- L1 场景连续性：整页漫画的背景环境、主光源角度与氛围在各格之间保持连贯；
+- L2 瞬态痕迹跨格流转演进：汗水(sweat)、红晕(blush)、眼泪(tears)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循动作逻辑自然继承与渐进演变，绝对禁止格与格之间莫名其妙自动复原！
+
+⑤【台词视听落格与静默格节奏校验 (DIALOGUE CHOREOGRAPHY & SILENT PANEL AUDIT)】：
+- 台词精准落格：依据说话角色与动作时机，将正文真实台词分配到对应画格的 action 末尾，严格带上格内方位词：
+  格式：BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [原句台词]
+- 台词防挡脸与溢出：单句台词尽量控制在 25 字以内；同格同人物连续两句使用换行（\\n\\n）拆分多气泡；
+- ⛔【静默格留白】：纯动作反应、环境描写、眼神对视或沉思格，切勿强编台词！无对白时切勿添加 BubbleType 与 Text，保持画面电影张力；
+- ⛔【纯环境/拟声词格清空人物槽】：纯背景空镜或独立拟声词格，base 与 outfit 必须严格留空（""），绝对严禁写入 solo 或人物标签！
+- 自检自洽后直接输出合法 JSON，禁止输出任何多余标记。`,
             v14: "【V14·自适应节拍与极简四公理推演 (分析生图位置与数量)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）完成推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史）：顺着正文时间线地毯式扫描，推演正文中【哪里需要生图】与【需要生几张】：\n  * 哪里生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面构成的，绝不仅有最后的大高潮才算画面！正文中凡是出现以下视觉跃迁节点（①造型服饰高光/换装脱衣/湿身暴露、②动作演进/肢体接触/体位姿态升级、③神态特写/动情红晕/眼神对视、④空间场景或机位景别转换、⑤显式图组[图组XX]/插画），每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜，绝严禁只挑最后一个动作而把前面的精彩画面全部漏掉！每个选定画面精准摘取 10~40 字逐字原文 anchor.text 并拟定 label；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要该生图的地方就必须有图，几张不设死板指标；单一瞬间=1张；多节拍推进=自然拆分多张独立分镜填入 segments，绝不草率压缩为单张；纯抽象理论探讨/毫无画面的纯闲聊才判 0 张（shouldDraw: false）。\n②【主题与分层】：确立主体层级（无近身实体接触则自然省略 Foreground 降级为双层，严禁强凑）。\n③【视点位姿与高差】：明确观察者自身体态（站/坐/跪/躺/覆身）与视点坐标；判定与目标高差——垂直落差 ≥ 50cm 绝对禁止单纯 close-up，强制使用俯/仰角度景别配合透视短缩链（head tilted back / foreshortening）；同高度特写才成立。\n④【视锥探入与受力闭环】：探入实体（手脚/道具/武器/器官）一律从画框下边缘向前上方延伸，严禁上方逆向垂落；必须具备物理接触受力面闭环（抓胯/托脸/握柄/按压），无接触则留白。\n⑤【实体解耦与分级底线】：POV 观察者绝对不出镜、严禁创建为 Character，其探入实体归入 Scene 前景，Scene 负面必补 boy, male 防骨骼分裂；判定 Safe / R / X 并填齐底线负面词。\n⑥【自检输出】：确认字段自洽后直接输出合法 JSON，禁止输出任何多余标记。",
             v13: "【9.7 全息节拍推演与自适应视点动力学七步思维链 (V13 · 推荐)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息节拍与自适应视点强化七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：通读并深入推演当前消息正文，准确分析正文中【哪里需要生图】以及【需要生几张】：\n  * 哪里需要生图（视觉全流程节点覆盖法则 · 绝不遗漏）：顺着正文时间线自上而下地毯式扫描，绝不仅有最后的大高潮才算画面！凡是出现具备独立画面表现力与叙事价值的节点，每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜并精准锚定，绝严禁只挑最后一个大动作而掠过前文的精彩画面：\n    - 角色造型与服装高光（登场外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点）；\n    - 动作阶段演进与互动升级（肢体接触、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换、姿势切换）；\n    - 情感张力与神态特写（动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写表情）；\n    - 空间机位转换与环境氛围（场景地点转移、景别与俯仰视角切换）；\n    - 显式媒介内容（如 [图组XX]、[插画]、照片、手机屏幕等）：必须 1:1 提取对应数量的分镜；\n    - 每一个选定画面，必须从 currentMessage 中精准摘取对应段落的逐字原文（10~40字）作为 anchor.text，并拟定 5~15 字中文分镜名（label）；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻数量自然决定——只要该生图的地方就必须有图，几张不设固定指标；正文篇幅紧凑且仅包含单一瞬间动作则提取 1 张；长文多阶段演进自然拆分对应数量的独立分镜全部填入 segments 数组；纯日常闲聊/纯抽象内心独白无画面变化才判 0 张（shouldDraw: false）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【观察者体态位姿与自适应人眼视点几何】：\n- 【机位锚定：摄像机 ＝ 观察者双眼当前三维坐标】：POV 摄像机严格绑定观察者当前动作与体态下的真实人眼视点：\n  * 站姿(Standing, ~1.7m)：看站姿为平视(eye level)，看坐姿为微俯视，看跪/趴/躺为大俯视(steep high angle from standing height)；\n  * 坐姿(Sitting, ~1.1m~1.2m)：看坐姿为平视，看跪在腿间/地面为俯视(looking down between knees, from seated height)，看站立为仰视(low angle from below)；\n  * 跪姿(Kneeling, ~0.9m~1.0m)：同跪为平视(kneeling face-to-face)，看站立为大仰视(steep low angle looking up)；\n  * 躺卧/仰卧(Lying on back, ~0.2m~0.4m)：看被跨坐/骑乘为大仰视(steep low angle, looking up from below, lying on back looking up at her)，同躺为枕边平视(eye level, lying side by side)；\n  * 俯身/覆身在上(Leaning over / Missionary)：居高临下直视笼罩(leaning over her, looking down close-up)。\n- ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up！强制使用带俯仰透视景别（bust shot from above / looking up from below），配合仰头/低头短缩链（head tilted back / head lowered, foreshortening）；平视特写仅限双方同等高度；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸（仰卧被跨坐时向上托扶），严禁上方逆向垂落；探入必须具备「动作+物理接触受力面/受体」闭环；无接触则自然留白；探入肢体默认单侧防多肢体；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认观察者位姿与机位视角自洽、高差与景别自洽、探入实体受力闭环、服装四要素签名完备、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v11: "【9.7 全息空间七步思维链推演 (V11)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描 currentMessage 正文（严禁提取历史）：深入推演【哪里需要生图】（顺着正文时间线地毯式扫描造型服饰、肢体动作演进、体位切换、神态特写、显式图组等关键节点，每一个画面节点均提取独立分镜与 10~40 字逐字 anchor.text，绝不只挑最后一幕）与【需要生几张】（数量由视觉节点自然衍生，只要该生图的地方就必须有图；单一瞬间=1张；长文多阶段推进=自然拆分多张独立分镜入 segments；纯抽象无画面闲聊=0张）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间矩阵】：\n- 前景(Foreground) / 中景(Middle ground) / 背景(Background), 主体落层自由；【前景克制】：日常对话/开门/对视场景天然为双层，严禁强行编造入镜断手(reaching hands/pov hands)，无直接接触道具时直接省略 Foreground 降为双层！\n⑤【镜头组合与情境速查】：\n- 视角：第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）/ 第一人称 POV（视角主人⛔严禁创建为 Character，非直接接触场景严禁生成入镜手，仅保留出镜角色；Scene 负面补 boy/male 防鬼影）；\n- 景别与机位：按情境意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body/远景 wide_shot）与水平机位（正位/前侧3/4/侧位/后侧3/4/背位）、垂直机位（平视/俯视/仰视/顶视/虫视）。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认字段自洽、服装四要素签名完备（带长度/颜色）、左右手动作独立、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
@@ -9543,15 +9552,51 @@ SCHEMA:
             } : minSeg > 0 ? {
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
-            } : store.enhancedContext === 'v_manga' ? {
-                segmentInstruction: `【漫画分镜·动态事件驱动分页契约（原版 v1.1 条目33 & 20）】：当前已开启漫画分镜动态推演！\n你的核心使命是将当前消息（currentMessage）按剧情推进转译为连贯的漫画页面（Page 1, Page 2...）：\n①【段落划分与剧情分配（U1、U2...）】：将 currentMessage 顺着时间线划分为事件段落（U1、U2、U3...）。依戏剧节拍将段落分配给逐页漫画，每一页漫画承载一组连续情节，并在 segments 数组中输出为一个独立分镜（每一个 segment 对应 1 页完整的漫画画格组）；\n②【动态事件驱动页数】：依据正文情节容量自适应决定生成页数——若情节短小单薄或单一对话，自动规划 1~2 页；若情节丰富、包含多次转场、激烈战斗或情感爆发，自动切分成 3~6 页独立分镜（segments）；纯抽象理论或无画面闲聊才输出 {"shouldDraw": false}；\n③【逐页精准布点与逐字锚点】：每一页（segment）必须从 currentMessage 对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，确保每页漫画卡片精准插入在故事发生的对应段落下方；\n④【叙述转画面】：动作、神态与对白原句转为漫画格语言与气泡（Text:），比喻化为可视本体。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
+            } : (store.enhancedContext === 'v_manga' || store._mangaActive) ? {
+                segmentInstruction: `【漫画导演·动态事件驱动分页与分格契约（原版 v1.1 条目33 & 20 & 57）】：当前已开启漫画导演全息戏剧推演！\n你的核心使命是将当前消息（currentMessage）转译为具备原生日漫质感的分格漫画（Page 1, Page 2...）：\n①【段落划分与动态页数（U1~Un）】：将 currentMessage 顺着时间线划分为连续事件单元（U1、U2、U3...）。依戏剧节拍自适应决定生成页数——情节紧凑规划 1~2 页；情节丰富、转场激烈规划 2~4 页；激烈长篇决战规划 3~6 页；无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点】：每一页（segment）必须从对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，保证漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格（Komawari）与核心主格（focal panel）】：每一页自适应规划 3~5 个画格。必须明确 1 个核心高潮主格（focal panel）与 2~3 个辅助过渡格；characters 数组的长度必须严格等于本页规划的画格总数 N（每个 item 对应 1 个 Panel）；\n④【物理方位与视线流向】：每一格 action 必须以垂直物理方位开头（top panel / middle panel / bottom panel），严禁省略方位词；\n⑤【台词落格与静默格】：正文台词拆分为自然气泡，挂在对应画格末尾（带右上/左上/口元等格内位置）；纯动作与环境格保持静默格（无台词）；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
                 segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
             ...getEnhancedContextPayload(store.enhancedContext),
-            outputSchema: {
+            outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
+                shouldDraw: 'boolean',
+                reason: 'string (五步漫画导演推演：①台本段落切分与动态页数决策 ②各页画格Komawari与核心主格focal panel规划 ③垂直机位流向top/middle/bottom ④格间L0/L2角色一致性与瞬态流转 ⑤台词落格与静默格节奏分析)',
+                segments: [
+                    {
+                        label: 'string (如 Page 1: 5~15字剧情小标题)',
+                        anchor: { text: 'string exact copy from currentMessage (该页剧情对应段落10~40字逐字原文，用于漫画卡片精准落位)' },
+                        scene: 'string (页面排版与环境必须以漫画词开头: comic, 複数コマの漫画ページ, 3 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, classroom, sunset lighting)',
+                        characters: [
+                            {
+                                name: 'Panel 1 (顶部主格/交代格)',
+                                base: 'string (角色固定外貌DNA标签；若为纯环境/空镜/拟声词格则留空 "")',
+                                outfit: 'string (本格服装；若为纯环境/空镜/拟声词格则留空 "")',
+                                action: 'string (必须以物理方位+画格类型开头，如: top panel, focal panel, medium shot, standing, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文)',
+                                center: 'C3',
+                                uc: 'string (本格差分负面特征词)'
+                            },
+                            {
+                                name: 'Panel 2 (中间过渡/反应格/静默格)',
+                                base: 'string (继承同一角色固定外貌标签)',
+                                outfit: 'string (继承同一服装)',
+                                action: 'string (如: middle panel, reaction panel, close-up, blush, looking away, no dialogue)',
+                                center: 'C3',
+                                uc: 'string'
+                            },
+                            {
+                                name: 'Panel 3 (底部高潮格/动作爆发)',
+                                base: 'string (角色固定外貌标签)',
+                                outfit: 'string (服装标签)',
+                                action: 'string (如: bottom panel, focal panel, dramatic angle, dynamic pose, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: 爆发台词)',
+                                center: 'C3',
+                                uc: 'string'
+                            }
+                        ]
+                    }
+                ]
+            } : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
                 segments: ((store.enhancedContext && store.enhancedContext !== 'off') || effectiveMinSeg > 1) ? [
@@ -13120,7 +13165,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。v_manga: 漫画·动态事件驱动推演 (原版条目33)。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga">漫画 · 动态事件驱动推演 (原版条目33)</option></select></label>
+                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。v_manga: 漫画·导演分镜与全息推演 (原版条目33&20&57 · 推荐)。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga">漫画 · 导演分镜与全息推演 (原版条目33&20&57 · 推荐)</option></select></label>
                     </div>
                 </div>
 
@@ -14140,7 +14185,20 @@ SCHEMA:
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
                 ...getEnhancedContextPayload(store.enhancedContext),
-                outputSchema: {
+                outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
+                    shouldDraw: 'boolean',
+                    reason: 'string (五步漫画导演推演)',
+                    segments: [{
+                        label: 'string (如 Page 1: 剧情标题)',
+                        anchor: { text: 'string' },
+                        scene: 'string (comic, 複数コマの漫画ページ, 3 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, [环境])',
+                        characters: [
+                            { name: 'Panel 1', base: 'string', outfit: 'string', action: 'top panel, focal panel, medium shot, [动作], BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
+                            { name: 'Panel 2', base: 'string', outfit: 'string', action: 'middle panel, reaction panel, close-up, no dialogue', center: 'C3', uc: 'string' },
+                            { name: 'Panel 3', base: 'string', outfit: 'string', action: 'bottom panel, focal panel, dramatic angle, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' }
+                        ]
+                    }]
+                } : {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                         characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'string', uc: 'string' }]

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.16';
+        const VERSION = '1.4.17';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -259,12 +259,18 @@
    - 各分镜卡片之间焦点层次分明（如 分镜01 负责环境与初始互动，分镜02 负责冲突升级或局部特写，分镜03 负责情绪爆发或高潮定格）。
 
 [PAGE-LAYOUT-RULES]
-1. 页面形态与画格自适应规划（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR] 条目 35）：
-   - 日式漫画阅读动线（右開き・右綴じ）：先上段后下段，同段先右后左！panel 编号 = 読み順（panel 1 是读者最先读到的完整画格）。
-   - ⛔【严禁套用死板三段式】：禁止将每页机械均分为三等分横条或四等分网格！必须根据戏剧节奏、动作冲击与台词容量，自适应规划不对称、主次分明的画格形态：
-     * 普通分格页确定 1 个面积最大、视觉冲击最强的核心主画格（focal panel，占用 35%~50% 面积，不必等于 panel 1，可位于顶端、中间、底部或左侧），其余分配辅助画格；
-     * 辅助画格按信息量自适应安排为并排小格、反应格、竖长格或通栏格；
-     * 若遇到宏大决战、广阔天地或全景展示，且剧情需要整页仅一格时，规划为单格大画幅（splash page, 単一コマ）或横向跨页（見開きページ / double-page spread）。
+1. 通用映画分镜文法（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR] 条目 35）：
+   - 【阅读顺序与画格定位】：
+     采用日式漫画の読み順（右開き・右綴じ）。
+     panel 编号 = 読み順：panel 1 = 读者最先读到的完整コマ。未编号コマ中先上段后下段，同段先右后左；通栏、縦長コマ、挿入コマ、見開き均按同一読み順处理。
+     主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成右上/左上/右下/左下固定四格。
+     为每格确定一个本页内可区分的「位置＋必要时的大小或形状」称呼，例如右上小格、左侧纵长格、底部通栏主格、插入格。
+   - 【页面形态】：
+     依据本轮主戏剧节拍、台本事件和所需空间，逐页选择普通分格页、整页单格（splash page, 単一コマ）或横向跨页（見開きページ / double-page spread）。普通分格页用于连续行动、对话与反应；整页单格用于一个值得充分展开的决定性瞬间；横向跨页用于宏大环境、群体对峙或大范围动作。
+   - 【画格主次、数量与形状】：
+     普通分格页确定一个主要画格（focal panel），再按其余事件的信息量分配辅助画格的大小。
+     在页面布局中明确总画格数、主格位置与大致面积，并明确辅助画格的宽窄、高低及相互排列。采用错位分隔、通栏、纵格或插入格时，说明它们实际位于何处。
+     每个格子必须不同大小。总数、布局描述与实际 panels 列表相符；插入格如承担独立镜头和叙事时刻，就计入画格数，不把同一时刻误拆成两个格子。不要在页面布局与格内描述中写出相互冲突的数量或位置。
    - 普通分格页必须在 scene 字段明确写明总画格数与排版词，例如: comic, 複数コマの漫画ページ, 4 panels (依剧情实际画格数填写), manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [环境描述]；
 
 2. 镜头文法与构图机位：
@@ -2561,7 +2567,7 @@ JSON 格式规范：
   "panels": [
     {
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
-      "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順：先上段后下段，同段先右后左。严禁死板套用单列三段式！支持：top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长通栏；wide panel 横通栏；inset panel 角落插入格。紧随方位词挂载 focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
+      "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順：先上段后下段，同段先右后左。主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成固定四格！每个格子必须不同大小，采用错位分隔、通栏、纵格或插入格。支持：top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长通栏；wide panel 横通栏；inset panel 角落插入格。紧随方位词挂载 focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
       "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
       "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
       "bubbleText": "画格内角色台词、心声或旁白文字（⛔ 若为纯动作/眼神/反应静默格，请保持留白填写 \"\"，严禁无中生有脑补台词！若同一人物连续两句请用 \\n\\n 分隔，单句控制在 25 字以内）",

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.10';
+        const VERSION = '1.4.11';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -229,9 +229,10 @@
         const gutterRule = gutterObj.instruction;
 
         const colorRule = (store.style === 'monochrome')
-            ? `9. 色彩模式（来自原版 v1.1.json 条目 23 [COLOR-MODE: MONOCHROME]）：
-- 当前处于黑白漫画模式：严禁在 scene、characters 的服装外貌或动作中输出任何具体彩色词；具体色相（青/茶/粉/赤/蓝/绿等）一律改写为 dark/light/white/black/gray 等灰阶明暗词。
-- 每一页页面描述必须写上介质词：モノクロ, グレースケール, スクリーントーン。不要写 full color，不要写 warm light 等带色相的词。
+            ? `9. 色彩与角色人设模式（来自原版 v1.1.json 条目 23 [COLOR-MODE: MONOCHROME] & 条目 26 [CHAR-DNA]）：
+- 当前处于黑白漫画模式：同人角色出场必须保留官方可靠完整标签（如 tatsumaki (one punch man)）以及标志性发型发色等外貌DNA；严禁抹去角色辨识标签！
+- 场景、环境以及服装配色脱色：具体色相（青/茶/粉/赤/蓝/绿等）改写为 dark/light/white/black/gray 等灰阶明暗词（例如 dark dress, light shirt）；严禁在 scene 或格内输出 full color, warm light 等带环境色相的词；
+- 每一页页面描述必须写上介质词：モノクロ, グレースケール, スクリーントーン；
 - 各格只写所属场景的光源方向和明暗，不写环境色。\n`
             : (store.style === 'soft_color'
                 ? `9. 色彩模式（来自原版 v1.1.json 条目 24 [COLOR-MODE: FULL-COLOR]）：
@@ -341,16 +342,18 @@ ${antiHijackRule}
     function decolorizeTags(str) {
         if (!str || typeof str !== 'string') return '';
         return str
-            .replace(/\b(blonde|blond|yellow)\s+hair\b/gi, 'light hair')
-            .replace(/\b(brown|brunette|chestnut)\s+hair\b/gi, 'dark hair')
-            .replace(/\b(pink|red|green|blue|purple|orange)\s+hair\b/gi, 'hair')
-            .replace(/\b(blue|green|red|purple|yellow|amber|brown|pink)\s+eyes\b/gi, 'eyes')
+            // 保护同人作品标签与发型结构，绝不将具体彩色发色/瞳色粗暴替换为无意义的 bare "hair" / "eyes"
+            // 服装配饰与妆容去色相（转为灰阶明暗词）
             .replace(/\b(pink|red|blue|purple)\s+(eyeshadow|lipstick|makeup)\b/gi, '$2')
             .replace(/\b(pink|red|brown)\s+(nipples|areolae|areola|pussy|labia)\b/gi, '$2')
             .replace(/\bred[ _]soles\b/gi, 'dark soles')
-            .replace(/\b(pink|red|blue|green|yellow|purple|orange)\s+(ribbon|bow|tie|scarf)\b/gi, '$2')
-            .replace(/\b(pink|red|blue|green|yellow|purple|orange)\s+(dress|shirt|skirt|uniform|jacket|coat|sweater|panties|bra|pantyhose|socks|shoes|boots)\b/gi, '$2')
+            .replace(/\b(pink|yellow|white|light[ -]blue)\s+(ribbon|bow|tie|scarf)\b/gi, 'light $2')
+            .replace(/\b(red|blue|green|purple|orange|brown|black|dark[ -]blue)\s+(ribbon|bow|tie|scarf)\b/gi, 'dark $2')
+            .replace(/\b(pink|yellow|light[ -]blue)\s+(dress|shirt|skirt|uniform|jacket|coat|sweater|panties|bra|pantyhose|socks|shoes|boots)\b/gi, 'light $2')
+            .replace(/\b(red|blue|green|purple|orange|brown|dark[ -]blue)\s+(dress|shirt|skirt|uniform|jacket|coat|sweater|panties|bra|pantyhose|socks|shoes|boots)\b/gi, 'dark $2')
+            // 剥离强插画渲染与色彩词
             .replace(/\b(color|colorful|vibrant|vivid|pastel|watercolor|rainbow)\b/gi, '')
+            .replace(/\b(warm light|golden hour|sunset lighting|colored lighting)\b/gi, 'dramatic lighting')
             .replace(/,\s*,/g, ',')
             .replace(/^[\s,]+|[\s,]+$/g, '')
             .trim();
@@ -366,7 +369,16 @@ ${antiHijackRule}
         return { cleanBase: baseCaption, extraPanel: null };
     }
 
-    function sanitizeMangaNegativePrompt(rawNegative) {
+    function sanitizeMangaPositivePrompt(rawPositive) {
+        if (!rawPositive || typeof rawPositive !== 'string') return '';
+        return rawPositive
+            .replace(/\b(?:no\s+text|notext)\b/gi, '')
+            .replace(/,\s*,/g, ',')
+            .replace(/^[\s,]+|[\s,]+$/g, '')
+            .trim();
+    }
+
+    function sanitizeMangaNegativePrompt(rawNegative, isMonochrome = true) {
         if (!rawNegative) return '';
         // 关键防护：绝对不能在负面词里包含破坏分镜、气泡和网点的词汇！
         const forbiddenPatterns = [
@@ -378,6 +390,7 @@ ${antiHijackRule}
             /\b2koma\b/gi,
             /\bspeech\s*bubble\b/gi,
             /\bthought\s*bubble\b/gi,
+            /\bspeech\b/gi,
             /\btext\b/gi,
             /\bscreentone\b/gi,
             /\bhalftone\b/gi,
@@ -392,6 +405,9 @@ ${antiHijackRule}
             /\bnegative\s*space\b/gi,
             /\bfurryFocus\b/gi
         ];
+        if (isMonochrome) {
+            forbiddenPatterns.push(/\b(?:monochrome|greyscale|grayscale|manga)\b/gi);
+        }
         let cleaned = rawNegative;
         forbiddenPatterns.forEach(pat => {
             cleaned = cleaned.replace(pat, '');
@@ -424,8 +440,9 @@ ${antiHijackRule}
         let styleNegative = store.style === 'custom' ? (store.customNegative || '') : styleObj.negative;
 
         // 2. 负面词净化：剔除抑制分镜与文字的词
+        const isMonochrome = (store.style === 'monochrome');
         let currentNeg = payload.parameters?.negative_prompt || '';
-        let cleanedNeg = sanitizeMangaNegativePrompt(currentNeg);
+        let cleanedNeg = sanitizeMangaNegativePrompt(currentNeg, isMonochrome);
         if (styleNegative) {
             cleanedNeg = [cleanedNeg, styleNegative].filter(Boolean).join(', ');
         }
@@ -437,7 +454,7 @@ ${antiHijackRule}
                 if (Array.isArray(payload.parameters.v4_negative_prompt.caption.char_captions)) {
                     payload.parameters.v4_negative_prompt.caption.char_captions.forEach(cc => {
                         if (cc && cc.char_caption) {
-                            cc.char_caption = sanitizeMangaNegativePrompt(cc.char_caption);
+                            cc.char_caption = sanitizeMangaNegativePrompt(cc.char_caption, isMonochrome);
                         }
                     });
                 }
@@ -466,6 +483,16 @@ ${antiHijackRule}
             if (payload.parameters?.v4_prompt?.caption?.base_caption && !payload.parameters.v4_prompt.caption.base_caption.includes(stylePositive)) {
                 payload.parameters.v4_prompt.caption.base_caption = `${stylePositive}, ${payload.parameters.v4_prompt.caption.base_caption}`;
             }
+        }
+
+        // 4.1 正面提示词净化：剔除抑制对白气泡生成的 "no text"
+        if (payload.input) {
+            payload.input = sanitizeMangaPositivePrompt(payload.input);
+        }
+        if (payload.parameters?.v4_prompt?.caption?.base_caption) {
+            payload.parameters.v4_prompt.caption.base_caption = sanitizeMangaPositivePrompt(
+                payload.parameters.v4_prompt.caption.base_caption
+            );
         }
 
         // 5. 确保模型版本锁定在支持漫画文字的 NAI V5 Full
@@ -544,7 +571,6 @@ ${antiHijackRule}
         }
 
         // 8. 🎨 黑白漫画严格脱色净化 (彻底消除角色卡/世界书带入的颜色污染)
-        const isMonochrome = (store.style === 'monochrome');
         if (isMonochrome) {
             if (payload.parameters?.v4_prompt?.caption) {
                 const v4Prompt = payload.parameters.v4_prompt.caption;
@@ -563,7 +589,7 @@ ${antiHijackRule}
                 payload.input = decolorizeTags(payload.input);
             }
 
-            // 在所有画格负面词中强制注入色彩抑制契约
+            // 在所有画格负面词中强制注入色彩抑制契约与同人防夺舍
             const COLOR_UC = '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo';
             if (payload.parameters?.v4_negative_prompt?.caption) {
                 const negPrompt = payload.parameters.v4_negative_prompt.caption;
@@ -571,12 +597,29 @@ ${antiHijackRule}
                     negPrompt.base_caption = [negPrompt.base_caption, COLOR_UC].filter(Boolean).join(', ');
                 }
                 if (Array.isArray(negPrompt.char_captions)) {
-                    negPrompt.char_captions.forEach(cc => {
+                    negPrompt.char_captions.forEach((cc, idx) => {
                         if (cc && typeof cc === 'object') {
                             cc.centers = [{ x: 0.5, y: 0.5 }];
-                            if (!cc.char_caption || !cc.char_caption.includes('color::')) {
-                                cc.char_caption = [sanitizeMangaNegativePrompt(cc.char_caption || ''), COLOR_UC].filter(Boolean).join(', ');
+                            let antiHijackTag = '';
+                            if (store.antiHijack) {
+                                const posCC = payload.parameters?.v4_prompt?.caption?.char_captions?.[idx];
+                                const pText = posCC?.char_caption || '';
+                                const match = pText.match(/\(([^)]+)\)/);
+                                if (match && match[1]) {
+                                    const sName = match[1].trim();
+                                    if (!/^(style|cosplay|parody|crossover|costume|clothes|eyes|hair)$/i.test(sName)) {
+                                        antiHijackTag = sName;
+                                    }
+                                }
                             }
+                            const parts = [sanitizeMangaNegativePrompt(cc.char_caption || '', isMonochrome)];
+                            if (antiHijackTag && !parts.some(p => p.includes(antiHijackTag))) {
+                                parts.push(antiHijackTag);
+                            }
+                            if (!parts.some(p => p.includes('color::'))) {
+                                parts.push(COLOR_UC);
+                            }
+                            cc.char_caption = parts.filter(Boolean).join(', ');
                         }
                     });
                 }
@@ -2385,12 +2428,16 @@ ${antiHijackRule}
     function resolveBubbleTypeTag(bType) {
         if (!bType) return '通常吹き出し';
         const lower = String(bType).toLowerCase().trim();
-        if (lower.includes('thought') || lower.includes('思考')) return '思考の吹き出し';
-        if (lower.includes('scream') || lower.includes('叫び') || lower.includes('怒')) return '叫び吹き出し';
-        if (lower.includes('caption') || lower.includes('旁白') || lower.includes('ナレーション')) return 'ナレーション枠';
-        if (lower.includes('sfx') || lower.includes('拟音') || lower.includes('擬音')) return '擬音, 吹き出しなし';
-        if (lower.includes('whisper') || lower.includes('破線')) return '破線吹き出し';
-        if (lower.includes('shiver') || lower.includes('波打つ')) return '波打つ吹き出し';
+        if (lower.includes('thought') || lower.includes('思考') || lower.includes('心声')) return '思考の吹き出し';
+        if (lower.includes('scream') || lower.includes('叫び') || lower.includes('怒') || lower.includes('jagged') || lower.includes('ギザギザ')) return '叫び吹き出し';
+        if (lower.includes('caption') || lower.includes('旁白') || lower.includes('ナレーション')) return '矩形のナレーション枠';
+        if (lower.includes('sfx') || lower.includes('拟音') || lower.includes('擬音') || lower.includes('sound')) return '擬音, 吹き出しなし';
+        if (lower.includes('whisper') || lower.includes('破線') || lower.includes('dashed') || lower.includes('耳语') || lower.includes('虚')) return '破線吹き出し';
+        if (lower.includes('shiver') || lower.includes('波打つ') || lower.includes('wavy') || lower.includes('颤') || lower.includes('抖')) return '波打つ吹き出し';
+        if (lower.includes('broadcast') || lower.includes('四角') || lower.includes('square') || lower.includes('radio') || lower.includes('phone') || lower.includes('机械')) return '四角い吹き出し';
+        if (lower.includes('offscreen') || lower.includes('切り欠き') || lower.includes('notch') || lower.includes('画外')) return '切り欠きのある吹き出し';
+        if (lower.includes('tailless') || lower.includes('しっぽなし') || lower.includes('oval') || lower.includes('独白') || lower.includes('无尾')) return 'しっぽなしの楕円吹き出し';
+        if (lower.includes('connected') || lower.includes('連結') || lower.includes('连语') || lower.includes('双连')) return '連結吹き出し';
         return '通常吹き出し';
     }
 
@@ -2417,8 +2464,8 @@ ${antiHijackRule}
         const panelCountTag = `${studio.panels.length}panels`;
 
         const baseParts = [
-            grammarTag,
             stylePos,
+            grammarTag,
             'comic, 複数コマの漫画ページ, manga page layout',
             layoutTag,
             gutterTag,
@@ -2440,8 +2487,10 @@ ${antiHijackRule}
                 if (tagStr) parts.push(tagStr);
             }
 
-            const text = (p.bubbleText || '').trim();
+            let text = (p.bubbleText || '').trim();
             if (text) {
+                // 剥离多余外层引号与括号对齐原版规范
+                text = text.replace(/^["'“”‘’「」]+|["'“”‘’「」]+$/g, '').trim();
                 const bType = p.bubbleType || 'speech';
                 const typeTag = resolveBubbleTypeTag(bType);
                 const layoutTag = resolveBubbleLayoutTag(p.bubbleLayout, bType);
@@ -2484,7 +2533,7 @@ ${antiHijackRule}
         const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
         const gutterInstruction = gutterObj.instruction || '';
         const colorRule = (store.style === 'monochrome')
-            ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗与光影词汇。`
+            ? `\n【色彩与角色DNA要求】：当前处于黑白漫画模式。对于同人角色，请务必保留官方完整角色标签（如 tatsumaki (one punch man)）与标志性特征；场景与一般服装请使用 dark/light 等灰阶明暗与光影词汇，避免输出 colorful, full color, warm light 等环境色相词。`
             : '';
         const langInstruction = language === 'ja'
             ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
@@ -2504,7 +2553,7 @@ JSON 格式规范：
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
       "shot": "景别机位英文（支持从以下专业漫画镜头中挑选最契合剧情的词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
       "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词）",
-      "bubbleType": "speech | thought | screaming | caption | sfx",
+      "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
       "bubbleText": "画格内角色台词、心声或旁白文字",
       "bubbleLayout": "vertical | horizontal"
     }
@@ -2582,15 +2631,27 @@ JSON 格式规范：
             shot = defaultFlow[i % defaultFlow.length];
         }
 
-        const thoughtMatch = sentence.match(/[（\(](.+?)[）\)]/);
+        const sfxMatch = sentence.match(/[【\[](.+?)[】\]]/);
+        const thoughtMatch = sentence.match(/[\*（\(](.+?)[\*）\)]/);
+        const captionMatch = sentence.match(/[\{｛](.+?)[\}｝]/);
+        const screamMatch = sentence.match(/[“"「](.+?[！!]{1,})[”"」]/);
         const speechMatch = sentence.match(/[“"「](.+?)[”"」]/);
 
-        if (thoughtMatch) {
+        if (sfxMatch) {
+            bubbleType = 'sfx';
+            bubbleText = sfxMatch[1].trim();
+        } else if (captionMatch) {
+            bubbleType = 'caption';
+            bubbleText = captionMatch[1].trim();
+        } else if (thoughtMatch) {
             bubbleType = 'thought';
-            bubbleText = (thoughtMatch[1] || '').trim();
+            bubbleText = thoughtMatch[1].trim();
+        } else if (screamMatch) {
+            bubbleType = 'screaming';
+            bubbleText = screamMatch[1].trim();
         } else if (speechMatch) {
             bubbleType = 'speech';
-            bubbleText = (speechMatch[1] || '').trim();
+            bubbleText = speechMatch[1].trim();
         } else if (sentence.includes('！') || sentence.includes('!')) {
             bubbleType = 'screaming';
             bubbleText = (sentence.slice(0, 16) || '').trim();
@@ -2675,7 +2736,7 @@ JSON 格式规范：
         const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
         const gutterInstruction = gutterObj.instruction || '';
         const colorRule = (store.style === 'monochrome')
-            ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗词汇。`
+            ? `\n【色彩与角色DNA要求】：当前处于黑白漫画模式。对于同人角色，请务必保留官方完整角色标签（如 tatsumaki (one punch man)）与标志性特征；场景与一般服装请使用 dark/light 等灰阶明暗与光影词汇，避免输出 colorful, full color, warm light 等环境色相词。`
             : '';
         const langInstruction = language === 'ja'
             ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
@@ -2694,7 +2755,7 @@ JSON 格式规范：
   "title": "画格简短标题（5-10字中文）",
   "shot": "景别机位英文（支持：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
   "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词）",
-  "bubbleType": "speech | thought | screaming | caption | sfx",
+  "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
   "bubbleText": "画格内角色台词或心声文字",
   "bubbleLayout": "vertical | horizontal"
 }`;
@@ -2749,7 +2810,7 @@ JSON 格式规范：
         const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
         const gutterInstruction = gutterObj.instruction || '';
         const colorRule = (store.style === 'monochrome')
-            ? `\n【色彩模式要求】：当前处于黑白漫画模式，Tag 中请避免输出具体彩色词汇（如 pink hair, blue dress 等），改用 dark/light 等灰阶明暗词汇。`
+            ? `\n【色彩与角色DNA要求】：当前处于黑白漫画模式。对于同人角色，请务必保留官方完整角色标签（如 tatsumaki (one punch man)）与标志性特征；场景与一般服装请使用 dark/light 等灰阶明暗与光影词汇，避免输出 colorful, full color, warm light 等环境色相词。`
             : '';
         const langInstruction = language === 'ja'
             ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
@@ -2767,7 +2828,7 @@ ${gutterInstruction}${colorRule}
 1. title: 画格概括（中文，5-10字）
 2. shot: 从以下 19 种专业漫画镜头中挑选最契合剧情的词（close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）
 3. tags: 纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，保持同一角色在各画格间的外观特征连贯，不要画风词）
-4. bubbleType: speech | thought | screaming | caption | sfx
+4. bubbleType: speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected
 5. bubbleText: 提炼出的画格内角色台词、心声或旁白
 6. bubbleLayout: vertical | horizontal
 
@@ -3196,11 +3257,17 @@ JSON 格式规范：
                         <div class="mw-bubble-type-pill">
                             <i class="fa-regular fa-comment-dots" style="color:#38bdf8"></i>
                             <select class="mw-bubble-type-sel">
-                                <option value="speech" ${p.bubbleType === 'speech' ? 'selected' : ''}>对白框 (Speech)</option>
-                                <option value="thought" ${p.bubbleType === 'thought' ? 'selected' : ''}>心声气泡 (Thought)</option>
-                                <option value="screaming" ${p.bubbleType === 'screaming' ? 'selected' : ''}>呐喊爆发 (Scream)</option>
-                                <option value="caption" ${p.bubbleType === 'caption' ? 'selected' : ''}>矩形旁白 (Caption)</option>
-                                <option value="sfx" ${p.bubbleType === 'sfx' ? 'selected' : ''}>拟音词 (SFX)</option>
+                                <option value="speech" ${p.bubbleType === 'speech' ? 'selected' : ''}>💬 常规对白 (通常)</option>
+                                <option value="screaming" ${p.bubbleType === 'screaming' ? 'selected' : ''}>⚡ 呐喊惊呼 (ギザギザ)</option>
+                                <option value="thought" ${p.bubbleType === 'thought' ? 'selected' : ''}>💭 心理心声 (思考)</option>
+                                <option value="whisper" ${p.bubbleType === 'whisper' ? 'selected' : ''}>💨 破线耳语 (破線)</option>
+                                <option value="shiver" ${p.bubbleType === 'shiver' ? 'selected' : ''}>〰️ 发颤恐惧 (波打つ)</option>
+                                <option value="broadcast" ${p.bubbleType === 'broadcast' ? 'selected' : ''}>📻 四角广播 (四角い)</option>
+                                <option value="caption" ${p.bubbleType === 'caption' ? 'selected' : ''}>📜 矩形旁白 (ナレーション)</option>
+                                <option value="sfx" ${p.bubbleType === 'sfx' ? 'selected' : ''}>💥 独立拟音 (擬音)</option>
+                                <option value="offscreen" ${p.bubbleType === 'offscreen' ? 'selected' : ''}>🚪 画外声源 (切り欠き)</option>
+                                <option value="tailless" ${p.bubbleType === 'tailless' ? 'selected' : ''}>⭕ 无尾独白 (しっぽなし)</option>
+                                <option value="connected" ${p.bubbleType === 'connected' ? 'selected' : ''}>🔗 紧凑双连 (連結)</option>
                             </select>
                         </div>
                         <input type="text" class="mw-bubble-text-in" value="${RBQ.utils.escapeHtml(p.bubbleText || '')}" placeholder="输入气泡内台词或独白文字...">

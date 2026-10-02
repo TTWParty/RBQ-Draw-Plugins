@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.70';
+    const PLUGIN_VERSION = '6.0.71';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9486,9 +9486,20 @@ SCHEMA:
 - L1 场景连续性：整页漫画的背景环境、主光源角度与氛围在各格之间保持连贯；
 - L2 瞬态痕迹跨格流转演进：汗水(sweat)、红晕(blush)、眼泪(tears)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循动作逻辑自然继承与渐进演变，绝对禁止格与格之间莫名其妙自动复原！
 
-⑤【台词视听落格与静默格节奏校验 (DIALOGUE CHOREOGRAPHY & SILENT PANEL AUDIT)】：
-- 台词精准落格：依据说话角色与动作时机，将正文真实台词分配到对应画格的 action 末尾，严格带上格内方位词：
-  格式：BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [原句台词]
+⑤【台词视听落格与全形态气泡契约 (BUBBLE-STYLES & TEXT-BUBBLE-CONTRACT)】：
+- 原生 11 种气泡边框形态映射（来自原版 v1.1 条目 49 & 52）：
+  * 普通对白（日常）：BubbleType: 通常吹き出し, 口元（尖しっぽ朝向口元，平淡对白默认）
+  * 怒喊/惊呼/高声：BubbleType: 叫び吹き出し, 口元（或 ギザギザ吹き出し）
+  * 心理活动/心声：BubbleType: 思考の吹き出し, 右上（雲形，丸しっぽ朝向头部）
+  * 耳语/心虚/远处微声：BubbleType: 破線吹き出し, 口元（悄悄话、虚弱发声）
+  * 发颤/发虚/恐惧打颤：BubbleType: 波打つ吹き出し, 口元（波浪状发抖气泡）
+  * 电话/广播/机械音：BubbleType: 四角い吹き出し, 右上（矩形机械声）
+  * 客观旁白/时空说明：BubbleType: ナレーション枠, 右上, Layout: 横書き（矩形旁白框）
+  * 拟声拟态词：SFX: 擬音, 吹き出しなし, Text: [拟声词]（独立拟声词格）
+  * 画外对白（说话者在画面外）：BubbleType: 切り欠きのある吹き出し, 画面外（气泡贴在声源一侧格边）
+  * 画外音/独白/无尾气泡：BubbleType: しっぽなしの楕円吹き出し, 右上（纯椭圆无尾）
+  * 同一角色紧凑连续两句：BubbleType: 連結吹き出し, 右上（紧密相连连结气泡）
+- 对话呼吸拆分铁律（原版条目 20 第4点）：若台词包含多段话（只要不是一口气说出来的，都必须拆分），例如「银发...一副不靠谱样子的成年人......请问你是五条老师吗？」➔ 拆分为「银发...」「一副不靠谱样子的成年人......」「请问你是五条老师吗？」三段；
 - 台词防挡脸与溢出：单句台词尽量控制在 25 字以内；同格同人物连续两句使用换行（\\n\\n）拆分多气泡；
 - ⛔【静默格留白】：纯动作反应、环境描写、眼神对视或沉思格，切勿强编台词！无对白时切勿添加 BubbleType 与 Text，保持画面电影张力；
 - ⛔【纯环境/拟声词格清空人物槽】：纯背景空镜或独立拟声词格，base 与 outfit 必须严格留空（""），绝对严禁写入 solo 或人物标签！
@@ -9563,7 +9574,7 @@ SCHEMA:
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
             } : (store.enhancedContext === 'v_manga' || store._mangaActive) ? {
-                segmentInstruction: `【漫画导演·动态事件驱动分页与分格契约（原版 v1.1 条目33 & 35 & 57）】：当前已开启漫画导演全息戏剧推演！\n你的核心使命是将当前消息（currentMessage）转译为具备原生日漫质感的分格漫画（Page 1, Page 2...）：\n①【段落划分与动态页数（U1~Un）】：将 currentMessage 顺着时间线划分为连续事件单元（U1、U2、U3...）。依戏剧节拍自适应决定生成页数——情节紧凑规划 1~2 页；情节丰富、转场激烈规划 2~4 页；激烈长篇决战规划 3~6 页；无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点】：每一页（segment）必须从对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，保证漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格（Komawari）与核心主格（focal panel）】：每一页自适应规划 3~5 个画格。普通分格页确定 1 个主要画格（主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成固定四格），再按其余事件信息量分配辅助画格大小。每个格子必须不同大小，采用错位分隔、通栏、纵格或插入格；characters 数组长度严格等于规划的画格总数 N（每个 item 对应 1 个 Panel）；\n④【映画分镜版面方位与日漫阅读动线】：遵循日漫読み順（先上段后下段，同段先右后左）。每一格 action 必须以本页唯一可辨的版面方位词严格开头（支持 top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长长格；wide panel 横通栏；inset panel 插入叠格等），严禁省略方位词；\n⑤【台词落格与静默格】：正文台词拆分为自然气泡，挂在对应画格末尾（带右上/左上/口元等格内位置）；纯动作与环境格保持静默格（无台词）；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
+                segmentInstruction: `【漫画导演·动态事件驱动分页与分格契约（原版 v1.1 条目33 & 35 & 57）】：当前已开启漫画导演全息戏剧推演！\n你的核心使命是将当前消息（currentMessage）转译为具备原生日漫质感的分格漫画（Page 1, Page 2...）：\n①【段落划分与动态页数（U1~Un）】：将 currentMessage 顺着时间线划分为连续事件单元（U1、U2、U3...）。依戏剧节拍自适应决定生成页数——情节紧凑规划 1~2 页；情节丰富、转场激烈规划 2~4 页；激烈长篇决战规划 3~6 页；无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点】：每一页（segment）必须从对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，保证漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格（Komawari）与核心主格（focal panel）】：每一页自适应规划 3~5 个画格。普通分格页确定 1 个主要画格（主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成固定四格），再按其余事件信息量分配辅助画格大小。每个格子必须不同大小，采用错位分隔、通栏、纵格或插入格；characters 数组长度严格等于规划的画格总数 N（每个 item 对应 1 个 Panel）；\n④【映画分镜版面方位与日漫阅读动线】：遵循日漫読み順（先上段后下段，同段先右后左）。每一格 action 必须以本页唯一可辨的版面方位词严格开头（支持 top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长长格；wide panel 横通栏；inset panel 插入叠格等），严禁省略方位词；\n⑤【台词落格与全形态气泡契约】：正文台词按呼吸停顿拆分为自然气泡（非一口气说出的必须拆分多气泡），挂在对应画格末尾，严格使用原版11种气泡边框（通常吹き出し、叫び吹き出し/ギザギザ、思考の吹き出し、破線吹き出し、波打つ吹き出し、四角い吹き出し、ナレーション枠、SFX: 擬音 吹き出しなし、切り欠きのある吹き出し、しっぽなしの楕円吹き出し、連結吹き出し），带右上/左上/口元/画面外等方位；纯动作与环境格保持静默格（无台词）；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
                 segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
@@ -9583,7 +9594,7 @@ SCHEMA:
                                 name: 'Panel 1 (顶部横通栏远景/交代格)',
                                 base: 'string (角色固定外貌DNA标签；若为纯环境/空镜/拟声词格则留空 "")',
                                 outfit: 'string (本格服装；若为纯环境/空镜/拟声词格则留空 "")',
-                                action: 'string (必须以版面方位+画格类型开头，如: top panel, wide establishing shot, looking outside, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文)',
+                                action: 'string (必须以版面方位+画格类型开头，如: top panel, wide establishing shot, looking outside, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文；BubbleType可选: 通常吹き出し | 叫び吹き出し | 思考の吹き出し | 破線吹き出し | 波打つ吹き出し | 四角い吹き出し | ナレーション枠 | SFX: 擬音, 吹き出しなし | 切り欠きのある吹き出し | しっぽなしの楕円吹き出し | 連結吹き出し，位置: 右上/左上/口元/画面外)',
                                 center: 'C3',
                                 uc: 'string (本格差分负面特征词)'
                             },

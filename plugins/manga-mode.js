@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.12';
+        const VERSION = '1.4.13';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -553,46 +553,63 @@ ${antiHijackRule}
             if (Array.isArray(payload.parameters.v4_prompt.caption?.char_captions)) {
                 payload.parameters.v4_prompt.caption.char_captions.forEach(cc => {
                     cc.centers = [{ x: 0.5, y: 0.5 }];
+                    if (cc.char_caption) {
+                        cc.char_caption = sanitizeMangaPositivePrompt(cc.char_caption);
+                    }
                 });
             }
         }
 
-        // 8. 🎨 黑白漫画模式色彩抑制契约 (严格对齐 v1.1 原版：正面完全保全角色 DNA 与用户输入，由负面色彩抑制 10::color:: 与正面 monochrome/screentone 驱动脱色)
-        if (isMonochrome) {
-            // 在所有画格负面词中强制注入色彩抑制契约与同人防夺舍
+        // 8. 🎨 逐画格负面词优化与同人防夺舍 (Universal Differential UC)
+        if (payload.parameters?.v4_negative_prompt?.caption) {
+            const negPrompt = payload.parameters.v4_negative_prompt.caption;
+            const posCCList = payload.parameters?.v4_prompt?.caption?.char_captions;
+
+            // 8.1 确保负面槽位数量与正面画格槽位完全对齐
+            if (Array.isArray(posCCList) && posCCList.length > 0) {
+                if (!Array.isArray(negPrompt.char_captions) || negPrompt.char_captions.length !== posCCList.length) {
+                    negPrompt.char_captions = posCCList.map((_, i) => ({
+                        char_caption: negPrompt.char_captions?.[i]?.char_caption || '',
+                        centers: [{ x: 0.5, y: 0.5 }]
+                    }));
+                }
+            }
+
+            // 8.2 黑白漫画模式专属：色彩抑制契约注入 (10::color:: 等)
             const COLOR_UC = '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo';
-            if (payload.parameters?.v4_negative_prompt?.caption) {
-                const negPrompt = payload.parameters.v4_negative_prompt.caption;
+            if (isMonochrome) {
                 if (negPrompt.base_caption && !negPrompt.base_caption.includes('color::')) {
                     negPrompt.base_caption = [negPrompt.base_caption, COLOR_UC].filter(Boolean).join(', ');
                 }
-                if (Array.isArray(negPrompt.char_captions)) {
-                    negPrompt.char_captions.forEach((cc, idx) => {
-                        if (cc && typeof cc === 'object') {
-                            cc.centers = [{ x: 0.5, y: 0.5 }];
-                            let antiHijackTag = '';
-                            if (store.antiHijack) {
-                                const posCC = payload.parameters?.v4_prompt?.caption?.char_captions?.[idx];
-                                const pText = posCC?.char_caption || '';
-                                const match = pText.match(/\(([^)]+)\)/);
-                                if (match && match[1]) {
-                                    const sName = match[1].trim();
-                                    if (!/^(style|cosplay|parody|crossover|costume|clothes|eyes|hair)$/i.test(sName)) {
-                                        antiHijackTag = sName;
-                                    }
+            }
+
+            // 8.3 逐画格槽位负面词处理 (防夺舍、色彩抑制与负面净化)
+            if (Array.isArray(negPrompt.char_captions)) {
+                negPrompt.char_captions.forEach((cc, idx) => {
+                    if (cc && typeof cc === 'object') {
+                        cc.centers = [{ x: 0.5, y: 0.5 }];
+                        let antiHijackTag = '';
+                        if (store.antiHijack) {
+                            const posCC = posCCList?.[idx];
+                            const pText = posCC?.char_caption || '';
+                            const match = pText.match(/\(([^)]+)\)/);
+                            if (match && match[1]) {
+                                const sName = match[1].trim();
+                                if (!/^(style|cosplay|parody|crossover|costume|clothes|eyes|hair)$/i.test(sName)) {
+                                    antiHijackTag = sName;
                                 }
                             }
-                            const parts = [sanitizeMangaNegativePrompt(cc.char_caption || '', isMonochrome)];
-                            if (antiHijackTag && !parts.some(p => p.includes(antiHijackTag))) {
-                                parts.push(antiHijackTag);
-                            }
-                            if (!parts.some(p => p.includes('color::'))) {
-                                parts.push(COLOR_UC);
-                            }
-                            cc.char_caption = parts.filter(Boolean).join(', ');
                         }
-                    });
-                }
+                        const parts = [sanitizeMangaNegativePrompt(cc.char_caption || '', isMonochrome)];
+                        if (antiHijackTag && !parts.some(p => p.includes(antiHijackTag))) {
+                            parts.push(antiHijackTag);
+                        }
+                        if (isMonochrome && !parts.some(p => p.includes('color::'))) {
+                            parts.push(COLOR_UC);
+                        }
+                        cc.char_caption = parts.filter(Boolean).join(', ');
+                    }
+                });
             }
         }
 

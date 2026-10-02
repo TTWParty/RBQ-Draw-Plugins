@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.18';
+        const VERSION = '1.4.19';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -352,7 +352,7 @@ ${antiHijackRule}
        - \`inset panel, small panel, extreme close-up on eyes\`（嵌在大画格角落的表现瞳孔震颤/局部特写的小叠格）
        - \`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（独立拟声词格）
    - 【版面方位铁律】：每一格开头必须带有清晰可辨的版面方位词（top-right panel, middle-left panel, left vertical panel, bottom panel, inset panel 等），严禁省略方位词，以确保 NAI 空间分割严丝合缝、阅读动线与台词绝不串格！
-   - 紧随构图词后写入本格出场主体的动作与姿势；
+   - 紧随构图词后写入本格出场主体的具体动作与姿势 Danbooru 英文标签（如 looking at viewer, reaching hand, smirk, blushing；修辞转实体，严禁输出中文闲聊与比喻修辞！）；
    - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [台词原文]\`；
    - ⛔【静默格铁律】：若本格仅为动作反应、眼神对视、环境交代或沉思，切勿强行编造对白！无必要对白时，切勿添加 BubbleType 与 Text，保持画面留白与电影张力！
    - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。⛔【环境与拟声词格铁律】：若本格为纯环境格、空镜格或独立拟声词格，base 与 outfit 必须全部留空（""）！绝对严禁写入 solo 或任何人物主体词，以防模型误画出人物！

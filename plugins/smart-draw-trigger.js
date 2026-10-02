@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.71';
+    const PLUGIN_VERSION = '6.0.72';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9446,23 +9446,23 @@ SCHEMA:
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
             v_manga: `【原版 v1.1 动态事件驱动漫画导演分镜推演 (条目33 & 条目35 & 条目57)】
-在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行专业漫画导演五步分镜推演：
+在输出 JSON 前，必须在思考区（输出到 reason 字段）按以下不可偷懒的结构化骨架真实展开推演：
 
-①【台本段落切分与动态页数决策 (SCRIPT-TO-COMIC & DYNAMIC PAGES)】：
-- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：将当前消息按剧情进展与时间推进划分为连续的事件单元（编号 U1、U2、U3...直至最后一段）；
-- 依据戏剧容量与情节密度自适应决定总页数（无需死板固定）：
-  * 短小情节 / 单一事件 / 局部交流互动：自适应规划 1~2 页；
-  * 中长篇幅 / 包含场景转场、情绪递进、攻守交互：自适应规划 2~4 页；
-  * 宏大长篇 / 激烈战斗演进、多阶段情感高潮爆发：自适应规划 3~6 页；
-  * 纯抽象概念探讨 / 毫无画面变化的纯闲聊：判定为 0 页（shouldDraw: false）。
-- 跨页剧情分配：规划每一页承载的 U 编号范围与戏剧功能（Page 1: 铺垫/起因；Page 2: 冲突升级/对抗；Page 3+: 核心爆发/定格）。
-- 精准逐字正文锚点（VERBATIM ANCHOR LOCK）：每一页作为一个独立 segment 填入 segments 数组，label 规范如 "Page 1: [5~15字剧情小标题]"；anchor.text 必须 100% 从该页对应 U 段落中一字不差地摘录 10~40 字逐字正文原文！确保漫画卡片精准落位于事件发生的实际位置下方。
+①【台本事件节拍地毯式切片与动态页数决策 (SCRIPT-TO-COMIC & DYNAMIC PAGES)】：
+- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：顺着时间线自上而下地毯式扫描剧情，绝不仅挑最后一句！将正文按事件推进与视觉高光划分为连续的事件单元（编号 U1、U2、U3...）：
+  * 凡出现造型服饰高光、肢体接触升级、体位姿态转变、情感爆发对峙或场景转换，每一个独立节拍均必须设立为一个独立事件单元；
+  * 依事件单元自适应决定总页数（1个核心事件单元 = 1页漫画，1 Page = 1 Segment）：
+    - 短小情节 / 单一事件瞬间：规划 1 页；
+    - 中长篇幅 / 包含情节转折、情绪递进、攻守交互：规划 2~4 页；
+    - 激烈决战 / 宏大剧情推进：规划 3~6 页；
+    - 纯抽象无画面闲聊才判定为 0 页（shouldDraw: false）。
+  * ⛔【严禁偷懒归一化】：若正文包含多个事件推进，绝对严禁为了图省事而强行压缩为 1 页！必须顺着时间线全部提取；
+  * ⛔【逐页精准正文锚点（严禁扎堆与脑补）】：每一页的 anchor.text 必须来自该页对应 U 段落，严禁所有页面全部扎堆在正文末尾！必须 100% 逐字摘录 10~40 字原文，严禁凭记忆概括改写，确保漫画卡片精准落位于事件发生的实际位置下方。
 
-②【单页画格戏剧结构推演 (INTRA-PAGE KOMAWARI BEAT BREAKDOWN)】：
-- 依据剧情容量自适应规划单页画格数 N（通常 3~5 panels；仅宏大决战/广阔全景才用整页单格 splash page 或 横向跨页 見開きページ）：
-  * 普通分格页确定一个主要画格（focal panel，主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成右上/左上/右下/左下固定四格），再按其余事件的信息量分配辅助画格的大小；
-  * 每个格子必须不同大小。在页面布局中明确总画格数、主格位置与大致面积，并明确辅助画格的宽窄、高低及相互排列；采用错位分隔、通栏、纵格或插入格，说明它们实际位于何处；
-  * 【1:1 画格槽位铁律】：规划了 N panels，下方 characters 数组必须严格填入 N 个画格槽位（Panel 1, Panel 2... Panel N），严禁漏格或多格！
+②【逐页画格戏剧结构推演 (INTRA-PAGE KOMAWARI BEAT BREAKDOWN)】：
+- 每一页自适应规划 3~5 panels（characters 数组长度严格等于规划画格数 N）：
+  * ⛔【严禁套用死板三段式横条或四等分网格】：禁止将每页机械均分为三等分（top/middle/bottom）或四等分！必须根据戏剧重心规划不对称、主次分明的画格形态：确定 1 个主要画格（focal panel，占据半页以上面积或强烈动势的大横通栏/纵长长格/大斜切格），其余格子作为辅助格（远景交代格、特写反应格、拟声词格）。每个格子必须不同大小；
+  * 景别层次推进链：远景交代空间（establishing wide shot）➔ 中景呈现肢体互动（medium cowboy shot）➔ 特写捕捉眼神/微表情反应（close-up on face/eyes）➔ 核心主格动作定格（focal dynamic angle）。严禁全页单一雷同机位！
 
 ③【映画分镜版面方位与日漫阅读动线推演 (UNIVERSAL KOMAWARI SPATIAL FLOW)】：
 - 遵循日式漫画の読み順（右開き・右綴じ）：先上段后下段，同段先右后左！为每格确定一个本页内唯一可辨的「版面方位＋构图大小/功能」开头：
@@ -9479,9 +9479,9 @@ SCHEMA:
     - wide panel, wide shot, scenery（横向通栏大景深格）
     - inset panel, small panel, extreme close-up on eyes（嵌在大格角落的特写插格）
     - small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]（独立拟声词格）
-- 镜头景别与机位递进：灵活穿插 close-up, bust shot, cowboy shot, wide shot, dynamic angle, from above, from below, fisheye lens, foreshortening，严禁全页单一雷同机位！
 
-④【格间角色一致性与瞬态状态机 (PANEL-TO-PANEL L0~L2 CONTINUITY)】：
+④【修辞转实体与格间角色状态机 (RHETORIC-TO-DANBOORU & L0~L2 CONTINUITY)】：
+- ⛔【修辞转实体（严禁将比喻直译为生图词）】：正文中的比喻描写（如“狂风暴雨般的进攻”、“眼神如万年寒冰”）绝对禁止直接输出带有 like a beast, ice in eyes 等破坏画面的词汇！必须转换为具象的 Danbooru 动作与神态标签（如 fast punch, aggressive, shadow over eyes, intense gaze）；action 字段只写【版面方位 + 构图景别 + 角色动作Tag + 气泡规范】，绝对禁止夹杂大段中文描述或剧情解释！
 - L0 角色固定外貌 DNA 跨格锁定：同人角色出场必须在每格的 base 中保留官方完整标识标签与固定外貌（发型发色瞳色）；原创角色保持细节丰满与辨识度；严禁同一人物在第 1 格与第 2 格特征串味或长相突变；
 - L1 场景连续性：整页漫画的背景环境、主光源角度与氛围在各格之间保持连贯；
 - L2 瞬态痕迹跨格流转演进：汗水(sweat)、红晕(blush)、眼泪(tears)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循动作逻辑自然继承与渐进演变，绝对禁止格与格之间莫名其妙自动复原！
@@ -9499,8 +9499,8 @@ SCHEMA:
   * 画外对白（说话者在画面外）：BubbleType: 切り欠きのある吹き出し, 画面外（气泡贴在声源一侧格边）
   * 画外音/独白/无尾气泡：BubbleType: しっぽなしの楕円吹き出し, 右上（纯椭圆无尾）
   * 同一角色紧凑连续两句：BubbleType: 連結吹き出し, 右上（紧密相连连结气泡）
-- 对话呼吸拆分铁律（原版条目 20 第4点）：若台词包含多段话（只要不是一口气说出来的，都必须拆分），例如「银发...一副不靠谱样子的成年人......请问你是五条老师吗？」➔ 拆分为「银发...」「一副不靠谱样子的成年人......」「请问你是五条老师吗？」三段；
-- 台词防挡脸与溢出：单句台词尽量控制在 25 字以内；同格同人物连续两句使用换行（\\n\\n）拆分多气泡；
+- 对话呼吸拆分铁律（原版条目 20 第4点）：若台词包含多段话（只要不是一口气说出来的，都必须拆分），在 Text: 中使用换行（\\n\\n）拆分为独立气泡；
+- 台词防挡脸与溢出：单句台词尽量控制在 25 字以内；
 - ⛔【静默格留白】：纯动作反应、环境描写、眼神对视或沉思格，切勿强编台词！无对白时切勿添加 BubbleType 与 Text，保持画面电影张力；
 - ⛔【纯环境/拟声词格清空人物槽】：纯背景空镜或独立拟声词格，base 与 outfit 必须严格留空（""），绝对严禁写入 solo 或人物标签！
 - 自检自洽后直接输出合法 JSON，禁止输出任何多余标记。`,
@@ -9574,7 +9574,7 @@ SCHEMA:
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
             } : (store.enhancedContext === 'v_manga' || store._mangaActive) ? {
-                segmentInstruction: `【漫画导演·动态事件驱动分页与分格契约（原版 v1.1 条目33 & 35 & 57）】：当前已开启漫画导演全息戏剧推演！\n你的核心使命是将当前消息（currentMessage）转译为具备原生日漫质感的分格漫画（Page 1, Page 2...）：\n①【段落划分与动态页数（U1~Un）】：将 currentMessage 顺着时间线划分为连续事件单元（U1、U2、U3...）。依戏剧节拍自适应决定生成页数——情节紧凑规划 1~2 页；情节丰富、转场激烈规划 2~4 页；激烈长篇决战规划 3~6 页；无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点】：每一页（segment）必须从对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，保证漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格（Komawari）与核心主格（focal panel）】：每一页自适应规划 3~5 个画格。普通分格页确定 1 个主要画格（主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成固定四格），再按其余事件信息量分配辅助画格大小。每个格子必须不同大小，采用错位分隔、通栏、纵格或插入格；characters 数组长度严格等于规划的画格总数 N（每个 item 对应 1 个 Panel）；\n④【映画分镜版面方位与日漫阅读动线】：遵循日漫読み順（先上段后下段，同段先右后左）。每一格 action 必须以本页唯一可辨的版面方位词严格开头（支持 top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长长格；wide panel 横通栏；inset panel 插入叠格等），严禁省略方位词；\n⑤【台词落格与全形态气泡契约】：正文台词按呼吸停顿拆分为自然气泡（非一口气说出的必须拆分多气泡），挂在对应画格末尾，严格使用原版11种气泡边框（通常吹き出し、叫び吹き出し/ギザギザ、思考の吹き出し、破線吹き出し、波打つ吹き出し、四角い吹き出し、ナレーション枠、SFX: 擬音 吹き出しなし、切り欠きのある吹き出し、しっぽなしの楕円吹き出し、連結吹き出し），带右上/左上/口元/画面外等方位；纯动作与环境格保持静默格（无台词）；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
+                segmentInstruction: `【漫画导演·动态事件切片与精准落位铁律（原版 v1.1 条目33 & 35 & 57）】：\n①【地毯式事件切片与动态页数（拒绝偷懒归一化）】：顺着 currentMessage 时间线自上而下通读，将正文划分为连续事件单元（U1, U2, U3...）。凡出现情节推进、动作演进、换装脱衣、肢体接触、情绪激变或场景转换，均属于独立视觉节拍，每一个节拍规划为 1 页漫画（Page 1, Page 2...）。情节紧凑规划 1~2 页；情节丰富转场激烈规划 2~4 页；长篇激烈决战规划 3~6 页；绝严禁偷懒只挑最后一句把长文强行压缩为单页！无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点（严禁扎堆与改字）】：每一页作为一个独立 segment，label 标注为 "Page 1: [5~15字小标题]" 等。其 anchor.text 必须严格从该页对应 U 段落中一字不差地逐字摘录 10~40 字正文原文！严禁凭记忆概括改写，严禁所有页面扎堆在末尾，确保漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格与主次形态】：每页自适应规划 3~5 格（characters 数组长度严格等于规划画格数 N）。每页确定 1 个核心主格（focal panel，面积与戏剧重心），禁止死板三等分或四等分；每格 action 必须以版面方位词开头（top panel, middle-right panel, left vertical panel 等）；修辞转实体 Danbooru 动作，按语气挂载气泡或静默格；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁提取历史楼层！`
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
                 segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
@@ -9583,11 +9583,11 @@ SCHEMA:
             ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
                 shouldDraw: 'boolean',
-                reason: 'string (五步漫画导演推演：①台本段落切分与动态页数决策 ②单页画格Komawari与核心主格focal panel规划 ③版面方位与日漫阅读动线top-right/middle-left/left vertical/wide panel等 ④格间L0/L2角色一致性与瞬态流转 ⑤台词落格与静默格节奏分析)',
+                reason: 'string (严格执行五步推演：①台本事件切片[U1:正文原句...规划为Page1, U2:正文原句...规划为Page2...] ②逐页正文锚点[Page 1对应U1段落逐字原文, Page 2对应U2段落逐字原文，严禁扎堆] ③逐页不对称Komawari与核心主格[Page 1主格设在底部大格Panel 4/左侧纵格Panel 1等，拒绝死板三等分] ④修辞转实体Danbooru ⑤台词呼吸断句与气泡挂载)',
                 segments: [
                     {
                         label: 'string (如 Page 1: 5~15字剧情小标题)',
-                        anchor: { text: 'string exact copy from currentMessage (该页剧情对应段落10~40字逐字原文，用于漫画卡片精准落位)' },
+                        anchor: { text: 'string exact copy from currentMessage (该页剧情对应段落10~40字逐字原文，绝对严禁改字，保证漫画卡片精准落位于正文段落下方)' },
                         scene: 'string (页面排版与环境必须以漫画词开头: comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, classroom, sunset lighting)',
                         characters: [
                             {

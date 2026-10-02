@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.11';
+        const VERSION = '1.4.12';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -340,23 +340,10 @@ ${antiHijackRule}
 
     // ── 5. Payload Sanitizer & Comic Assembler for NAI V5 ──────────
     function decolorizeTags(str) {
+        // 原版 v1.1 核心设计：前端代码不采用粗暴正则篡改用户的 Danbooru 标签与色彩描述
+        // 黑白漫画的脱色由 LLM 提示词规范输出与 NAI 原生负面词 (10::color:: 等) 共同保障，100% 完整保留角色 DNA
         if (!str || typeof str !== 'string') return '';
-        return str
-            // 保护同人作品标签与发型结构，绝不将具体彩色发色/瞳色粗暴替换为无意义的 bare "hair" / "eyes"
-            // 服装配饰与妆容去色相（转为灰阶明暗词）
-            .replace(/\b(pink|red|blue|purple)\s+(eyeshadow|lipstick|makeup)\b/gi, '$2')
-            .replace(/\b(pink|red|brown)\s+(nipples|areolae|areola|pussy|labia)\b/gi, '$2')
-            .replace(/\bred[ _]soles\b/gi, 'dark soles')
-            .replace(/\b(pink|yellow|white|light[ -]blue)\s+(ribbon|bow|tie|scarf)\b/gi, 'light $2')
-            .replace(/\b(red|blue|green|purple|orange|brown|black|dark[ -]blue)\s+(ribbon|bow|tie|scarf)\b/gi, 'dark $2')
-            .replace(/\b(pink|yellow|light[ -]blue)\s+(dress|shirt|skirt|uniform|jacket|coat|sweater|panties|bra|pantyhose|socks|shoes|boots)\b/gi, 'light $2')
-            .replace(/\b(red|blue|green|purple|orange|brown|dark[ -]blue)\s+(dress|shirt|skirt|uniform|jacket|coat|sweater|panties|bra|pantyhose|socks|shoes|boots)\b/gi, 'dark $2')
-            // 剥离强插画渲染与色彩词
-            .replace(/\b(color|colorful|vibrant|vivid|pastel|watercolor|rainbow)\b/gi, '')
-            .replace(/\b(warm light|golden hour|sunset lighting|colored lighting)\b/gi, 'dramatic lighting')
-            .replace(/,\s*,/g, ',')
-            .replace(/^[\s,]+|[\s,]+$/g, '')
-            .trim();
+        return str.trim();
     }
 
     function recoverPanelFromBase(baseCaption) {
@@ -570,25 +557,8 @@ ${antiHijackRule}
             }
         }
 
-        // 8. 🎨 黑白漫画严格脱色净化 (彻底消除角色卡/世界书带入的颜色污染)
+        // 8. 🎨 黑白漫画模式色彩抑制契约 (严格对齐 v1.1 原版：正面完全保全角色 DNA 与用户输入，由负面色彩抑制 10::color:: 与正面 monochrome/screentone 驱动脱色)
         if (isMonochrome) {
-            if (payload.parameters?.v4_prompt?.caption) {
-                const v4Prompt = payload.parameters.v4_prompt.caption;
-                if (v4Prompt.base_caption) {
-                    v4Prompt.base_caption = decolorizeTags(v4Prompt.base_caption);
-                }
-                if (Array.isArray(v4Prompt.char_captions)) {
-                    v4Prompt.char_captions.forEach(cc => {
-                        if (cc && cc.char_caption) {
-                            cc.char_caption = decolorizeTags(cc.char_caption);
-                        }
-                    });
-                }
-            }
-            if (payload.input) {
-                payload.input = decolorizeTags(payload.input);
-            }
-
             // 在所有画格负面词中强制注入色彩抑制契约与同人防夺舍
             const COLOR_UC = '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo';
             if (payload.parameters?.v4_negative_prompt?.caption) {
@@ -2475,15 +2445,12 @@ ${antiHijackRule}
 
         const isMonochrome = (styleKey === 'monochrome');
         let baseCaption = baseParts.join(', ');
-        if (isMonochrome) {
-            baseCaption = decolorizeTags(baseCaption);
-        }
 
         const panelSegments = studio.panels.map((p) => {
             const parts = [];
             if (p.shot) parts.push(p.shot);
             if (p.tags) {
-                const tagStr = isMonochrome ? decolorizeTags(p.tags) : p.tags;
+                const tagStr = (p.tags || '').trim();
                 if (tagStr) parts.push(tagStr);
             }
 

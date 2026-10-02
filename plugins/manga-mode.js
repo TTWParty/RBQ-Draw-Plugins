@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.13';
+        const VERSION = '1.4.14';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -272,18 +272,18 @@ ${grammarObj.instruction}
 ${gutterRule}
 
 4. 原生对白与气泡契约（来自原版 v1.1.json [BUBBLE-STYLES] & [TEXT-BUBBLE-CONTRACT]）：
-- 语气与气泡外形严格对应：
-  - 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, Layout: 縦書き, Text: [原句]
-  - 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し 或 ギザギザ吹き出し, Layout: 縦書き, Text: [原句]
-  - 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, Layout: 縦書き, Text: [原句]
-  - 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, Layout: 縦書き, Text: [原句]
-  - 发颤/发虚/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, Layout: 縦書き, Text: [原句]
-  - 机械音/电话/广播 ➔ 标注 BubbleType: 四角い吹き出し, Layout: 縦書き, Text: [原句]
-  - 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, Layout: 横書き, Text: [原句]
+- 语气与气泡外形严格对应（格式必须带上格内位置词，优先使用 [右上] / [左上] / [口元] / [画面外]）：
+  - 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [原句]
+  - 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [原句]（或 ギザギザ吹き出し）
+  - 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, 右上, Layout: 縦書き, Text: [原句]
+  - 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, 口元, Layout: 縦書き, Text: [原句]
+  - 发颤/发虚/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, 口元, Layout: 縦書き, Text: [原句]
+  - 机械音/电话/广播 ➔ 标注 BubbleType: 四角い吹き出し, 右上, Layout: 縦書き, Text: [原句]
+  - 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, 右上, Layout: 横書き, Text: [原句]
   - 拟声拟态词 ➔ 标注 SFX: 擬音, 吹き出しなし, Text: [拟声词]
-  - 画外对白（说话者在画面外） ➔ 标注 BubbleType: 切り欠きのある吹き出し, Layout: 縦書き, Text: [原句]
-  - 画外音/独白/无尾气泡 ➔ 标注 BubbleType: しっぽなしの楕円吹き出し, Layout: 縦書き, Text: [原句]
-  - 同一角色紧凑连续两句 ➔ 标注 BubbleType: 連結吹き出し, Layout: 縦書き, Text: [原句]
+  - 画外对白（说话者在画面外） ➔ 标注 BubbleType: 切り欠きのある吹き出し, 画面外, Layout: 縦書き, Text: [原句]
+  - 画外音/独白/无尾气泡 ➔ 标注 BubbleType: しっぽなしの楕円吹き出し, 右上, Layout: 縦書き, Text: [原句]
+  - 同一角色紧凑连续两句 ➔ 标注 BubbleType: 連結吹き出し, 右上, Layout: 縦書き, Text: [原句]
 - 标点自动转译契约：
   - 「……」 ➔ 通常吹き出し
   - 「……！！」 ➔ 叫び吹き出し
@@ -293,9 +293,10 @@ ${gutterRule}
 - 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；旁白采用横排（Layout: 横書き）。
 - Text: 后直接跟台词原文，严禁外包任何引号或括号！Text: 内保留原句语言。
 
-5. 台词原句与对话落格契约：
+5. 台词原句、多气泡分行与对话落格契约：
 - 严格基于剧情正文中的真实台词提取，绝对禁止凭空捏造未发生的情节或虚构台词！
-- 长句停顿拆分：若角色的一句话很长且有自然停顿，在同一个 Text: 后用换行分隔（例如: Text: 那个……\\n明天你有空吗？）。
+- 同格多句换行拆分：同一人物在同一画格内若有 2 句连续台词，在同一个 Text: 后用换行（\n\n）分隔，引导 NAI 分割成两个独立气泡（例如: Text: 那个……\n\n明天你有空吗？）。
+- 气泡防挡脸与溢出：单句台词尽量控制在 25 字以内，若某段台词过长，必须按停顿在 Text: 中换行拆分为多气泡，或顺延拆入下一个画格！
 - 修辞转实体：小说正文里的比喻描写在视觉描述中转换为 Danbooru 实体标签，但 Text: 中的台词原文完整保留修辞。
 
 6. 拟声拟态词常用库 (SFX Guide)：
@@ -319,22 +320,23 @@ ${antiHijackRule}
 [JSON 输出字段映射规范 - 务必严格遵守 (Universal Komawari 规范)]
 在漫画模式下，系统输出的每一个分镜卡片（segment）对应一整页分格漫画：
 
-1. \`scene\` 字段（页面全局排版与环境）：
+1. \`scene\` 字段（页面全局排版、去重总人数与环境）：
    - 必须以完整的漫画页面排版词开头，格式为：
-     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
+     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), [本页可见去重总人数词如: 1girl / 2girls / 1boy, 1girl / no humans], manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
    - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
 
 2. \`characters\` 数组（逐画格演出槽位分配）：
    - 【核心铁律】：\`characters\` 数组中的每一项代表一个【独立画格 (Panel)】！数组长度必须严格等于本页规划的画格总数 N（例如规划了 3 panels，characters 数组必须恰好有 3 项：Panel 1、Panel 2、Panel 3）！
-   - 每一格的 \`action\` 字段必须以【画格面积与构图类型】开头：
-     * \`focal panel, medium shot\`（核心高潮主格，占据 35%~45% 大面积）
-     * \`reaction panel, close-up\`（对手/旁人反应特写格）
-     * \`small panel, looking down\`（局部动作/情绪转折小格）
-     * \`wide shot, distant view\`（远景空镜格）
-     * \`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（独立拟声词格）
+   - 每一格的 \`action\` 字段必须以【画格垂直物理方位 + 画格面积构图】严格开头：
+     * 第 1 格（顶部画格）：\`top panel, focal panel, medium shot\`（或 \`top panel, wide shot\` 等）
+     * 中间格（过渡/反应）：\`middle panel, reaction panel, close-up\`（或 \`middle panel, small panel, looking down\` 等）
+     * 末尾格（底部画格）：\`bottom panel, focal panel, close-up\`（或 \`bottom panel, dramatic angle\` 等）
+     * 独立拟声词/环境空镜格：\`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（或 \`wide shot, distant view, scenery\`）
+   - 【物理方位铁律】：每一格开头必须带有清晰的物理方位（top panel / middle panel / bottom panel），严禁省略方位词，以确保 NAI 空间分割严丝合缝、台词不串格！
    - 紧随构图词后写入本格出场主体的动作与姿势；
-   - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], Layout: 縦書き, Text: [台词原文]\`；若本格无台词则切勿添加 BubbleType 与 Text；
-   - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。若本格为环境格或拟声词格，base 与 outfit 写 \`solo\` 或留空；
+   - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [台词原文]\`；
+   - ⛔【静默格铁律】：若本格仅为动作反应、眼神对视、环境交代或沉思，切勿强行编造对白！无必要对白时，切勿添加 BubbleType 与 Text，保持画面留白与电影张力！
+   - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。⛔【环境与拟声词格铁律】：若本格为纯环境格、空镜格或独立拟声词格，base 与 outfit 必须全部留空（""）！绝对严禁写入 solo 或任何人物主体词，以防模型误画出人物！
    - center 统一填写 \`C3\`（排版由画格关键词控制，无需手动计算坐标）。`;
     }
 
@@ -538,7 +540,7 @@ ${antiHijackRule}
                         '$&, manga page layout, dynamic komawari'
                     );
                 } else {
-                    const layoutTag = isDoubleSpread ? 'wide spread' : 'vertical layout';
+                    const layoutTag = isDoubleSpread ? '見開きページ' : 'vertical layout';
                     const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
                     const gutterTag = gutterObj.tag;
                     v4Prompt.base_caption = `comic, 複数コマの漫画ページ, manga page layout, ${layoutTag}, ${gutterTag}, dynamic komawari, ${v4Prompt.base_caption}`;
@@ -2447,7 +2449,7 @@ ${antiHijackRule}
         const gutterTag = gutterObj.tag;
 
         const isDoubleSpread = studio.ratio === '1216x832';
-        const layoutTag = isDoubleSpread ? 'wide spread' : 'vertical layout';
+        const layoutTag = isDoubleSpread ? '見開きページ' : 'vertical layout';
         const panelCountTag = `${studio.panels.length}panels`;
 
         const baseParts = [
@@ -2463,9 +2465,18 @@ ${antiHijackRule}
         const isMonochrome = (styleKey === 'monochrome');
         let baseCaption = baseParts.join(', ');
 
-        const panelSegments = studio.panels.map((p) => {
+        const panelSegments = studio.panels.map((p, idx) => {
             const parts = [];
-            if (p.shot) parts.push(p.shot);
+            // 自动补全垂直方位词 (top panel, middle panel, bottom panel)
+            let shotStr = (p.shot || '').trim();
+            const total = studio.panels.length;
+            if (!/\b(?:top|upper|middle|bottom|lower)\s+panel\b/i.test(shotStr)) {
+                let posPrefix = 'middle panel';
+                if (idx === 0) posPrefix = 'top panel';
+                else if (idx === total - 1 && total > 1) posPrefix = 'bottom panel';
+                shotStr = shotStr ? `${posPrefix}, ${shotStr}` : posPrefix;
+            }
+            if (shotStr) parts.push(shotStr);
             if (p.tags) {
                 const tagStr = (p.tags || '').trim();
                 if (tagStr) parts.push(tagStr);
@@ -2478,13 +2489,16 @@ ${antiHijackRule}
                 const bType = p.bubbleType || 'speech';
                 const typeTag = resolveBubbleTypeTag(bType);
                 const layoutTag = resolveBubbleLayoutTag(p.bubbleLayout, bType);
+                let posTag = '右上';
+                if (bType === 'screaming' || bType === 'whisper' || bType === 'shiver') posTag = '口元';
+                else if (bType === 'offscreen') posTag = '画面外';
 
                 if (typeTag === '擬音, 吹き出しなし' || bType === 'sfx') {
                     parts.push('SFX: 擬音, 吹き出しなし');
                     parts.push(layoutTag);
                     parts.push(`Text: ${text}`);
                 } else {
-                    parts.push(`BubbleType: ${typeTag}`);
+                    parts.push(`BubbleType: ${typeTag}, ${posTag}`);
                     parts.push(layoutTag);
                     parts.push(`Text: ${text}`);
                 }
@@ -2535,10 +2549,10 @@ JSON 格式规范：
   "panels": [
     {
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
-      "shot": "景别机位英文（支持从以下专业漫画镜头中挑选最契合剧情的词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
-      "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词）",
+      "shot": "画格物理方位+景别机位英文（首格必须带 top panel, 中间格带 middle panel, 末格带 bottom panel，例如：top panel, wide establishing shot 或 bottom panel, close-up focus 等；可选镜头词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
+      "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
       "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
-      "bubbleText": "画格内角色台词、心声或旁白文字",
+      "bubbleText": "画格内角色台词、心声或旁白文字（⛔ 若为纯动作/眼神/反应静默格，请保持留白填写 \"\"，严禁无中生有脑补台词！若同一人物连续两句请用 \\n\\n 分隔，单句控制在 25 字以内）",
       "bubbleLayout": "vertical | horizontal"
     }
   ]

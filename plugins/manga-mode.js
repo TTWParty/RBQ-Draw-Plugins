@@ -2569,7 +2569,7 @@ JSON 格式规范：
     {
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
       "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順：先上段后下段，同段先右后左。主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成固定四格！每个格子必须不同大小，采用错位分隔、通栏、纵格或插入格。支持：top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长通栏；wide panel 横通栏；inset panel 角落插入格。紧随方位词挂载 focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
-      "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
+      "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词。修辞转实体：小说比喻转为具象动作神态Tag，严禁输出 like a beast 等比喻词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
       "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
       "bubbleText": "画格内角色台词、心声或旁白文字（⛔ 若为纯动作/眼神/反应静默格，请保持留白填写 \"\"，严禁无中生有脑补台词！若同一人物连续两句请用 \\n\\n 分隔，单句控制在 25 字以内）",
       "bubbleLayout": "vertical | horizontal"
@@ -2771,7 +2771,7 @@ JSON 格式规范：
 {
   "title": "画格简短标题（5-10字中文）",
   "shot": "景别机位英文（支持：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
-  "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词）",
+  "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词。修辞转实体：小说比喻转为具象动作神态Tag，严禁输出 like a beast 等比喻词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
   "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
   "bubbleText": "画格内角色台词或心声文字",
   "bubbleLayout": "vertical | horizontal"

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.15';
+        const VERSION = '1.4.16';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -259,10 +259,13 @@
    - 各分镜卡片之间焦点层次分明（如 分镜01 负责环境与初始互动，分镜02 负责冲突升级或局部特写，分镜03 负责情绪爆发或高潮定格）。
 
 [PAGE-LAYOUT-RULES]
-1. 页面形态与画格自适应规划（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR]）：
-   - 普通分格页：依据台本事件量、戏剧冲突与台词多寡自适应规划画格数。由 1 个占据主视觉重心的核心主画格，搭配若干辅助画格（展现对峙反应、局部特写、环境交代或拟声词），严禁套用固定死板框架！
-   - 普通分格页必须在 scene 字段明确写明总画格数与页面类型，例如: comic, 複数コマの漫画ページ, 4 panels（或 3 panels / 5 panels 等，依剧情实际画格数填写）, vertical layout, white border；
-   - 若遇到宏大决战、广阔天地或全景展示，且剧情需要整页仅一格时，可规划为单格大画幅（splash page, 単一コマ）或横向跨页（見開きページ / double-page spread）。
+1. 页面形态与画格自适应规划（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR] 条目 35）：
+   - 日式漫画阅读动线（右開き・右綴じ）：先上段后下段，同段先右后左！panel 编号 = 読み順（panel 1 是读者最先读到的完整画格）。
+   - ⛔【严禁套用死板三段式】：禁止将每页机械均分为三等分横条或四等分网格！必须根据戏剧节奏、动作冲击与台词容量，自适应规划不对称、主次分明的画格形态：
+     * 普通分格页确定 1 个面积最大、视觉冲击最强的核心主画格（focal panel，占用 35%~50% 面积，不必等于 panel 1，可位于顶端、中间、底部或左侧），其余分配辅助画格；
+     * 辅助画格按信息量自适应安排为并排小格、反应格、竖长格或通栏格；
+     * 若遇到宏大决战、广阔天地或全景展示，且剧情需要整页仅一格时，规划为单格大画幅（splash page, 単一コマ）或横向跨页（見開きページ / double-page spread）。
+   - 普通分格页必须在 scene 字段明确写明总画格数与排版词，例如: comic, 複数コマの漫画ページ, 4 panels (依剧情实际画格数填写), manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [环境描述]；
 
 2. 镜头文法与构图机位：
 ${grammarObj.instruction}
@@ -326,13 +329,22 @@ ${antiHijackRule}
    - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
 
 2. \`characters\` 数组（逐画格演出槽位分配）：
-   - 【核心铁律】：\`characters\` 数组中的每一项代表一个【独立画格 (Panel)】！数组长度必须严格等于本页规划的画格总数 N（例如规划了 3 panels，characters 数组必须恰好有 3 项：Panel 1、Panel 2、Panel 3）！
-   - 每一格的 \`action\` 字段必须以【画格垂直物理方位 + 画格面积构图】严格开头：
-     * 第 1 格（顶部画格）：\`top panel, focal panel, medium shot\`（或 \`top panel, wide shot\` 等）
-     * 中间格（过渡/反应）：\`middle panel, reaction panel, close-up\`（或 \`middle panel, small panel, looking down\` 等）
-     * 末尾格（底部画格）：\`bottom panel, focal panel, close-up\`（或 \`bottom panel, dramatic angle\` 等）
-     * 独立拟声词/环境空镜格：\`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（或 \`wide shot, distant view, scenery\`）
-   - 【物理方位铁律】：每一格开头必须带有清晰的物理方位（top panel / middle panel / bottom panel），严禁省略方位词，以确保 NAI 空间分割严丝合缝、台词不串格！
+   - 【核心铁律】：\`characters\` 数组中的每一项代表一个【独立画格 (Panel)】！数组长度必须严格等于本页规划的画格总数 N（例如规划了 4 panels，characters 数组必须恰好有 4 项：Panel 1、Panel 2、Panel 3、Panel 4）！
+   - 每一格的 \`action\` 字段必须以【本页唯一可辨的版面方位 + 构图大小/功能】严格开头（来自原版 v1.1 条目 35 & 57）：
+     * ① 单列通栏段位：
+       - 顶部整行：\`top panel, focal panel, medium shot\` 或 \`top panel, wide shot, establishing shot\`
+       - 中部整行：\`middle panel, reaction panel, close-up\`
+       - 底部整行：\`bottom panel, focal panel, dramatic angle\` 或 \`bottom panel, wide panel\`
+     * ② 同层双列并排格（遵循日漫先右后左阅读动线）：
+       - 上段并排：\`top-right panel, focal panel, medium shot\`（右上·先读） / \`top-left panel, reaction panel, close-up\`（左上·后读）
+       - 中段并排：\`middle-right panel, reaction panel, close-up\`（中右·先发生） / \`middle-left panel, small panel, looking down\`（中左·后发生）
+       - 底段并排：\`bottom-right panel, small panel\`（右下·先读） / \`bottom-left panel, focal panel, close-up\`（左下·全页收束）
+     * ③ 特殊形态构性格：
+       - \`left vertical panel, focal panel, full body\`（左侧纵向贯穿长格，用于全身立绘/拔刀/高空跃下）
+       - \`wide panel, wide shot, scenery\`（横向通栏大景深格）
+       - \`inset panel, small panel, extreme close-up on eyes\`（嵌在大画格角落的表现瞳孔震颤/局部特写的小叠格）
+       - \`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（独立拟声词格）
+   - 【版面方位铁律】：每一格开头必须带有清晰可辨的版面方位词（top-right panel, middle-left panel, left vertical panel, bottom panel, inset panel 等），严禁省略方位词，以确保 NAI 空间分割严丝合缝、阅读动线与台词绝不串格！
    - 紧随构图词后写入本格出场主体的动作与姿势；
    - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [台词原文]\`；
    - ⛔【静默格铁律】：若本格仅为动作反应、眼神对视、环境交代或沉思，切勿强行编造对白！无必要对白时，切勿添加 BubbleType 与 Text，保持画面留白与电影张力！
@@ -2467,10 +2479,10 @@ ${antiHijackRule}
 
         const panelSegments = studio.panels.map((p, idx) => {
             const parts = [];
-            // 自动补全垂直方位词 (top panel, middle panel, bottom panel)
+            // 自动补全版面方位词（若未显式指定方位词时，按日漫顺序兜底补全）
             let shotStr = (p.shot || '').trim();
             const total = studio.panels.length;
-            if (!/\b(?:top|upper|middle|bottom|lower)\s+panel\b/i.test(shotStr)) {
+            if (!/\b(?:top(?:-right|-left)?|upper|middle(?:-right|-left)?|bottom(?:-right|-left)?|lower|left|right|vertical|wide|inset)\s+panel\b/i.test(shotStr)) {
                 let posPrefix = 'middle panel';
                 if (idx === 0) posPrefix = 'top panel';
                 else if (idx === total - 1 && total > 1) posPrefix = 'bottom panel';
@@ -2549,7 +2561,7 @@ JSON 格式规范：
   "panels": [
     {
       "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
-      "shot": "画格物理方位+景别机位英文（首格必须带 top panel, 中间格带 middle panel, 末格带 bottom panel，例如：top panel, wide establishing shot 或 bottom panel, close-up focus 等；可选镜头词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
+      "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順：先上段后下段，同段先右后左。严禁死板套用单列三段式！支持：top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长通栏；wide panel 横通栏；inset panel 角落插入格。紧随方位词挂载 focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
       "tags": "该画格专属英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要包含画风词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
       "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
       "bubbleText": "画格内角色台词、心声或旁白文字（⛔ 若为纯动作/眼神/反应静默格，请保持留白填写 \"\"，严禁无中生有脑补台词！若同一人物连续两句请用 \\n\\n 分隔，单句控制在 25 字以内）",

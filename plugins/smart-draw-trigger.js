@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.68';
+    const PLUGIN_VERSION = '6.0.69';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9434,7 +9434,7 @@ SCHEMA:
     function getEnhancedContextPayload(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
-            v_manga: "DYNAMIC EVENT-DRIVEN MANGA PACING & KOMAWARI DIRECTOR (v1.1 [33][20][57]): Execute manga director 5-step storyboard reasoning before output: ① Script-to-Comic Pacing: divide currentMessage into consecutive event units (U1, U2, U3...), evaluate dramatic capacity to dynamically decide page count (1~2 pages for concise scenes, 3~6 for complex arcs/battles, 0 for idle talk); ② Verbatim Anchor Lock: quote 10~40 exact chars from currentMessage for each page's anchor.text; ③ Intra-Page Komawari Beats: design 3~5 panels per page, determine 1 primary focal panel (maximum dramatic weight & canvas area) with 2~3 supporting reaction/establishing/SFX panels; ④ Vertical Spatial Flow: top panel -> middle panel -> bottom panel with shot progression (close-up/medium/wide/dynamic); ⑤ Panel-to-Panel Continuity & Dialogue Choreography: maintain L0 character DNA, propagate L2 transient states (sweat/blush/tears/battle damage), map dialogue bubbles to panels with physical positions (右上/左上/口元/画面外) while preserving silent panels without fake dialogue.",
+            v_manga: "DYNAMIC EVENT-DRIVEN MANGA PACING & UNIVERSAL KOMAWARI DIRECTOR (v1.1 [33][35][57]): Execute manga director 5-step storyboard reasoning before output: ① Script-to-Comic Pacing: divide currentMessage into consecutive event units (U1, U2, U3...), evaluate dramatic capacity to dynamically decide page count (1~2 pages for concise scenes, 3~6 for complex arcs/battles, 0 for idle talk); ② Verbatim Anchor Lock: quote 10~40 exact chars from currentMessage for each page's anchor.text; ③ Intra-Page Komawari Beats: design 3~5 panels per page, determine 1 primary focal panel (occupying 35%~50% area, dramatic climax, does NOT have to be panel 1) with 2~3 supporting reaction/establishing/SFX panels, each panel MUST have a different size and shape, strictly forbid rigid 3-tier or fixed 4-koma; ④ Universal Komawari Spatial Flow: Japanese reading order (top-to-bottom, right-to-left within tier); each panel action MUST start with a unique spatial anchor (top/middle/bottom wide banners, side-by-side tiers: top-right/top-left, middle-right/middle-left, bottom-right/bottom-left, vertical strips: left vertical panel, or inset panels) with dynamic shot progression; ⑤ Panel-to-Panel Continuity & Dialogue Choreography: maintain L0 character DNA, propagate L2 transient states (sweat/blush/tears/battle damage), map dialogue bubbles to panels with physical positions (右上/左上/口元/画面外) while preserving silent panels without fake dialogue.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
@@ -9445,7 +9445,7 @@ SCHEMA:
     function getEnhancedContextSystemPrompt(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
-            v_manga: `【原版 v1.1 动态事件驱动漫画导演分镜推演 (条目33 & 条目20 & 条目57)】
+            v_manga: `【原版 v1.1 动态事件驱动漫画导演分镜推演 (条目33 & 条目35 & 条目57)】
 在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行专业漫画导演五步分镜推演：
 
 ①【台本段落切分与动态页数决策 (SCRIPT-TO-COMIC & DYNAMIC PAGES)】：
@@ -9459,17 +9459,27 @@ SCHEMA:
 - 精准逐字正文锚点（VERBATIM ANCHOR LOCK）：每一页作为一个独立 segment 填入 segments 数组，label 规范如 "Page 1: [5~15字剧情小标题]"；anchor.text 必须 100% 从该页对应 U 段落中一字不差地摘录 10~40 字逐字正文原文！确保漫画卡片精准落位于事件发生的实际位置下方。
 
 ②【单页画格戏剧结构推演 (INTRA-PAGE KOMAWARI BEAT BREAKDOWN)】：
-- 依据剧情容量自适应规划单页画格数 N（通常 3~5 panels；仅宏大决战/广阔全景才用单格 splash page 或 見開きページ）：
-  * 核心高潮主格（focal panel）：推演本页最具戏剧张力、最大视觉冲击或动作爆发的一格，赋予其最大视觉重心（focal panel）；
-  * 辅助画格（reaction / small / SFX panel）：规划 2~3 个辅助格，分别用于环境交代（wide shot）、情绪反应（reaction panel / close-up）或拟声词（SFX panel）；
+- 依据剧情容量自适应规划单页画格数 N（通常 3~5 panels；仅宏大决战/广阔全景才用整页单格 splash page 或 横向跨页 見開きページ）：
+  * 核心高潮主格（focal panel）：推演本页最具戏剧张力、最大视觉冲击或动作爆发的一格，赋予其最大视觉重心（focal panel，占用 35%~50% 面积，不必等于 panel 1，可位于顶端、中间、底部或左侧），其余分配辅助画格；
+  * 每个格子必须不同大小！辅助画格按信息量自适应安排为并排小格、反应格、竖长格或通栏格，严禁套用固定四格，绝严禁死板套用单列三段式！
   * 【1:1 画格槽位铁律】：规划了 N panels，下方 characters 数组必须严格填入 N 个画格槽位（Panel 1, Panel 2... Panel N），严禁漏格或多格！
 
-③【垂直物理方位与视线流向推演 (VERTICAL SPATIAL FLOW & SHOT MATRIX)】：
-- 垂直物理方位严格顺应视线流：
-  * 第 1 格（顶部）：必须以 top panel 开头（如 top panel, focal panel, medium shot 或 top panel, wide shot）；
-  * 中间格（过渡/反应）：必须以 middle panel 开头（如 middle panel, reaction panel, close-up）；
-  * 末尾格（底部）：必须以 bottom panel 开头（如 bottom panel, focal panel, dramatic angle 或 bottom panel, close-up）；
-- 镜头景别递进：灵活穿插 close-up, bust shot, cowboy shot, wide shot, dynamic angle, from above, from below，严禁全页单一雷同机位！
+③【映画分镜版面方位与日漫阅读动线推演 (UNIVERSAL KOMAWARI SPATIAL FLOW)】：
+- 遵循日式漫画の読み順（右開き・右綴じ）：先上段后下段，同段先右后左！为每格确定一个本页内唯一可辨的「版面方位＋构图大小/功能」开头：
+  * ① 单列通栏段位：
+    - 顶部通栏：top panel, focal panel, medium shot 或 top panel, wide shot, establishing shot
+    - 中部通栏：middle panel, reaction panel, close-up
+    - 底部通栏：bottom panel, focal panel, dramatic angle 或 bottom panel, wide panel
+  * ② 同层双列并排格（右侧先读，左侧后读）：
+    - 上段并排：top-right panel, focal panel, medium shot（右上·先读） / top-left panel, reaction panel, close-up（左上·后读）
+    - 中段并排：middle-right panel, reaction panel, close-up（中右·先发生） / middle-left panel, small panel, looking down（中左·后发生）
+    - 底段并排：bottom-right panel, small panel（右下·先读） / bottom-left panel, focal panel, close-up（左下·全页收束）
+  * ③ 特殊形态构性格：
+    - left vertical panel, focal panel, full body（左侧纵向贯穿长格，用于全身立绘/拔刀/高空跃下）
+    - wide panel, wide shot, scenery（横向通栏大景深格）
+    - inset panel, small panel, extreme close-up on eyes（嵌在大格角落的特写插格）
+    - small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]（独立拟声词格）
+- 镜头景别与机位递进：灵活穿插 close-up, bust shot, cowboy shot, wide shot, dynamic angle, from above, from below, fisheye lens, foreshortening，严禁全页单一雷同机位！
 
 ④【格间角色一致性与瞬态状态机 (PANEL-TO-PANEL L0~L2 CONTINUITY)】：
 - L0 角色固定外貌 DNA 跨格锁定：同人角色出场必须在每格的 base 中保留官方完整标识标签与固定外貌（发型发色瞳色）；原创角色保持细节丰满与辨识度；严禁同一人物在第 1 格与第 2 格特征串味或长相突变；
@@ -9553,7 +9563,7 @@ SCHEMA:
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
             } : (store.enhancedContext === 'v_manga' || store._mangaActive) ? {
-                segmentInstruction: `【漫画导演·动态事件驱动分页与分格契约（原版 v1.1 条目33 & 20 & 57）】：当前已开启漫画导演全息戏剧推演！\n你的核心使命是将当前消息（currentMessage）转译为具备原生日漫质感的分格漫画（Page 1, Page 2...）：\n①【段落划分与动态页数（U1~Un）】：将 currentMessage 顺着时间线划分为连续事件单元（U1、U2、U3...）。依戏剧节拍自适应决定生成页数——情节紧凑规划 1~2 页；情节丰富、转场激烈规划 2~4 页；激烈长篇决战规划 3~6 页；无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点】：每一页（segment）必须从对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，保证漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格（Komawari）与核心主格（focal panel）】：每一页自适应规划 3~5 个画格。必须明确 1 个核心高潮主格（focal panel）与 2~3 个辅助过渡格；characters 数组的长度必须严格等于本页规划的画格总数 N（每个 item 对应 1 个 Panel）；\n④【物理方位与视线流向】：每一格 action 必须以垂直物理方位开头（top panel / middle panel / bottom panel），严禁省略方位词；\n⑤【台词落格与静默格】：正文台词拆分为自然气泡，挂在对应画格末尾（带右上/左上/口元等格内位置）；纯动作与环境格保持静默格（无台词）；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
+                segmentInstruction: `【漫画导演·动态事件驱动分页与分格契约（原版 v1.1 条目33 & 35 & 57）】：当前已开启漫画导演全息戏剧推演！\n你的核心使命是将当前消息（currentMessage）转译为具备原生日漫质感的分格漫画（Page 1, Page 2...）：\n①【段落划分与动态页数（U1~Un）】：将 currentMessage 顺着时间线划分为连续事件单元（U1、U2、U3...）。依戏剧节拍自适应决定生成页数——情节紧凑规划 1~2 页；情节丰富、转场激烈规划 2~4 页；激烈长篇决战规划 3~6 页；无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点】：每一页（segment）必须从对应段落中一字不差地精准摘录 10~40 字正文原文填入 anchor.text，label 标注为「Page 1: 标题」等，保证漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格（Komawari）与核心主格（focal panel）】：每一页自适应规划 3~5 个画格。必须明确 1 个核心高潮主格（focal panel，占用35%~50%面积，不必等于 panel 1）与 2~3 个辅助过渡格。各格大小互不相同，严禁死板套用固定四格，绝严禁死板套用单列三段式！characters 数组长度严格等于规划的画格总数 N（每个 item 对应 1 个 Panel）；\n④【映画分镜版面方位与日漫阅读动线】：遵循日漫読み順（先上段后下段，同段先右后左）。每一格 action 必须以本页唯一可辨的版面方位词严格开头（支持 top panel / middle panel / bottom panel 单列通栏；top-right panel / top-left panel、middle-right panel / middle-left panel、bottom-right panel / bottom-left panel 并排双格；left vertical panel 竖长长格；wide panel 横通栏；inset panel 插入叠格等），严禁省略方位词；\n⑤【台词落格与静默格】：正文台词拆分为自然气泡，挂在对应画格末尾（带右上/左上/口元等格内位置）；纯动作与环境格保持静默格（无台词）；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层！`
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
                 segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
@@ -9562,31 +9572,39 @@ SCHEMA:
             ...getEnhancedContextPayload(store.enhancedContext),
             outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
                 shouldDraw: 'boolean',
-                reason: 'string (五步漫画导演推演：①台本段落切分与动态页数决策 ②各页画格Komawari与核心主格focal panel规划 ③垂直机位流向top/middle/bottom ④格间L0/L2角色一致性与瞬态流转 ⑤台词落格与静默格节奏分析)',
+                reason: 'string (五步漫画导演推演：①台本段落切分与动态页数决策 ②单页画格Komawari与核心主格focal panel规划 ③版面方位与日漫阅读动线top-right/middle-left/left vertical/wide panel等 ④格间L0/L2角色一致性与瞬态流转 ⑤台词落格与静默格节奏分析)',
                 segments: [
                     {
                         label: 'string (如 Page 1: 5~15字剧情小标题)',
                         anchor: { text: 'string exact copy from currentMessage (该页剧情对应段落10~40字逐字原文，用于漫画卡片精准落位)' },
-                        scene: 'string (页面排版与环境必须以漫画词开头: comic, 複数コマの漫画ページ, 3 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, classroom, sunset lighting)',
+                        scene: 'string (页面排版与环境必须以漫画词开头: comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, classroom, sunset lighting)',
                         characters: [
                             {
-                                name: 'Panel 1 (顶部主格/交代格)',
+                                name: 'Panel 1 (顶部横通栏远景/交代格)',
                                 base: 'string (角色固定外貌DNA标签；若为纯环境/空镜/拟声词格则留空 "")',
                                 outfit: 'string (本格服装；若为纯环境/空镜/拟声词格则留空 "")',
-                                action: 'string (必须以物理方位+画格类型开头，如: top panel, focal panel, medium shot, standing, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文)',
+                                action: 'string (必须以版面方位+画格类型开头，如: top panel, wide establishing shot, looking outside, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文)',
                                 center: 'C3',
                                 uc: 'string (本格差分负面特征词)'
                             },
                             {
-                                name: 'Panel 2 (中间过渡/反应格/静默格)',
+                                name: 'Panel 2 (中段右侧中景动作·先读)',
                                 base: 'string (继承同一角色固定外貌标签)',
                                 outfit: 'string (继承同一服装)',
-                                action: 'string (如: middle panel, reaction panel, close-up, blush, looking away, no dialogue)',
+                                action: 'string (如: middle-right panel, medium shot, reaching hand, BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: 台词)',
                                 center: 'C3',
                                 uc: 'string'
                             },
                             {
-                                name: 'Panel 3 (底部高潮格/动作爆发)',
+                                name: 'Panel 3 (中段左侧特写反应·后读·静默格)',
+                                base: 'string (继承同一角色固定外貌标签)',
+                                outfit: 'string (继承同一服装)',
+                                action: 'string (如: middle-left panel, small panel, reaction panel, close-up, blush, looking away, no dialogue)',
+                                center: 'C3',
+                                uc: 'string'
+                            },
+                            {
+                                name: 'Panel 4 (底部核心高潮主格/动作爆发)',
                                 base: 'string (角色固定外貌标签)',
                                 outfit: 'string (服装标签)',
                                 action: 'string (如: bottom panel, focal panel, dramatic angle, dynamic pose, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: 爆发台词)',
@@ -14187,15 +14205,16 @@ SCHEMA:
                 ...getEnhancedContextPayload(store.enhancedContext),
                 outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
                     shouldDraw: 'boolean',
-                    reason: 'string (五步漫画导演推演)',
+                    reason: 'string (五步漫画导演推演：①台本段落与页数 ②画格Komawari与主格 ③版面方位与阅读动线 ④角色一致性 ⑤台词与静默格)',
                     segments: [{
                         label: 'string (如 Page 1: 剧情标题)',
                         anchor: { text: 'string' },
-                        scene: 'string (comic, 複数コマの漫画ページ, 3 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, [环境])',
+                        scene: 'string (comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, [环境])',
                         characters: [
-                            { name: 'Panel 1', base: 'string', outfit: 'string', action: 'top panel, focal panel, medium shot, [动作], BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
-                            { name: 'Panel 2', base: 'string', outfit: 'string', action: 'middle panel, reaction panel, close-up, no dialogue', center: 'C3', uc: 'string' },
-                            { name: 'Panel 3', base: 'string', outfit: 'string', action: 'bottom panel, focal panel, dramatic angle, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' }
+                            { name: 'Panel 1 (顶部横通栏远景/交代格)', base: 'string', outfit: 'string', action: 'top panel, wide establishing shot, [动作], BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
+                            { name: 'Panel 2 (中段右侧中景动作·先读)', base: 'string', outfit: 'string', action: 'middle-right panel, medium shot, [动作], BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
+                            { name: 'Panel 3 (中段左侧特写反应·后读·静默格)', base: 'string', outfit: 'string', action: 'middle-left panel, small panel, reaction panel, close-up, no dialogue', center: 'C3', uc: 'string' },
+                            { name: 'Panel 4 (底部核心高潮主格/动作爆发)', base: 'string', outfit: 'string', action: 'bottom panel, focal panel, dramatic angle, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' }
                         ]
                     }]
                 } : {

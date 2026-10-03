@@ -193,6 +193,48 @@ test('Studio silent and speaking pages have identical slot counts and unique def
     assert.match(p.parameters.v4_prompt.caption.char_captions[0].char_caption, /Text: no text \| keep this$/);
     manga.setStudioRequest(null);
 });
+test('Studio counts unique explicit subjects across crops, without reading action targets or dialogue', () => {
+    const store = settings._mangaMode, previous = store.studio.panels;
+    try {
+        store.studio.panels = [
+            { characters: [
+                { character_id: 'C1', positive: '1.2::girl::, holding book', negative: '' },
+                { character_id: 'C2', positive: 'boy, looking at girl, Text: woman', negative: '' }
+            ] },
+            { characters: [{ character_id: 'C1', positive: 'hands, holding book', negative: '' }] }
+        ];
+        let page = manga.buildStudioPage(store);
+        assert.match(page.page.base, /1girl, 1boy/);
+        assert.doesNotMatch(page.page.base, /2girls|other/);
+        assert.equal(manga.compileMangaPage(page).characters.length, 3);
+        store.studio.panels[1].characters[0].positive = 'boy, hands';
+        assert.doesNotMatch(manga.buildStudioPage(store).page.base, /\d+(?:girl|boy|other)/, 'conflicting identity must not manufacture a count');
+        store.studio.panels = [{ characters: [{ character_id: 'C3', positive: 'looking at girl, Text: boy', negative: '' }] }];
+        assert.doesNotMatch(manga.buildStudioPage(store).page.base, /\d+(?:girl|boy|other)|no humans/);
+        store.studio.panels = [{ characters: [] }];
+        assert.match(manga.buildStudioPage(store).page.base, /no humans/);
+    } finally { store.studio.panels = previous; }
+});
+test('tool schema exposes optional manual positioning and compiler accepts page-edge coordinates', () => {
+    const schema = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters.properties.segments.items;
+    assert.deepEqual(json(schema.properties.position_mode.enum), ['auto', 'manual']);
+    assert.ok(!schema.required.includes('position_mode'));
+    const slot = schema.properties.panels.items.properties.characters.items;
+    assert.equal(slot.properties.center.properties.x.minimum, 0);
+    assert.equal(slot.properties.center.properties.y.maximum, 1);
+    assert.ok(!slot.required.includes('center'));
+    schema.required.push('mutated-test');
+    assert.ok(!sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters.properties.segments.items.required.includes('mutated-test'));
+    const page = fixture(); page.position_mode = 'manual';
+    page.panels.forEach(p => p.characters.forEach(c => { c.center = { x: 0, y: 1 }; }));
+    const compiled = manga.compileMangaPage(page);
+    assert.equal(compiled.useCoords, true);
+    assert.deepEqual(json(compiled.characters[0].center), { x: 0, y: 1 });
+    page.panels[0].characters[0].center.x = -0.1;
+    assert.throws(() => manga.compileMangaPage(page), /坐标/);
+    delete page.position_mode;
+    assert.equal(manga.compileMangaPage(page).useCoords, false);
+});
 test('legacy Studio drafts preserve content without inventing people; one-panel pages use splash', () => {
     const store = settings._mangaMode;
     store.studio.panels = [{ tags: 'empty classroom', shot: 'wide shot', bubbleType: 'sfx', bubbleText: '咔哒' }];

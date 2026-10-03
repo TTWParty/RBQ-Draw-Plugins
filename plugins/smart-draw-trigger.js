@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.2.7';
+    const PLUGIN_VERSION = '6.2.8';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2774,7 +2774,7 @@ base 不含衣物、动作、表情、手持物、构图、画风或对白；out
             return `【漫画角色记忆】
 以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。按镜头可见范围使用已有外貌，剧情变化优先；特写不要强塞画外服装。
 本次同时输出 character_memory 数组，每人最多一项 {name,base,outfit}，不另发请求。只提交出镜且需要首次建档、补全空白资料或更新衣着的人物；无更新写 []。
-base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；原创姓名不作标签，同人可保留可靠角色标签。新人物没有明示外貌时可做克制且一致的视觉设定；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留。
+base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；原创姓名不作标签，同人可保留可靠角色标签。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
 outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
 ${getCharacterMemoryTagSpecification()}

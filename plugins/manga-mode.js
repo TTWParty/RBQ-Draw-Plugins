@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.6.3';
+        const VERSION = '1.6.4';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -64,7 +64,7 @@
         RBQ.api.saveSettings();
     }
 
-    // ── 2. Built-in Comic Art Styles (100% 对齐原版 v1.1.json 条目 64 与 63) ──
+    // ── 2. Built-in Comic Art Styles (基于原版 v1.1.json 条目 64 与 63，含兼容负面词) ──
     const COMIC_STYLES = {
         monochrome: {
             name: '黑白 (画风-黑白)',
@@ -95,7 +95,7 @@
 依据台本事件量自适应规划画格，普通分格页由 1 个核心主画格与若干辅助画格组成：
 - 设置一个占据优势视觉面积的核心主画格（呈现主冲突或高潮时刻）；
 - 搭配辅助画格（展现对峙角色反应、局部特写、环境交代或拟声词）；
-- 景别层次丰富：远景交代空间（wide shot, establishing shot），中景呈现互动（medium shot, cowboy shot），近景/特写捕捉微表情与眼神光（close-up, looking at viewer）；
+- 景别层次丰富：远景交代空间（wide shot, establishing shot），中景呈现互动（medium shot, cowboy shot），近景/特写捕捉微表情与眼神光（close-up, face focus）；
 - 视平线、俯角与仰角结合剧情动态切换（from above, from below, dutch angle）。`
         },
         '4koma': {
@@ -103,17 +103,17 @@
             instruction: `[SHOT-GRAMMAR: 4-KOMA]
 经典四格分镜规范：
 - 严格遵循“起、承、转、结”四阶梯垂直等宽等距排布（4 panels, vertical layout）；
-- 前两格平稳铺垫情境与对话，第三格突发转折，第四格引爆反差包袱或搞笑落点；
+- 四格按正文先后承接铺垫、推进、变化和收束；原文没有转折或笑点时，不凭空制造；
 - 画格方正均等，画面重心清晰平衡。`
         },
         shonen: {
             name: '少年热血 (Shonen Action)',
             instruction: `[SHOT-GRAMMAR: SHONEN-ACTION]
 少年热血漫画分镜文法（Jump系/热血动作风格）：
-- 核心动势格显著扩大，大通栏或斜切大格占用半页以上空间；
+- 有关键动作时扩大动势格，可用通栏或斜切大格；静态对话按信息量排版；
 - 冲突升级时可采用不规则斜切边框（slanted panels）；静态交代和反应格保持清晰，不为文法强行增加画格；
-- 视线激烈跳跃，动作与冲击力优先，大量运用速度线与透视缩短（speed lines, foreshortening, dynamic angle, bold action）；
-- 人物动作与拳脚突破画格边界。`
+- 根据实际动作采用速度线与透视缩短（speed lines, foreshortening, dynamic angle），静态镜头不加无依据的运动效果；
+- 冲击瞬间可突破画格边界，人物接触关系保持清晰。`
         },
         mystery: {
             name: '悬疑推理 (Mystery & Suspense)',
@@ -121,33 +121,33 @@
 青年悬疑推理分镜文法（死亡笔记/Monster风格）：
 - 采用宽画幅横向长视线格（widescreen panel）；
 - 节奏凝重克制，强调压迫感与时间拉长感；
-- 多层级微表情、眼神阴影特写（shadow over eyes, intense stare, extreme close-up）；
-- 穿插关键证物道具与视线错落特写，营造屏息推理氛围。`
+- 依据原有神态选择微表情或眼神特写（extreme close-up），不为制造悬疑改变照明和态度；
+- 仅对正文已有的线索、证物或观察动作安排特写，不凭空添加证据。`
         },
         shojo: {
             name: '恋爱少女 (Shojo Romance)',
             instruction: `[SHOT-GRAMMAR: SHOJO-ROMANCE]
 精致装饰系少女漫分镜文法（CLAMP/少女漫经典风格）：
-- 注重情感流动与心动瞬间，多用竖向全身长构图（vertical full body panel）；
-- 强调发丝流动（flowing hair）、服饰材质与姿态优雅感；
-- 格间穿插散落花瓣（falling flower petals）、柔光光斑（bokeh, light particles）与唯美光影；
-- 双人视线交错与大面积心理独白特写，格与格边界柔化。`
+- 根据原有情绪选择表情特写或竖向构图，不强制全身、心动或对视；
+- 保留发型结构、服饰材质与实际姿态，不因文法改变外貌；
+- 可用装饰花纹、光斑和柔化边框表达已有情绪；装饰不变成场景中实际存在的花朵；
+- 心声特写只承载原文已有内容。`
         },
         daily: {
             name: '轻松日常 (Slice of Life)',
             instruction: `[SHOT-GRAMMAR: SLICE-OF-LIFE]
 轻松日常系分镜文法（四叶妹妹/高木同学风格）：
 - 规整横读格为主，间距宽松均匀，阅读节奏轻快无压力；
-- 经典“铺垫 ➔ 铺垫 ➔ 反应落差”的松弛三拍节拍；
-- 角色颜芸神态（funny face, expressive, comical reaction）与眼神互动为核心视觉锚点；
-- 边界清晰稳定，突出温馨陪伴感。`
+- 节奏随原有日常互动推进，允许平静收束，不强制反应落差；
+- 表情与眼神对应正文，不统一添加颜艺或笑容；
+- 边界清晰稳定，突出可读性与生活细节。`
         },
         comedy: {
             name: '喜剧搞笑 (Comedy & Gag)',
             instruction: `[SHOT-GRAMMAR: COMEDY-GAG]
 爆笑喜剧日常分镜文法（月刊少女野崎君式）：
 - 方正规整画格服务于喜剧包袱节奏，吐槽链条紧凑；
-- 正常脸与崩溃崩颜（chibi gag, blank eyes, sweatdrop, exaggerated expression）快速切换制造落差笑点；
+- 仅在原文已有夸张反应时使用 exaggerated expression 或 sweatdrop，不强制变成 Q 版或制造笑点；
 - 背景极简或留白，视觉重心全部聚焦于人物肢体互动与滑稽吐槽。`
         },
         ecchi: {
@@ -164,13 +164,13 @@
     const COMIC_GRAMMARS = GRAMMAR_PRESETS;
 
     const GRAMMAR_TAGS = {
-        cinema: 'cinematic composition, dynamic angles',
+        cinema: 'cinematic composition',
         '4koma': '4koma, 4 panels, yonkoma',
-        shonen: 'shonen manga, dynamic action, speed lines',
-        mystery: 'seinen, suspense, dramatic shadows, tension',
-        shojo: 'shojo manga, romantic atmosphere, expressive eyes',
+        shonen: 'shonen manga',
+        mystery: 'seinen, suspense',
+        shojo: 'shojo manga',
         daily: 'slice of life, daily scene, relaxed composition',
-        comedy: 'comedy, gag manga, exaggerated expression',
+        comedy: 'comedy, gag manga',
         ecchi: 'sensual manga, body contour framing'
     };
 
@@ -179,13 +179,13 @@
             name: '天地出血 (Top-Bottom Bleed)',
             tag: 'top-bottom bleed, narrow gutters',
             instruction: `[GUTTER-BLEED: TOP-BOTTOM-BLEED]
-天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。`
+天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。同一时段格间紧凑，明确时间跳跃可适当加宽；回忆格可用黑色格外底区标识，不改变场景本身照明。`
         },
         framed: {
             name: '全封闭白边内枠 (Fully-Framed)',
             tag: 'white border, fully framed panels',
             instruction: `[GUTTER-BLEED: FULLY-FRAMED]
-全封闭内枠：四周带经典漫画白边框架，格与格之间边界清晰分明。`
+全封闭内枠：四周带经典漫画白边框架，格与格之间边界清晰分明；回忆可用该格外部黑底区别，不把回忆场景自动画暗。`
         },
         splash: {
             name: '沉浸全出血 (Immersive-Splash)',
@@ -210,6 +210,7 @@
             properties: {
                 format: { type: 'string', enum: ['nai5-comic'] },
                 label: string,
+                position_mode: { type: 'string', enum: ['auto', 'manual'], description: 'Optional; defaults to auto. Use manual only with explicit centers for every visible appearance.' },
                 intent: { type: 'string', description: '可选；一句话说明本页主画面' },
                 anchor: { type: 'object', properties: { text: string }, required: ['text'] },
                 page: {
@@ -231,7 +232,8 @@
                                     type: 'object', properties: {
                                         character_id: string, name: string,
                                         positive: { type: 'string', description: 'Comma-separated tags: panel position, visible identity/clothes, pose, limb action with object/contact, expression/gaze. Brief English relations only as needed. BubbleType/location/Layout BEFORE one final Text:; actual speech only after it.' },
-                                        negative: string
+                                        negative: string,
+                                        center: { type: 'object', properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 } }, required: ['x', 'y'], description: 'Required only in manual mode; normalized position on the entire page, not inside the panel.' }
                                     }, required: ['character_id', 'positive', 'negative']
                                 }
                             }
@@ -375,7 +377,7 @@
 普通页用 comic, 複数コマの漫画ページ；决定性瞬间可用 splash page, 単一コマ；确需横向空间才用 見開きページ。单格页只有一个 panel。画格数由叙事需要决定，不设统一的3~5格下限。
 
 【画格与阅读路径】
-日漫顺序：先上后下，同层先右后左。逐格确定可辨的位置、大小、景别和一个定格时刻；P1/C1 仅为关联编号，不能代替空间词。description 与该格所有人物 positive 使用一致的位置称呼。
+panels 数组就是阅读顺序：先上后下，同层先右后左；主格不一定是首格。独立时刻或机位的插入格计入格数，page.base 格数须与数组一致。逐格确定可辨的位置、大小、景别和一个定格时刻；P1/C1 仅为关联编号，不能代替空间词。description 与该格所有人物 positive 使用一致的位置称呼。
 ${store.grammar === '4koma' ? '当前为经典四格：四个均等画格，按起承转结排列，允许固定等分；节奏服务已有剧情，不凭空编造转折和笑点，可用同一事件的铺垫与反应承接。' : '普通页按剧情分配主格与辅助格大小；不机械套固定格数或强制每格不同形状。连续反应镜头可以采用相同景别。'}
 ${grammar.instruction}
 文法中的多格技法只在多格页适用；整页单格不强制辅助格或多个斜切边框。
@@ -383,32 +385,33 @@ ${grammar.instruction}
 ${gutter.instruction}
 
 【数据归属：页面 → 画格 → 格内人物】
-输出 format=nai5-comic，字段见 outputSchema。page.base 写去重后的实际人数、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
-同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，原创姓名不作为绘图标签。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
+输出 format=nai5-comic，字段见 outputSchema。page.base 写整页去重后的可见人数（同一人跨格不重复计数）、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
+同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，原创姓名不作为绘图标签。同人以可靠角色标签开头，原创以主体词开头；头部可见时保留已知发长、发型结构、刘海及识别配饰，不能只剩发色。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
-逐格追踪左右手持物、物件状态、持续接触、服装及发型变化；裁切不等于状态消失，换镜头不自动复原。比喻只转译实际可见的本体。视觉词优先英文标签，复杂关系可用简短英日描述。
+按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【视觉词与动作表达】
 page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。姓名放 name，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
 每个人物依次写：本格位置 → 主体与可见外貌 → 可见服装部件 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
 同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
-机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。服装拆为可见部件；面部特写移除画外鞋腿、背位不写看不见的正脸。已明确的核心动作可用一个闭合的 1.2::动作短词组:: 轻强调，默认不加权；不加权整段人物描述或任何 Text 原文。
+机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。服装拆为可见部件；面部特写移除画外鞋腿、背位不写看不见的正脸。默认不加权；确需突出/弱化已写明的焦点时用闭合的 1.2::短词组:: / 0.6::短词组::，强度不设配额。不加权整段、编号或 Text；权重不能补救漏写、错人或冲突，不用全局负权排除需要的漫画元素。
 普通动作示例（只借格式）：description="top panel, medium shot, from side, indoors, desk"；递信者 positive="top panel, girl, short hair, white shirt, standing, facing another, outstretched arm, right hand holding envelope, looking at another's hand"；接信者 positive="top panel, boy, short hair, dark jacket, sitting, reaching out, left hand reaching toward envelope, looking at envelope"。物品交接完成另格呈现，不在同格混写已收好。
-每位人物 negative 只排除本页其他不同人物中适用且互斥的具体特征，不排除自己的正确外貌或双方共享特征，也不排除环境、漫画、文字和画质。没有适用项写空字符串。
+每次出场的 negative 对照本页所有其他不同人物（包括其他格），同格优先；不把自己的其他出场当成别人。只排除本镜头适用、易串位且互斥的具体发型/配饰/衣物等特征；可补有明确依据的互斥误画特征，去重。自己的正确外貌、共享特征、环境、漫画、文字和画质不排除。黑白时不用彩色色相区别人。没有适用项写空字符串；negative 不能代替 positive 的正确外貌。
 ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 artist: 标签或作品标签放入该人物 negative；不得从姓名括号猜造标签，不排除人物自身标签。' : ''}
 
 【对白与非人物文字】
-人物对白/心声归该人物 positive；旁白、拟音、画外对白归所属 page.non_character 或 panel.non_character，不占人物槽。原句保留说话者、次序、次数和标点；静默格不添字。长句按原有停顿分气泡，不删字。
+人物对白/心声归该人物 positive；旁白、拟音、画外对白归所属 page.non_character 或 panel.non_character，不占人物槽。所选剧情的原句保留说话者、次序、次数和标点；静默格不添字。长句按原有停顿分气泡，不删字。容量不足先压缩重复视觉描写，再分格/分页，不截掉结尾或关键对话。
 说话者在本格可见时，原句必须进本人 positive，不能当旁白移到 page.base/non_character。只有真的画外声才放 non_character。需要上画的每句台词必须实际写入 Text，不能只写 speech bubble、speaking 或“说了某事”；无台词的静默格不添空白气泡。叙述中的动作描写转成视觉标签，不整段变成旁白。
 问答按正文先问后答，回答不能提前放到入场格；同格放不下就顺延下一格。画外回答使用所属 panel.non_character，并明确本格位置、画外来源及画外气泡，不能使用整页 page.non_character 承载某一格的回答。
 气泡视觉说明必须在 Text: 前写类型、位置及 Layout。普通=通常吹き出し；呐喊=叫び吹き出し；心声=思考の吹き出し；耳语=破線吹き出し；颤抖=波打つ吹き出し；广播=四角い吹き出し；旁白=ナレーション枠；画外=切り欠きのある吹き出し；无尾=しっぽなしの楕円吹き出し；连续气泡=連結吹き出し。拟音用 SFX: 擬音, 吹き出しなし。
-对白通常 Layout: 縦書き，旁白和道具字 Layout: 横書き。每字段仅在末尾写一个 Text:，其后只有原句、没有视觉标签；同人同格多句用两个换行分隔，不重复人物槽。Text: 外不包额外引号。
+同格先说的文字居右上，后说的居左下，不能因说话人站左侧就交换问答。气泡避开脸与主动作；尾巴指向当前镜头的嘴部，心声圆点指向头部，旁白/拟音无尾；同人连续多泡成一组只留一条尾巴，两人分组，声源未知不猜方向。最终只写类型和位置短词，不写尾巴绕行教程。
+对白/心声通常 Layout: 縦書き；外语对白、屏幕/信件字和旁白用 Layout: 横書き。每字段仅在末尾写一个 Text:，其后只有原句、没有视觉标签；同人同格多句用两个换行分隔，不重复人物槽。Text: 外不包额外引号。
 外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点。Layout 指令不写进台词，不按列手工断行；同人多泡把各泡类型、位置和阅读顺序全部写在 Text 前，再把各句用空行分隔。
 格式示例："top panel, girl, short hair, smiling, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 信收到了。"；拟音示例："bottom panel, SFX: 擬音, 吹き出しなし, Text: 咔哒"。BubbleType 和 Text 是两个独立字段标记，不能把 Text 当作整段气泡说明的开头。旁白用 BubbleType: ナレーション枠, Layout: 横書き，文字只取必要的时空/客观提示。
 文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}
-${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, screentone；可见外貌与衣着采用灰阶、结构和明暗描述，可靠同人角色标签保留。环境不写 full color 或彩色光照。' : '色彩遵循本轮设定与选定画风。'}
+${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, screentone。所有绘图字段的人物、衣物、道具、环境色相转成灰阶/结构/明暗，光照写方向和对比，不留彩色环境或 full color；可靠角色标签与 Text 原文不改。长期 character_memory 保留原设颜色，不能把灰阶绘图词反写档案。' : '色彩遵循选定画风，人物发眼、衣物、配饰与道具保持已知固有颜色；同地点连续时间沿用主光源方向与明暗关系，镜头变化不新造光源。仅转场、时间经过或实际光源变化才更新；固有颜色与环境照明分开写。'}
 
 【输出核对】
-核对台本起止与覆盖、画格数与页面形态、人物身份、动作连续性、每句文字归属，以及正负词是否互斥。直接提交最终页格，不输出额外的节点清单或覆盖报告。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
+核对台本起止与覆盖、画格数与页面形态、人物身份、动作连续性、每句文字归属，以及正负词是否互斥。直接提交最终页格，不输出额外的节点清单或覆盖报告。默认自动定位，不输出坐标；仅明确手动定位时输出 position_mode="manual"，每次人物出场附整页归一化 center:{x,y}（0～1）。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
     }
 
     // Filter whole tags (including weighted groups), never substrings or dialogue.
@@ -2429,7 +2432,14 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
             const position = p.position || defaultPanelPosition(index, count, store.grammar);
             const structured = Array.isArray(p.characters);
             const characters = (p.characters || []).map(c => {
-                seen.set(c.character_id, c);
+                if (!seen.has(c.character_id)) seen.set(c.character_id, new Set());
+                // Use explicit subject tags from all appearances, never an action's target or dialogue.
+                filterMangaTags(splitMangaText(c.positive).visual, new Set(), tag => {
+                    if (/^(?:\d+)?(?:girls?|women|woman|female|(?:adult|mature|young) (?:woman|female))$/i.test(tag)) seen.get(c.character_id).add('girl');
+                    else if (/^(?:\d+)?(?:boys?|men|man|male|(?:adult|mature|young) (?:man|male))$/i.test(tag)) seen.get(c.character_id).add('boy');
+                    else if (/^(?:\d+)?others?$/i.test(tag)) seen.get(c.character_id).add('other');
+                    return tag;
+                });
                 return { ...c, positive: joinMangaCaptions([position, p.shot, c.positive]) };
             });
             return {
@@ -2445,13 +2455,12 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
         let people = '';
         if (allStructured) {
             const totals = { girl: 0, boy: 0, other: 0 };
-            for (const c of seen.values()) {
-                const visual = splitMangaText(c.positive).visual;
-                if (/\b(?:girl|woman|female)\b/i.test(visual)) totals.girl++;
-                else if (/\b(?:boy|man|male)\b/i.test(visual)) totals.boy++;
-                else totals.other++;
+            // A cropped later appearance can omit its subject. Contradictory/unknown identity stays unspecified.
+            const knownSubjects = [...seen.values()].every(subjects => subjects.size === 1);
+            if (knownSubjects) {
+                for (const subjects of seen.values()) totals[[...subjects][0]]++;
+                people = !seen.size ? 'no humans' : Object.entries(totals).filter(([, n]) => n).map(([t, n]) => `${n}${t}${n > 1 ? 's' : ''}`).join(', ');
             }
-            people = !seen.size ? 'no humans' : Object.entries(totals).filter(([, n]) => n).map(([t, n]) => `${n}${t}${n > 1 ? 's' : ''}`).join(', ');
         }
         const form = count === 1 ? 'splash page, 単一コマ' : `comic, 複数コマの漫画ページ, ${count} panels`;
         const layout = studio.ratio === '1216x832' ? '見開きページ' : 'vertical layout';

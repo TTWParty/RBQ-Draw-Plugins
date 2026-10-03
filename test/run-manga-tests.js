@@ -13,7 +13,7 @@ const settings = {
 };
 const hooks = [];
 const RBQ = { api: { getSettings: () => settings }, on: (event, callback) => { if (event === 'buildNaiV4Payload') hooks.push(callback); } };
-const silentConsole = { info() {}, warn() {}, log() {} };
+const silentConsole = { info() {}, warn() {}, log() {}, error() {} };
 const manga = vm.createContext({ RBQ, console: silentConsole, toastr: { info() {} } });
 vm.runInContext(mangaSource.slice(mangaSource.indexOf('const PLUGIN_ID'), mangaSource.indexOf('    // ── 6. UI Injection')) + `
     Object.assign(globalThis, { compileMangaPage, sanitizeMangaPositivePrompt, sanitizeMangaNegativePrompt, buildMangaSystemPrompt,
@@ -355,6 +355,23 @@ test('closeups preserve full wardrobe; explicit outfit updates preserve identity
     assert.equal(profile.wardrobe.length, 2);
     assert.equal(profile.baseTags, base);
 }));
+test('automatic updates keep identity locked; explicit re-extraction replaces base with backup and preserves plot clothes', () => withMemory(() => {
+    sdt.updateCharacterProfile('Ami', 'girl, silver hair', 'navy coat, black trousers');
+    const profile = sdt.getCharacterProfile('Ami');
+    profile.currentOutfitId = profile.wardrobe[0].id;
+    profile.mangaOutfitMessageId = 8;
+    const wardrobe = JSON.stringify(profile.wardrobe), outfitId = profile.currentOutfitId;
+    sdt.updateCharacterProfile('Ami', 'girl, black hair', '');
+    assert.equal(profile.baseTags, 'girl, silver hair');
+    assert.equal(profile.previousBaseTags, undefined);
+    sdt.updateCharacterProfile('Ami', 'girl, long silver hair, purple eyes', 'white shirt', null, true, { replaceBase: true, preserveOutfit: true });
+    assert.equal(profile.baseTags, 'girl, long silver hair, purple eyes');
+    assert.equal(profile.previousBaseTags, 'girl, silver hair');
+    assert.equal(profile.currentOutfit, 'navy coat, black trousers');
+    assert.equal(profile.currentOutfitId, outfitId);
+    assert.equal(profile.mangaOutfitMessageId, 8);
+    assert.equal(JSON.stringify(profile.wardrobe), wardrobe);
+}));
 test('memory ignores IDs, absent people and dialogue-contaminated fields; duplicate updates save once', () => withMemory(() => {
     const response = memoryResponse();
     response.segments[0].panels[0].characters.push({ character_id: 'C3', name: 'C3', positive: 'girl', negative: '' });
@@ -465,6 +482,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(requests.length, 1);
         assert.ok(requests[0].outputSchema.character_memory);
         assert.match(requests[0].mangaInstruction, /漫画角色记忆/);
+        assert.ok(requests[0].mangaInstruction.includes(sdt.getCharacterMemoryTagSpecification()));
         assert.equal(sdt.getCharacterProfile('Ami').baseTags, memoryResponse().character_memory[0].base);
         console.log('PASS custom-HTTP creates reusable profiles in the existing single request'); passed++;
 
@@ -492,6 +510,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 assert.equal(body.messages[0].content.split('你是漫画分镜导演').length - 1, 1);
                 assert.equal(body.messages[0].content.split('【漫画前情与本楼规划】').length - 1, 1);
                 assert.match(body.messages[0].content, /漫画角色记忆/);
+                assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
                 const request = JSON.parse(body.messages[1].content);
                 assert.equal(request.mangaInstruction, undefined);
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('story_plan'));
@@ -510,6 +529,101 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         }
         console.log('PASS production OpenAI JSON and tool requests render final pages in one call'); passed++;
     } finally { settings._smartDrawTrigger = oldSettings; sdt.getMessageSnapshot = snapshot; }
+
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function importCharacterFromCurrentCard('), sdtSource.indexOf('    const TEST_PRESETS')), sdt);
+    const priorContext = RBQ.api.getContext, priorSettings = settings._smartDrawTrigger;
+    const button = { disabled: false, innerHTML: 'Import' }, notices = [];
+    Object.assign(sdt, {
+        PLUGIN_NAME: 'SDT test', document: { getElementById: () => button },
+        toastr: { warning: text => notices.push(text), error: text => notices.push(text), success: text => notices.push(text) }
+    });
+    const card = { name: 'Ami (original)', description: '成年女性，银色长发、紫色眼睛，平时穿白衬衫。', avatar: 'ami.png' };
+    RBQ.api.getContext = () => ({ characterId: 0, characters: [card] });
+    settings._smartDrawTrigger = { provider: 'custom', customUrl: 'https://test.invalid/tagger', characterProfiles: {} };
+    let importCalls = 0;
+    const extracted = { base: 'girl, mature female, silver hair, long hair, purple eyes', outfit: 'white shirt, collared shirt' };
+    const importResponse = value => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(value) } }] }) });
+    try {
+        sdt.updateCharacterProfile('Ami', 'girl, silver hair', 'navy coat, black trousers');
+        const wardrobeBefore = JSON.stringify(sdt.getCharacterProfile('Ami').wardrobe);
+        sdt.smartFetch = async (_url, options) => {
+            importCalls++;
+            const body = JSON.parse(options.body);
+            assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
+            assert.ok(body.messages[1].content.includes(card.description));
+            return importResponse(extracted);
+        };
+        const imported = await sdt.importCharacterFromCurrentCard();
+        assert.equal(imported.baseTags, extracted.base);
+        assert.equal(imported.previousBaseTags, 'girl, silver hair');
+        assert.equal(imported.currentOutfit, 'navy coat, black trousers');
+        assert.equal(JSON.stringify(imported.wardrobe), wardrobeBefore);
+        assert.equal(importCalls, 1);
+        assert.equal(button.disabled, false); assert.equal(button.innerHTML, 'Import');
+        console.log('PASS card re-extraction uses the shared specification and refreshes appearance without resetting plot clothing'); passed++;
+
+        const saved = JSON.stringify(sdt.getCharacterProfiles());
+        for (const failure of [
+            async () => { throw new Error('network failed'); },
+            async () => ({ ok: false, status: 503, json: async () => extracted }),
+            async () => importResponse({ base: '', outfit: 'white shirt' }),
+            async () => importResponse({ base: ['girl'], outfit: '' }),
+            async () => importResponse({ base: 'girl', outfit: { invalid: true } }),
+            async () => ({ ok: true, json: async () => ({ content: 'not JSON' }) })
+        ]) {
+            importCalls = 0;
+            sdt.smartFetch = async () => { importCalls++; return failure(); };
+            assert.equal(await sdt.importCharacterFromCurrentCard(), false);
+            assert.equal(importCalls, 1);
+            assert.equal(JSON.stringify(sdt.getCharacterProfiles()), saved);
+            assert.equal(button.disabled, false); assert.equal(button.innerHTML, 'Import');
+        }
+        settings._smartDrawTrigger.customUrl = '';
+        importCalls = 0;
+        assert.equal(await sdt.importCharacterFromCurrentCard(), false);
+        assert.equal(importCalls, 0);
+        assert.equal(JSON.stringify(sdt.getCharacterProfiles()), saved);
+        assert.ok(notices.some(text => text.includes('配置')));
+        console.log('PASS failed or unconfigured card extraction never saves raw description or alters existing memory'); passed++;
+
+        Object.assign(settings._smartDrawTrigger, { provider: 'openai', openaiBaseUrl: 'https://test.invalid/v1', openaiModel: 'test', characterProfiles: {} });
+        importCalls = 0;
+        sdt.callApiWithJsonFallback = async (_url, _options, body) => {
+            importCalls++;
+            assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
+            return importResponse(extracted);
+        };
+        const created = await sdt.importCharacterFromCurrentCard();
+        assert.equal(importCalls, 1);
+        assert.equal(created.baseTags, extracted.base);
+        assert.equal(created.currentOutfit, extracted.outfit);
+        assert.equal(created.wardrobe.length, 1);
+        assert.equal(created.previousBaseTags, undefined);
+        console.log('PASS OpenAI card import uses the same specification and initializes default clothing for a new profile'); passed++;
+    } finally { settings._smartDrawTrigger = priorSettings; RBQ.api.getContext = priorContext; }
+
+    const workshopSource = fs.readFileSync(path.join(__dirname, '../plugins/character-workshop.js'), 'utf8');
+    let importHandler, rendered = 0, workshopResult = false;
+    const workshopDraft = { displayName: 'Ami', baseTags: 'unsaved hair edit', wardrobe: [] };
+    const workshopButton = { disabled: false, innerHTML: 'Import' };
+    const workshopApi = { api: { importCharacterFromCurrentCard: async () => workshopResult } };
+    const workshop = vm.createContext({
+        RBQ: workshopApi, window: { RBQ: workshopApi }, draft: workshopDraft,
+        mask: { querySelector: () => ({ addEventListener: (_event, fn) => { importHandler = fn; } }) },
+        render: () => { rendered++; }, getProfile: () => { throw new Error('must not reload stale profile'); },
+        toastr: { error: text => { throw new Error(text); } }, PLUGIN_NAME: 'Workshop'
+    });
+    vm.runInContext(workshopSource.slice(workshopSource.indexOf("            mask.querySelector('#cw-ce-import-card')?.addEventListener"), workshopSource.indexOf('            // Test solo portrait with Perspective')), workshop);
+    await importHandler({ currentTarget: workshopButton });
+    assert.equal(workshopDraft.baseTags, 'unsaved hair edit');
+    assert.equal(rendered, 0); assert.equal(workshopButton.disabled, false);
+    workshopResult = { displayName: 'Ami', baseTags: extracted.base, previousBaseTags: 'girl, silver hair', currentOutfit: 'navy coat', wardrobe: [{ id: 'w1', outfit: 'navy coat' }] };
+    await importHandler({ currentTarget: workshopButton });
+    assert.equal(workshopDraft.baseTags, extracted.base);
+    assert.equal(workshopDraft.previousBaseTags, 'girl, silver hair');
+    assert.equal(workshopDraft.currentOutfit, 'navy coat');
+    assert.equal(rendered, 1); assert.equal(workshopButton.innerHTML, 'Import');
+    console.log('PASS workshop keeps unsaved draft on failure and loads the returned profile and backup on success'); passed++;
 
     settings._smartDrawTrigger.openaiBaseUrl = 'https://test.invalid/v1';
     settings._smartDrawTrigger.openaiModel = 'test';

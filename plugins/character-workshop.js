@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.26';
+    const VERSION = '2.2.27';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1913,6 +1913,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
         const draft = {
             displayName: origProfile?.displayName || editName || '',
             baseTags: origProfile?.baseTags || '',
+            previousBaseTags: origProfile?.previousBaseTags,
             currentOutfit: origProfile?.currentOutfit || '',
             currentOutfitId: origProfile?.currentOutfitId || '',
             avatarUrl: origProfile?.avatarUrl || '',
@@ -1949,7 +1950,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                 <div style="flex:1;display:flex;flex-direction:column;gap:5px">
                                     <div style="display:flex;gap:7px">
                                         <input id="cw-ce-name" class="cw-in" type="text" placeholder="角色姓名" value="${esc(draft.displayName)}" style="font-weight:bold;font-size:13px" ${isEdit ? 'disabled' : ''} />
-                                        <button class="cw-btn am sm" id="cw-ce-import-card" type="button"><i class="fa-solid fa-file-import"></i> 从当前角色卡导入</button>
+                                        <button class="cw-btn am sm" id="cw-ce-import-card" type="button" title="重新提取当前角色卡的外貌，保留已有当前服装"><i class="fa-solid fa-file-import"></i> 从角色卡提取 / 更新外貌</button>
                                     </div>
                                     <div style="display:flex;gap:6px;align-items:center">
                                         <span style="font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap">头像 URL:</span>
@@ -2097,16 +2098,18 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在提取...';
                     
                     if (typeof RBQ?.api?.importCharacterFromCurrentCard === 'function') {
-                        await RBQ.api.importCharacterFromCurrentCard();
+                        const imported = await RBQ.api.importCharacterFromCurrentCard();
+                        if (imported === false) return; // Failed extraction must not reset an unsaved draft.
                         const ctx = window.RBQ?.api?.getContext?.() || window.SillyTavern?.getContext?.();
                         const cid = ctx?.characterId;
                         const cd = ctx?.characters?.[cid];
-                        const charName = cd?.name;
+                        const charName = imported?.displayName || cd?.name;
                         if (charName) {
-                            const updated = getProfile(charName);
+                            const updated = imported || getProfile(charName);
                             if (updated) {
                                 draft.displayName = updated.displayName || charName;
                                 draft.baseTags = updated.baseTags || draft.baseTags;
+                                draft.previousBaseTags = updated.previousBaseTags;
                                 draft.currentOutfit = updated.currentOutfit || draft.currentOutfit;
                                 draft.currentOutfitId = updated.currentOutfitId || draft.currentOutfitId;
                                 draft.avatarUrl = updated.avatarUrl || draft.avatarUrl;
@@ -2170,6 +2173,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 saveProfile(name, {
                     displayName: name,
                     baseTags: draft.baseTags,
+                    previousBaseTags: draft.previousBaseTags,
                     currentOutfit: draft.currentOutfit,
                     currentOutfitId: draft.currentOutfitId,
                     avatarUrl: draft.avatarUrl,

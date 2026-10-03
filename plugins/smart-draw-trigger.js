@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.2.2';
+    const PLUGIN_VERSION = '6.2.3';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2751,6 +2751,15 @@ Zimage 擅长理解复杂的英文长句和语境。
         return String(name).replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
     }
 
+    function getCharacterMemoryTagSpecification() {
+        return `【角色记忆标签规格】
+base/outfit 使用英文逗号分隔的可视标签，优先常用 Danbooru 标签；无合适标签时仅用短视觉词组，不写人物小传或整句说明。
+base 按七维检查已知特征：① girl/boy 等主体类别（不带 1girl/2boys 等人数）；② 面部特征；③ 年龄阶段；④ 发色、长度、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例；⑦ 肤色、永久标记及幻想种族特征。依据角色卡、世界书和明确设定，保留辨识特征；未知年龄、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等设定转为对应的可见年龄阶段和体型，不机械抄成“30 years old appearance”“180cm height”等标签，不承诺还原数值。
+outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。原创姓名只放 name，同人身份仅保留可靠角色标签。可脱卸配饰归 outfit，永久生理特征归 base。
+示例：base="girl, mature female, tall, silver hair, long hair, straight bangs, purple eyes, fair skin, mole under eye"；outfit="navy blue coat, wool coat, long coat, long sleeves, white shirt, collared shirt, black trousers, brown ankle boots"。示例不是默认人物，不能照抄到无关角色。`;
+    }
+
     function buildCharacterMemoryPromptModule(store) {
         if (!store) store = getStore();
         const profiles = getCharacterProfiles();
@@ -2764,6 +2773,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；原创姓名不作标签，同人可保留可靠角色标签。新人物没有明示外貌时可做克制且一致的视觉设定；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留。
 outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
+${getCharacterMemoryTagSpecification()}
 已有资料：` + JSON.stringify(references);
         }
 
@@ -3024,7 +3034,7 @@ ${activeRegistrySection}`;
         return isInitial ? '初始常服' : `剧情服装 (${timeStr})`;
     }
 
-    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true) {
+    function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true, options = {}) {
         const rawName = String(name || '').trim();
         if (!rawName || isJunkCharacterName(rawName)) return;
         const profiles = getCharacterProfiles();
@@ -3032,8 +3042,14 @@ ${activeRegistrySection}`;
 
         let existing = getCharacterProfile(canonical);
         if (existing) {
+            // Only an explicit card re-extraction may replace learned identity.
+            // Keep the plot's current clothing when importing the card's default outfit.
+            if (options.preserveOutfit && existing.currentOutfit) outfitTags = '';
             if (outfitTags) existing.currentOutfit = outfitTags;
-            if (baseTags && !existing.baseTags) existing.baseTags = baseTags;
+            if (baseTags && (!existing.baseTags || options.replaceBase)) {
+                if (existing.baseTags && existing.baseTags !== baseTags) existing.previousBaseTags = existing.baseTags;
+                existing.baseTags = baseTags;
+            }
             if (avatarUrl) existing.avatarUrl = avatarUrl;
             if (!Array.isArray(existing.wardrobe)) existing.wardrobe = [];
 
@@ -3163,8 +3179,8 @@ ${activeRegistrySection}`;
             </div>`
             }
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%;">
-                <button id="rbq-sdt-import-char-profile-btn" class="menu_button" type="button" style="background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.4) !important; color: #79e4ff !important; font-weight: bold !important; padding: 4px 12px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important;">
-                    <i class="fa-solid fa-file-import"></i> 从当前角色卡导入
+                <button id="rbq-sdt-import-char-profile-btn" class="menu_button" type="button" title="重新提取当前角色卡的外貌，保留已有当前服装" style="background: rgba(104,215,255,0.15) !important; border: 1px solid rgba(104,215,255,0.4) !important; color: #79e4ff !important; font-weight: bold !important; padding: 4px 12px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important;">
+                    <i class="fa-solid fa-file-import"></i> 从角色卡提取 / 更新外貌
                 </button>
                 <button id="rbq-sdt-goto-workshop-btn" class="menu_button" type="button" style="background: linear-gradient(135deg, rgba(2,132,199,0.25), rgba(56,189,248,0.15)) !important; border: 1px solid rgba(56,189,248,0.6) !important; color: #38bdf8 !important; font-weight: bold !important; padding: 4px 14px !important; font-size: 12px !important; border-radius: 6px !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important; max-width: 100% !important;">
                     <i class="fa-solid fa-palette"></i> 前往「角色工坊」深度定制与管理角色 (${entries.length} 位) ➔
@@ -3365,13 +3381,13 @@ ${activeRegistrySection}`;
             const ctx = RBQ.api.getContext();
             if (!ctx) {
                 toastr.warning('无法获取酒馆上下文，请刷新网页重试', PLUGIN_NAME);
-                return;
+                return false;
             }
 
             const characters = ctx.characters;
             if (!Array.isArray(characters) || characters.length === 0) {
                 toastr.warning('当前酒馆未加载任何角色卡，请先选择角色卡', PLUGIN_NAME);
-                return;
+                return false;
             }
 
             let char = null;
@@ -3385,7 +3401,7 @@ ${activeRegistrySection}`;
 
             if (!char || !char.name) {
                 toastr.warning('未找到当前角色卡信息，请先打开一个角色卡聊天', PLUGIN_NAME);
-                return;
+                return false;
             }
 
             const name = String(char.name || '').trim();
@@ -3416,97 +3432,79 @@ ${activeRegistrySection}`;
             const store = getStore();
             const hasLlm = (store.provider === 'custom' && store.customUrl) || (store.provider !== 'custom' && store.openaiBaseUrl);
 
-            if (hasLlm && contextText) {
-                try {
-                    const promptMessages = [
-                        {
-                            role: 'system',
-                            content: `你是一个顶级的 Danbooru / NovelAI 动漫外貌提示词提炼专家。
-请深度阅读角色设定与世界书，严格按照【7 维全息外貌公式】提炼角色的固有外貌与初始服装：
+            if (!hasLlm) throw new Error('请先配置智能生图的 Tagger 接口，再提取角色外貌');
+            if (!contextText) throw new Error('当前角色卡没有可提取的角色描述或世界书');
 
-1. base（固有外貌 - 跨分镜锁定不变）：
-   请按顺序提炼标准 Danbooru 英文 Tag：
-   ① 性别族裔 (1girl/1boy, japanese/chinese/caucasian, delicate_face)
-   ② 年龄阶段 (adolescent/mature_female/petite/milf)
-   ③ 发型发色 (hair color, hair length, hair style, bangs)
-   ④ 瞳色眼型 (eye color, tareme/tsurime)
-   ⑤ 身材胸围 (flat_chest/small_breasts/medium_breasts/large_breasts, slender/curvy)
-   ⑥ 肤色标记 (pale_skin/fair_skin/tan, mole_under_eye/freckles 等)
-   ⑦ 种族特征 (cat_ears/pointy_ears/demon_horns 等幻想特征，若有)
-
-2. outfit（初始/默认服装）：
-   提炼角色的默认衣着部件 (如 school_uniform, sailor_suit, pleated_skirt, thighhighs 等)。
-
-输出要求：
-- 只输出标准 Danbooru 英文 tag，用逗号隔开。
-- 必须为纯 JSON 格式：{"base": "tag1, tag2...", "outfit": "tag1, tag2..."}，严禁任何额外分析。`
-                        },
-                        {
-                            role: 'user',
-                            content: `角色名称: ${name}\n\n${contextText}`
-                        }
-                    ];
-
-                    let jsonRes;
-                    if (store.provider === 'custom') {
-                        const customUrl = String(store.customUrl || '').trim();
-                        checkUrlSafety(customUrl);
-                        const headers = { 'Content-Type': 'application/json' };
-                        if (store.customApiKey) {
-                            const headerName = store.customApiKeyHeader || 'Authorization';
-                            headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
-                        }
-                        const res = await smartFetch(customUrl, {
-                            method: 'POST',
-                            headers,
-                            body: JSON.stringify({ messages: promptMessages })
-                        });
-                        jsonRes = await safeReadJsonResponse(res);
-                    } else {
-                        const url = normalizeBaseUrl(store.openaiBaseUrl);
-                        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-                        checkUrlSafety(url);
-                        const res = await callApiWithJsonFallback(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
-                            }
-                        }, {
-                            model: modelName,
-                            temperature: 0.2,
-                            response_format: { type: 'json_object' },
-                            stream: false,
-                            messages: promptMessages,
-                            ...buildThinkingParams(store),
-                        });
-                        jsonRes = await safeReadJsonResponse(res);
-                    }
-
-                    const rawContent = jsonRes?.choices?.[0]?.message?.content || jsonRes?.content || '';
-                    const parsed = extractJson(typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
-                    if (parsed && (parsed.base || parsed.outfit)) {
-                        extractedBase = String(parsed.base || '').trim();
-                        extractedOutfit = String(parsed.outfit || '').trim();
-                    }
-                } catch (llmErr) {
-                    console.warn(`[${PLUGIN_NAME}] LLM 提取角色外貌失败，使用本地回退:`, llmErr);
+            const promptMessages = [
+                {
+                    role: 'system',
+                    content: `你是角色视觉资料提炼助手。读取角色卡与世界书，仅提取当前指定角色的固定外貌和默认衣着，不混入其他角色。
+${getCharacterMemoryTagSpecification()}
+只提取有依据的资料；服装未知写空字符串。仅输出纯 JSON：{"base":"英文标签", "outfit":"英文标签"}，不输出解释或 Markdown。`
+                },
+                {
+                    role: 'user',
+                    content: `角色名称: ${name}\n\n${contextText}`
                 }
+            ];
+
+            let jsonRes;
+            if (store.provider === 'custom') {
+                const customUrl = String(store.customUrl || '').trim();
+                checkUrlSafety(customUrl);
+                const headers = { 'Content-Type': 'application/json' };
+                if (store.customApiKey) {
+                    const headerName = store.customApiKeyHeader || 'Authorization';
+                    headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
+                }
+                const res = await smartFetch(customUrl, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ messages: promptMessages })
+                });
+                if (!res.ok) throw new Error(`角色外貌提取失败: HTTP ${res.status}`);
+                jsonRes = await safeReadJsonResponse(res);
+            } else {
+                const url = normalizeBaseUrl(store.openaiBaseUrl);
+                const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+                checkUrlSafety(url);
+                const res = await callApiWithJsonFallback(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
+                    }
+                }, {
+                    model: modelName,
+                    temperature: 0.2,
+                    response_format: { type: 'json_object' },
+                    stream: false,
+                    messages: promptMessages,
+                    ...buildThinkingParams(store),
+                });
+                if (!res.ok) throw new Error(`角色外貌提取失败: HTTP ${res.status}`);
+                jsonRes = await safeReadJsonResponse(res);
             }
 
-            if (!extractedBase && description) {
-                extractedBase = description.slice(0, 150);
+            const rawContent = jsonRes?.choices?.[0]?.message?.content || jsonRes?.content || '';
+            const parsed = extractJson(typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
+            if (!parsed || typeof parsed.base !== 'string' || !parsed.base.trim()
+                || (parsed.outfit != null && typeof parsed.outfit !== 'string')) {
+                throw new Error('模型未返回有效的外貌标签，原有角色记忆未改动');
             }
+            extractedBase = parsed.base.trim();
+            extractedOutfit = (parsed.outfit || '').trim();
 
             const cleanCharName = getCanonicalCharName(name) || name;
             const avatarUrl = char.avatar ? `/characters/${char.avatar}` : null;
 
-            updateCharacterProfile(cleanCharName, extractedBase, extractedOutfit, avatarUrl, true);
-            refreshCharacterProfileListUi();
-            toastr.success(`已成功从角色卡「${cleanCharName}」导入外貌与服装记忆！可在「角色工坊」中进一步细化或排布分镜。`, PLUGIN_NAME);
+            updateCharacterProfile(cleanCharName, extractedBase, extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
+            toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
+            return getCharacterProfile(cleanCharName);
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 导入角色卡失败:`, err);
             toastr.error(`导入角色卡失败: ${err.message || String(err)}`, PLUGIN_NAME);
+            return false;
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -6432,8 +6430,8 @@ ${activeRegistrySection}`;
             type: 'array', description: 'Only when character memory is enabled: one update per named visible person; [] if unchanged. Not render captions.',
             items: { type: 'object', properties: {
                 name: { type: 'string', description: 'Stable name matching panels[].characters[].name, never a panel/character ID' },
-                base: { type: 'string', description: 'Reusable identity and appearance for a new profile; empty if already known. No shot/action/dialogue/style.' },
-                outfit: { type: 'string', description: 'Complete known clothing at final appearance, only for initial clothing or explicit change; empty preserves saved clothing.' }
+                base: { type: 'string', description: 'Comma-separated English appearance tags per the seven-aspect memory specification, without counts (girl, not 1girl); empty if already known. No clothing/shot/action/dialogue/style.' },
+                outfit: { type: 'string', description: 'Comma-separated English tags for complete known clothing at final appearance: color, known material, garment, length/state and details. Only initial clothing or explicit change; empty preserves saved clothing.' }
             }, required: ['name', 'base', 'outfit'] }
         };
     }
@@ -6441,7 +6439,7 @@ ${activeRegistrySection}`;
     function getMangaOutputSchema(store = getStore()) {
         const schema = getMangaProtocol().outputSchema();
         if (store.characterMemoryEnabled) {
-            schema.character_memory = [{ name: '与格内人物一致的稳定姓名', base: '首次建档的固定外貌；已有则为空', outfit: '首次着装或明确变化后的完整已知着装；无更新则为空' }];
+            schema.character_memory = [{ name: '与格内人物一致的稳定姓名', base: '按七维规格提炼的英文逗号标签，无人数、衣物或动作；已有则为空', outfit: '按颜色/已知材质/款式/长度与状态逐件列出的英文逗号标签；首次或明确换装才更新，否则为空' }];
         }
         return schema;
     }

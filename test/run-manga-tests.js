@@ -166,6 +166,19 @@ test('empty SDT page clears stale host characters; manual coordinates survive', 
     assert.equal(p.parameters.v4_prompt.use_coords, true);
     assert.equal(p.parameters.v4_prompt.caption.char_captions[0].centers[0].x, 0.2);
 });
+test('manual editor preserves zero coordinates and writes them back into manga structure', () => {
+    const segment = sdt.normalizeMangaSegment(fixture());
+    const editor = vm.createContext({ segResult: segment, isMultiChar: true, sdtParseCoord: sdt.sdtParseCoord,
+        modal: { querySelector: () => ({ value: segment.scene }), querySelectorAll: () => [{ dataset: { index: '0' },
+            querySelector: selector => ({ value: selector.includes('pad-') ? '0' : selector.includes('caption') ? segment.characters[0].caption : '' })
+        }] }
+    });
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('        function gatherUpdatedSegment('), sdtSource.indexOf('        function syncUpdatedSegmentState(')), editor);
+    const edited = editor.gatherUpdatedSegment('characters');
+    assert.equal(edited.mangaUseCoords, true);
+    assert.deepEqual(json(edited.mangaPage.panels[0].characters[0].center), { x: 0, y: 0 });
+    assert.equal(manga.compileMangaPage(edited.mangaPage).characters[0].center.x, 0);
+});
 test('Studio silent and speaking pages have identical slot counts and unique default positions', () => {
     const store = settings._mangaMode;
     store.studio.panels = Array.from({ length: 4 }, (_, i) => ({ shot: 'medium shot', tags: 'classroom', characters: [person('C1', 'long')], non_character: '' }));
@@ -192,6 +205,58 @@ test('spread detection ignores dialogue and retains upstream Prompt Presets', ()
     assert.equal(p.parameters.width, 1216); assert.match(p.input, /full color, photorealistic/);
     p = mangaHook(payload('comic, Text: 見開きページ'));
     assert.equal(p.parameters.width, 832);
+});
+test('monochrome converts explicit character colors at dispatch without changing dialogue, names or saved captions', () => {
+    const segment = sdt.normalizeMangaSegment(fixture());
+    const original = 'top panel, girl, silver hair in high bun, 1.2::deep purple qipao, {purple eyes}::, blue_ribbon, Red (Series), red panda, Text: purple eyes, 红色的信。';
+    segment.characters[0].caption = original;
+    function run(order) {
+        sdt.prepareNaiCharData(segment);
+        let request = payload('artist:blue, full color, comic');
+        for (const hook of order) request = hook(request);
+        return request;
+    }
+    const first = run([sdtHook, mangaHook]), second = run([mangaHook, sdtHook]);
+    assert.deepEqual(json(first), json(second));
+    const actual = first.parameters.v4_prompt.caption.char_captions[0].char_caption;
+    assert.match(actual, /light grey hair in high bun/);
+    assert.match(actual, /1\.2::dark grey qipao, \{grey eyes\}::/);
+    assert.match(actual, /grey ribbon, Red \(Series\), red panda/);
+    assert.match(actual, /Text: purple eyes, 红色的信。$/);
+    assert.match(first.input, /artist:blue, full color/);
+    assert.equal(segment.characters[0].caption, original);
+    const savedStyle = settings._mangaMode.style;
+    try {
+        for (const style of ['soft_color', 'custom']) {
+            settings._mangaMode.style = style;
+            assert.match(run([mangaHook, sdtHook]).parameters.v4_prompt.caption.char_captions[0].char_caption, /deep purple qipao/);
+        }
+    } finally { settings._mangaMode.style = savedStyle; }
+});
+test('selected panel borders reach the final payload once regardless of hook order', () => {
+    const savedGutter = settings._mangaMode.gutter;
+    try {
+        for (const [gutter, expected] of [['bleed', 'top-bottom bleed'], ['framed', 'fully framed panels'], ['black_line', '太い黒い仕切り線'], ['splash', '全面裁ち落とし']]) {
+            settings._mangaMode.gutter = gutter;
+            const result = mangaHook(mangaHook(payload('comic, Text: 保留原句')));
+            assert.equal(result.input.split(expected).length - 1, 1);
+            assert.equal(result.parameters.v4_prompt.caption.base_caption, result.input);
+            assert.match(result.input, /Text: 保留原句$/);
+            if (gutter === 'bleed') assert.doesNotMatch(result.input, /white border/);
+        }
+    } finally { settings._mangaMode.gutter = savedGutter; }
+});
+test('cached manga redraw retains V5 while manga is disabled; unrelated requests stay untouched', () => {
+    const wasEnabled = settings._mangaMode.enabled;
+    try {
+        settings._mangaMode.enabled = false;
+        const untouched = payload('ordinary image');
+        assert.deepEqual(json(mangaHook(untouched)), json(payload('ordinary image')));
+        sdt.prepareNaiCharData(sdt.normalizeMangaSegment(fixture()));
+        const redrawn = mangaHook(sdtHook(payload('comic')));
+        assert.equal(redrawn.model, 'nai-diffusion-5-full');
+        assert.equal(redrawn.parameters.v4_prompt.caption.char_captions.length, 4);
+    } finally { settings._mangaMode.enabled = wasEnabled; }
 });
 test('real request builder and system prompt agree with the nested tool schema', () => {
     const { payload: request } = sdt.buildRequestPayload(1, { type: 'auto' });
@@ -318,6 +383,44 @@ const memoryResponse = () => ({ shouldDraw: true, segments: [fixture(), fixture(
     { name: 'Ami (original)', base: 'girl, long black hair, green eyes', outfit: 'white blouse, blue skirt, brown shoes' },
     { name: 'Mei', base: 'girl, short brown hair, blue eyes', outfit: 'red dress, black boots' }
 ] });
+test('first-time card reference uses the same collector in ordinary and manga requests and respects the toggle', () => withMemory(() => {
+    const previousCollector = sdt.collectCharacterCardInfo, previousContext = RBQ.api.getContext;
+    const card = { name: 'Ami', description: '成年女性，中国籍，银色长发。', character_book: { entries: [
+        { keys: ['classroom'], content: '白色长袖衬衫。' }, { keys: ['unmatched'], content: '不应注入' }
+    ] } };
+    RBQ.api.getContext = () => ({ characterId: 0, characters: [card] });
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function collectCharacterCardInfo('), sdtSource.indexOf('    async function importCharacterFromCurrentCard(')), sdt);
+    try {
+        for (const mangaActive of [false, true]) {
+            Object.assign(settings._smartDrawTrigger, { _mangaActive: mangaActive, enhancedContext: mangaActive ? 'v_manga' : 'off', injectCharacterCard: true, characterMemoryEnabled: false });
+            const cards = sdt.collectCharacterCardInfo('classroom');
+            assert.equal(cards[0].description, card.description);
+            assert.equal(cards[0].characterBookEntries.length, 1);
+            assert.equal(cards[0].characterBookEntries[0].content, '白色长袖衬衫。');
+            assert.match(sdt.getSystemPromptWithPresets(settings._smartDrawTrigger, true), /角色卡信息参考指令/);
+        }
+        for (const provider of ['openai', 'custom']) {
+            settings._smartDrawTrigger.provider = provider;
+            for (const memoryEnabled of [false, true]) {
+                settings._smartDrawTrigger.characterMemoryEnabled = memoryEnabled;
+                const request = sdt.buildRequestPayload(1, { type: 'auto' }).payload;
+                assert.equal(request.characterCardInfo[0].description, card.description);
+                const prompt = provider === 'custom' ? request.mangaInstruction : sdt.getSystemPromptWithPresets(settings._smartDrawTrigger, true);
+                assert.match(prompt, /漫画角色卡信息参考指令/);
+                assert.match(prompt, /panels\[\]\.characters\[\]\.positive/);
+                assert.equal(!!request.outputSchema.character_memory, memoryEnabled);
+            }
+        }
+        settings._smartDrawTrigger.injectCharacterCard = false;
+        assert.equal(sdt.buildRequestPayload(1, { type: 'auto' }).payload.characterCardInfo, undefined);
+        assert.doesNotMatch(sdt.getSystemPromptWithPresets(settings._smartDrawTrigger, true), /漫画角色卡信息参考指令/);
+        settings._smartDrawTrigger.injectCharacterCard = true;
+        sdt.updateCharacterProfile('Ami', '', 'white shirt');
+        assert.equal(sdt.collectCharacterCardInfo('classroom').length, 1, 'outfit-only records must still receive card appearance');
+        sdt.updateCharacterProfile('Ami', 'girl, silver hair', 'white shirt');
+        assert.equal(sdt.collectCharacterCardInfo('classroom').length, 0);
+    } finally { sdt.collectCharacterCardInfo = previousCollector; RBQ.api.getContext = previousContext; }
+}));
 test('manga creates chat-scoped characters once across panels/pages and archives initial clothes', () => withMemory(() => {
     const response = memoryResponse(), before = response.segments[0].panels[0].characters[0].positive;
     const output = sdt.normalizeTaggerResult(response, [], { content: story, messageId: 3 });
@@ -335,6 +438,16 @@ test('manga creates chat-scoped characters once across panels/pages and archives
     assert.match(sdt.getSystemPromptWithPresets(settings._smartDrawTrigger), /long black hair/);
     memoryChat = 'another-chat';
     assert.deepEqual(Object.keys(sdt.getCharacterProfiles()), []);
+}));
+test('standalone manga reference reader preserves profile colors and honors memory and card switches', () => withMemory(() => {
+    sdt.updateCharacterProfile('Ami', 'girl, purple eyes', 'blue coat');
+    const before = JSON.stringify(sdt.getCharacterProfiles());
+    const references = sdt.collectMangaReferenceData('story');
+    assert.equal(references.characterMemory[0].base, 'girl, purple eyes');
+    assert.equal(references.characterMemory[0].outfit, 'blue coat');
+    assert.equal(JSON.stringify(sdt.getCharacterProfiles()), before);
+    settings._smartDrawTrigger.characterMemoryEnabled = false;
+    assert.equal(sdt.collectMangaReferenceData('story').characterMemory, undefined);
 }));
 test('closeups preserve full wardrobe; explicit outfit updates preserve identity and ignore older floors', () => withMemory(() => {
     sdt.normalizeTaggerResult(memoryResponse(), [], { content: story, messageId: 3 });
@@ -530,6 +643,62 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         console.log('PASS production OpenAI JSON and tool requests render final pages in one call'); passed++;
     } finally { settings._smartDrawTrigger = oldSettings; sdt.getMessageSnapshot = snapshot; }
 
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function parseTaggerSegment('), sdtSource.indexOf('    RBQ.api.parseWithTagger =')), sdt);
+    const oldCollector = sdt.collectCharacterCardInfo, previousTestSettings = settings._smartDrawTrigger;
+    const testCard = [{ name: 'Ami', description: '成年女性，中国籍，银色长发。', characterBookEntries: [{ keys: ['library'], content: '蓝色外套。' }] }];
+    try {
+        settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', injectCharacterCard: true,
+            customUrl: 'https://test.invalid', openaiBaseUrl: 'https://test.invalid', openaiModel: 'test', squashMessages: false };
+        sdt.collectCharacterCardInfo = (content, recent) => { assert.equal(content, 'library'); assert.equal(recent.length, 0); return testCard; };
+        for (const provider of ['custom', 'openai']) {
+            settings._smartDrawTrigger.provider = provider;
+            let calls = 0;
+            const checkRequest = body => {
+                calls++;
+                const request = provider === 'custom' ? body : JSON.parse(body.messages[1].content);
+                assert.deepEqual(request.characterCardInfo, testCard);
+                assert.match(provider === 'custom' ? request.mangaInstruction : body.messages[0].content, /漫画角色卡信息参考指令/);
+                return { ok: true, json: async () => ({ shouldDraw: true, segments: [fixture()] }) };
+            };
+            sdt.smartFetch = async (_url, options) => checkRequest(JSON.parse(options.body));
+            sdt.callApiWithJsonFallback = async (_url, _options, body) => checkRequest(body);
+            assert.ok((await sdt.parseTaggerSegment('library')).segment.mangaPage);
+            assert.equal(calls, 1);
+        }
+        sdt.prepareNaiCharData(null);
+        console.log('PASS test-draw entry includes card references in both provider paths with one request'); passed++;
+    } finally { sdt.collectCharacterCardInfo = oldCollector; settings._smartDrawTrigger = previousTestSettings; }
+
+    const drawerPage = fixture(); drawerPage.position_mode = 'manual';
+    drawerPage.panels.forEach(p => p.characters.forEach(c => { c.center = { x: 0, y: 1 }; }));
+    const drawerSegment = sdt.normalizeMangaSegment(drawerPage);
+    const emptyPage = fixture(); emptyPage.panels = [emptyPage.panels[2]];
+    const emptySegment = sdt.normalizeMangaSegment(emptyPage);
+    const chat = [{ mes: 'story', extra: { rbq_sdt: { key: 'k', segments: [drawerSegment] } } },
+        { mes: 'empty', extra: { rbq_sdt: { key: 'e', ...emptySegment } } }];
+    let generatedRequest;
+    const drawerApi = { api: { getContext: () => ({ chat }), generateImage: async prompt => {
+        generatedRequest = sdtHook(payload(prompt, [{ char_caption: 'stale host person' }])); return { url: 'test.png' };
+    } } };
+    const drawer = vm.createContext({ RBQ: drawerApi, window: { RBQ: drawerApi }, getStore: () => ({}),
+        getFinalPrompt: sdt.getFinalPrompt, prepareNaiCharData: sdt.prepareNaiCharData, console,
+        parseMessageStorySections: () => [], cleanDialogueForComic: value => value,
+        normalizePromptKey: value => String(value || ''), extractHostPromptsFromMessage: () => [],
+        markSegmentAutoGenerated() {}, renderStoryboardDrawerContent() {}, document: { getElementById: () => null },
+        HTMLElement: class {}, PLUGIN_NAME: 'test', toastr: { success() {}, error: text => { throw new Error(text); } }
+    });
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function collectChatStoryboardTimeline('), sdtSource.indexOf('    async function openStoryboardDrawer(')), drawer);
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function runDrawerPanelGeneration('), sdtSource.indexOf('    function renderStoryboardDrawerContent(')), drawer);
+    const drawerItems = await drawer.collectChatStoryboardTimeline();
+    assert.equal(drawerItems.length, 2);
+    assert.equal(drawerItems[0].prompt, drawerSegment.scene, 'flattened person captions must not also enter base');
+    await drawer.runDrawerPanelGeneration(drawerItems[0], { innerHTML: 'Generate' });
+    assert.equal(generatedRequest.parameters.v4_prompt.use_coords, true);
+    assert.equal(generatedRequest.parameters.v4_prompt.caption.char_captions[0].centers[0].x, 0);
+    await drawer.runDrawerPanelGeneration(drawerItems[1], { innerHTML: 'Generate' });
+    assert.equal(generatedRequest.parameters.v4_prompt.caption.char_captions.length, 0);
+    console.log('PASS drawer redraw preserves manga structure and coordinates and clears empty-page characters'); passed++;
+
     vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function importCharacterFromCurrentCard('), sdtSource.indexOf('    const TEST_PRESETS')), sdt);
     const priorContext = RBQ.api.getContext, priorSettings = settings._smartDrawTrigger;
     const button = { disabled: false, innerHTML: 'Import' }, notices = [];
@@ -635,5 +804,20 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     assert.equal(JSON.stringify(settings._mangaMode.studio.panels), before);
     await assert.rejects(manga.callLlmStoryboardParser('story', '4koma', 'zh-hans', '3'), /经典四格/);
     console.log('PASS Studio failures preserve drafts and incompatible 4-koma count is rejected'); passed++;
+    const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short hair', outfit: 'white shirt' }] };
+    RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
+    for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
+        settings._smartDrawTrigger.openaiBaseUrl = baseUrl;
+        manga.fetch = async (url, options) => {
+            assert.equal(url, 'https://test.invalid/v1/chat/completions');
+            const body = JSON.parse(options.body), userInput = JSON.parse(body.messages[1].content);
+            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences });
+            assert.match(body.messages[0].content, /characterCardInfo\/characterMemory/);
+            return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: [fixture().panels[0]] }) } }] }) };
+        };
+        assert.equal((await manga.requestStudioPanels(settings._mangaMode, 'one panel', 'story', 1)).length, 1);
+    }
+    delete RBQ.api.collectMangaReferenceData;
+    console.log('PASS Studio includes card and memory references and accepts full chat-completions endpoints'); passed++;
     console.log(`\n${passed} manga regression tests passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

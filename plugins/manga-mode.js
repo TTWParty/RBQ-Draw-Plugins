@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.6.2';
+        const VERSION = '1.6.3';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -177,7 +177,7 @@
     const GUTTER_PRESETS = {
         bleed: {
             name: '天地出血 (Top-Bottom Bleed)',
-            tag: 'white border, top-bottom bleed',
+            tag: 'top-bottom bleed, narrow gutters',
             instruction: `[GUTTER-BLEED: TOP-BOTTOM-BLEED]
 天地出血：天头地脚贴边无白边，内框横纵格间距紧凑，关键画格允许单侧出血突破边框。`
         },
@@ -385,6 +385,7 @@ ${gutter.instruction}
 【数据归属：页面 → 画格 → 格内人物】
 输出 format=nai5-comic，字段见 outputSchema。page.base 写去重后的实际人数、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
 同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，原创姓名不作为绘图标签。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
+可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 逐格追踪左右手持物、物件状态、持续接触、服装及发型变化；裁切不等于状态消失，换镜头不自动复原。比喻只转译实际可见的本体。视觉词优先英文标签，复杂关系可用简短英日描述。
 【视觉词与动作表达】
 page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。姓名放 name，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
@@ -398,6 +399,7 @@ ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 
 【对白与非人物文字】
 人物对白/心声归该人物 positive；旁白、拟音、画外对白归所属 page.non_character 或 panel.non_character，不占人物槽。原句保留说话者、次序、次数和标点；静默格不添字。长句按原有停顿分气泡，不删字。
 说话者在本格可见时，原句必须进本人 positive，不能当旁白移到 page.base/non_character。只有真的画外声才放 non_character。需要上画的每句台词必须实际写入 Text，不能只写 speech bubble、speaking 或“说了某事”；无台词的静默格不添空白气泡。叙述中的动作描写转成视觉标签，不整段变成旁白。
+问答按正文先问后答，回答不能提前放到入场格；同格放不下就顺延下一格。画外回答使用所属 panel.non_character，并明确本格位置、画外来源及画外气泡，不能使用整页 page.non_character 承载某一格的回答。
 气泡视觉说明必须在 Text: 前写类型、位置及 Layout。普通=通常吹き出し；呐喊=叫び吹き出し；心声=思考の吹き出し；耳语=破線吹き出し；颤抖=波打つ吹き出し；广播=四角い吹き出し；旁白=ナレーション枠；画外=切り欠きのある吹き出し；无尾=しっぽなしの楕円吹き出し；连续气泡=連結吹き出し。拟音用 SFX: 擬音, 吹き出しなし。
 对白通常 Layout: 縦書き，旁白和道具字 Layout: 横書き。每字段仅在末尾写一个 Text:，其后只有原句、没有视觉标签；同人同格多句用两个换行分隔，不重复人物槽。Text: 外不包额外引号。
 外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点。Layout 指令不写进台词，不按列手工断行；同人多泡把各泡类型、位置和阅读顺序全部写在 Text 前，再把各句用空行分隔。
@@ -410,7 +412,7 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
     }
 
     // Filter whole tags (including weighted groups), never substrings or dialogue.
-    function filterMangaTags(value, forbidden) {
+    function filterMangaTags(value, forbidden, transform = tag => tag) {
         const tokens = [];
         let start = 0, brackets = 0, weights = 0;
         for (let i = 0; i < value.length; i++) {
@@ -426,20 +428,32 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
             const token = raw.trim();
             const weighted = token.match(/^(-?\d+(?:\.\d+)?::)([\s\S]*)::$/);
             if (weighted) {
-                const body = filterMangaTags(weighted[2], forbidden);
+                const body = filterMangaTags(weighted[2], forbidden, transform);
                 return body ? weighted[1] + body + '::' : '';
             }
             if ((token.startsWith('{') && token.endsWith('}')) || (token.startsWith('[') && token.endsWith(']'))) {
-                const body = filterMangaTags(token.slice(1, -1), forbidden);
+                const body = filterMangaTags(token.slice(1, -1), forbidden, transform);
                 return body ? token[0] + body + token.at(-1) : '';
             }
-            return forbidden.has(token.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : token;
+            return forbidden.has(token.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : transform(token);
         }).filter(Boolean).filter((tag, i, tags) => tags.indexOf(tag) === i).join(', ');
     }
 
-    function sanitizeMangaPositivePrompt(value) {
+    // Convert only explicit color + appearance/clothing phrases. Never touch names,
+    // artist tags, dialogue, arbitrary objects (red panda), or persistent memory.
+    function monochromeCharacterTag(tag) {
+        if (/[()]/.test(tag)) return tag; // Preserve named characters/series and escaped names.
+        const normalized = tag.replace(/_/g, ' ');
+        const match = normalized.match(/^(?:(light|pale|dark|deep|bright)\s+)?(silver|blonde|blond|golden|gold|yellow|orange|red|pink|purple|violet|blue|green|cyan|teal|turquoise|navy|brown|auburn|scarlet|crimson|lavender|magenta)\s+((?:(?:long|short|straight|curly)\s+)?hair|(?:(?:phoenix|almond|droopy|round)\s+)?eyes|qipao|cheongsam|dress|shirt|blouse|coat|jacket|skirt|trousers|pants|shorts|socks|stockings|thighhighs|pantyhose|shoes|boots|heels|gloves|scarf|ribbon|hair bow|hat|cape|cloak|robe|uniform)(?=$|\s)/i);
+        if (!match) return tag;
+        const shade = /^(dark|deep)$/i.test(match[1] || '') || /^(navy|brown|auburn|crimson)$/i.test(match[2])
+            ? 'dark grey' : /^(light|pale)$/i.test(match[1] || '') || /^(silver|blonde|blond|golden|gold|yellow|pink|lavender)$/i.test(match[2]) ? 'light grey' : 'grey';
+        return shade + ' ' + normalized.slice(match[0].length - match[3].length);
+    }
+
+    function sanitizeMangaPositivePrompt(value, monochromeCharacter = false) {
         const { visual, text } = splitMangaText(value);
-        const clean = filterMangaTags(visual, new Set(['no text', 'notext']));
+        const clean = filterMangaTags(visual, new Set(['no text', 'notext']), monochromeCharacter ? monochromeCharacterTag : tag => tag);
         return clean + (text ? (clean ? '\n' : '') + 'Text: ' + text : '');
     }
 
@@ -455,10 +469,10 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
     let studioGenerationRatio = null;
     let studioRequest = null;
 
-    function enhanceMangaPayload(payload) {
+    function enhanceMangaPayload(payload, forceManga = false) {
         const store = getStore();
         const studioMatch = studioRequest && String(payload.input || '').includes(studioRequest.prompt);
-        if (!store.enabled && !studioMatch) return payload;
+        if (!store.enabled && !studioMatch && forceManga !== true) return payload;
         if (!payload.parameters) return payload;
         const params = payload.parameters;
         if (studioMatch) {
@@ -478,13 +492,15 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
         const positive = store.style === 'custom' ? store.customPositive || '' : style.positive;
         const negative = store.style === 'custom' ? store.customNegative || '' : style.negative;
         const mono = store.style === 'monochrome';
-        const addStyle = value => sanitizeMangaPositivePrompt(positive && !String(value || '').includes(positive)
-            ? joinMangaCaptions([positive, value]) : value);
+        const gutter = (GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed).tag;
+        const addStyle = value => sanitizeMangaPositivePrompt(joinMangaCaptions([
+            positive && !String(value || '').includes(positive) ? positive : '', gutter, value
+        ]));
         const caption = params.v4_prompt?.caption;
         payload.input = addStyle(payload.input);
         if (caption) {
             caption.base_caption = addStyle(caption.base_caption);
-            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption); });
+            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption, mono); });
             params.v4_prompt.use_order = true;
         }
         const negCaption = params.v4_negative_prompt?.caption;
@@ -504,7 +520,7 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
         return payload;
     }
     mangaProtocol.enhancePayload = enhanceMangaPayload;
-    RBQ.on('buildNaiV4Payload', enhanceMangaPayload);
+    RBQ.on('buildNaiV4Payload', payload => enhanceMangaPayload(payload));
 
     // ── 6. UI Injection into Smart Draw Trigger (SDT) ──────────────
     const STYLE_TAG_ID = 'rbq-manga-mode-style';
@@ -2466,6 +2482,7 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
     function studioDirectorPrompt(store, task) {
         return buildMangaSystemPrompt({ ...store, antiHijack: store.studio?.antiHijack ?? store.antiHijack }) + `
 【工作台任务】${task}
+若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，只把镜头可见特征写入人物 positive，不额外输出或更新记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
 只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
 position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、positive、negative。character_id 跨格同人保持一致。description 不含人物动作，人物外貌动作和对白全部进自己的 positive；没有人物时 characters=[]。
@@ -2478,10 +2495,13 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const baseUrl = String(config.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const model = String(config.openaiModelCustom || config.openaiModel || '').trim();
         if (!baseUrl || !model) throw new Error('请先在智能生图中配置 OpenAI 兼容接口和模型；现有分镜已保留');
-        const response = await fetch(`${baseUrl}/chat/completions`, {
+        const references = typeof RBQ.api.collectMangaReferenceData === 'function' ? RBQ.api.collectMangaReferenceData(content) : {};
+        const userContent = Object.keys(references).length ? JSON.stringify({ currentMessage: content, ...references }) : content;
+        const endpoint = /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`;
+        const response = await fetch(endpoint, {
             method: 'POST', headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
             body: JSON.stringify({ model, temperature: 0.2, messages: [
-                { role: 'system', content: studioDirectorPrompt(store, task) }, { role: 'user', content }
+                { role: 'system', content: studioDirectorPrompt(store, task) }, { role: 'user', content: userContent }
             ] })
         });
         if (!response.ok) throw new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);

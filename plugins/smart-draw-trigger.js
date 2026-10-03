@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.2.4';
+    const PLUGIN_VERSION = '6.2.7';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3317,14 +3317,11 @@ ${activeRegistrySection}`;
             for (const char of activeChars) {
                 const name = char.name;
                 const profile = getCharacterProfile(name);
-                if (profile) {
+                if (String(profile?.baseTags || '').trim()) {
                     continue;
                 }
 
-                let description = String(char.description || char.data?.description || '').trim();
-                if (description.length > 1200) {
-                    description = description.slice(0, 1200) + '...';
-                }
+                const description = String(char.description || char.data?.description || '').trim();
 
                 const charBookEntries = [];
                 const entries = char.data?.character_book?.entries || char.character_book?.entries;
@@ -3342,21 +3339,17 @@ ${activeRegistrySection}`;
                                 keys = entry.key;
                             }
 
-                            // 仅当包含关键词匹配当前上下文时才注入，防止几十条全量词条撑爆 Token
+                            // 保留上下文匹配筛选；命中的启用词条完整注入，不截断内容或条数。
                             const isMatched = keys.length === 0 || keys.some(k => k && allContextText.includes(k.toLowerCase()));
                             if (!isMatched) continue;
 
-                            let content = String(entry.content || '').trim();
-                            if (content.length > 600) {
-                                content = content.slice(0, 600) + '...';
-                            }
+                            const content = String(entry.content || '').trim();
                             if (content) {
                                 charBookEntries.push({
                                     keys,
                                     content
                                 });
                             }
-                            if (charBookEntries.length >= 8) break; // 最多 8 条高频相关词条
                         }
                     }
                 }
@@ -3376,6 +3369,20 @@ ${activeRegistrySection}`;
             console.error('[Smart Draw Trigger] 收集角色卡/世界书信息失败:', e);
             return [];
         }
+    }
+
+    // Read-only references for standalone manga entry points (Studio and test draw).
+    function collectMangaReferenceData(content = '') {
+        const references = {};
+        const cards = collectCharacterCardInfo(content, []);
+        if (cards.length) references.characterCardInfo = cards;
+        if (getStore().characterMemoryEnabled) {
+            const memory = Object.entries(getCharacterProfiles())
+                .filter(([name, p]) => p && !isJunkCharacterName(name) && (p.baseTags || p.currentOutfit))
+                .map(([name, p]) => ({ name: p.displayName || name, base: p.baseTags || '', outfit: p.currentOutfit || '' }));
+            if (memory.length) references.characterMemory = memory;
+        }
+        return references;
     }
 
     async function importCharacterFromCurrentCard() {
@@ -7848,8 +7855,9 @@ SCHEMA:
                         const yInput = card.querySelector('.rbq-sdt-pad-y');
                         let centerVal = { x: 0.5, y: 0.5 };
                         if (xInput && yInput) {
-                            const px = Math.max(0, Math.min(1, parseFloat(xInput.value) || 0.5));
-                            const py = Math.max(0, Math.min(1, parseFloat(yInput.value) || 0.5));
+                            const rawX = parseFloat(xInput.value), rawY = parseFloat(yInput.value);
+                            const px = Math.max(0, Math.min(1, Number.isFinite(rawX) ? rawX : 0.5));
+                            const py = Math.max(0, Math.min(1, Number.isFinite(rawY) ? rawY : 0.5));
                             centerVal = { x: Number(px.toFixed(2)), y: Number(py.toFixed(2)) };
                         } else {
                             centerVal = String(card.querySelector('.rbq-sdt-manual-char-center')?.value || 'C3').trim();
@@ -9225,7 +9233,7 @@ SCHEMA:
 
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
         pendingNaiCharData = null; // consume
-        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload) : payload;
+        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true) : payload;
     });
 
     /* ── ComfyUI payload hook: inject char placeholders ── */
@@ -9961,7 +9969,13 @@ SCHEMA:
         if (store.lorebookBase64) {
             systemPrompt += '\n\n【🛡️ Base64 设定资产混淆解码指令】\n为了确保底层文本传输链路合规安全，输入数据 payload 中的世界书设定（`lorebook` 数组中的 `tags_base64` 与 `name_base64`，以及 `lorebook_base64` 原始汇总数组）和角色卡设定（`characterCardInfo_base64`）均已采用 UTF-8 Base64 编码进行了混淆封装。\n【模型执行规则】：\n1. 你必须在内部推理思考（thinking）阶段解码这些 Base64 字段，还原为原本的人物外貌、发型、发色、瞳色、服装、配饰等视觉设定文本；\n2. 严禁在普通文本或输出中回显原始设定文本，只需客观将其提炼为 Danbooru 英文生图标签（例如: blonde hair, twintails, plaid skirt 等）；\n3. 无论世界书是否编码，均需严格视其为出镜角色的权威外貌设定并保持画面一致。';
         }
-        if (store.injectCharacterCard && hasCardInfo && !isMangaRequest(store)) {
+        // Custom HTTP assembles mangaInstruction before collecting card data, so the
+        // manga rule is conditional on payload fields rather than hasCardInfo.
+        if (store.injectCharacterCard && isMangaRequest(store)) {
+            systemPrompt += `\n\n【漫画角色卡信息参考指令】
+当输入含 characterCardInfo 或 characterCardInfo_base64 时，读取未建档角色的 description 与 characterBookEntries，作为身份、外貌和默认衣着的依据，优先于模型常识；未知不猜，已有不漏，包含已明确的国籍/族裔/面相等特征。
+按当前剧情和景别，将可见特征用于 panels[].characters[].positive；开启角色记忆时，另按 character_memory 规则建档。`;
+        } else if (store.injectCharacterCard && hasCardInfo) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }
         if (store.characterMemoryEnabled) {
@@ -14495,7 +14509,7 @@ SCHEMA:
                 }
             }
 
-            const cardInfo = collectCharacterCardInfo();
+            const cardInfo = collectCharacterCardInfo(description, recentMessages);
             if (cardInfo && cardInfo.length > 0) {
                 manualPayload.characterCardInfo = cardInfo;
             }
@@ -14973,7 +14987,7 @@ SCHEMA:
 
                         let imgRes = state?.imageResult;
                         let hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
-                        const promptText = String(imgRes?.prompt || seg.prompt || sdt.prompt || '').trim();
+                        const promptText = String(seg.mangaPage ? getFinalPrompt(seg) : (imgRes?.prompt || seg.prompt || sdt.prompt || '')).trim();
 
                         // Fallback: If sdt.segmentStates didn't record imageResult, match with hostExtras
                         if (!hasImg && hostExtras.length > 0) {
@@ -15040,6 +15054,7 @@ SCHEMA:
                             sceneText,
                             label: labelText,
                             characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
+                            mangaPage: seg.mangaPage, mangaUseCoords: !!seg.mangaUseCoords,
                             prompt: promptText,
                             negative: String(seg.negative || sdt.negative || '').trim(),
                             url: hasImg ? (imgRes.url || imgRes.displayUrl || '') : '',
@@ -15061,7 +15076,7 @@ SCHEMA:
                     }
                     let imgRes = state?.imageResult || sdt.imageResult;
                     let hasImg = !!(imgRes && (imgRes.url || imgRes.displayUrl || imgRes.cacheId));
-                    const promptText = String(imgRes?.prompt || sdt.prompt || '').trim();
+                    const promptText = String(sdt.mangaPage ? getFinalPrompt(sdt) : (imgRes?.prompt || sdt.prompt || '')).trim();
 
                     if (!hasImg && hostExtras.length > 0) {
                         const hImg = hostExtras.find(h => !consumedHostExtras.has(h) && (h.url || h.displayUrl || h.cacheId));
@@ -15098,6 +15113,7 @@ SCHEMA:
                                 sceneText,
                                 label: sec?.title || '剧情分镜',
                                 characters: Array.isArray(sdt.characters) ? sdt.characters : [],
+                                mangaPage: sdt.mangaPage, mangaUseCoords: !!sdt.mangaUseCoords,
                                 prompt: promptText,
                                 negative: String(sdt.negative || '').trim(),
                                 url: hasImg ? (imgRes.url || imgRes.displayUrl || '') : '',
@@ -15436,10 +15452,10 @@ SCHEMA:
         btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生图...';
 
         try {
-            // 1. Prepare NAI characters if any
-            if (Array.isArray(item.characters) && item.characters.length > 0) {
+            // Keep page metadata and clear stale captions for empty manga panels.
+            if (item.mangaPage || (Array.isArray(item.characters) && item.characters.length > 0)) {
                 try {
-                    prepareNaiCharData({ characters: item.characters });
+                    prepareNaiCharData({ characters: item.characters, mangaPage: item.mangaPage, mangaUseCoords: item.mangaUseCoords });
                 } catch (_e) { /* ignore */ }
             }
 
@@ -15977,6 +15993,12 @@ SCHEMA:
             },
         };
 
+        if (isMangaRequest(store)) Object.assign(manualPayload, collectMangaReferenceData(description));
+        else {
+            const cardInfo = collectCharacterCardInfo(description, []);
+            if (cardInfo.length) manualPayload.characterCardInfo = cardInfo;
+        }
+
         logTaggerPayload('test draw request', manualPayload);
 
         const systemPrompt = isMangaRequest(store) ? getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() : `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
@@ -16089,6 +16111,8 @@ SCHEMA:
     RBQ.api.importCharacterFromCurrentCard = () => {
         return importCharacterFromCurrentCard();
     };
+
+    RBQ.api.collectMangaReferenceData = collectMangaReferenceData;
 
     RBQ.api.getLorebookSources = () => {
         return ensureLorebookStore();

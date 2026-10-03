@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.6.0';
+        const VERSION = '1.6.1';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -203,14 +203,14 @@
 
     // ── 4. Prompt Assembly for SDT Tagger LLM ──────────────────────
     // Shared contract: SDT and Studio compile the same page/panels/characters tree.
-    function mangaSegmentSchema(planned = false) {
+    function mangaSegmentSchema() {
         const string = { type: 'string' };
         return {
             type: 'object',
             properties: {
                 format: { type: 'string', enum: ['nai5-comic'] },
                 label: string,
-                ...(planned ? { intent: { type: 'string', description: '本页叙事任务、主画面与分页理由，一句话' } } : {}),
+                intent: { type: 'string', description: '可选；一句话说明本页主画面' },
                 anchor: { type: 'object', properties: { text: string }, required: ['text'] },
                 page: {
                     type: 'object', properties: { base: string, non_character: string }, required: ['base']
@@ -221,7 +221,6 @@
                         type: 'object',
                         properties: {
                             id: string, description: string, non_character: string,
-                            ...(planned ? { beat_ids: { type: 'array', minItems: 1, items: string, description: '本格承载的 story_plan.beats 中 decision=draw 的节点 ID' } } : {}),
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
@@ -229,47 +228,24 @@
                                     }, required: ['character_id', 'positive', 'negative']
                                 }
                             }
-                        }, required: ['id', 'description', 'characters', ...(planned ? ['beat_ids'] : [])]
+                        }, required: ['id', 'description', 'characters']
                     }
                 }
-            }, required: ['format', 'anchor', 'page', 'panels', ...(planned ? ['intent'] : [])]
-        };
-    }
-
-    function mangaPlanSchema() {
-        return {
-            type: 'object',
-            properties: {
-                continuity: { type: 'string', description: '进入本楼时仍有效的场景、人物衣着、持物和接触状态；简短事实摘要，无依据写未知' },
-                beats: {
-                    type: 'array', items: {
-                        type: 'object', properties: {
-                            id: { type: 'string' },
-                            source: { type: 'string', description: '按正文顺序逐字引用当前楼层，足以定位该节点的连续短片段；不可引用历史' },
-                            decision: { type: 'string', enum: ['draw', 'omit'] },
-                            summary: { type: 'string', description: '要呈现的可见变化/叙事信息；omit 时说明省略原因' }
-                        }, required: ['id', 'source', 'decision', 'summary']
-                    }
-                }
-            }, required: ['continuity', 'beats']
+            }, required: ['format', 'anchor', 'page', 'panels']
         };
     }
 
     function mangaOutputSchema() {
         return {
-            shouldDraw: 'boolean (存在 draw 节点才为 true；否则 segments=[])',
+            shouldDraw: 'boolean (有值得画的剧情为 true，否则 segments=[])',
             reason: 'string (简述画哪些剧情、共几页、如何分配；无需长篇推理)',
-            story_plan: {
-                continuity: '进入本楼时仍有效的状态与依据；未知不猜',
-                beats: [{ id: 'B1', source: '逐字摘录当前正文的定位短片段', decision: 'draw 或 omit', summary: '本节点的可见变化/叙事任务，或省略原因' }]
-            },
             segments: [{
                 format: 'nai5-comic', label: 'Page 1: 本页标题',
-                intent: '本页叙事任务、主画面与分页理由，一句话',
+                intent: '可选；一句话说明本页主画面',
                 anchor: { text: '从本页对应正文逐字摘录的10~40字原句' },
                 page: { base: '本页人数、页面形态、画格数量、实际布局与全局光影', non_character: '整页非人物文字；可省略' },
                 panels: [{
-                    id: 'P1', beat_ids: ['B1'], description: '本格位置、大小、景别、环境；不写人物演出',
+                    id: 'P1', description: '本格位置、大小、景别、环境；不写人物演出',
                     non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
                     characters: [{
                         character_id: 'C1', name: '真实角色名，仅用于资料关联',
@@ -340,74 +316,18 @@
 
     const mangaProtocol = {
         compile: compileMangaPage, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
-        planSchema: mangaPlanSchema, validatePlan: validateMangaPlan, planningPrompt: buildMangaPlanningPrompt,
+        planningPrompt: buildMangaPlanningPrompt,
         systemPrompt: () => buildMangaSystemPrompt(getStore())
     };
     RBQ.api.mangaProtocol = mangaProtocol;
 
     function buildMangaPlanningPrompt() {
         return `【漫画前情与本楼规划】
-这是同一次请求中的规划任务。先确定叙事事实与页格分配，再填写绘图词；输出简短可核对的 story_plan，不输出长篇思维过程。
-1. 承接状态：recentMessages 只查证人物身份、场所、时间、衣着、持物、伤痕和仍在持续的接触，不把历史剧情再画一次。进入本楼的状态取最近一次明确记录；本楼按事件顺序更新状态，后文换装/放下物品不能提前作用于前面的格。角色卡/世界书提供稳定身份，记忆和衣柜提供缺省参考，均不能覆盖剧情中已生效的变化。未知细节少写，不猜左右手、不自动复原。
-2. 选取剧情：从本楼开头扫描到结尾，以有叙事价值的可见变化为节点：登场及必要的环境交代、动作起因与结果、互动变化、关键道具/线索、情绪转折与关键对白、换装和时空转换。重要对白即使没有大动作也可用说话者与反应镜头呈现。重复形容、同一瞬间的小动作和无新信息的寒暄可合并；纯抽象议论、未发生的假设/计划、元指令和旧情复述不补成实际事件。当前正在看照片/回忆时，区分当下人物与画中/回忆中的表现，不能变成当前发生的动作。
-3. 节点清单：story_plan.continuity 只记必要的承接事实。beats 按当前正文顺序逐字摘录定位片段 source；每项有唯一 id、decision=draw/omit、summary（具体可见内容或省略理由）。不是逐句抄全文；相邻重复内容归一节点。覆盖开端、变化、结果和关键台词；明显未画的叙事段说明 omit 原因，不能用“大意相同”省掉关键转折。纯闲聊可以全部 omit；没有节点可为 []。
-4. 分页：先给 draw 节点安排画格，再按可读容量组合成页。一个 segment 就是一张最终图片/一页漫画；一页可以承载相邻多个节点，一个节点也可用连续多个画格。普通页通常先尝试 2～5 格，这是容量参考而非下限或配额；人物多、动作复杂、对白长时减少每页格数或增加页数。只有一个值得强调的定格可用整页。时间地点显著改变、连续动作阶段互不兼容、对白放不下或重要揭示需要停顿时才拆页，不按句号、图组标记、动作数量或普通插画 minSegments 机械分页。
-5. 每页设计：intent 一句话交代本页任务、主画面及分页理由。每格 beat_ids 引用实际承载的 draw 节点，按剧情先后排列；同节点跨格允许重复引用，但不要重复台词。每格只冻结一个相容时刻；伸手、接过、收入口袋是不同时间，不能塞成一只手同时做三件事。先保证人物关系和动作可读，再选择必要景别；有叙事作用的反应/空镜可用，无意义的装饰格不补。气泡保留阅读路径和留白；长对白分格/分页承接，不靠小字塞满、不删改关键台词。
-6. 提交前核对：每个 draw 节点至少被一格引用，omit 不进入画格；segments 数量就是图片数，不另报矛盾页数。人物身份与道具状态跨页连贯，每页 anchor.text 来自本页节点附近的当前正文；正文不足10字时可用全文。shouldDraw=false 仅用于没有值得画的节点，此时 segments=[]，reason 简述原因。
-容量示例（不是固定答案）：递信→接信→表情变化，通常同页数格；仅“好，明天聊”且无新动作/信息，可不画；无大动作的告白与拒绝仍值得画；长段交锋再转场揭示，需要按文字和转折拆页；只有一个强烈揭示，可一页一格。`;
-    }
-
-    // This checks traceability and declared coverage, not artistic quality or the model's semantic judgement.
-    function validateMangaPlan(result, currentText) {
-        const fail = message => {
-            const error = new Error(`漫画规划校验失败：${message}`);
-            error.code = 'MANGA_PLAN_INVALID';
-            error.mangaPlanFeedback = message;
-            throw error;
-        };
-        const plan = result?.story_plan;
-        if (!plan || typeof plan.continuity !== 'string' || !Array.isArray(plan.beats)) fail('缺少 story_plan.continuity 或 beats');
-        if (typeof result.shouldDraw !== 'boolean' || !Array.isArray(result.segments)) fail('shouldDraw 必须为布尔值，segments 必须为数组');
-        const text = String(currentText || '');
-        const beats = new Map();
-        let lastSource = 0;
-        for (const beat of plan.beats) {
-            if (!beat || typeof beat.id !== 'string' || !beat.id.trim() || beats.has(beat.id)
-                || !['draw', 'omit'].includes(beat.decision) || typeof beat.summary !== 'string' || !beat.summary.trim()
-                || typeof beat.source !== 'string' || !beat.source.trim()) fail('剧情节点需有唯一 id、原文 source、draw/omit 和具体 summary');
-            const start = text.indexOf(beat.source, lastSource);
-            if (start < 0) fail(`节点 ${beat.id} 的 source 不在当前正文中或节点顺序颠倒`);
-            lastSource = start;
-            beats.set(beat.id, { ...beat, start, end: start + beat.source.length, order: beats.size });
-        }
-        const drawing = [...beats.values()].filter(b => b.decision === 'draw');
-        if (result.shouldDraw !== (drawing.length > 0) || result.shouldDraw !== (result.segments.length > 0)) fail('shouldDraw、draw 节点和实际页数不一致');
-        const used = new Set();
-        let lastBeat = -1;
-        for (const [pageIndex, page] of result.segments.entries()) {
-            if (typeof page?.intent !== 'string' || !page.intent.trim()) fail(`第 ${pageIndex + 1} 页缺少 intent`);
-            try { compileMangaPage(page); } catch (error) { fail(error.message); }
-            const pageBeats = [];
-            for (const panel of page.panels) {
-                if (!Array.isArray(panel.beat_ids) || !panel.beat_ids.length || new Set(panel.beat_ids).size !== panel.beat_ids.length) fail(`${panel.id} 缺少唯一的 beat_ids 引用`);
-                for (const id of panel.beat_ids) {
-                    const beat = beats.get(id);
-                    if (!beat || beat.decision !== 'draw') fail(`${panel.id} 引用了不存在或 omit 的节点 ${id}`);
-                    if (beat.order < lastBeat) fail(`${panel.id} 的剧情节点顺序倒退；同一节点的连续画格应先完成再进入下一节点`);
-                    lastBeat = Math.max(lastBeat, beat.order);
-                    used.add(id); pageBeats.push(beat);
-                }
-            }
-            const anchor = page.anchor?.text;
-            const first = Math.min(...pageBeats.map(b => b.start)), last = Math.max(...pageBeats.map(b => b.end));
-            // An anchor can include surrounding context, but must overlap this page's own source range.
-            let offset = typeof anchor === 'string' && anchor.trim() ? text.indexOf(anchor) : -1;
-            while (offset >= 0 && offset + anchor.length <= first) offset = text.indexOf(anchor, offset + 1);
-            if (offset < 0 || offset >= last) fail(`第 ${pageIndex + 1} 页 anchor.text 不是本页剧情附近的逐字原文`);
-        }
-        const missing = drawing.filter(b => !used.has(b.id));
-        if (missing.length) fail(`有已选剧情未分配画格：${missing.map(b => b.id).join('、')}`);
-        return plan;
+一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
+前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
+从本楼开端看到结尾，保留重要动作及结果、关键对白、情绪转折、线索与转场；无大动作的告白或拒绝也值得画。重复描写合并，无新信息的寒暄、抽象议论和未发生的假设不硬画，不重画历史。
+先考虑每格呈现的定格，再按人物、动作、对白容量组合成页：多个相邻事件可同页，长对白或复杂互动可跨页。普通页通常2～5格只是参考，单格页合法；不按句号、图组数量或 minSegments 凑页。保留因果、说话者和反应，不为了少页删掉转折，也不为多页补无意义镜头。
+每页有清晰主画面；每格只画一个相容时刻，明确人物关系、景别和阅读位置，给对白留空间。提交前简要核对剧情首尾、人物状态和对白归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`;
     }
 
     function buildMangaSystemPrompt(store) {
@@ -442,7 +362,7 @@ ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 
 ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, screentone；可见外貌与衣着采用灰阶、结构和明暗描述，可靠同人角色标签保留。环境不写 full color 或彩色光照。' : '色彩遵循本轮设定与选定画风。'}
 
 【输出核对】
-核对台本起止与覆盖、画格数与页面形态、人物身份、动作连续性、每句文字归属，以及正负词是否互斥。若输出协议包含 story_plan，先填写简短节点清单，再用各格 beat_ids 完整承载已选节点，intent 说明本页要呈现什么；这些规划字段不写入绘图标签。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
+核对台本起止与覆盖、画格数与页面形态、人物身份、动作连续性、每句文字归属，以及正负词是否互斥。直接提交最终页格，不输出额外的节点清单或覆盖报告。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
     }
 
     // Filter whole tags (including weighted groups), never substrings or dialogue.

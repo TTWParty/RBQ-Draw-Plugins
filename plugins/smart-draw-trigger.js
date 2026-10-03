@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.2.0';
+    const PLUGIN_VERSION = '6.2.1';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6417,7 +6417,7 @@ ${activeRegistrySection}`;
     function getMangaProtocol() {
         const protocol = RBQ.api.mangaProtocol;
         if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
-        if (!protocol.validatePlan || !protocol.planningPrompt || !protocol.planSchema) throw new Error('请将漫画模式更新到 1.6.0 或更高版本，并刷新酒馆');
+        if (!protocol.planningPrompt) throw new Error('请更新漫画模式插件并刷新酒馆');
         return protocol;
     }
 
@@ -6527,22 +6527,10 @@ ${activeRegistrySection}`;
             : (typeof rawContent === 'string'
                 ? extractJson(rawContent)
                 : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {})));
-        if (mangaContext) {
-            try {
-                getMangaProtocol().validatePlan(source, mangaContext.content);
-            } catch (error) {
-                if (error.code === 'MANGA_PLAN_INVALID') {
-                    // A compact rejected plan is enough for one correction; do not resend all render captions.
-                    error.mangaRejectedPlan = {
-                        shouldDraw: source?.shouldDraw, story_plan: source?.story_plan,
-                        segments: Array.isArray(source?.segments) ? source.segments.map(page => ({
-                            intent: page?.intent, anchor: page?.anchor,
-                            panels: Array.isArray(page?.panels) ? page.panels.map(panel => ({ id: panel?.id, beat_ids: panel?.beat_ids })) : []
-                        })) : []
-                    };
-                }
-                throw error;
-            }
+        // Validate only what rendering needs; source quotes and planning notes are not a render contract.
+        if (mangaContext && (typeof source?.shouldDraw !== 'boolean' || !Array.isArray(source?.segments)
+            || (source.shouldDraw && !source.segments.length))) {
+            throw new Error('漫画响应缺少有效的 shouldDraw/segments，请检查模型原始输出');
         }
         const rawSegmentsList = Array.isArray(source?.segments)
             ? source.segments
@@ -6692,7 +6680,7 @@ ${activeRegistrySection}`;
         }
 
         if (mangaContext && shouldDraw) {
-            decisionReason = `共 ${segments.length} 页漫画。` + segments.map((seg, index) => `第 ${index + 1} 页：${seg.reason}`).join('；');
+            decisionReason = `共 ${segments.length} 页漫画。` + segments.map((seg, index) => `第 ${index + 1} 页：${seg.reason || seg.label}`).join('；');
         }
         const normalized = {
             shouldDraw,
@@ -6705,7 +6693,6 @@ ${activeRegistrySection}`;
             ...(segments[0]?.mangaPage ? { mangaPage: segments[0].mangaPage, mangaUseCoords: segments[0].mangaUseCoords } : {}),
             anchor: normalizeAnchor(source?.anchor, 1),
             reason: decisionReason,
-            ...(source.story_plan ? { mangaStoryPlan: JSON.parse(JSON.stringify(source.story_plan)) } : {}),
             thinkContent,
             rawOutput: rawOutputText,
             segments,
@@ -8269,7 +8256,11 @@ SCHEMA:
             const errStr = (reason + ' ' + rawOutput).toLowerCase();
             let specificTip = '';
 
-            if (errStr.includes('ending with a model turn') || errStr.includes('model turn are not supported')) {
+            if (reason.includes('漫画规划校验失败')) {
+                specificTip = '漫画节点引用检查未通过。请同时更新漫画模式至 1.6.1、智能生图至 6.2.1 或更高版本，刷新酒馆后重新解析。新版已取消该项严格检查和规划重试。';
+            } else if (reason.includes('漫画响应缺少') || reason.includes('漫画页缺少') || reason.includes('漫画第') || reason.includes('漫画解析返回了旧式')) {
+                specificTip = '漫画返回数据缺少可用的页面或格内人物结构。请展开原始响应，检查是否输出完整 JSON、是否被截断，并确认两个插件均已更新后刷新。';
+            } else if (errStr.includes('ending with a model turn') || errStr.includes('model turn are not supported')) {
                 specificTip = '⚠️ <strong>请求结构错误 (400 Bad Request)</strong>：Google Gemini API 规范强制要求消息序列末尾必须是 User 回合，不支持以 Assistant (model) 结尾。<br>'
                     + '👉 <strong>解决方案</strong>：进入设置将<strong>「引导身份 (Role)」</strong>切换为<strong>「User 末尾追加 (Gemini 3.6+ 推荐)」</strong>，或直接取消勾选<strong>「启用尾部输出引导 (卡思维链)」</strong>。';
             } else if (errStr.includes('must alternate') || errStr.includes('alternate between user and model')) {
@@ -9450,7 +9441,6 @@ SCHEMA:
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
             ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords } : {}),
-            ...(result.mangaStoryPlan ? { mangaStoryPlan: result.mangaStoryPlan } : {}),
             anchor: result.anchor || { type: 'bottom' },
             reason: String(result.reason || '').slice(0, 500),
             thinkContent: String(result.thinkContent || '').slice(0, 1000),
@@ -9684,7 +9674,7 @@ SCHEMA:
     function getEnhancedContextPayload(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
-            v_manga: "Use story_plan to select current-message visual beats and track inherited state; allocate every draw beat to panel beat_ids, then group panels into readable comic pages. Each segment is one image, not one beat. Return concise facts and page intents, not extended reasoning.",
+            v_manga: "Select meaningful current-message events, preserve inherited state, and group readable panels into comic pages. Return final pages directly; no separate planning ledger. Each segment is one image.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
@@ -9722,7 +9712,7 @@ SCHEMA:
         }
     }
 
-    function buildRequestPayload(messageId, trigger, { skipLorebook = false, planningFeedback = null } = {}) {
+    function buildRequestPayload(messageId, trigger, { skipLorebook = false } = {}) {
         const store = getStore();
         const current = getMessageSnapshot(messageId);
         if (!current) throw new Error(`未找到当前消息 #${messageId}`);
@@ -9762,7 +9752,7 @@ SCHEMA:
             recentMessages,
             contextCount: Number(store.contextCount) || 5,
             ...(isMangaRequest(store) ? {
-                segmentInstruction: '先选择本楼有叙事价值的节点，再按可读容量分页；一个 segment 是一张漫画图片。提交 story_plan、每页 intent 和各格 beat_ids。普通插画最少分镜数及图组标记不决定漫画页数，重要媒介内容可放入合适画格；不要漏掉正文开端或结尾。'
+                segmentInstruction: '先选择本楼有叙事价值的节点，再按可读容量分页；一个 segment 是一张漫画图片。直接提交最终 page/panels/characters，说明文字保持简短。普通插画最少分镜数及图组标记不决定漫画页数，重要媒介内容可放入合适画格；不要漏掉正文开端或结尾。'
             } : detectedPhotoCount > 0 ? {
                 minSegments: detectedPhotoCount,
                 segmentInstruction: `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！【最高警告：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对禁止提取历史楼层（recentMessages）中的图组或场景！】`
@@ -9776,7 +9766,6 @@ SCHEMA:
             }),
             ...getEnhancedContextPayload(isMangaRequest(store) ? 'v_manga' : store.enhancedContext),
             ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
-            ...(isMangaRequest(store) && planningFeedback ? { mangaPlanCorrection: planningFeedback } : {}),
             outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
@@ -10095,10 +10084,9 @@ SCHEMA:
     function getDrawSpecTool(store) {
         if (!isMangaRequest(store)) return DRAW_SPEC_TOOL;
         const tool = JSON.parse(JSON.stringify(DRAW_SPEC_TOOL));
-        tool.function.parameters.properties.story_plan = getMangaProtocol().planSchema();
         tool.function.parameters.properties.reason.description = 'Brief summary of selected story beats, actual page count and page allocation; no extended reasoning.';
-        tool.function.parameters.required = ['shouldDraw', 'story_plan', 'segments'];
-        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema(true);
+        tool.function.parameters.required = ['shouldDraw', 'segments'];
+        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema();
         tool.function.parameters.properties.segments.description = 'Comic pages in narrative order; each page contains panels and each panel contains its visible characters.';
         return tool;
     }
@@ -10353,14 +10341,14 @@ SCHEMA:
         }
     }
 
-    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, planningFeedback = null } = {}) {
+    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false } = {}) {
         const store = getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
         if (!modelName) throw new Error('请先填写模型名称');
         checkUrlSafety(url);
-        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook, planningFeedback });
+        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook });
         logTaggerPayload('tagger request body', payload);
 
         const systemPrompt = getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64));
@@ -10417,7 +10405,7 @@ SCHEMA:
             if (store.lorebookWafRetry && isInputWafHttpError && !retryWithoutLorebook && hasLorebookAttached) {
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, planningFeedback });
+                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
             }
             throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
         }
@@ -10499,7 +10487,7 @@ SCHEMA:
                         if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${sseState.safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, planningFeedback });
+                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
                         }
 
                         const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${sseState.safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
@@ -10670,7 +10658,7 @@ SCHEMA:
                             if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
                                 console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
                                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, planningFeedback });
+                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
                             }
                             const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
                             err.debugInfo = {
@@ -10726,7 +10714,7 @@ SCHEMA:
         return normalized;
     }
 
-    async function callCustomHttp(messageId, trigger, { signal, planningFeedback = null } = {}) {
+    async function callCustomHttp(messageId, trigger, { signal } = {}) {
         const store = getStore();
         const url = String(store.customUrl || '').trim();
         if (!url) throw new Error('请先填写自定义 HTTP 接口地址');
@@ -10736,7 +10724,7 @@ SCHEMA:
             const headerName = store.customApiKeyHeader || 'Authorization';
             headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
         }
-        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { planningFeedback });
+        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
         const response = await smartFetch(url, {
             method: 'POST',
@@ -10757,19 +10745,9 @@ SCHEMA:
         if (store.lorebookEnabled) {
             try { await warmLorebookMemoryCache(); } catch (_e) {}
         }
-        const request = options => store.provider === 'custom'
-            ? callCustomHttp(messageId, trigger, options)
-            : callOpenAiCompatible(messageId, trigger, options);
-        try {
-            return await request({ signal });
-        } catch (error) {
-            if (error.code !== 'MANGA_PLAN_INVALID' || signal?.aborted || !isMangaRequest(store)) throw error;
-            debugInfo('漫画规划未通过校验，尝试一次修正', error.mangaPlanFeedback);
-            return request({ signal, planningFeedback: {
-                instruction: '上一版规划未通过校验。结合当前正文重新核对选取、分页和引用，修正下列错误后返回完整 JSON。不要只返回补丁，不要通过删除关键剧情规避错误。',
-                issue: error.mangaPlanFeedback, previousPlan: error.mangaRejectedPlan
-            } });
-        }
+        return store.provider === 'custom'
+            ? callCustomHttp(messageId, trigger, { signal })
+            : callOpenAiCompatible(messageId, trigger, { signal });
     }
 
     function visibleTextNodes(root) {

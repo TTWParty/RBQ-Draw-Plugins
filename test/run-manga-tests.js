@@ -90,13 +90,51 @@ test('caption sanitizer preserves text, exact negative tags and closed weights',
     const input = 'no text, girl, BubbleType: 通常吹き出し, Text: no text, A|B\n\n第二句';
     assert.equal(manga.sanitizeMangaPositivePrompt(input).split('Text: ')[1], input.split('Text: ')[1]);
 });
+test('misplaced bubble header is moved before literal Text, without rewriting dialogue', () => {
+    const wrong = 'top panel, girl, holding envelope, Text: 通常吹き出し, Layout: 縦書き, Text: 「信收到了。」';
+    const expected = 'top panel, girl, holding envelope, BubbleType: 通常吹き出し, Layout: 縦書き\nText: 信收到了。';
+    assert.equal(manga.sanitizeMangaPositivePrompt(wrong), expected);
+    assert.equal(manga.sanitizeMangaPositivePrompt(expected), expected);
+    const page = fixture(); page.panels[0].characters[0].positive = wrong;
+    assert.equal(manga.compileMangaPage(page).characters[0].caption, expected);
+    const shout = manga.sanitizeMangaPositivePrompt('girl, Text: 叫び吹き出し, 右上, Layout: 縦書き, Text: 小心！');
+    assert.match(shout, /BubbleType: 叫び吹き出し, 右上, Layout: 縦書き\nText: 小心！$/);
+});
+test('literal protocol words inside speech stay intact and independent quoted bubbles retain their order', () => {
+    const actualSpeech = '请在纸上写 Text: Hello, Layout: horizontal。';
+    const caption = manga.sanitizeMangaPositivePrompt('girl, Text: ' + actualSpeech);
+    assert.equal(caption.slice(caption.indexOf('Text: ') + 6), actualSpeech);
+    assert.equal(manga.splitMangaText('girl, Text: “第一句。”\n\n「第二句！」').text, '第一句。\n\n第二句！');
+    assert.equal(manga.splitMangaText('girl, Text: 他说“收到”，我点头。').text, '他说“收到”，我点头。');
+    assert.equal(manga.splitMangaText('girl, Text: “甲”“乙”').text, '“甲”“乙”');
+    assert.equal(manga.splitMangaText('girl, Text: Layout: 是单词，Text: 也是。').text, 'Layout: 是单词，Text: 也是。');
+});
+test('non-person bubble formatting repairs locally and cached captions are repaired by either hook order', () => {
+    const page = fixture();
+    page.page.non_character = 'Text: BubbleType: ナレーション枠, Layout: 横書き, Text: 「第二天」';
+    page.panels[2].non_character = 'bottom panel, Text: SFX: 擬音, 吹き出しなし, Text: 咔哒';
+    const compiled = manga.compileMangaPage(page);
+    assert.match(compiled.base, /BubbleType: ナレーション枠, Layout: 横書き/);
+    assert.match(compiled.base, /Text: 第二天\n\n咔哒$/);
+    const bad = 'girl, holding envelope, Text: 通常吹き出し, Layout: 縦書き, Text: “收好。”';
+    const run = order => {
+        sdt.prepareNaiCharData({ mangaPage: true, characters: [{ caption: bad, uc: '', center: { x: 0.5, y: 0.5 } }] });
+        let p = payload('comic');
+        for (const hook of order) p = hook(p);
+        return p;
+    };
+    const p = run([sdtHook, mangaHook]);
+    assert.deepEqual(json(p), json(run([mangaHook, sdtHook])));
+    assert.equal(p.parameters.v4_prompt.caption.char_captions[0].char_caption,
+        'girl, holding envelope, BubbleType: 通常吹き出し, Layout: 縦書き\nText: 收好。');
+});
 test('SDT text and tool results use nested compiler and bypass legacy identity overwrite', () => {
     const message = { shouldDraw: true, segments: [fixture()] };
     const plain = sdt.normalizeTaggerResult({ choices: [{ message: { content: JSON.stringify(message) } }] });
     const tool = sdt.normalizeTaggerResult({ choices: [{ message: { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(message) } }] } }] });
     assert.equal(plain.segments[0].characters.length, 4);
     assert.deepEqual(json(plain.segments[0].characters), json(tool.segments[0].characters));
-    assert.equal(plain.segments[0].characters[0].caption, fixture().panels[0].characters[0].positive);
+    assert.equal(plain.segments[0].characters[0].caption, fixture().panels[0].characters[0].positive.replace(', Text:', '\nText:'));
     const schema = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters.properties.segments.items;
     assert.ok(schema.properties.panels.items.properties.characters);
     assert.equal(schema.properties.characters, undefined);
@@ -290,7 +328,7 @@ test('manga creates chat-scoped characters once across panels/pages and archives
     assert.equal(profiles.Ami.baseTags, response.character_memory[0].base);
     assert.equal(profiles.Ami.wardrobe.length, 1);
     assert.equal(profiles.Ami.currentOutfit, response.character_memory[0].outfit);
-    assert.equal(output.segments[0].characters[0].caption, before);
+    assert.equal(output.segments[0].characters[0].caption, before.replace(', Text:', '\nText:'));
     assert.doesNotMatch(output.segments[0].characters[0].caption, /brown shoes/);
     const nextRequest = sdt.buildRequestPayload(4, { type: 'auto' }).payload;
     assert.equal(nextRequest.characterMemory.find(p => p.name === 'Ami').base, profiles.Ami.baseTags);

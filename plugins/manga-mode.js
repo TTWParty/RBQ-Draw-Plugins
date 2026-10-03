@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.6.1';
+        const VERSION = '1.6.2';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -213,18 +213,25 @@
                 intent: { type: 'string', description: '可选；一句话说明本页主画面' },
                 anchor: { type: 'object', properties: { text: string }, required: ['text'] },
                 page: {
-                    type: 'object', properties: { base: string, non_character: string }, required: ['base']
+                    type: 'object', properties: {
+                        base: { type: 'string', description: 'Comma-separated visual tags: actual people counts, page form, layout, lighting. No story prose or dialogue.' },
+                        non_character: { type: 'string', description: 'Optional non-person text: bubble/SFX/layout visuals BEFORE a single final Text: containing only literal text.' }
+                    }, required: ['base']
                 },
                 panels: {
                     type: 'array', minItems: 1,
                     items: {
                         type: 'object',
                         properties: {
-                            id: string, description: string, non_character: string,
+                            id: string,
+                            description: { type: 'string', description: 'Panel position/size, shot and environment tags. No P1: prose, character actions or dialogue.' },
+                            non_character: { type: 'string', description: 'Optional caption, SFX or offscreen speech: visual instructions first, literal text only after final Text:.' },
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
-                                        character_id: string, name: string, positive: string, negative: string
+                                        character_id: string, name: string,
+                                        positive: { type: 'string', description: 'Comma-separated tags: panel position, visible identity/clothes, pose, limb action with object/contact, expression/gaze. Brief English relations only as needed. BubbleType/location/Layout BEFORE one final Text:; actual speech only after it.' },
+                                        negative: string
                                     }, required: ['character_id', 'positive', 'negative']
                                 }
                             }
@@ -243,13 +250,13 @@
                 format: 'nai5-comic', label: 'Page 1: 本页标题',
                 intent: '可选；一句话说明本页主画面',
                 anchor: { text: '从本页对应正文逐字摘录的10~40字原句' },
-                page: { base: '本页人数、页面形态、画格数量、实际布局与全局光影', non_character: '整页非人物文字；可省略' },
+                page: { base: '英文逗号分隔的本页人数、页面形态、格数、布局与光影标签', non_character: '整页非人物文字；格式说明在前，实际原句放唯一末尾 Text: 后；可省略' },
                 panels: [{
-                    id: 'P1', description: '本格位置、大小、景别、环境；不写人物演出',
+                    id: 'P1', description: '英文逗号分隔的位置、大小、景别、环境标签；不写人物演出或故事长句',
                     non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
                     characters: [{
                         character_id: 'C1', name: '真实角色名，仅用于资料关联',
-                        positive: '本格位置、无数字主体词、本镜头可见的外貌衣着、动作、气泡；台词放末尾 Text:',
+                        positive: '英文标签：格位、主体、可见外貌衣着、姿势、肢体与对象、表情视线；气泡类型/位置/Layout 全写在唯一末尾 Text: 前，后面只有台词',
                         negative: '仅针对本次人物出场的互斥特征；没有则为空'
                     }]
                 }]
@@ -260,8 +267,35 @@
     function splitMangaText(value) {
         const text = String(value || '').trim();
         const marker = /\bText[ \t]*[:：]/i.exec(text);
-        return marker ? { visual: text.slice(0, marker.index).replace(/[,\s]+$/, ''), text: text.slice(marker.index + marker[0].length).trim() }
-            : { visual: text, text: '' };
+        if (!marker) return { visual: text, text: '' };
+        let visual = text.slice(0, marker.index).replace(/[,\s]+$/, '');
+        let literal = text.slice(marker.index + marker[0].length).trim();
+        // Recover only an unambiguous protocol header accidentally placed after Text:.
+        // Ordinary dialogue containing "Text:" or "Layout:" stays opaque.
+        const bubble = /^(?:BubbleType\s*[:：]\s*)?(?:通常吹き出し|叫び吹き出し|吹き出し|ギザギザ吹き出し|思考の吹き出し|破線吹き出し|波打つ吹き出し|四角い吹き出し|ナレーション枠|矩形のナレーション枠|切り欠きのある吹き出し|しっぽなしの楕円吹き出し|連結吹き出し)$/i;
+        const layout = /^Layout\s*[:：]\s*(?:縦書き|横書き)$/i;
+        const location = /^(?:右上|左上|右下|左下|口元|画面外|頭上|上部|下部)$/;
+        const sfx = /^(?:SFX\s*[:：]\s*擬音|吹き出しなし)$/i;
+        for (;;) {
+            const next = /\bText[ \t]*[:：]/i.exec(literal);
+            if (!next) break;
+            const tokens = literal.slice(0, next.index).split(/[,，\n]+/).map(t => t.trim()).filter(Boolean);
+            if (!tokens.length || !tokens.some(t => bubble.test(t) || layout.test(t) || sfx.test(t))
+                || !tokens.every(t => bubble.test(t) || layout.test(t) || location.test(t) || sfx.test(t))) break;
+            const header = tokens.map(t => bubble.test(t) && !/^BubbleType/i.test(t) ? `BubbleType: ${t}` : t).join(', ');
+            visual = [visual, header].filter(Boolean).join(', ');
+            literal = literal.slice(next.index + next[0].length).trim();
+        }
+        // Remove only a complete outer quotation wrapper, preserving inner punctuation/quotations.
+        literal = literal.split(/\n[ \t]*\n/).map(part => {
+            const trimmed = part.trim();
+            const pairs = { '「': '」', '『': '』', '“': '”', '"': '"' };
+            const close = pairs[trimmed[0]];
+            if (close && trimmed.length >= 2 && trimmed.endsWith(close)
+                && !trimmed.slice(1, -1).includes(close) && !trimmed.slice(1, -1).includes(trimmed[0])) return trimmed.slice(1, -1);
+            return part;
+        }).join('\n\n');
+        return { visual, text: literal };
     }
 
     // All visual instructions precede the single Text: tail. Dialogue is opaque.
@@ -301,11 +335,12 @@
                     || c.center.x < 0 || c.center.x > 1 || c.center.y < 0 || c.center.y > 1)) {
                     throw new Error(`${panel.id}/${c.character_id} 缺少有效的手动坐标`);
                 }
+                const positive = joinMangaCaptions([c.positive]);
                 characters.push({
                     index: characters.length + 1, panelId: panel.id, characterId: c.character_id,
                     name: c.name || c.character_id, _rawName: c.name || c.character_id,
-                    // Keep the shot-specific caption intact; identity memory is input to the director, not an overwrite.
-                    caption: c.positive.trim(), action: c.positive.trim(), _rawAction: c.positive.trim(),
+                    // Preserve shot content, normalize text headers; identity memory never overwrites the caption.
+                    caption: positive, action: positive, _rawAction: positive,
                     base: '', outfit: '', uc: c.negative.trim(),
                     center: manual ? { ...c.center } : { x: 0.5, y: 0.5 }
                 });
@@ -351,13 +386,22 @@ ${gutter.instruction}
 输出 format=nai5-comic，字段见 outputSchema。page.base 写去重后的实际人数、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
 同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，原创姓名不作为绘图标签。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
 逐格追踪左右手持物、物件状态、持续接触、服装及发型变化；裁切不等于状态消失，换镜头不自动复原。比喻只转译实际可见的本体。视觉词优先英文标签，复杂关系可用简短英日描述。
+【视觉词与动作表达】
+page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。姓名放 name，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
+每个人物依次写：本格位置 → 主体与可见外貌 → 可见服装部件 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
+同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
+机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。服装拆为可见部件；面部特写移除画外鞋腿、背位不写看不见的正脸。已明确的核心动作可用一个闭合的 1.2::动作短词组:: 轻强调，默认不加权；不加权整段人物描述或任何 Text 原文。
+普通动作示例（只借格式）：description="top panel, medium shot, from side, indoors, desk"；递信者 positive="top panel, girl, short hair, white shirt, standing, facing another, outstretched arm, right hand holding envelope, looking at another's hand"；接信者 positive="top panel, boy, short hair, dark jacket, sitting, reaching out, left hand reaching toward envelope, looking at envelope"。物品交接完成另格呈现，不在同格混写已收好。
 每位人物 negative 只排除本页其他不同人物中适用且互斥的具体特征，不排除自己的正确外貌或双方共享特征，也不排除环境、漫画、文字和画质。没有适用项写空字符串。
 ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 artist: 标签或作品标签放入该人物 negative；不得从姓名括号猜造标签，不排除人物自身标签。' : ''}
 
 【对白与非人物文字】
 人物对白/心声归该人物 positive；旁白、拟音、画外对白归所属 page.non_character 或 panel.non_character，不占人物槽。原句保留说话者、次序、次数和标点；静默格不添字。长句按原有停顿分气泡，不删字。
+说话者在本格可见时，原句必须进本人 positive，不能当旁白移到 page.base/non_character。只有真的画外声才放 non_character。需要上画的每句台词必须实际写入 Text，不能只写 speech bubble、speaking 或“说了某事”；无台词的静默格不添空白气泡。叙述中的动作描写转成视觉标签，不整段变成旁白。
 气泡视觉说明必须在 Text: 前写类型、位置及 Layout。普通=通常吹き出し；呐喊=叫び吹き出し；心声=思考の吹き出し；耳语=破線吹き出し；颤抖=波打つ吹き出し；广播=四角い吹き出し；旁白=ナレーション枠；画外=切り欠きのある吹き出し；无尾=しっぽなしの楕円吹き出し；连续气泡=連結吹き出し。拟音用 SFX: 擬音, 吹き出しなし。
 对白通常 Layout: 縦書き，旁白和道具字 Layout: 横書き。每字段仅在末尾写一个 Text:，其后只有原句、没有视觉标签；同人同格多句用两个换行分隔，不重复人物槽。Text: 外不包额外引号。
+外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点。Layout 指令不写进台词，不按列手工断行；同人多泡把各泡类型、位置和阅读顺序全部写在 Text 前，再把各句用空行分隔。
+格式示例："top panel, girl, short hair, smiling, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 信收到了。"；拟音示例："bottom panel, SFX: 擬音, 吹き出しなし, Text: 咔哒"。BubbleType 和 Text 是两个独立字段标记，不能把 Text 当作整段气泡说明的开头。旁白用 BubbleType: ナレーション枠, Layout: 横書き，文字只取必要的时空/客观提示。
 文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}
 ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, screentone；可见外貌与衣着采用灰阶、结构和明暗描述，可靠同人角色标签保留。环境不写 full color 或彩色光照。' : '色彩遵循本轮设定与选定画风。'}
 
@@ -394,11 +438,9 @@ ${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, scre
     }
 
     function sanitizeMangaPositivePrompt(value) {
-        const raw = String(value || '');
-        const marker = /\bText[ \t]*[:：]/i.exec(raw);
-        const visual = marker ? raw.slice(0, marker.index) : raw;
+        const { visual, text } = splitMangaText(value);
         const clean = filterMangaTags(visual, new Set(['no text', 'notext']));
-        return clean + (marker ? (clean ? '\n' : '') + raw.slice(marker.index) : '');
+        return clean + (text ? (clean ? '\n' : '') + 'Text: ' + text : '');
     }
 
     function sanitizeMangaNegativePrompt(value, isMonochrome = true) {

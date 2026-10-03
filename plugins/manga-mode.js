@@ -231,7 +231,7 @@
                                 type: 'array', items: {
                                     type: 'object', properties: {
                                         character_id: string, name: string,
-                                        visible: { type: 'array', uniqueItems: true, items: { type: 'string', enum: ['hair', 'face', 'eyes', 'torso', 'hands', 'legs', 'feet'] }, description: 'Visible body regions only; back view excludes face/eyes, hand detail only hands. [] means no profile traits visible.' },
+                                        visible: { type: 'array', items: { type: 'string', enum: ['hair', 'face', 'eyes', 'torso', 'hands', 'legs', 'feet'] }, description: 'Visible body regions only; back view excludes face/eyes, hand detail only hands. [] means no profile traits visible.' },
                                         state: { type: 'object', properties: {
                                             hair_length: { type: 'string', description: 'Only explicit haircut/growth; e.g. short hair. Styling alone preserves known length.' },
                                             hair_style: { type: 'string', description: 'Only established change/current-state correction; current hairstyle, no hair color or length.' },
@@ -376,7 +376,6 @@
 
     function mangaAppearanceTag(tag, outfit = false) {
         const t = tag.toLowerCase().replace(/_/g, ' ').trim();
-        if (/^\d+\s*(?:years? old|cm(?: height)?|year-old)(?: appearance)?$/.test(t)) return { group: 'omit', parts: [] };
         // Do not mistake an action's object (holding shoes / touching hair) for appearance.
         if (/^(?:looking|holding|touching|gripping|reaching|pointing|wearing|removing|taking|putting|facing|standing|sitting|lying|kneeling|left hand|right hand)\b/.test(t)) return null;
         if (/^(?:(?:light|dark|pale|deep|bright) )?(?:blonde?|silver|golden|white|black|brown|red|blue|pink|purple|grey|gray|green|auburn|orange|yellow|violet|lavender|cyan|teal|navy) hair$/.test(t)) return { group: 'hair_color', parts: ['hair'] };
@@ -442,7 +441,6 @@
             const select = (value, outfit = false, onlyGroup = '') => filterMangaTags(value, new Set(), tag => {
                 if (mangaIdentityKey(tag) === key) return '';
                 const info = mangaAppearanceTag(tag, outfit) || (onlyGroup ? { group: onlyGroup, parts: ['hair'] } : null);
-                if (info?.group === 'omit') return '';
                 if (onlyGroup && info?.group !== onlyGroup) return '';
                 if (info && Object.hasOwn(state, info.group) && info.group !== 'outfit' && !onlyGroup) return '';
                 const allowed = info?.parts.some(p => visible.has(p)) || (full && (!info || info.unknown));
@@ -463,7 +461,6 @@
             const action = filterMangaTags(visual, new Set(), tag => {
                 if (mangaIdentityKey(tag) === key) return '';
                 const info = mangaAppearanceTag(tag);
-                if (info?.group === 'omit') return '';
                 if (info && (!info.parts.some(p => visible.has(p)) || groups.has(info.group))) return '';
                 return tag;
             });
@@ -518,7 +515,7 @@ state 只记录有依据的当前变化：hair_style 为当前发型结构（不
 【视觉词与动作表达】
 page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。姓名放 name，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
 每个人物依次写：本格位置 → 主体与可见外貌 → 可见服装部件 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
-同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成，不用 then/随后 串联两个动作。每个道具明确同一实体、持有手和位置；拿出或准备拨号不能自动变成贴耳通话，也不因换手复制道具。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
+同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
 机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。服装拆为可见部件；面部特写移除画外鞋腿、背位不写看不见的正脸。默认不加权；确需突出/弱化已写明的焦点时用闭合的 1.2::短词组:: / 0.6::短词组::，强度不设配额。不加权整段、编号或 Text；权重不能补救漏写、错人或冲突，不用全局负权排除需要的漫画元素。
 普通动作示例（只借格式）：description="top panel, medium shot, from side, indoors, desk"；递信者 positive="top panel, girl, short hair, white shirt, standing, facing another, outstretched arm, right hand holding envelope, looking at another's hand"；接信者 positive="top panel, boy, short hair, dark jacket, sitting, reaching out, left hand reaching toward envelope, looking at envelope"。物品交接完成另格呈现，不在同格混写已收好。
 每次出场的 negative 对照本页所有其他不同人物（包括其他格），同格优先；不把自己的其他出场当成别人。只排除本镜头适用、易串位且互斥的具体发型/配饰/衣物等特征；可补有明确依据的互斥误画特征，去重。自己的正确外貌、共享特征、环境、漫画、文字和画质不排除。黑白时不用彩色色相区别人。没有适用项写空字符串；negative 不能代替 positive 的正确外貌。

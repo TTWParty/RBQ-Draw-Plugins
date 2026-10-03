@@ -305,6 +305,7 @@ test('real request builder and system prompt agree with the nested tool schema',
     assert.equal(request.outputSchema.segments[0].format, 'nai5-comic');
     assert.equal(request.mangaInstruction, undefined, 'OpenAI system prompt is not duplicated into the user payload');
     assert.equal(request.outputSchema.story_plan, undefined);
+    assert.doesNotMatch(JSON.stringify(sdt.getDrawSpecTool(settings._smartDrawTrigger)), /uniqueItems/, 'Gemini OpenAPI tools reject uniqueItems');
     const prompt = sdt.getSystemPromptWithPresets(settings._smartDrawTrigger, true);
     assert.match(prompt, /格内人物/);
     assert.doesNotMatch(prompt, /数组长度严格等于|每个节拍规划为 1 页/);
@@ -431,7 +432,7 @@ function appearancePage(appearances) {
         panels: appearances.map((c, i) => ({ id: `P${i + 1}`, description: 'panel, villa gate', characters: [{ character_id: 'C1', name: 'Mina', positive: 'standing', negative: '', ...c }] })) };
 }
 test('stored appearance fills omitted traits before dispatch, without touching memory or text', () => withMemory(() => {
-    const base = 'korean, mature female, 35 years old, long blonde hair, styled in an elegant updo with side bangs, brown eyes, voluptuous curvy body';
+    const base = 'korean, mature female, 35 years old, 180cm height, long blonde hair, styled in an elegant updo with side bangs, brown eyes, voluptuous curvy body';
     const outfit = 'red modified backless cheongsam, high slit, red high heels';
     sdt.updateCharacterProfile('Mina', base, outfit);
     const input = { shouldDraw: true, character_memory: [], segments: [appearancePage([
@@ -442,7 +443,9 @@ test('stored appearance fills omitted traits before dispatch, without touching m
     assert.equal(JSON.stringify(input), before);
     const caption = result.characters[0].caption;
     for (const tag of ['korean', 'mature female', 'long hair', 'blonde hair', 'updo', 'side bangs', 'brown eyes', 'voluptuous curvy body', 'red modified backless cheongsam', 'high slit', 'red high heels']) assert.ok(caption.includes(tag), tag);
-    assert.doesNotMatch(caption, /35 years old|styled in|grey cheongsam|\bMina\b/);
+    assert.match(caption, /35 years old/);
+    assert.match(caption, /180cm height/);
+    assert.doesNotMatch(caption, /styled in|grey cheongsam|\bMina\b/);
     assert.match(caption, /right hand pointing toward gate/);
     assert.match(caption, /Text: 请离开。$/);
     sdt.prepareNaiCharData(result.segments[0]);

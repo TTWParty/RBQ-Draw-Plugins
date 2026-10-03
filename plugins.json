@@ -91,8 +91,8 @@
     "id": "rbq-manga-mode",
     "name": "漫画模式 (Manga Mode)",
     "description": "为智能生图（SDT）深度赋能 NovelAI V5 漫画分镜能力，并在控制面板侧边栏提供专属「漫画工作台 (Manga Studio)」。支持大段剧情 AI 自动分镜（自由指定自适应或特定格数）与逐格填句导演双模式、19大专业机位、防溢出弹性卡片流、Zero-CLS 原画级单页出图与回填酒馆聊天闭环。",
-    "version": "1.7.0",
+    "version": "1.7.1",
     "author": "TTWP-09",
-    "main": "plugins/manga-mode.js?v=1.7.0"
+    "main": "plugins/manga-mode.js?v=1.7.1"
   }
 ]

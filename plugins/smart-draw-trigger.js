@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.3.0';
+    const PLUGIN_VERSION = '6.3.1';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2759,22 +2759,21 @@ base 按七维逐项检查，已明确的特征不得遗漏：
 ② 族裔、国籍/地域背景、面相：保留角色卡、世界书或可靠原作设定已明确的身份标签，如 chinese、japanese、east asian；面相另按已知特征描述。国籍、族裔与脸部形态不能互相替代，不因动漫画风默认 japanese，也不凭姓名猜国籍。
 ③ 年龄阶段，保留设定中的成熟程度，不统一套用少女或成年模板。
 ④ 发色、发长、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例及有辨识度的体态；⑦ 肤色、永久身体标记及幻想种族特征。
-依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等设定转为对应的可见年龄阶段和体型，不机械抄成“30 years old appearance”“180cm height”等标签，不承诺还原数值。
+依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等已有数值如 35 years old、180cm height 原样保留，可同时补对应的已知年龄阶段和体型；不能以视觉化为由删掉明确数值。
 outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
-base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。原创姓名只放 name，同人身份仅保留可靠角色标签。可脱卸配饰归 outfit，永久生理特征归 base。`;
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。name 填稳定姓名，base 保留已知普通姓名和可靠同人角色标签，不因姓名与 name 重复就删除。可脱卸配饰归 outfit，永久生理特征归 base。`;
     }
 
-    function buildCharacterMemoryPromptModule(store) {
+    function buildCharacterMemoryPromptModule(store, messageId) {
         if (!store) store = getStore();
         const profiles = getCharacterProfiles();
         const profileEntries = Object.entries(profiles).filter(([k, p]) => p && !isJunkCharacterName(k));
         if (isMangaRequest(store)) {
-            const references = profileEntries
-                .map(([name, p]) => ({ name, base: p.baseTags || '', outfit: p.currentOutfit || '' }));
+            const references = getMangaMemoryReferences(messageId);
             return `【漫画角色记忆】
 以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。按镜头可见范围使用已有外貌，剧情变化优先；特写不要强塞画外服装。
 本次同时输出 character_memory 数组，每人最多一项 {name,base,initial_outfit,outfit}，不另发请求。只提交出镜且需要首次建档、补全空白资料或更新衣着的人物；无更新写 []。
-base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；原创姓名不作标签，同人可保留可靠角色标签。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
+base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；普通姓名和可靠同人角色标签均可保留。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
 initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已知服装，不能用楼末换装结果代替；已知则可省略。
 outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
@@ -3049,7 +3048,8 @@ ${activeRegistrySection}`;
         if (existing) {
             // Only an explicit card re-extraction may replace learned identity.
             // Keep the plot's current clothing when importing the card's default outfit.
-            if (options.preserveOutfit && existing.currentOutfit) outfitTags = '';
+            if (options.preserveOutfit && (existing.currentOutfit
+                || existing.wardrobe?.some(w => w.id === existing.currentOutfitId && w.outfit === ''))) outfitTags = '';
             if (outfitTags) existing.currentOutfit = outfitTags;
             if (baseTags && (!existing.baseTags || options.replaceBase)) {
                 if (existing.baseTags && existing.baseTags !== baseTags) existing.previousBaseTags = existing.baseTags;
@@ -3378,9 +3378,7 @@ ${activeRegistrySection}`;
         const cards = collectCharacterCardInfo(content, []);
         if (cards.length) references.characterCardInfo = cards;
         if (getStore().characterMemoryEnabled) {
-            const memory = Object.entries(getCharacterProfiles())
-                .filter(([name, p]) => p && !isJunkCharacterName(name) && (p.baseTags || p.currentOutfit))
-                .map(([name, p]) => ({ name: p.displayName || name, base: p.baseTags || '', outfit: p.currentOutfit || '' }));
+            const memory = getMangaMemoryReferences();
             if (memory.length) references.characterMemory = memory;
         }
         return references;
@@ -3389,6 +3387,7 @@ ${activeRegistrySection}`;
     async function importCharacterFromCurrentCard() {
         const btn = document.getElementById('rbq-sdt-import-char-profile-btn');
         const origHtml = btn ? btn.innerHTML : '';
+        const requestContext = captureMangaRequestContext(null, -1);
         try {
             const ctx = RBQ.api.getContext();
             if (!ctx) {
@@ -3510,6 +3509,7 @@ ${getCharacterMemoryTagSpecification()}
             const cleanCharName = getCanonicalCharName(name) || name;
             const avatarUrl = char.avatar ? `/characters/${char.avatar}` : null;
 
+            assertMangaRequestContext(requestContext);
             updateCharacterProfile(cleanCharName, extractedBase, extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
             toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
             return getCharacterProfile(cleanCharName);
@@ -6433,7 +6433,7 @@ ${getCharacterMemoryTagSpecification()}
     function getMangaProtocol() {
         const protocol = RBQ.api.mangaProtocol;
         if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
-        if (!protocol.planningPrompt || !protocol.resolveAppearances) throw new Error('请更新漫画模式插件至 1.7.0 或更高并刷新酒馆');
+        if (!protocol.planningPrompt || !protocol.resolveAppearances || protocol.appearanceStateVersion !== 1) throw new Error('请更新漫画模式插件至 1.7.2 或更高并刷新酒馆');
         return protocol;
     }
 
@@ -6457,12 +6457,47 @@ ${getCharacterMemoryTagSpecification()}
         return schema;
     }
 
+    // Use the state preceding this floor, not the latest state of a future floor being re-parsed.
+    function getMangaMemoryReferences(messageId) {
+        const chronological = Number.isInteger(messageId) && messageId >= 0;
+        return Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
+            const history = (Array.isArray(p.mangaStateHistory) ? p.mangaStateHistory : [])
+                .filter(e => Number.isInteger(e.messageId) && e.before && e.after).sort((a, b) => a.messageId - b.messageId);
+            const latest = history.at(-1);
+            const preceding = chronological ? history.filter(e => e.messageId < messageId).at(-1) : latest;
+            const state = { ...(preceding?.after || history[0]?.before || {}) };
+            // A wardrobe selection outside the manga timeline remains an explicit current override.
+            if ((!chronological || !latest || messageId > latest.messageId) && latest
+                && p.currentOutfit !== latest.after.outfit) {
+                state.outfit = p.currentOutfit || '';
+                state.outfitSet = true;
+            }
+            return { name: p.displayName || name, base: p.baseTags || '',
+                outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
+        });
+    }
+
+    function captureMangaRequestContext(currentMessage, messageId) {
+        return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
+            memoryEnabled: !!getStore().characterMemoryEnabled,
+            references: JSON.parse(JSON.stringify(getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [])) };
+    }
+
+    function assertMangaRequestContext(context) {
+        if (context?.chatKey !== undefined && (context.chatKey !== getChatKey()
+            || context.epoch !== (captureMangaRequestContext.epoch || 0))) {
+            const error = new Error('聊天已切换，已停止旧请求回填与角色记忆写入');
+            error.name = 'AbortError';
+            throw error;
+        }
+    }
+
     // Learn once per response, after all pages compile. Never infer persistent traits from shot captions.
     function learnMangaCharacterMemory(source, segments, context) {
-        if (!getStore().characterMemoryEnabled || !segments.some(s => s.mangaPage)) return;
+        assertMangaRequestContext(context);
+        if (!getStore().characterMemoryEnabled || context?.memoryEnabled === false || !segments.some(s => s.mangaPage)) return;
         if (!Array.isArray(source.character_memory)) {
             debugInfo('漫画角色记忆：模型未返回 character_memory，本次仍使用有效页格生图');
-            return;
         }
         const validName = value => {
             if (typeof value !== 'string') return '';
@@ -6470,17 +6505,28 @@ ${getCharacterMemoryTagSpecification()}
             return !name || isJunkCharacterName(name) || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(name) ? '' : name;
         };
         const visible = new Map();
+        const snapshots = new Map();
         for (const segment of segments) {
             for (const panel of segment.mangaPage?.panels || []) {
                 for (const person of panel.characters) {
                     const name = validName(person.name);
-                    if (name) visible.set(name.toLowerCase(), name);
+                    if (name) {
+                        const key = name.toLowerCase();
+                        visible.set(key, name);
+                        if (person._mangaAppearance) {
+                            const prior = snapshots.get(key);
+                            snapshots.set(key, { before: prior?.before || person._mangaInitialAppearance,
+                                after: person._mangaAppearance,
+                                explicitOutfit: prior?.explicitOutfit || (typeof person.state?.outfit === 'string'
+                                    && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(person.state.outfit)) });
+                        }
+                    }
                 }
             }
         }
         const cleanField = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
         const updates = new Map();
-        for (const row of source.character_memory) {
+        for (const row of Array.isArray(source.character_memory) ? source.character_memory : []) {
             const key = validName(row?.name).toLowerCase();
             const name = visible.get(key);
             if (!name) continue;
@@ -6491,23 +6537,58 @@ ${getCharacterMemoryTagSpecification()}
         }
         const messageId = context?.messageId;
         const hasMessageId = Number.isInteger(messageId) && messageId >= 0;
+        for (const [key] of snapshots) if (!updates.has(key)) updates.set(key, { name: visible.get(key), base: '', outfit: '' });
         for (const row of updates.values()) {
             const profile = getCharacterProfile(row.name);
             const base = profile?.baseTags ? '' : row.base;
+            const snapshot = snapshots.get(row.name.toLowerCase());
+            const stateFields = value => {
+                const state = { outfit: value?.outfit || '', outfitSet: !!value?.outfitSet };
+                for (const field of ['hair_style', 'hair_length', 'hair_color', 'outfit']) {
+                    if (typeof value?.[field] === 'string' && (field !== 'outfit' || value.outfitSet)) state[field] = value[field];
+                }
+                return state;
+            };
+            const before = snapshot ? stateFields(snapshot.before) : { outfit: profile?.currentOutfit || '', outfitSet: !!profile?.currentOutfit };
+            const after = snapshot ? stateFields(snapshot.after) : { ...before };
+            if (row.outfit && !snapshot?.explicitOutfit) { after.outfit = row.outfit; after.outfitSet = true; }
+            const finalOutfit = typeof after.outfit === 'string' ? after.outfit : row.outfit;
             // Re-parsing an older floor must not revert a later outfit learned by manga mode.
             const older = hasMessageId && Number.isInteger(profile?.mangaOutfitMessageId) && messageId < profile.mangaOutfitMessageId;
-            const outfit = older ? '' : row.outfit;
-            if (!base && (!outfit || outfit === profile?.currentOutfit)) {
-                if (outfit && hasMessageId && profile.mangaOutfitMessageId !== messageId) {
-                    profile.mangaOutfitMessageId = messageId;
-                    save();
-                }
-                continue;
+            const requested = context?.references?.find(ref => getCanonicalCharName(ref.name).toLowerCase() === row.name.toLowerCase());
+            const changedDuringRequest = profile && requested && profile.currentOutfit !== requested.outfit;
+            const preserveCurrent = older || changedDuringRequest;
+            const outfit = preserveCurrent ? '' : finalOutfit;
+            if (base || (outfit && outfit !== profile?.currentOutfit)) updateCharacterProfile(row.name, base, outfit, null, true);
+            const saved = getCharacterProfile(row.name);
+            if (!saved) continue;
+            if (!Array.isArray(saved.wardrobe)) saved.wardrobe = [];
+            if (!preserveCurrent && finalOutfit === '' && snapshot?.explicitOutfit) {
+                saved.currentOutfit = '';
+                if (!saved.wardrobe.some(w => w.outfit === '')) saved.wardrobe.push({
+                    id: `w-empty-${Date.now().toString(36)}`, name: '无衣物（剧情状态）', outfit: '', triggers: [], createdAt: Date.now()
+                });
             }
-            updateCharacterProfile(row.name, base, outfit, null, true);
-            if (outfit && hasMessageId) {
-                const saved = getCharacterProfile(row.name);
-                if (saved) { saved.mangaOutfitMessageId = messageId; save(); }
+            if (!preserveCurrent && after.outfitSet) {
+                let active = saved.wardrobe.find(w => w.outfit === saved.currentOutfit
+                    || (saved.currentOutfit && isSameOutfit(w.outfit, saved.currentOutfit)));
+                if (!active && saved.currentOutfit) {
+                    active = { id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                        name: deriveOutfitName(row.name, saved.currentOutfit, !saved.wardrobe.length), outfit: saved.currentOutfit,
+                        triggers: [], createdAt: Date.now() };
+                    saved.wardrobe.push(active);
+                }
+                if (active) saved.currentOutfitId = active.id;
+                save();
+                if (snapshot?.explicitOutfit) refreshCharacterProfileListUi();
+            }
+            if (hasMessageId && (snapshot || row.outfit)) {
+                const history = Array.isArray(saved.mangaStateHistory) ? saved.mangaStateHistory : [];
+                saved.mangaStateHistory = history.filter(e => e.messageId !== messageId);
+                saved.mangaStateHistory.push({ messageId, before, after });
+                saved.mangaStateHistory.sort((a, b) => a.messageId - b.messageId);
+                if (!older) saved.mangaOutfitMessageId = messageId;
+                save();
             }
         }
     }
@@ -6525,6 +6606,7 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function normalizeTaggerResult(data, matchedLorebooks = [], mangaContext = null) {
+        assertMangaRequestContext(mangaContext);
         // 1. Tool Call extraction (OpenAI tool_calls, legacy function_call, or Gemini functionCall)
         let toolRaw = null;
         const choice = data?.choices?.[0];
@@ -6639,11 +6721,11 @@ ${getCharacterMemoryTagSpecification()}
                                     ? source.result.segments
                                     : (source?.segment && typeof source.segment === 'object' ? [source.segment] : [])))))));
         const hasMangaPages = rawSegmentsList.some(item => item?.format === 'nai5-comic');
-        const memoryReferences = hasMangaPages && getStore().characterMemoryEnabled ? Object.entries(getCharacterProfiles())
-            .filter(([name, p]) => p && !isJunkCharacterName(name))
-            .map(([name, p]) => ({ name: p.displayName || name, base: p.baseTags || '', outfit: p.currentOutfit || '' })) : [];
-        const resolvedSegments = hasMangaPages && getStore().characterMemoryEnabled
-            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, source.character_memory)
+        const memoryEnabled = getStore().characterMemoryEnabled && mangaContext?.memoryEnabled !== false;
+        const memoryReferences = hasMangaPages && memoryEnabled ? mangaContext?.references || getMangaMemoryReferences(mangaContext?.messageId) : [];
+        const memoryWarnings = [];
+        const resolvedSegments = hasMangaPages && memoryEnabled
+            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, source.character_memory, memoryWarnings)
             : rawSegmentsList;
         let segments = resolvedSegments.map((item, index) => {
                 if (item?.format === 'nai5-comic' || item?.page || item?.panels) return normalizeMangaSegment(item, index);
@@ -6809,7 +6891,16 @@ ${getCharacterMemoryTagSpecification()}
             }];
         }
 
+        if (mangaContext && memoryWarnings.length) {
+            normalized.memoryWarnings = [...new Set(memoryWarnings)];
+            normalized.reason += '\n角色记忆提示：' + normalized.memoryWarnings.join('；');
+        }
         if (normalized.shouldDraw) learnMangaCharacterMemory(source, segments, mangaContext);
+        // These temporary assembly records are not render data; do not duplicate profiles in every cached appearance.
+        for (const segment of segments) for (const panel of segment.mangaPage?.panels || []) for (const person of panel.characters) {
+            delete person._mangaAppearance;
+            delete person._mangaInitialAppearance;
+        }
         return normalized;
     }
 
@@ -9865,7 +9956,7 @@ SCHEMA:
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
             ...getEnhancedContextPayload(isMangaRequest(store) ? 'v_manga' : store.enhancedContext),
-            ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
+            ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store, false, messageId) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
             outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
@@ -9954,7 +10045,7 @@ SCHEMA:
                     wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
                 }));
             if (memoryList.length > 0) {
-                payload.characterMemory = memoryList;
+                payload.characterMemory = isMangaRequest(store) ? getMangaMemoryReferences(messageId) : memoryList;
             }
         }
 
@@ -9970,10 +10061,10 @@ SCHEMA:
             }
         }
 
-        return { payload, rawLorebooks: lorebook };
+        return { payload, rawLorebooks: lorebook, requestContext: captureMangaRequestContext(payload.currentMessage, messageId) };
     }
 
-    function getSystemPromptWithPresets(store, hasCardInfo = false) {
+    function getSystemPromptWithPresets(store, hasCardInfo = false, messageId) {
         let systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt() : getActiveSystemPrompt(store);
         if (store.lorebookBase64) {
             systemPrompt += '\n\n【🛡️ Base64 设定资产混淆解码指令】\n为了确保底层文本传输链路合规安全，输入数据 payload 中的世界书设定（`lorebook` 数组中的 `tags_base64` 与 `name_base64`，以及 `lorebook_base64` 原始汇总数组）和角色卡设定（`characterCardInfo_base64`）均已采用 UTF-8 Base64 编码进行了混淆封装。\n【模型执行规则】：\n1. 你必须在内部推理思考（thinking）阶段解码这些 Base64 字段，还原为原本的人物外貌、发型、发色、瞳色、服装、配饰等视觉设定文本；\n2. 严禁在普通文本或输出中回显原始设定文本，只需客观将其提炼为 Danbooru 英文生图标签（例如: blonde hair, twintails, plaid skirt 等）；\n3. 无论世界书是否编码，均需严格视其为出镜角色的权威外貌设定并保持画面一致。';
@@ -9988,7 +10079,7 @@ SCHEMA:
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }
         if (store.characterMemoryEnabled) {
-            systemPrompt += '\n\n' + buildCharacterMemoryPromptModule(store);
+            systemPrompt += '\n\n' + buildCharacterMemoryPromptModule(store, messageId);
         }
         if (isMangaRequest(store)) {
             systemPrompt += '\n衣柜提供服装参考；按剧情匹配后，仅将当前镜头可见的衣着写入格内人物 positive。';
@@ -10461,10 +10552,10 @@ SCHEMA:
         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
         if (!modelName) throw new Error('请先填写模型名称');
         checkUrlSafety(url);
-        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook });
+        const { payload, rawLorebooks, requestContext } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook });
         logTaggerPayload('tagger request body', payload);
 
-        const systemPrompt = getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64));
+        const systemPrompt = getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64), messageId);
         const ecSysPrompt = getEnhancedContextSystemPrompt(isMangaRequest(store) ? 'v_manga' : store.enhancedContext);
         const toolRule = store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
 
@@ -10518,6 +10609,7 @@ SCHEMA:
             if (store.lorebookWafRetry && isInputWafHttpError && !retryWithoutLorebook && hasLorebookAttached) {
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
+                assertMangaRequestContext(requestContext);
                 return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
             }
             throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
@@ -10600,6 +10692,7 @@ SCHEMA:
                         if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${sseState.safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
+                            assertMangaRequestContext(requestContext);
                             return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
                         }
 
@@ -10771,6 +10864,7 @@ SCHEMA:
                             if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
                                 console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
                                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
+                                assertMangaRequestContext(requestContext);
                                 return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
                             }
                             const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
@@ -10819,7 +10913,8 @@ SCHEMA:
         }
 
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? { ...payload.currentMessage, messageId: payload.messageId } : null));
+        assertMangaRequestContext(requestContext);
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
         if (retryWithoutLorebook) {
             toastr.warning('由于世界书含受限敏感词，本次已自动剥离世界书保底完成生图分镜', PLUGIN_NAME);
@@ -10837,7 +10932,7 @@ SCHEMA:
             const headerName = store.customApiKeyHeader || 'Authorization';
             headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
         }
-        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
+        const { payload, rawLorebooks, requestContext } = buildRequestPayload(messageId, trigger);
         logTaggerPayload('tagger request body', payload);
         const response = await smartFetch(url, {
             method: 'POST',
@@ -10848,16 +10943,19 @@ SCHEMA:
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await safeReadJsonResponse(response);
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? { ...payload.currentMessage, messageId: payload.messageId } : null));
+        assertMangaRequestContext(requestContext);
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
 
     async function callTagger(messageId, trigger, { signal } = {}) {
         const store = getStore();
+        const origin = captureMangaRequestContext(null, messageId);
         if (store.lorebookEnabled) {
             try { await warmLorebookMemoryCache(); } catch (_e) {}
         }
+        assertMangaRequestContext(origin);
         return store.provider === 'custom'
             ? callCustomHttp(messageId, trigger, { signal })
             : callOpenAiCompatible(messageId, trigger, { signal });
@@ -11697,6 +11795,7 @@ SCHEMA:
     async function runTaggerForWrapper(wrapper, trigger, messageId, key) {
         const store = getStore();
         if (!(wrapper instanceof HTMLElement)) return;
+        const origin = captureMangaRequestContext(null, messageId);
         const abortController = new AbortController();
         wrapper._taggerAbort = abortController;
         wrapper.querySelector('.rbq-sdt-debug-box')?.remove();
@@ -11710,6 +11809,7 @@ SCHEMA:
             if (loader instanceof HTMLElement) loader.style.display = 'flex';
             if (sub instanceof HTMLElement) sub.textContent = '正在调用 tagger API 解析世界书与提示词...';
             const result = await callTagger(messageId, trigger, { signal: abortController.signal });
+            assertMangaRequestContext(origin);
             const cacheKey = wrapper.dataset.rbqSdtBaseKey || key;
             const sanitized = sanitizeSdtResult(result);
             const currentMes = getMessageSnapshot(messageId);
@@ -11850,7 +11950,7 @@ SCHEMA:
             // 只有当 chat 确实发生实际切换（非首次加载）时，才调度安全全量扫描
             if (!isInitialTransition) {
                 processedKeys.clear();
-                document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
+                document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => { el._taggerAbort?.abort(); el.remove(); });
                 setTimeout(() => scanAllVisible(true), 100);
             }
         }
@@ -14356,9 +14456,10 @@ SCHEMA:
                 }
             };
             handleChatChanged = () => {
+                captureMangaRequestContext.epoch = (captureMangaRequestContext.epoch || 0) + 1;
                 lastChatKey = getChatKey();
                 processedKeys.clear();
-                document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => el.remove());
+                document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => { el._taggerAbort?.abort(); el.remove(); });
                 refreshCharacterProfileListUi();
                 setTimeout(() => scanAllVisible(true), 200);
             };
@@ -14547,6 +14648,8 @@ SCHEMA:
                 }
             }
 
+            const requestContext = captureMangaRequestContext(manualPayload.currentMessage, -1);
+            if (isMangaRequest(store) && store.characterMemoryEnabled) manualPayload.characterMemory = requestContext.references;
             logTaggerPayload('manual draw request', manualPayload);
 
             // Build messages exactly like callOpenAiCompatible / callCustomHttp
@@ -14595,7 +14698,7 @@ SCHEMA:
             }
 
             // Normalize with lorebook (same as normal flow — applies character memory)
-            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? manualPayload.currentMessage : null));
+            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
             logTaggerPayload('manual draw tagger result', normalized);
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
@@ -16044,6 +16147,8 @@ SCHEMA:
             ? parseJailbreakMessages(jailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
 
+        const requestContext = captureMangaRequestContext(manualPayload.currentMessage, -1);
+        if (isMangaRequest(store) && store.characterMemoryEnabled) manualPayload.characterMemory = requestContext.references;
         rawMessages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
 
         applyPostProcessPrompt(rawMessages, store);
@@ -16078,7 +16183,7 @@ SCHEMA:
             json = await safeReadJsonResponse(response);
         }
 
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? manualPayload.currentMessage : null));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
         logTaggerPayload('test draw tagger result', normalized);
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {

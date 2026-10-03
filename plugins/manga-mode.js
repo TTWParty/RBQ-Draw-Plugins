@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.7.0';
+        const VERSION = '1.7.2';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -265,8 +265,7 @@
                     non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
                     characters: [{
                         character_id: 'C1', name: '真实角色名，仅用于资料关联',
-                        visible: '数组，仅列本格可见部位：hair/face/eyes/torso/hands/legs/feet；背面不含face/eyes',
-                        state: '可选对象，仅明确状态变化时写 hair_style/hair_length/hair_color/outfit；outfit为完整服装，空字符串表示无衣物。开场状态与档案不符也在首次出场注明',
+                        visible: ['hair', 'face', 'eyes', 'torso'],
                         positive: '英文标签：格位、主体、可见外貌衣着、姿势、肢体与对象、表情视线；气泡类型/位置/Layout 全写在唯一末尾 Text: 前，后面只有台词',
                         negative: '仅针对本次人物出场的互斥特征；没有则为空'
                     }]
@@ -380,16 +379,28 @@
         if (/^(?:looking|holding|touching|gripping|reaching|pointing|wearing|removing|taking|putting|facing|standing|sitting|lying|kneeling|left hand|right hand)\b/.test(t)) return null;
         if (/^(?:(?:light|dark|pale|deep|bright) )?(?:blonde?|silver|golden|white|black|brown|red|blue|pink|purple|grey|gray|green|auburn|orange|yellow|violet|lavender|cyan|teal|navy) hair$/.test(t)) return { group: 'hair_color', parts: ['hair'] };
         if (/^(?:very long|long|short|medium|medium length|shoulder length) hair$/.test(t)) return { group: 'hair_length', parts: ['hair'] };
+        if (/^(?:side|straight|swept|parted|blunt|asymmetrical) bangs$|^bangs$/.test(t)) return { group: 'hair_bangs', parts: ['hair'] };
+        if (/^(?:straight|curly|wavy) hair$/.test(t)) return { group: 'hair_texture', parts: ['hair'] };
         if (/^(?:(?:straight|curly|wavy|messy|disheveled|wet|flowing|floating|loose) hair|hair (?:bun|down|up|between eyes|over one eye)|(?:side|straight|swept|parted|blunt|asymmetrical) bangs|bangs|(?:elegant |high |low |double )?(?:updo|bun|ponytail)|twintails|braid|braided hair|side braid|sidelocks|ahoge|bald)$/.test(t)) return { group: 'hair_style', parts: ['hair'] };
-        if (/^(?:(?:light|dark|pale|deep|bright) )?(?:brown|blue|green|red|purple|violet|gold|yellow|black|grey|gray|silver|pink|amber|hazel|large|small|round|almond|droopy|narrow) eyes$|^(?:tsurime|tareme|heterochromia|slit pupils)$/.test(t)) return { group: 'eyes', parts: ['eyes'] };
-        if (/^(?:girl|boy|female|male|woman|man|other|adult|mature female|mature male|young woman|young man|teenager|adolescent)$/.test(t)) return { group: 'identity', parts: ['face', 'torso', 'legs'] };
-        if (/^(?:korean|chinese|japanese|east asian|asian|caucasian|western|european|african|american|delicate face|sharp face|round face|oval face|mole under eye|freckles|fangs|pointy ears|elf ears|animal ears|cat ears|fox ears|horns)$/.test(t)) return { group: 'face', parts: ['face'] };
+        if (/^(?:(?:light|dark|pale|deep|bright) )?(?:brown|blue|green|red|purple|violet|gold|yellow|black|grey|gray|silver|pink|amber|hazel) eyes$|^heterochromia$/.test(t)) return { group: 'eye_color', parts: ['eyes'] };
+        if (/^(?:large|small|round|almond|droopy|narrow) eyes$|^(?:tsurime|tareme|slit pupils)$/.test(t)) return { group: 'eye_shape', parts: ['eyes'] };
+        if (/^(?:girl|boy|female|male|woman|man|other)$/.test(t)) return { group: 'gender', parts: ['face', 'torso', 'legs'] };
+        if (/^\d+ years? old(?: appearance)?$/.test(t)) return { group: 'age_number', parts: ['face', 'torso', 'legs'] };
+        if (/^(?:adult|mature female|mature male|young woman|young man|teenager|adolescent)$/.test(t)) return { group: 'age', parts: ['face', 'torso', 'legs'] };
+        if (/^(?:\d+(?:\.\d+)?\s*(?:cm|m|ft)(?: height| tall)?|(?:height )\d+(?:\.\d+)?\s*(?:cm|m|ft))$/.test(t)) return { group: 'height', parts: ['torso', 'legs'] };
+        if (/^(?:korean|chinese|japanese|african|american)$/.test(t)) return { group: 'nationality', parts: ['face'] };
+        if (/^(?:east asian|asian|caucasian|western|european)$/.test(t)) return { group: 'ethnicity', parts: ['face'] };
+        if (/^(?:delicate|sharp|round|oval) face$/.test(t)) return { group: 'face_shape', parts: ['face'] };
+        if (/^(?:mole under eye|freckles|fangs|pointy ears|elf ears|animal ears|cat ears|fox ears|horns)$/.test(t)) return { group: 'trait:' + t, parts: ['face'] };
         if (/^(?:fair|pale|white|dark|dark brown|brown|tan|tanned|olive) skin$/.test(t)) return { group: 'skin', parts: MANGA_VISIBLE_PARTS.filter(p => !['hair', 'eyes'].includes(p)) };
-        if (/^(?:(?:small|medium|large|huge) breasts|flat chest|broad shoulders)$/.test(t)) return { group: 'body_upper', parts: ['torso'] };
-        if (/^(?:wide hips|thick thighs|long legs|short legs)$/.test(t)) return { group: 'body_lower', parts: ['legs'] };
-        if (/^(?:tall|short|petite|slender|slim|muscular|curvy|voluptuous|voluptuous curvy body|plump|athletic)$/.test(t)) return { group: 'body', parts: ['torso', 'legs'] };
+        if (/^(?:(?:small|medium|large|huge) breasts|flat chest)$/.test(t)) return { group: 'breast_size', parts: ['torso'] };
+        if (t === 'broad shoulders') return { group: 'shoulders', parts: ['torso'] };
+        if (/^(?:wide hips|thick thighs|long legs|short legs)$/.test(t)) return { group: /legs$/.test(t) ? 'leg_length' : 'trait:' + t, parts: ['legs'] };
+        if (/^(?:tall|short|petite)$/.test(t)) return { group: 'stature', parts: ['torso', 'legs'] };
+        if (/^(?:slender|slim|muscular|curvy|voluptuous|voluptuous curvy body|plump|athletic)$/.test(t)) return { group: 'trait:' + t, parts: ['torso', 'legs'] };
         let parts = null;
-        if (/\b(?:shoes|heels|boots|sandals|sneakers|barefoot)\b/.test(t)) parts = ['feet'];
+        if (/\b(?:cheongsam|qipao|dress|robe|kimono|gown)\b/.test(t)) parts = ['torso', 'legs'];
+        else if (/\b(?:shoes|heels|boots|sandals|sneakers|barefoot)\b/.test(t)) parts = ['feet'];
         else if (/\b(?:stockings|thighhighs|pantyhose|socks|pants|trousers|skirt|shorts|leggings|high slit)\b/.test(t)) parts = ['legs'];
         else if (/\b(?:gloves|bracelet|ring)\b/.test(t)) parts = ['hands'];
         else if (/\b(?:sleeves?|cuffs?)\b/.test(t)) parts = ['torso', 'hands'];
@@ -402,13 +413,24 @@
         return outfit ? { group: 'outfit', parts: [], unknown: true } : null;
     }
 
-    function resolveMangaAppearances(pages, references = [], newMemory = []) {
+    function resolveMangaAppearances(pages, references = [], newMemory = [], warnings = []) {
+        pages.forEach(compileMangaPage); // Report the existing panel/person diagnostic before walking malformed data.
         const result = JSON.parse(JSON.stringify(pages));
         const states = new Map();
         const clean = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? normalizeMangaMemoryTags(value.trim()) : '';
         for (const row of references) {
             const key = mangaIdentityKey(row?.name);
-            if (key) states.set(key, { base: clean(row.base), outfit: clean(row.outfit), outfitSet: !!clean(row.outfit) });
+            if (key) {
+                const state = { base: clean(row.base), outfit: clean(row.outfit), outfitSet: !!clean(row.outfit) };
+                for (const field of ['hair_style', 'hair_length', 'hair_color', 'outfit']) {
+                    if (field === 'outfit' && row.state?.outfitSet === false) continue;
+                    if (typeof row.state?.[field] === 'string' && (!row.state[field].trim() || clean(row.state[field]))) {
+                        state[field] = clean(row.state[field]);
+                        if (field === 'outfit') state.outfitSet = true;
+                    }
+                }
+                states.set(key, state);
+            }
         }
         for (const row of Array.isArray(newMemory) ? newMemory : []) {
             const key = mangaIdentityKey(row?.name);
@@ -416,11 +438,14 @@
             const state = states.get(key) || { base: '', outfit: '' };
             state.base ||= clean(row.base);
             // character_memory.outfit is the END state; never use it for earlier panels.
-            state.outfit ||= clean(row.initial_outfit);
+            if (!state.outfitSet) state.outfit ||= clean(row.initial_outfit);
             state.outfitSet ||= !!state.outfit;
             states.set(key, state);
         }
-        for (const page of result) for (const panel of page?.panels || []) for (const c of panel?.characters || []) {
+        const initial = new Map([...states].map(([key, value]) => [key, { ...value }]));
+        for (const page of result) for (const panel of page.panels) for (const c of panel.characters) {
+            delete c._mangaAppearance;
+            delete c._mangaInitialAppearance;
             const key = mangaIdentityKey(c.name);
             const state = states.get(key);
             if (!state) continue; // Anonymous/new unprofiled people keep their explicit captions.
@@ -432,18 +457,23 @@
                     }
                 }
             }
-            // Explicit visibility is the opt-in contract; legacy pages remain untouched.
-            if (!Array.isArray(c.visible) || c.visible.some(p => !MANGA_VISIBLE_PARTS.includes(p))) continue;
+            c._mangaInitialAppearance = { ...initial.get(key) };
+            c._mangaAppearance = { ...state };
+            // Keep legacy captions usable, but tell a new request when memory could not be applied.
+            if (!Array.isArray(c.visible) || c.visible.some(p => !MANGA_VISIBLE_PARTS.includes(p))) {
+                warnings.push(`${panel.id}/${c.name || c.character_id} 缺少有效 visible，保留模型原词，未自动补入角色外貌`);
+                continue;
+            }
             const visible = new Set(c.visible);
             const full = MANGA_VISIBLE_PARTS.every(p => visible.has(p));
             const groups = new Set();
             const chosenTags = new Set();
             const select = (value, outfit = false, onlyGroup = '') => filterMangaTags(value, new Set(), tag => {
-                if (mangaIdentityKey(tag) === key) return '';
                 const info = mangaAppearanceTag(tag, outfit) || (onlyGroup ? { group: onlyGroup, parts: ['hair'] } : null);
-                if (onlyGroup && info?.group !== onlyGroup) return '';
+                if (onlyGroup && info?.group !== onlyGroup && !(onlyGroup === 'hair_style' && ['hair_bangs', 'hair_texture'].includes(info?.group))) return '';
                 if (info && Object.hasOwn(state, info.group) && info.group !== 'outfit' && !onlyGroup) return '';
-                const allowed = info?.parts.some(p => visible.has(p)) || (full && (!info || info.unknown));
+                const allowed = info?.parts.some(p => visible.has(p)) || (full && info?.unknown)
+                    || (!info && visible.size > 0); // Preserve names and custom traits rather than silently discarding them.
                 if (!allowed) return '';
                 if (info) groups.add(info.group);
                 chosenTags.add(tag.toLowerCase().replace(/_/g, ' '));
@@ -459,7 +489,7 @@
             if (state.outfitSet) groups.add('outfit');
             const { visual, text } = splitMangaText(c.positive);
             const action = filterMangaTags(visual, new Set(), tag => {
-                if (mangaIdentityKey(tag) === key) return '';
+                if (chosenTags.has(tag.toLowerCase().replace(/_/g, ' '))) return '';
                 const info = mangaAppearanceTag(tag);
                 if (info && (!info.parts.some(p => visible.has(p)) || groups.has(info.group))) return '';
                 return tag;
@@ -471,6 +501,7 @@
     }
 
     const mangaProtocol = {
+        appearanceStateVersion: 1,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
         planningPrompt: buildMangaPlanningPrompt,
         systemPrompt: () => buildMangaSystemPrompt(getStore())
@@ -505,7 +536,7 @@ ${gutter.instruction}
 
 【数据归属：页面 → 画格 → 格内人物】
 输出 format=nai5-comic，字段见 outputSchema。page.base 写整页去重后的可见人数（同一人跨格不重复计数）、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
-同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，原创姓名不作为绘图标签。同人以可靠角色标签开头，原创以主体词开头；头部可见时保留已知发长、发型结构、刘海及识别配饰，不能只剩发色。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
+同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，保留资料中已有的普通姓名和可靠同人角色标签；头部可见时保留已知发长、发型结构、刘海及识别配饰，不能只剩发色。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【角色记忆落实】
@@ -513,7 +544,7 @@ ${gutter.instruction}
 state 只记录有依据的当前变化：hair_style 为当前发型结构（不带颜色和长度），只有实际剪发/生长才写 hair_length，hair_color 为改变后的发色标签，outfit 为完整当前服装；省略表示沿用，outfit 空字符串表示衣物全部移除，不能表示未知。首次出场时若历史状态与档案不符，或尚无服装档案，在 state 中注明正确开场状态。后续变化从发生的格起延续，不能用末格服装覆盖前面。
 正文无变化不填写 state。仍按原色描述资料，由发送前统一做黑白转换；不要因裁切、背身、黑白模式删改长期记忆。
 【视觉词与动作表达】
-page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。姓名放 name，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
+page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。name 填稳定姓名并保留已有姓名标签，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
 每个人物依次写：本格位置 → 主体与可见外貌 → 可见服装部件 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
 同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
 机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。服装拆为可见部件；面部特写移除画外鞋腿、背位不写看不见的正脸。默认不加权；确需突出/弱化已写明的焦点时用闭合的 1.2::短词组:: / 0.6::短词组::，强度不设配额。不加权整段、编号或 Text；权重不能补救漏写、错人或冲突，不用全局负权排除需要的漫画元素。
@@ -635,7 +666,17 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
         if (negCaption) {
             negCaption.base_caption = baseNegative;
             // Per-person UC comes from the director. Do not guess franchises or copy global color/quality UC here.
-            (negCaption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaNegativePrompt(c.char_caption, mono); });
+            (negCaption.char_captions || []).forEach((c, index) => {
+                const ownTags = new Set();
+                filterMangaTags(splitMangaText(caption?.char_captions?.[index]?.char_caption || '').visual, new Set(), tag => {
+                    ownTags.add(tag.toLowerCase().replace(/[_\s]+/g, ' ').trim());
+                    return tag;
+                });
+                c.char_caption = filterMangaTags(sanitizeMangaNegativePrompt(c.char_caption, mono), new Set(), tag => {
+                    const converted = mono ? monochromeCharacterTag(tag) : tag;
+                    return ownTags.has(converted.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : converted;
+                });
+            });
         }
         const base = caption?.base_caption || payload.input;
         if (store.autoSpread && /見開き|double-page spread|2-page spread|wide spread/i.test(splitMangaText(base).visual)
@@ -2622,7 +2663,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
 仅有局部镜头时保留该部位可见的身份特征，勿把整份外貌档案硬塞进去。`;
     }
 
-    async function requestStudioPanels(store, task, content, expectedCount) {
+    async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false) {
         const config = getSdtStore();
         const baseUrl = String(config.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const model = String(config.openaiModelCustom || config.openaiModel || '').trim();
@@ -2633,7 +2674,8 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const response = await fetch(endpoint, {
             method: 'POST', headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
             body: JSON.stringify({ model, temperature: 0.2, messages: [
-                { role: 'system', content: studioDirectorPrompt(store, task) }, { role: 'user', content: userContent }
+                { role: 'system', content: studioDirectorPrompt(store, task) + (editingSnapshots
+                    ? '\n本次润色已有分镜：已有格内 positive 是该时刻的完整外貌衣着快照，优先于聊天档案默认服装。保留既有和前格持续状态，按本格明确变化调整；返回完整可见外貌与动作，不只返回增量。' : '') }, { role: 'user', content: userContent }
             ] })
         });
         if (!response.ok) throw new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
@@ -2642,7 +2684,9 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const data = JSON.parse(reply);
         if (!Array.isArray(data.panels) || !data.panels.length || data.panels.length > 5
             || (expectedCount && data.panels.length !== expectedCount)) throw new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
-        const page = resolveMangaAppearances([{ format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels }], references.characterMemory || [])[0];
+        const rawPage = { format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels };
+        // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
+        const page = editingSnapshots ? rawPage : resolveMangaAppearances([rawPage], references.characterMemory || [])[0];
         compileMangaPage(page);
         return page.panels.map(studioPanelFromProtocol);
     }
@@ -2660,14 +2704,14 @@ position 单独写位置，description/positive 不重复画格位置；系统�
     async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0) {
         const result = await requestStudioPanels({ ...getStore(), grammar, language },
             '只返回正在编辑的一个画格；不因整页文法扩写其他格。参照已有角色身份，保持同一 character_id；不要复述其他格事件。',
-            JSON.stringify({ currentMessage: sentence, currentShot, currentIndex, otherPanels: allPanels }), 1);
+            JSON.stringify({ currentMessage: sentence, currentShot, currentIndex, otherPanels: allPanels }), 1, true);
         return result[0];
     }
 
     async function callLlmBatchSentenceExpander(panels, grammar, language, onProgress) {
         if (grammar === '4koma' && panels.length !== 4) throw new Error('经典四格需要4个画格；请调整格数或切换文法');
         if (onProgress) onProgress('正在核对逐格人物、对白和连续状态...');
-        return requestStudioPanels({ ...getStore(), grammar, language }, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属。`, JSON.stringify(panels), panels.length);
+        return requestStudioPanels({ ...getStore(), grammar, language }, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属。`, JSON.stringify(panels), panels.length, true);
     }
 
     function renderStudioCharacterFields(panel) {

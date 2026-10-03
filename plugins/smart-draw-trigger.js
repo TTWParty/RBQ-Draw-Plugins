@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.0.73';
+    const PLUGIN_VERSION = '6.1.0';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2755,6 +2755,11 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (!store) store = getStore();
         const profiles = getCharacterProfiles();
         const profileEntries = Object.entries(profiles).filter(([k, p]) => p && !isJunkCharacterName(k));
+        if (isMangaRequest(store)) {
+            const references = profileEntries
+                .map(([name, p]) => ({ name, base: p.baseTags || '', outfit: p.currentOutfit || '' }));
+            return '【漫画人物资料参考】以下为身份及衣着资料。按当前镜头的可见范围写入各人物 positive，保留剧情已生效的变化；不要将完整档案机械复制进局部特写。人物姓名仅作关联。\n' + JSON.stringify(references);
+        }
 
         let activeRegistrySection = '';
         if (profileEntries.length > 0) {
@@ -2846,12 +2851,6 @@ ${globalListText}
    - 多角色交互：使用 source#action / target#action / mutual#action 明确互动施受关系。
    - 空间连续坐标：center 统一采用连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或网格 C3。
 
-5. 【漫画模式与分格画格适配铁律 (Manga Mode Character & Panel Decoupling)】：
-   - 核心解耦公理：画格（Panel）是舞台与机位，角色（Actor）是登台演员！
-   - ⛔【严禁以画格为名】：characters 数组中的 name 字段必须且只能是本格出场角色的【真实身份名称】（如 "师尊 (original)"、"Ami (original)" 或角色卡名称），绝对严禁把 "Panel 1"、"画格 1"、"Shot 1" 写为角色 name！
-   - 【同一角色跨格贯穿】：若本页漫画的多个画格（如 Panel 1、Panel 2、Panel 4）均有同一角色出镜，这几个画格槽位的 name 必须完全相同，且共享相同的锁定 base DNA，仅 action 随分格演进！系统将自动将其识别为同一角色的连续表演，绝不产生垃圾角色碎片。
-   - 【纯环境/空镜/拟声词格】：若本格为纯环境交代、远景空镜或独立拟声词格且无人物出场，name 必须留空 ""，base 与 outfit 也必须留空 ""，严禁填写 solo 或人物标签！
-   - 【画格方位与镜头归位】：画格的版面方位（top panel, middle-right panel, bottom panel 等）、景别（wide establishing shot, close-up 等）以及台词气泡（BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文）必须统一写在 action 字段的开头！
 ${activeRegistrySection}`;
     }
 
@@ -3210,6 +3209,9 @@ ${activeRegistrySection}`;
         const isJunk = isJunkCharacterName(name);
         const cleanName = isJunk ? '' : String(name || '').trim();
         const weightedName = cleanName ? weightCharacterName(cleanName) : '';
+        if (isMangaRequest(store)) {
+            return [llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
+        }
 
         debugInfo(`角色「${name}」LLM 输出: base="${(llmBase || '').slice(0, 40)}", outfit="${(llmOutfit || '').slice(0, 40)}", action="${(llmAction || '').slice(0, 40)}"`);
         debugInfo(`角色记忆状态: ${store.characterMemoryEnabled ? '✅ 启用' : '❌ 禁用'}, chatKey="${chatKey}"`);
@@ -6408,6 +6410,27 @@ ${activeRegistrySection}`;
         }
     }
 
+    function isMangaRequest(store = getStore()) {
+        return !!store._mangaActive || store.enhancedContext === 'v_manga';
+    }
+
+    function getMangaProtocol() {
+        const protocol = RBQ.api.mangaProtocol;
+        if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
+        return protocol;
+    }
+
+    function normalizeMangaSegment(item, index = 0) {
+        const compiled = getMangaProtocol().compile(item);
+        return {
+            label: String(item.label || `Page ${index + 1}`), anchor: normalizeAnchor(item.anchor, index + 1),
+            scene: compiled.base, characters: compiled.characters, multiChar: compiled.characters.length > 1,
+            prompt: [compiled.base, ...compiled.characters.map(c => c.caption)].filter(Boolean).join(' | '),
+            negative: String(item.negative || ''), mangaPage: JSON.parse(JSON.stringify(item)),
+            mangaUseCoords: compiled.useCoords
+        };
+    }
+
     function normalizeTaggerResult(data, matchedLorebooks = []) {
         // 1. Tool Call extraction (OpenAI tool_calls, legacy function_call, or Gemini functionCall)
         let toolRaw = null;
@@ -6518,6 +6541,8 @@ ${activeRegistrySection}`;
                                     ? source.result.segments
                                     : (source?.segment && typeof source.segment === 'object' ? [source.segment] : [])))))));
         let segments = rawSegmentsList.map((item, index) => {
+                if (item?.format === 'nai5-comic' || item?.page || item?.panels) return normalizeMangaSegment(item, index);
+                if (isMangaRequest()) throw new Error('漫画解析返回了旧式人物数组，请重新解析以生成 page/panels/characters 结构');
                 const anchor = normalizeAnchor(item?.anchor, index + 1);
                 const scene = decodeUnicodeEscapes(String(item?.scene || item?.environment || '').trim());
                 const standalone = decodeUnicodeEscapes(String(item?.standalone_prompt || item?.prompt || '').trim());
@@ -6655,6 +6680,7 @@ ${activeRegistrySection}`;
             multiChar: segments.length ? segments[0].multiChar : false,
             scene: segments.length ? segments[0].scene : '',
             characters: segments.length ? segments[0].characters : [],
+            ...(segments[0]?.mangaPage ? { mangaPage: segments[0].mangaPage, mangaUseCoords: segments[0].mangaUseCoords } : {}),
             anchor: normalizeAnchor(source?.anchor, 1),
             reason: decisionReason,
             thinkContent,
@@ -6924,7 +6950,9 @@ ${activeRegistrySection}`;
     async function runSegmentAiRefinement(segResult, userInstructions) {
         const store = getStore();
         const segJson = JSON.stringify(segResult || {});
-        const systemPrompt = `You are an expert anime AI art storyboard director and tagger.
+        const systemPrompt = segResult?.mangaPage
+            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
+            : `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
 1. Update scene tags, characters' outfits, actions, poses, expressions, or camera POV according to the user instructions.
@@ -6998,6 +7026,10 @@ SCHEMA:
             parsed = parsedRaw.segment;
         } else if (parsedRaw?.result && typeof parsedRaw.result === 'object') {
             parsed = parsedRaw.result;
+        }
+
+        if (segResult?.mangaPage) {
+            return { ...normalizeMangaSegment({ ...parsed, anchor: segResult.anchor }), matchedLorebooks: segResult.matchedLorebooks || [] };
         }
 
         let charactersList = [];
@@ -7182,7 +7214,10 @@ SCHEMA:
 
                 prepareNaiCharData(updatedSeg);
                 const newFinalPrompt = getFinalPrompt(updatedSeg);
-                if (wrapper) wrapper.dataset.prompt = newFinalPrompt;
+                if (wrapper) {
+                    wrapper.dataset.prompt = newFinalPrompt;
+                    cacheWrapperCharacterData(wrapper, updatedSeg);
+                }
 
                 const baseKey = wrapper?.dataset?.rbqSdtBaseKey;
                 const segmentKey = wrapper?.dataset?.rbqSdtSegmentKey;
@@ -7728,11 +7763,21 @@ SCHEMA:
                         }
                         const captionVal = String(card.querySelector('.rbq-sdt-manual-char-caption')?.value || '').trim();
                         const ucVal = String(card.querySelector('.rbq-sdt-manual-char-uc')?.value || '').trim();
+                        if (updatedSeg.mangaPage && JSON.stringify(sdtParseCoord(charObj.center)) !== JSON.stringify(sdtParseCoord(centerVal))) updatedSeg.mangaUseCoords = true;
                         charObj.center = centerVal;
                         charObj.caption = captionVal;
                         charObj.uc = ucVal;
                     }
                 });
+            }
+            if (updatedSeg.mangaPage) {
+                updatedSeg.mangaPage.position_mode = updatedSeg.mangaUseCoords ? 'manual' : 'auto';
+                for (const panel of updatedSeg.mangaPage.panels) {
+                    for (const person of panel.characters) {
+                        const current = updatedSeg.characters.find(c => c.panelId === panel.id && c.characterId === person.character_id);
+                        if (current) { person.positive = current.caption; person.negative = current.uc || ''; person.center = sdtParseCoord(current.center); }
+                    }
+                }
             }
             return updatedSeg;
         }
@@ -7741,9 +7786,7 @@ SCHEMA:
             if (wrapper) {
                 wrapper.dataset.prompt = newFinalPrompt;
                 wrapper.dataset.rbqSdtFinalPrompt = newFinalPrompt;
-                if (Array.isArray(updatedSeg.characters) && updatedSeg.characters.length > 0) {
-                    try { wrapper.dataset.rbqSdtCharData = JSON.stringify(updatedSeg.characters); } catch (_) {}
-                }
+                cacheWrapperCharacterData(wrapper, updatedSeg);
                 renderCardBadges(wrapper, updatedSeg);
             }
 
@@ -7783,7 +7826,6 @@ SCHEMA:
         // Action: 仅更新 Tag
         modal.querySelector('#rbq-sdt-manual-save-only')?.addEventListener('click', () => {
             const updatedSeg = gatherUpdatedSegment(activeTab);
-            prepareNaiCharData(updatedSeg);
             const newFinalPrompt = getFinalPrompt(updatedSeg);
             if (!newFinalPrompt) {
                 toastr.warning('提示词不能为空', PLUGIN_NAME);
@@ -8024,6 +8066,18 @@ SCHEMA:
         });
 
         modal.querySelector('#rbq-sdt-card-outfit-apply')?.addEventListener('click', async () => {
+            if (segResult.mangaPage) {
+                const changes = Array.from(modal.querySelectorAll('.rbq-sdt-card-char-outfit-sec')).map((sec, idx) => {
+                    const outfit = sec.querySelector('.rbq-sdt-custom-outfit-input')?.value?.trim();
+                    const c = segResult.characters[idx];
+                    return outfit && c ? `${c.panelId}/${c.characterId} (${c.name}): ${outfit}` : '';
+                }).filter(Boolean).join('\n');
+                close();
+                openSegmentAiRefinerModal(wrapper, segResult, viewerContext);
+                const field = document.getElementById('rbq-sdt-refine-input');
+                if (field) field.value = '只修改以下人物出场的衣着，替换旧衣着并保留可见范围、动作、对白和其余画格：\n' + changes;
+                return;
+            }
             const updatedSeg = JSON.parse(JSON.stringify(segResult));
             if (!Array.isArray(updatedSeg.characters)) updatedSeg.characters = [];
 
@@ -8045,7 +8099,10 @@ SCHEMA:
             try {
                 prepareNaiCharData(updatedSeg);
                 const newFinalPrompt = getFinalPrompt(updatedSeg);
-                if (wrapper) wrapper.dataset.prompt = newFinalPrompt;
+                if (wrapper) {
+                    wrapper.dataset.prompt = newFinalPrompt;
+                    cacheWrapperCharacterData(wrapper, updatedSeg);
+                }
 
                 const baseKey = wrapper?.dataset?.rbqSdtBaseKey;
                 const segmentKey = wrapper?.dataset?.rbqSdtSegmentKey;
@@ -8962,6 +9019,8 @@ SCHEMA:
             } catch(e) {}
         }
 
+        if (obj.mangaPage && mode === 'nai') return obj.scene || '';
+
         // Multi-char: base prompt = scene only; characters go via hook
         if (getStore().multiCharOutput && Array.isArray(obj.characters) && obj.characters.length > 0) {
             // Only strip characters if we are in NAI mode, OR if we are in ComfyUI mode WITH char placeholders.
@@ -8995,8 +9054,22 @@ SCHEMA:
             .join(', ');
     }
 
+    function cacheWrapperCharacterData(wrapper, segment) {
+        if (!wrapper?.dataset) return;
+        wrapper.dataset.rbqSdtCharData = JSON.stringify(segment?.characters || []);
+        wrapper.dataset.rbqSdtManga = segment?.mangaPage ? '1' : '';
+        wrapper.dataset.rbqSdtMangaCoords = segment?.mangaUseCoords ? '1' : '';
+    }
+
     /** Prepare structured char data for the NAI V4 payload hook */
     function prepareNaiCharData(segmentResult) {
+        if (segmentResult?.mangaPage || (isMangaRequest() && Array.isArray(segmentResult?.characters))) {
+            pendingNaiCharData = {
+                manga: true, useCoords: !!segmentResult.mangaUseCoords,
+                characters: (segmentResult.characters || []).map(c => ({ caption: c.caption, center: c.center, uc: c.uc || '' }))
+            };
+            return;
+        }
         if (!segmentResult || !Array.isArray(segmentResult.characters) || segmentResult.characters.length === 0) {
             pendingNaiCharData = null;
             return;
@@ -9013,9 +9086,9 @@ SCHEMA:
 
     /* ── NAI V4 payload hook: inject char_captions directly ── */
     RBQ.on('buildNaiV4Payload', (payload) => {
-        if (!pendingNaiCharData || !getStore().multiCharOutput) return payload;
-        const { characters } = pendingNaiCharData;
-        if (!characters.length) return payload;
+        if (!pendingNaiCharData || (!pendingNaiCharData.manga && !getStore().multiCharOutput)) return payload;
+        const { characters, manga, useCoords } = pendingNaiCharData;
+        if (!characters.length && !manga) return payload;
 
         const charCaptions = characters.map(c => ({
             char_caption: c.caption,
@@ -9042,7 +9115,7 @@ SCHEMA:
 
         payload.parameters.v4_prompt = {
             caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },
-            use_coords: !!getStore().multiCharUseCoords,
+            use_coords: manga ? useCoords : !!getStore().multiCharUseCoords,
             use_order: true,
             legacy_uc: false,
         };
@@ -9055,7 +9128,7 @@ SCHEMA:
 
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
         pendingNaiCharData = null; // consume
-        return payload;
+        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload) : payload;
     });
 
     /* ── ComfyUI payload hook: inject char placeholders ── */
@@ -9199,9 +9272,7 @@ SCHEMA:
                     if (segLabel && segLabel !== '生成图片') {
                         wrapper.dataset.rbqSdtOrigLabel = segLabel;
                     }
-                    if (Array.isArray(seg.characters) && seg.characters.length > 0) {
-                        try { wrapper.dataset.rbqSdtCharData = JSON.stringify(seg.characters); } catch (_e) { /* noop */ }
-                    }
+                    cacheWrapperCharacterData(wrapper, seg);
                     renderCardBadges(wrapper, segResult);
 
                     const taggerBtn = wrapper.querySelector('.st-scene-trigger-generate');
@@ -9290,9 +9361,7 @@ SCHEMA:
                 if (segLabel && segLabel !== '生成图片') {
                     existing.dataset.rbqSdtOrigLabel = segLabel;
                 }
-                if (Array.isArray(result?.characters) && result.characters.length > 0) {
-                    try { existing.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch (_e) { /* noop */ }
-                }
+                cacheWrapperCharacterData(existing, result);
                 renderCardBadges(existing, result);
                 const taggerBtn = existing.querySelector('.st-scene-trigger-generate');
                 if (taggerBtn instanceof HTMLElement) taggerBtn.style.display = 'none';
@@ -9356,6 +9425,7 @@ SCHEMA:
             multiChar: !!result.multiChar,
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
+            ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords } : {}),
             anchor: result.anchor || { type: 'bottom' },
             reason: String(result.reason || '').slice(0, 500),
             thinkContent: String(result.thinkContent || '').slice(0, 1000),
@@ -9589,7 +9659,7 @@ SCHEMA:
     function getEnhancedContextPayload(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
-            v_manga: "DYNAMIC EVENT-DRIVEN MANGA PACING & UNIVERSAL KOMAWARI DIRECTOR (v1.1 [33][35][57]): Execute manga director 5-step storyboard reasoning before output: ① Script-to-Comic Pacing: divide currentMessage into consecutive event units (U1, U2, U3...), evaluate dramatic capacity to dynamically decide page count (1~2 pages for concise scenes, 3~6 for complex arcs/battles, 0 for idle talk); ② Verbatim Anchor Lock: quote 10~40 exact chars from currentMessage for each page's anchor.text; ③ Intra-Page Komawari Beats: design 3~5 panels per page, determine 1 primary focal panel (dramatic weight & canvas area, does NOT have to be panel 1; strictly forbid fixed 4-koma; each panel must have a different size and shape via staggered cuts, banners, vertical panels, or inset panels) with 2~3 supporting reaction/establishing/SFX panels; ④ Universal Komawari Spatial Flow: Japanese reading order (top-to-bottom, right-to-left within tier); each panel action MUST start with a unique spatial anchor (top/middle/bottom wide banners, side-by-side tiers: top-right/top-left, middle-right/middle-left, bottom-right/bottom-left, vertical strips: left vertical panel, or inset panels) with dynamic shot progression; ⑤ Panel-to-Panel Continuity & Dialogue Choreography: maintain L0 character DNA, propagate L2 transient states (sweat/blush/tears/battle damage), map dialogue bubbles to panels with physical positions (右上/左上/口元/画面外) while preserving silent panels without fake dialogue.",
+            v_manga: "Plan comic pages from narrative capacity; use nested page/panels/characters. Preserve event order, visible character identity, props and dialogue ownership. Do not force one page per event or a fixed panel count.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
@@ -9600,65 +9670,7 @@ SCHEMA:
     function getEnhancedContextSystemPrompt(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
-            v_manga: `【原版 v1.1 动态事件驱动漫画导演分镜推演 (条目33 & 条目35 & 条目57)】
-在输出 JSON 前，必须在思考区（输出到 reason 字段）按以下不可偷懒的结构化骨架真实展开推演：
-
-①【台本事件节拍地毯式切片与动态页数决策 (SCRIPT-TO-COMIC & DYNAMIC PAGES)】：
-- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：顺着时间线自上而下地毯式扫描剧情，绝不仅挑最后一句！将正文按事件推进与视觉高光划分为连续的事件单元（编号 U1、U2、U3...）：
-  * 凡出现造型服饰高光、肢体接触升级、体位姿态转变、情感爆发对峙或场景转换，每一个独立节拍均必须设立为一个独立事件单元；
-  * 依事件单元自适应决定总页数（1个核心事件单元 = 1页漫画，1 Page = 1 Segment）：
-    - 短小情节 / 单一事件瞬间：规划 1 页；
-    - 中长篇幅 / 包含情节转折、情绪递进、攻守交互：规划 2~4 页；
-    - 激烈决战 / 宏大剧情推进：规划 3~6 页；
-    - 纯抽象无画面闲聊才判定为 0 页（shouldDraw: false）。
-  * ⛔【严禁偷懒归一化】：若正文包含多个事件推进，绝对严禁为了图省事而强行压缩为 1 页！必须顺着时间线全部提取；
-  * ⛔【逐页精准正文锚点（严禁扎堆与脑补）】：每一页的 anchor.text 必须来自该页对应 U 段落，严禁所有页面全部扎堆在正文末尾！必须 100% 逐字摘录 10~40 字原文，严禁凭记忆概括改写，确保漫画卡片精准落位于事件发生的实际位置下方。
-
-②【逐页画格戏剧结构推演 (INTRA-PAGE KOMAWARI BEAT BREAKDOWN)】：
-- 每一页自适应规划 3~5 panels（characters 数组长度严格等于规划画格数 N）：
-  * ⛔【严禁套用死板三段式横条或四等分网格】：禁止将每页机械均分为三等分（top/middle/bottom）或四等分！必须根据戏剧重心规划不对称、主次分明的画格形态：确定 1 个主要画格（focal panel，占据半页以上面积或强烈动势的大横通栏/纵长长格/大斜切格），其余格子作为辅助格（远景交代格、特写反应格、拟声词格）。每个格子必须不同大小；
-  * 景别层次推进链：远景交代空间（establishing wide shot）➔ 中景呈现肢体互动（medium cowboy shot）➔ 特写捕捉眼神/微表情反应（close-up on face/eyes）➔ 核心主格动作定格（focal dynamic angle）。严禁全页单一雷同机位！
-
-③【映画分镜版面方位与日漫阅读动线推演 (UNIVERSAL KOMAWARI SPATIAL FLOW)】：
-- 遵循日式漫画の読み順（右開き・右綴じ）：先上段后下段，同段先右后左！为每格确定一个本页内唯一可辨的「版面方位＋构图大小/功能」开头：
-  * ① 单列通栏段位：
-    - 顶部通栏：top panel, focal panel, medium shot 或 top panel, wide shot, establishing shot
-    - 中部通栏：middle panel, reaction panel, close-up
-    - 底部通栏：bottom panel, focal panel, dramatic angle 或 bottom panel, wide panel
-  * ② 同层双列并排格（右侧先读，左侧后读）：
-    - 上段并排：top-right panel, focal panel, medium shot（右上·先读） / top-left panel, reaction panel, close-up（左上·后读）
-    - 中段并排：middle-right panel, reaction panel, close-up（中右·先发生） / middle-left panel, small panel, looking down（中左·后发生）
-    - 底段并排：bottom-right panel, small panel（右下·先读） / bottom-left panel, focal panel, close-up（左下·全页收束）
-  * ③ 特殊形态构性格：
-    - left vertical panel, focal panel, full body（左侧纵向贯穿长格，用于全身立绘/拔刀/高空跃下）
-    - wide panel, wide shot, scenery（横向通栏大景深格）
-    - inset panel, small panel, extreme close-up on eyes（嵌在大格角落的特写插格）
-    - small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]（独立拟声词格）
-
-④【修辞转实体与格间角色状态机 (RHETORIC-TO-DANBOORU & L0~L2 CONTINUITY)】：
-- ⛔【修辞转实体（严禁将比喻直译为生图词）】：正文中的比喻描写（如“狂风暴雨般的进攻”、“眼神如万年寒冰”）绝对禁止直接输出带有 like a beast, ice in eyes 等破坏画面的词汇！必须转换为具象的 Danbooru 动作与神态标签（如 fast punch, aggressive, shadow over eyes, intense gaze）；action 字段只写【版面方位 + 构图景别 + 角色动作Tag + 气泡规范】，绝对禁止夹杂大段中文描述或剧情解释！
-- L0 角色固定外貌 DNA 跨格锁定：同人角色出场必须在每格的 base 中保留官方完整标识标签与固定外貌（发型发色瞳色）；原创角色保持细节丰满与辨识度；严禁同一人物在第 1 格与第 2 格特征串味或长相突变；
-- L1 场景连续性：整页漫画的背景环境、主光源角度与氛围在各格之间保持连贯；
-- L2 瞬态痕迹跨格流转演进：汗水(sweat)、红晕(blush)、眼泪(tears)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循动作逻辑自然继承与渐进演变，绝对禁止格与格之间莫名其妙自动复原！
-
-⑤【台词视听落格与全形态气泡契约 (BUBBLE-STYLES & TEXT-BUBBLE-CONTRACT)】：
-- 原生 11 种气泡边框形态映射（来自原版 v1.1 条目 49 & 52）：
-  * 普通对白（日常）：BubbleType: 通常吹き出し, 口元（尖しっぽ朝向口元，平淡对白默认）
-  * 怒喊/惊呼/高声：BubbleType: 叫び吹き出し, 口元（或 ギザギザ吹き出し）
-  * 心理活动/心声：BubbleType: 思考の吹き出し, 右上（雲形，丸しっぽ朝向头部）
-  * 耳语/心虚/远处微声：BubbleType: 破線吹き出し, 口元（悄悄话、虚弱发声）
-  * 发颤/发虚/恐惧打颤：BubbleType: 波打つ吹き出し, 口元（波浪状发抖气泡）
-  * 电话/广播/机械音：BubbleType: 四角い吹き出し, 右上（矩形机械声）
-  * 客观旁白/时空说明：BubbleType: ナレーション枠, 右上, Layout: 横書き（矩形旁白框）
-  * 拟声拟态词：SFX: 擬音, 吹き出しなし, Text: [拟声词]（独立拟声词格）
-  * 画外对白（说话者在画面外）：BubbleType: 切り欠きのある吹き出し, 画面外（气泡贴在声源一侧格边）
-  * 画外音/独白/无尾气泡：BubbleType: しっぽなしの楕円吹き出し, 右上（纯椭圆无尾）
-  * 同一角色紧凑连续两句：BubbleType: 連結吹き出し, 右上（紧密相连连结气泡）
-- 对话呼吸拆分铁律（原版条目 20 第4点）：若台词包含多段话（只要不是一口气说出来的，都必须拆分），在 Text: 中使用换行（\\n\\n）拆分为独立气泡；
-- 台词防挡脸与溢出：单句台词尽量控制在 25 字以内；
-- ⛔【静默格留白】：纯动作反应、环境描写、眼神对视或沉思格，切勿强编台词！无对白时切勿添加 BubbleType 与 Text，保持画面电影张力；
-- ⛔【纯环境/拟声词格清空人物槽】：纯背景空镜或独立拟声词格，base 与 outfit 必须严格留空（""），绝对严禁写入 solo 或人物标签！
-- 自检自洽后直接输出合法 JSON，禁止输出任何多余标记。`,
+            v_manga: `漫画分页依据正文事件、文字量与画格容量；相邻事件可同页，单格页可只含一个决定性瞬间。按 page/panels/characters 嵌套协议输出，每格人物数量与画格数无关。核对台本覆盖、空间位置、人物状态和文字归属。`,
             v14: "【V14·自适应节拍与极简四公理推演 (分析生图位置与数量)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）完成推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史）：顺着正文时间线地毯式扫描，推演正文中【哪里需要生图】与【需要生几张】：\n  * 哪里生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面构成的，绝不仅有最后的大高潮才算画面！正文中凡是出现以下视觉跃迁节点（①造型服饰高光/换装脱衣/湿身暴露、②动作演进/肢体接触/体位姿态升级、③神态特写/动情红晕/眼神对视、④空间场景或机位景别转换、⑤显式图组[图组XX]/插画），每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜，绝严禁只挑最后一个动作而把前面的精彩画面全部漏掉！每个选定画面精准摘取 10~40 字逐字原文 anchor.text 并拟定 label；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要该生图的地方就必须有图，几张不设死板指标；单一瞬间=1张；多节拍推进=自然拆分多张独立分镜填入 segments，绝不草率压缩为单张；纯抽象理论探讨/毫无画面的纯闲聊才判 0 张（shouldDraw: false）。\n②【主题与分层】：确立主体层级（无近身实体接触则自然省略 Foreground 降级为双层，严禁强凑）。\n③【视点位姿与高差】：明确观察者自身体态（站/坐/跪/躺/覆身）与视点坐标；判定与目标高差——垂直落差 ≥ 50cm 绝对禁止单纯 close-up，强制使用俯/仰角度景别配合透视短缩链（head tilted back / foreshortening）；同高度特写才成立。\n④【视锥探入与受力闭环】：探入实体（手脚/道具/武器/器官）一律从画框下边缘向前上方延伸，严禁上方逆向垂落；必须具备物理接触受力面闭环（抓胯/托脸/握柄/按压），无接触则留白。\n⑤【实体解耦与分级底线】：POV 观察者绝对不出镜、严禁创建为 Character，其探入实体归入 Scene 前景，Scene 负面必补 boy, male 防骨骼分裂；判定 Safe / R / X 并填齐底线负面词。\n⑥【自检输出】：确认字段自洽后直接输出合法 JSON，禁止输出任何多余标记。",
             v13: "【9.7 全息节拍推演与自适应视点动力学七步思维链 (V13 · 推荐)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息节拍与自适应视点强化七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：通读并深入推演当前消息正文，准确分析正文中【哪里需要生图】以及【需要生几张】：\n  * 哪里需要生图（视觉全流程节点覆盖法则 · 绝不遗漏）：顺着正文时间线自上而下地毯式扫描，绝不仅有最后的大高潮才算画面！凡是出现具备独立画面表现力与叙事价值的节点，每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜并精准锚定，绝严禁只挑最后一个大动作而掠过前文的精彩画面：\n    - 角色造型与服装高光（登场外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点）；\n    - 动作阶段演进与互动升级（肢体接触、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换、姿势切换）；\n    - 情感张力与神态特写（动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写表情）；\n    - 空间机位转换与环境氛围（场景地点转移、景别与俯仰视角切换）；\n    - 显式媒介内容（如 [图组XX]、[插画]、照片、手机屏幕等）：必须 1:1 提取对应数量的分镜；\n    - 每一个选定画面，必须从 currentMessage 中精准摘取对应段落的逐字原文（10~40字）作为 anchor.text，并拟定 5~15 字中文分镜名（label）；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻数量自然决定——只要该生图的地方就必须有图，几张不设固定指标；正文篇幅紧凑且仅包含单一瞬间动作则提取 1 张；长文多阶段演进自然拆分对应数量的独立分镜全部填入 segments 数组；纯日常闲聊/纯抽象内心独白无画面变化才判 0 张（shouldDraw: false）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【观察者体态位姿与自适应人眼视点几何】：\n- 【机位锚定：摄像机 ＝ 观察者双眼当前三维坐标】：POV 摄像机严格绑定观察者当前动作与体态下的真实人眼视点：\n  * 站姿(Standing, ~1.7m)：看站姿为平视(eye level)，看坐姿为微俯视，看跪/趴/躺为大俯视(steep high angle from standing height)；\n  * 坐姿(Sitting, ~1.1m~1.2m)：看坐姿为平视，看跪在腿间/地面为俯视(looking down between knees, from seated height)，看站立为仰视(low angle from below)；\n  * 跪姿(Kneeling, ~0.9m~1.0m)：同跪为平视(kneeling face-to-face)，看站立为大仰视(steep low angle looking up)；\n  * 躺卧/仰卧(Lying on back, ~0.2m~0.4m)：看被跨坐/骑乘为大仰视(steep low angle, looking up from below, lying on back looking up at her)，同躺为枕边平视(eye level, lying side by side)；\n  * 俯身/覆身在上(Leaning over / Missionary)：居高临下直视笼罩(leaning over her, looking down close-up)。\n- ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up！强制使用带俯仰透视景别（bust shot from above / looking up from below），配合仰头/低头短缩链（head tilted back / head lowered, foreshortening）；平视特写仅限双方同等高度；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸（仰卧被跨坐时向上托扶），严禁上方逆向垂落；探入必须具备「动作+物理接触受力面/受体」闭环；无接触则自然留白；探入肢体默认单侧防多肢体；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认观察者位姿与机位视角自洽、高差与景别自洽、探入实体受力闭环、服装四要素签名完备、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v11: "【9.7 全息空间七步思维链推演 (V11)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描 currentMessage 正文（严禁提取历史）：深入推演【哪里需要生图】（顺着正文时间线地毯式扫描造型服饰、肢体动作演进、体位切换、神态特写、显式图组等关键节点，每一个画面节点均提取独立分镜与 10~40 字逐字 anchor.text，绝不只挑最后一幕）与【需要生几张】（数量由视觉节点自然衍生，只要该生图的地方就必须有图；单一瞬间=1张；长文多阶段推进=自然拆分多张独立分镜入 segments；纯抽象无画面闲聊=0张）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间矩阵】：\n- 前景(Foreground) / 中景(Middle ground) / 背景(Background), 主体落层自由；【前景克制】：日常对话/开门/对视场景天然为双层，严禁强行编造入镜断手(reaching hands/pov hands)，无直接接触道具时直接省略 Foreground 降为双层！\n⑤【镜头组合与情境速查】：\n- 视角：第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）/ 第一人称 POV（视角主人⛔严禁创建为 Character，非直接接触场景严禁生成入镜手，仅保留出镜角色；Scene 负面补 boy/male 防鬼影）；\n- 景别与机位：按情境意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body/远景 wide_shot）与水平机位（正位/前侧3/4/侧位/后侧3/4/背位）、垂直机位（平视/俯视/仰视/顶视/虫视）。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认字段自洽、服装四要素签名完备（带长度/颜色）、左右手动作独立、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
@@ -9728,59 +9740,16 @@ SCHEMA:
             } : minSeg > 0 ? {
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
-            } : (store.enhancedContext === 'v_manga' || store._mangaActive) ? {
-                segmentInstruction: `【漫画导演·动态事件切片与精准落位铁律（原版 v1.1 条目33 & 35 & 57）】：\n①【地毯式事件切片与动态页数（拒绝偷懒归一化）】：顺着 currentMessage 时间线自上而下通读，将正文划分为连续事件单元（U1, U2, U3...）。凡出现情节推进、动作演进、换装脱衣、肢体接触、情绪激变或场景转换，均属于独立视觉节拍，每一个节拍规划为 1 页漫画（Page 1, Page 2...）。情节紧凑规划 1~2 页；情节丰富转场激烈规划 2~4 页；长篇激烈决战规划 3~6 页；绝严禁偷懒只挑最后一句把长文强行压缩为单页！无画面闲聊才输出 {"shouldDraw": false}；\n②【逐页精准正文锚点（严禁扎堆与改字）】：每一页作为一个独立 segment，label 标注为 "Page 1: [5~15字小标题]" 等。其 anchor.text 必须严格从该页对应 U 段落中一字不差地逐字摘录 10~40 字正文原文！严禁凭记忆概括改写，严禁所有页面扎堆在末尾，确保漫画卡片精准落位于事件发生的实际位置下方；\n③【单页画格与主次形态】：每页自适应规划 3~5 格（characters 数组长度严格等于规划画格数 N）。每页确定 1 个核心主格（focal panel，面积与戏剧重心），禁止死板三等分或四等分；每格 action 必须以版面方位词开头（top panel, middle-right panel, left vertical panel 等）；修辞转实体 Danbooru 动作，按语气挂载气泡或静默格；纯环境格 base/outfit 必须留空（""）。【最高警告】：所有分镜与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁提取历史楼层！`
+            } : isMangaRequest(store) ? {
+                segmentInstruction: '每个 segment 对应一页。按文字量、事件与画格容量分页，不强制每事件一页或每页固定格数；anchor.text 逐字摘录本页对应正文。page 描述全页，panels 描述画格，各格 characters 只列实际可见人物，空镜为 []。'
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
                 segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
             ...getEnhancedContextPayload(store.enhancedContext),
-            outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
-                shouldDraw: 'boolean',
-                reason: 'string (严格执行五步推演：①台本事件切片[U1:正文原句...规划为Page1, U2:正文原句...规划为Page2...] ②逐页正文锚点[Page 1对应U1段落逐字原文, Page 2对应U2段落逐字原文，严禁扎堆] ③逐页不对称Komawari与核心主格[Page 1主格设在底部大格Panel 4/左侧纵格Panel 1等，拒绝死板三等分] ④修辞转实体Danbooru ⑤台词呼吸断句与气泡挂载)',
-                segments: [
-                    {
-                        label: 'string (如 Page 1: 5~15字剧情小标题)',
-                        anchor: { text: 'string exact copy from currentMessage (该页剧情对应段落10~40字逐字原文，绝对严禁改字，保证漫画卡片精准落位于正文段落下方)' },
-                        scene: 'string (页面排版与环境必须以漫画词开头: comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, classroom, sunset lighting)',
-                        characters: [
-                            {
-                                name: 'string (本格出场角色的真实名称，如 "师尊 (original)" 或角色卡名称；同一角色在多个画格出场必须填写完全相同的真实名称；纯环境/空镜/拟声词格留空 "")',
-                                base: 'string (角色7维固定外貌DNA标签，必须跨格跨图保持完全一致；纯环境/空镜格留空 "")',
-                                outfit: 'string (本格服装四要素签名；纯环境/空镜格留空 "")',
-                                action: 'string (必须以版面方位+画格类型开头，如: top panel, wide establishing shot, looking outside, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 台词原文；BubbleType可选: 通常吹き出し | 叫び吹き出し | 思考の吹き出し | 破線吹き出し | 波打つ吹き出し | 四角い吹き出し | ナレーション枠 | SFX: 擬音, 吹き出しなし | 切り欠きのある吹き出し | しっぽなしの楕円吹き出し | 連結吹き出し，位置: 右上/左上/口元/画面外；无对白静默格切勿加BubbleType与Text)',
-                                center: 'C3',
-                                uc: 'string (本格差分负面特征词)'
-                            },
-                            {
-                                name: 'string (如同一角色继续出场填完全相同的名字，换人填新角色名，纯环境格留空 "")',
-                                base: 'string (继承同一角色固定外貌标签；新角色填新DNA；纯环境留空 "")',
-                                outfit: 'string (继承同一服装；剧情换装则更新)',
-                                action: 'string (如: middle-right panel, medium shot, reaching hand, BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: 台词)',
-                                center: 'C3',
-                                uc: 'string'
-                            },
-                            {
-                                name: 'string (同上真实角色名或 "")',
-                                base: 'string (继承同一角色固定外貌标签或 "")',
-                                outfit: 'string (继承同一服装或 "")',
-                                action: 'string (如: middle-left panel, small panel, reaction panel, close-up, blush, looking away, no dialogue)',
-                                center: 'C3',
-                                uc: 'string'
-                            },
-                            {
-                                name: 'string (同上真实角色名或 "")',
-                                base: 'string (角色固定外貌DNA标签)',
-                                outfit: 'string (服装标签)',
-                                action: 'string (如: bottom panel, focal panel, dramatic angle, dynamic pose, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: 爆发台词)',
-                                center: 'C3',
-                                uc: 'string'
-                            }
-                        ]
-                    }
-                ]
-            } : {
+            ...(isMangaRequest(store) ? { mangaInstruction: getMangaProtocol().systemPrompt() } : {}),
+            outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
                 segments: ((store.enhancedContext && store.enhancedContext !== 'off') || effectiveMinSeg > 1) ? [
@@ -9888,17 +9857,21 @@ SCHEMA:
     }
 
     function getSystemPromptWithPresets(store, hasCardInfo = false) {
-        let systemPrompt = getActiveSystemPrompt(store);
+        let systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt() : getActiveSystemPrompt(store);
         if (store.lorebookBase64) {
             systemPrompt += '\n\n【🛡️ Base64 设定资产混淆解码指令】\n为了确保底层文本传输链路合规安全，输入数据 payload 中的世界书设定（`lorebook` 数组中的 `tags_base64` 与 `name_base64`，以及 `lorebook_base64` 原始汇总数组）和角色卡设定（`characterCardInfo_base64`）均已采用 UTF-8 Base64 编码进行了混淆封装。\n【模型执行规则】：\n1. 你必须在内部推理思考（thinking）阶段解码这些 Base64 字段，还原为原本的人物外貌、发型、发色、瞳色、服装、配饰等视觉设定文本；\n2. 严禁在普通文本或输出中回显原始设定文本，只需客观将其提炼为 Danbooru 英文生图标签（例如: blonde hair, twintails, plaid skirt 等）；\n3. 无论世界书是否编码，均需严格视其为出镜角色的权威外貌设定并保持画面一致。';
         }
-        if (store.injectCharacterCard && hasCardInfo) {
+        if (store.injectCharacterCard && hasCardInfo && !isMangaRequest(store)) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }
         if (store.characterMemoryEnabled) {
             systemPrompt += '\n\n' + buildCharacterMemoryPromptModule(store);
         }
-        systemPrompt += '\n\n【👗 角色差分衣柜指示】\n当 payload 中包含 `characterWardrobes` 字段时，若剧情场景、动作或台词命中了角色的某套预设服装或触发词（如泳装、睡衣、战斗服等），请优先直接采用该套服装预设中的 `outfit` 提示词，保持角色服饰的一致性与高还原度。';
+        if (isMangaRequest(store)) {
+            systemPrompt += '\n衣柜提供服装参考；按剧情匹配后，仅将当前镜头可见的衣着写入格内人物 positive。';
+        } else {
+            systemPrompt += '\n\n【👗 角色差分衣柜指示】\n当 payload 中包含 `characterWardrobes` 字段时，若剧情场景、动作或台词命中了角色的某套预设服装或触发词（如泳装、睡衣、战斗服等），请优先直接采用该套服装预设中的 `outfit` 提示词，保持角色服饰的一致性与高还原度。';
+        }
         if (store.injectPresetsToTagger) {
             const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
             const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
@@ -10091,6 +10064,14 @@ SCHEMA:
             }
         }
     };
+    function getDrawSpecTool(store) {
+        if (!isMangaRequest(store)) return DRAW_SPEC_TOOL;
+        const tool = JSON.parse(JSON.stringify(DRAW_SPEC_TOOL));
+        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema();
+        tool.function.parameters.properties.segments.description = 'Comic pages in narrative order; each page contains panels and each panel contains its visible characters.';
+        return tool;
+    }
+
     const DRAW_SPEC_TOOL_RULE = '\n\n[System Rule]: 严格执行以下输出规范：1. 必须调用 generate_draw_spec 工具提交你的最终生图分镜与分析 2. 不要在普通文本中输出任何外部内容。';
 
     function buildThinkingParams(store) {
@@ -10381,7 +10362,7 @@ SCHEMA:
         };
 
         if (store.toolCallMode) {
-            reqBody.tools = [DRAW_SPEC_TOOL];
+            reqBody.tools = [getDrawSpecTool(store)];
             reqBody.tool_choice = { type: 'function', function: { name: 'generate_draw_spec' } };
             reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
@@ -11207,9 +11188,7 @@ SCHEMA:
         }
 
         // Store structured char data for NAI V4 direct injection on manual generate
-        if (Array.isArray(result?.characters) && result.characters.length > 0) {
-            try { wrapper.dataset.rbqSdtCharData = JSON.stringify(result.characters); } catch (_e) { /* noop */ }
-        }
+        cacheWrapperCharacterData(wrapper, result);
 
         renderCardBadges(wrapper, result);
         return wrapper;
@@ -11483,7 +11462,7 @@ SCHEMA:
             if (charDataJson) {
                 try {
                     const chars = JSON.parse(charDataJson);
-                    prepareNaiCharData({ characters: chars });
+                    prepareNaiCharData({ characters: chars, mangaPage: wrapper.dataset.rbqSdtManga === '1', mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1' });
                 } catch (_e) { /* noop */ }
             }
             const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
@@ -14386,21 +14365,8 @@ SCHEMA:
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
                 ...getEnhancedContextPayload(store.enhancedContext),
-                outputSchema: (store.enhancedContext === 'v_manga' || !!store._mangaActive) ? {
-                    shouldDraw: 'boolean',
-                    reason: 'string (五步漫画导演推演：①台本段落与页数 ②画格Komawari与主格 ③版面方位与阅读动线 ④角色一致性 ⑤台词与静默格)',
-                    segments: [{
-                        label: 'string (如 Page 1: 剧情标题)',
-                        anchor: { text: 'string' },
-                        scene: 'string (comic, 複数コマの漫画ページ, 4 panels, 1girl, manga page layout, vertical layout, bleed, dynamic komawari, [环境])',
-                        characters: [
-                            { name: 'string (真实角色名如 "师尊 (original)"，同角色多格保持同名，纯环境格留空 "")', base: 'string (7维外貌DNA)', outfit: 'string (服装四要素签名)', action: 'top panel, wide establishing shot, [动作], BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
-                            { name: 'string (真实角色名或 "")', base: 'string (7维外貌DNA)', outfit: 'string', action: 'middle-right panel, medium shot, [动作], BubbleType: 通常吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' },
-                            { name: 'string (真实角色名或 "")', base: 'string', outfit: 'string', action: 'middle-left panel, small panel, reaction panel, close-up, no dialogue', center: 'C3', uc: 'string' },
-                            { name: 'string (真实角色名或 "")', base: 'string', outfit: 'string', action: 'bottom panel, focal panel, dramatic angle, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [台词]', center: 'C3', uc: 'string' }
-                        ]
-                    }]
-                } : {
+            ...(isMangaRequest(store) ? { mangaInstruction: getMangaProtocol().systemPrompt() } : {}),
+                outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                         characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'string', uc: 'string' }]
@@ -15893,7 +15859,7 @@ SCHEMA:
             contextCount: 1,
             manualMode: true,
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
-            outputSchema: {
+            outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                     characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'object | string', uc: 'string' }]
@@ -15903,7 +15869,7 @@ SCHEMA:
 
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
+        const systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt() : `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
 
 请分析用户的场景描述，并将其转化为如下 JSON 结构：
 {

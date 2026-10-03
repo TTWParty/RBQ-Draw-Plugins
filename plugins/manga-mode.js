@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.4.21';
+        const VERSION = '1.5.0';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -34,41 +34,24 @@
                 antiHijack: true,
                 lastGeneratedUrl: '',
                 lastGeneratedPrompt: '',
-                panels: [
-                    {
-                        title: '起景 · 黄昏教室',
-                        desc: '夕阳斜照的黄昏教室，少女红着脸低下头，手指紧张地捏着百褶裙角。',
-                        shot: 'medium shot',
-                        tags: '1girl, chinami, classroom, sunset, orange light, looking down, blushing, nervous, fidgeting with skirt',
-                        bubbleType: 'thought',
-                        bubbleText: '心跳……怎么会这么快……',
-                        bubbleLayout: 'vertical',
-                    },
-                    {
-                        title: '递信特写 · 决定瞬间',
-                        desc: '镜头拉近双手递信特写，紧紧握着带有红色火漆封口的白色情书。',
-                        shot: 'close-up focus',
-                        tags: 'focus on hands, holding love letter, white envelope, red wax seal, romantic tension',
-                        bubbleType: 'speech',
-                        bubbleText: '请、请收下这个！',
-                        bubbleLayout: 'horizontal',
-                    },
-                    {
-                        title: '神情骤变 · 泪光',
-                        desc: '少女惊愕地抬起头睁大双眼，眼眶闪烁着泪光，窗外微风吹拂窗帘。',
-                        shot: 'face close-up',
-                        tags: '1girl, chinami, wide eyed, tears prickling in eyes, fluttering hair, curtain blowing in wind, dramatic lighting',
-                        bubbleType: 'screaming',
-                        bubbleText: '……欸？！我、我吗？！',
-                        bubbleLayout: 'vertical',
-                    }
-                ]
+                panels: createInitialStudioPanels(),
             };
         }
         if (!s[STORAGE_KEY].studio.panelCountMode) {
             s[STORAGE_KEY].studio.panelCountMode = 'auto';
         }
         return s[STORAGE_KEY];
+    }
+
+    function createInitialStudioPanels() {
+        return [
+            { title: '起景 · 黄昏教室', desc: '少女红着脸低下头，手指捏着裙角。', shot: 'medium shot', tags: 'classroom, sunset, window light',
+                characters: [{ character_id: 'C1', name: '少女', positive: 'girl, adult, long dark hair, light blouse, pleated skirt, looking down, blush, fidgeting with skirt, BubbleType: 思考の吹き出し, 右上, Layout: 縦書き, Text: 心跳……怎么会这么快……', negative: '' }] },
+            { title: '递信特写', desc: '双手递出一封信。', shot: 'close-up on hands', tags: 'classroom',
+                characters: [{ character_id: 'C1', name: '少女', positive: 'girl, hands, light blouse sleeves, holding envelope with both hands, BubbleType: 通常吹き出し, 画面外, Layout: 縦書き, Text: 请、请收下这个！', negative: '' }] },
+            { title: '神情骤变', desc: '少女惊愕地抬头。', shot: 'face close-up', tags: 'classroom, window light',
+                characters: [{ character_id: 'C1', name: '少女', positive: 'girl, adult, long dark hair, wide eyes, tears, BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: ……欸？！', negative: '' }] }
+        ];
     }
 
     function getSdtStore() {
@@ -219,426 +202,253 @@
     };
 
     // ── 4. Prompt Assembly for SDT Tagger LLM ──────────────────────
-    function buildMangaSystemPrompt(store) {
-        const grammarObj = GRAMMAR_PRESETS[store.grammar] || GRAMMAR_PRESETS.cinema;
-        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
-        const langRule = store.language === 'ja'
-            ? '[TEXT-LANG: JA]\n对白、心声、旁白与拟音文字一律转译为地道标准的日文，并在对应人物槽位末尾写入 Text: [日文文本]。'
-            : '[TEXT-LANG: ZH-HANS]\n对白、心声、旁白与拟音文字一律写成简体中文，并在对应人物槽位末尾写入 Text: [中文文本]。';
-
-        const gutterRule = gutterObj.instruction;
-
-        const colorRule = (store.style === 'monochrome')
-            ? `9. 色彩与角色人设模式（来自原版 v1.1.json 条目 23 [COLOR-MODE: MONOCHROME] & 条目 26 [CHAR-DNA]）：
-- 当前处于黑白漫画模式：同人角色出场必须保留官方可靠完整标签（如 tatsumaki (one punch man)）以及标志性发型发色等外貌DNA；严禁抹去角色辨识标签！
-- 场景、环境以及服装配色脱色：具体色相（青/茶/粉/赤/蓝/绿等）改写为 dark/light/white/black/gray 等灰阶明暗词（例如 dark dress, light shirt）；严禁在 scene 或格内输出 full color, warm light 等带环境色相的词；
-- 每一页页面描述必须写上介质词：モノクロ, グレースケール, スクリーントーン；
-- 各格只写所属场景的光源方向和明暗，不写环境色。\n`
-            : (store.style === 'soft_color'
-                ? `9. 色彩模式（来自原版 v1.1.json 条目 24 [COLOR-MODE: FULL-COLOR]）：
-【全彩漫画继承规则】人物保持本轮已确定的发色、瞳色、服装与配饰颜色。新写视觉词优先使用有效英文标签，必要时使用简短英日短句。页面按实际场景使用 full color 及适用的光影视觉词。\n`
-                : '');
-
-        const antiHijackRule = store.antiHijack
-            ? '10. 同人角色防夺舍（来自原版 v1.1.json 条目 27 [FAN-CHARACTER-UC]）：\n同人角色出场时，在其人物负面词中优先加入原作画师或原作作品标签，防止原作官方画风夺舍覆盖当前设定的画风；人物自身的正确角色特征保留在正面。\n'
-            : '';
-
-        return `【🎬 NovelAI Diffusion V5 漫画分镜导演规范】
-你现在是专业漫画分镜导演（Comic Storyboard Director）。你的职责是将输入的剧情对话与小说场景，转译为高水准的 NovelAI V5 漫画分镜，指导生成具备原生日漫质感的分格漫画页。
-
-[COMIC-DRAMATIC-PACING-AND-ANCHORS]
-【🎬 漫画戏剧节拍与生图位置规划（来自原版 v1.1.json [PAGE CONTRACT: DYNAMIC EVENT-DRIVEN PAGES]）】
-在提取分镜（segments）与选定生图位置（anchor.text）时，必须严格执行原版漫画事件驱动的节拍分析：
-1. 剧情段落切分与节拍扫描：
-   - 顺着正文时间线自上而下扫描，识别关键戏剧节拍（起 ➔ 承 ➔ 转 ➔ 合 / 对抗升级 ➔ 情绪激变 ➔ 高潮定格）；
-   - 依据情节容量自适应决定生成分镜数量（若正文仅为单一动作瞬间则提取 1 个分镜；若包含多次转场、激烈互动或动作升级，则顺应节拍自然拆分为 2~4 个剧情分镜）；
-   - 严禁偷懒只挑最后一句草草生成一张图！凡是出现重要造型亮点、攻守互换、情绪高光、关键转场的节点，均设立独立分镜；
-2. 精准锚定正文位置（anchor.text）：
-   - 每个分镜卡片的 anchor.text 必须一字不差截取正文中该视觉高光点发生的 10~40 字原句，使漫画卡片精准落位于剧情发生的那一刻，严禁错位或胡乱定位；
-3. 逐页叙事使命明确：
-   - 各分镜卡片之间焦点层次分明（如 分镜01 负责环境与初始互动，分镜02 负责冲突升级或局部特写，分镜03 负责情绪爆发或高潮定格）。
-
-[PAGE-LAYOUT-RULES]
-1. 通用映画分镜文法（来自原版 v1.1.json [UNIVERSAL-KOMAWARI-GRAMMAR] 条目 35）：
-   - 【阅读顺序与画格定位】：
-     采用日式漫画の読み順（右開き・右綴じ）。
-     panel 编号 = 読み順：panel 1 = 读者最先读到的完整コマ。未编号コマ中先上段后下段，同段先右后左；通栏、縦長コマ、挿入コマ、見開き均按同一読み順处理。
-     主格是面积与戏剧重心，不必等于 panel 1，也禁止把每页套成右上/左上/右下/左下固定四格。
-     为每格确定一个本页内可区分的「位置＋必要时的大小或形状」称呼，例如右上小格、左侧纵长格、底部通栏主格、插入格。
-   - 【页面形态】：
-     依据本轮主戏剧节拍、台本事件和所需空间，逐页选择普通分格页、整页单格（splash page, 単一コマ）或横向跨页（見開きページ / double-page spread）。普通分格页用于连续行动、对话与反应；整页单格用于一个值得充分展开的决定性瞬间；横向跨页用于宏大环境、群体对峙或大范围动作。
-   - 【画格主次、数量与形状】：
-     普通分格页确定一个主要画格（focal panel），再按其余事件的信息量分配辅助画格的大小。
-     在页面布局中明确总画格数、主格位置与大致面积，并明确辅助画格的宽窄、高低及相互排列。采用错位分隔、通栏、纵格或插入格时，说明它们实际位于何处。
-     每个格子必须不同大小。总数、布局描述与实际 panels 列表相符；插入格如承担独立镜头和叙事时刻，就计入画格数，不把同一时刻误拆成两个格子。不要在页面布局与格内描述中写出相互冲突的数量或位置。
-   - 普通分格页必须在 scene 字段明确写明总画格数与排版词，例如: comic, 複数コマの漫画ページ, 4 panels (依剧情实际画格数填写), manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [环境描述]；
-
-2. 镜头文法与构图机位：
-${grammarObj.instruction}
-- 灵活运用英文 Danbooru 景别与机位词：close-up, medium shot, cowboy shot, full body, wide shot, from above, from below, dutch angle, looking at viewer, profile, dynamic angle。
-
-3. 排版留白与出血：
-${gutterRule}
-
-4. 原生对白与气泡契约（来自原版 v1.1.json [BUBBLE-STYLES] & [TEXT-BUBBLE-CONTRACT]）：
-- 语气与气泡外形严格对应（格式必须带上格内位置词，优先使用 [右上] / [左上] / [口元] / [画面外]）：
-  - 对白（平淡/日常） ➔ 标注 BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: [原句]
-  - 怒喊/惊呼/高声 ➔ 标注 BubbleType: 叫び吹き出し, 口元, Layout: 縦書き, Text: [原句]（或 ギザギザ吹き出し）
-  - 心理活动/心声 ➔ 标注 BubbleType: 思考の吹き出し, 右上, Layout: 縦書き, Text: [原句]
-  - 耳语/心虚/远处 ➔ 标注 BubbleType: 破線吹き出し, 口元, Layout: 縦書き, Text: [原句]
-  - 发颤/发虚/恐惧 ➔ 标注 BubbleType: 波打つ吹き出し, 口元, Layout: 縦書き, Text: [原句]
-  - 机械音/电话/广播 ➔ 标注 BubbleType: 四角い吹き出し, 右上, Layout: 縦書き, Text: [原句]
-  - 旁白或客观时空叙述 ➔ 标注 BubbleType: ナレーション枠, 右上, Layout: 横書き, Text: [原句]
-  - 拟声拟态词 ➔ 标注 SFX: 擬音, 吹き出しなし, Text: [拟声词]
-  - 画外对白（说话者在画面外） ➔ 标注 BubbleType: 切り欠きのある吹き出し, 画面外, Layout: 縦書き, Text: [原句]
-  - 画外音/独白/无尾气泡 ➔ 标注 BubbleType: しっぽなしの楕円吹き出し, 右上, Layout: 縦書き, Text: [原句]
-  - 同一角色紧凑连续两句 ➔ 标注 BubbleType: 連結吹き出し, 右上, Layout: 縦書き, Text: [原句]
-- 标点自动转译契约：
-  - 「……」 ➔ 通常吹き出し
-  - 「……！！」 ➔ 叫び吹き出し
-  - *……* ➔ 思考の吹き出し
-  - 【……】 ➔ SFX: 擬音, 吹き出しなし
-  - {……} ➔ ナレーション枠（客观时空叙述）
-- 台词排版默认采用日漫传统纵排（Layout: 縦書き），从右至左阅读；旁白采用横排（Layout: 横書き）。
-- Text: 后直接跟台词原文，严禁外包任何引号或括号！Text: 内保留原句语言。
-
-5. 台词原句、多气泡分行与对话落格契约：
-- 严格基于剧情正文中的真实台词提取，绝对禁止凭空捏造未发生的情节或虚构台词！
-- 对话呼吸拆分铁律（原版条目 20 第4点）：若台词包含多段话（只要不是一口气说出来的，都必须拆分），例如「银发...一副不靠谱样子的成年人......请问你是五条老师吗？」➔ 拆分为多段换行独立气泡（例如 Text: 银发……\n\n一副不靠谱样子的成年人……\n\n请问你是五条老师吗？）。
-- 同格多句换行拆分：同一人物在同一画格内若有 2 句连续台词，在同一个 Text: 后用换行（\n\n）分隔，引导 NAI 分割成两个独立气泡（例如: Text: 那个……\n\n明天你有空吗？）。
-- 气泡防挡脸与溢出：单句台词尽量控制在 25 字以内，若某段台词过长，必须按停顿在 Text: 中换行拆分为多气泡，或顺延拆入下一个画格！
-- 修辞转实体：小说正文里的比喻描写在视觉描述中转换为 Danbooru 实体标签，但 Text: 中的台词原文完整保留修辞。
-
-6. 拟声拟态词常用库 (SFX Guide)：
-- 重击/落地/关门: SFX: 擬音, 吹き出しなし, Text: ドンッ
-- 心跳/紧张/心动: SFX: 擬音, 吹き出しなし, Text: ドキドキ
-- 闪亮/惊艳/可爱: SFX: 擬音, 吹き出しなし, Text: キラキラ
-- 察觉/震惊/回头: SFX: 擬音, 吹き出しなし, Text: ハッ
-- 气场/压迫感/杀气: SFX: 擬音, 吹き出しなし, Text: ゴゴゴ
-- 碰撞/摔倒: SFX: 擬音, 吹き出しなし, Text: バタン
-
-7. 多人同框防串色与差异化负面词 (Differential UC)：
-- 每个角色描述使用无数字主体词（boy, girl, other），总人数词写在 scene 中；
-- 若分镜内有多人，在角色的 uc (negative) 字段中写入其他角色的互斥外观特征（例如 A 是金发、B 是黑发，则 A 的 uc 写入 black hair，B 的 uc 写入 blonde hair），严防特征串位！
-
-8. 语言规范：
-${langRule}
-
-${colorRule}
-
-${antiHijackRule}
-[JSON 输出字段映射规范 - 务必严格遵守 (Universal Komawari 规范)]
-在漫画模式下，系统输出的每一个分镜卡片（segment）对应一整页分格漫画：
-
-1. \`scene\` 字段（页面全局排版、去重总人数与环境）：
-   - 必须以完整的漫画页面排版词开头，格式为：
-     \`comic, 複数コマの漫画ページ, N panels (按实际规划画格数写如 3 panels / 4 panels / 5 panels), [本页可见去重总人数词如: 1girl / 2girls / 1boy, 1girl / no humans], manga page layout, vertical layout, ${gutterObj.tag}, dynamic komawari, [本页纯客观环境描述如 classroom, sunset lighting / living room, couch, dramatic shadows]\`
-   - ⛔【绝对禁止】：\`scene\` 字段只写排版和环境，严禁在 \`scene\` 中写入任何角色的动作、体位、接触、动物或对白拟声词！所有具体画格演出必须全部划分到下方的画格槽位（characters 数组）中！
-
-2. \`characters\` 数组（逐画格演出槽位与角色外貌记忆协同）：
-   - 【解耦公理：画格是舞台镜头，角色是登台演员】：\`characters\` 数组的长度严格等于本页规划的画格总数 N（每个画格对应数组中的 1 项）。
-   - ⛔【严禁以画格为名】：\`name\` 字段必须且只能填写本格出场角色的【真实身份名称】（如 "师尊 (original)" 或角色卡名称），绝对严禁把 "Panel 1"、"画格 1" 写为角色 name！
-   - 【同一角色跨格贯穿】：若同一角色在本页多个画格连续出镜（如 Panel 1、Panel 2、Panel 4），这些画格槽位的 \`name\` 必须填写完全相同的真实姓名，其 \`base\` 必须 100% 沿用相同的 7 维锁定外貌 DNA，保证同页同人绝不漂移变脸！
-   - 【纯环境/空镜/拟声词格】：若本格为纯环境交代、远景空镜或独立拟声词格且无人物出场，\`name\` 必须留空 ""，\`base\` 与 \`outfit\` 也必须留空 ""，绝对严禁写入 solo 或任何人物主体词，以防模型误画出人物！
-   - 每一格的 \`action\` 字段必须以【本页唯一可辨的版面方位 + 构图大小/功能】严格开头（来自原版 v1.1 条目 35 & 57）：
-     * ① 单列通栏段位：
-       - 顶部整行：\`top panel, focal panel, medium shot\` 或 \`top panel, wide shot, establishing shot\`
-       - 中部整行：\`middle panel, reaction panel, close-up\`
-       - 底部整行：\`bottom panel, focal panel, dramatic angle\` 或 \`bottom panel, wide panel\`
-     * ② 同层双列并排格（遵循日漫先右后左阅读动线）：
-       - 上段并排：\`top-right panel, focal panel, medium shot\`（右上·先读） / \`top-left panel, reaction panel, close-up\`（左上·后读）
-       - 中段并排：\`middle-right panel, reaction panel, close-up\`（中右·先发生） / \`middle-left panel, small panel, looking down\`（中左·后发生）
-       - 底段并排：\`bottom-right panel, small panel\`（右下·先读） / \`bottom-left panel, focal panel, close-up\`（左下·全页收束）
-     * ③ 特殊形态构性格：
-       - \`left vertical panel, focal panel, full body\`（左侧纵向贯穿长格，用于全身立绘/拔刀/高空跃下）
-       - \`wide panel, wide shot, scenery\`（横向通栏大景深格）
-       - \`inset panel, small panel, extreme close-up on eyes\`（嵌在大画格角落的表现瞳孔震颤/局部特写的小叠格）
-       - \`small panel, sound effects, SFX: 擬音, 吹き出しなし, Text: [拟声词]\`（独立拟声词格）
-   - 【版面方位铁律】：每一格开头必须带有清晰可辨的版面方位词（top-right panel, middle-left panel, left vertical panel, bottom panel, inset panel 等），严禁省略方位词，以确保 NAI 空间分割严丝合缝、阅读动线与台词绝不串格！
-   - 紧随构图词后写入本格出场主体的具体动作与姿势 Danbooru 英文标签（如 looking at viewer, reaching hand, smirk, blushing；修辞转实体，严禁输出中文闲聊与比喻修辞！）；
-   - 本格台词与心声：若本格有台词，追加在动作末尾：\`, BubbleType: [类型], [位置: 右上/左上/口元/画面外], Layout: 縦書き, Text: [台词原文]\`；
-   - ⛔【静默格铁律】：若本格仅为动作反应、眼神对视、环境交代或沉思，切勿强行编造对白！无必要对白时，切勿添加 BubbleType 与 Text，保持画面留白与电影张力！
-   - 每一格的 \`base\` 与 \`outfit\`：写入本格出场人物的外貌与穿搭。若为已有记忆角色，直接继承其固定 base 标签；
-   - center 统一填写 \`C3\`（排版由画格关键词控制，无需手动计算坐标）。`;
-    }
-
-    // ── 5. Payload Sanitizer & Comic Assembler for NAI V5 ──────────
-    function decolorizeTags(str) {
-        // 原版 v1.1 核心设计：前端代码不采用粗暴正则篡改用户的 Danbooru 标签与色彩描述
-        // 黑白漫画的脱色由 LLM 提示词规范输出与 NAI 原生负面词 (10::color:: 等) 共同保障，100% 完整保留角色 DNA
-        if (!str || typeof str !== 'string') return '';
-        return str.trim();
-    }
-
-    function recoverPanelFromBase(baseCaption) {
-        if (!baseCaption || typeof baseCaption !== 'string') return { cleanBase: baseCaption, extraPanel: null };
-        if (!/\b(?:BubbleType|SFX|Text)[ \t]*[:：]/i.test(baseCaption)) return { cleanBase: baseCaption, extraPanel: null };
-        const match = baseCaption.match(/^(.*?)(?:,\s*)((?:(?:focal|reaction|small)\s+panel|\d+(?:dog|cat|boy|girl|man|woman|people|person|other)|wide shot|silhouette|close-up|medium shot|SFX[:：]|BubbleType[:：]).*?\b(?:BubbleType|SFX|Text)[ \t]*[:：].*)$/i);
-        if (match) {
-            return { cleanBase: match[1].trim(), extraPanel: match[2].trim() };
-        }
-        return { cleanBase: baseCaption, extraPanel: null };
-    }
-
-    function sanitizeMangaPositivePrompt(rawPositive) {
-        if (!rawPositive || typeof rawPositive !== 'string') return '';
-        return rawPositive
-            .replace(/\b(?:no\s+text|notext)\b/gi, '')
-            .replace(/,\s*,/g, ',')
-            .replace(/^[\s,]+|[\s,]+$/g, '')
-            .trim();
-    }
-
-    function sanitizeMangaNegativePrompt(rawNegative, isMonochrome = true) {
-        if (!rawNegative) return '';
-        // 关键防护：绝对不能在负面词里包含破坏分镜、气泡和网点的词汇！
-        const forbiddenPatterns = [
-            /\bcomic\b/gi,
-            /\bcomic\s*panel(?:s)?\b/gi,
-            /\bcomic\s*book\b/gi,
-            /\bpanels\b/gi,
-            /\b4koma\b/gi,
-            /\b2koma\b/gi,
-            /\bspeech\s*bubble\b/gi,
-            /\bthought\s*bubble\b/gi,
-            /\bspeech\b/gi,
-            /\btext\b/gi,
-            /\bscreentone\b/gi,
-            /\bhalftone\b/gi,
-            /\bdithering\b/gi,
-            /\bmultiple\s*views\b/gi,
-            /\bmultiple\s*scenes\b/gi,
-            /\bsequence\b/gi,
-            /\bborder\b/gi,
-            /\bframe\b/gi,
-            /\boutline\b/gi,
-            /\bmargins\b/gi,
-            /\bnegative\s*space\b/gi,
-            /\bfurryFocus\b/gi
-        ];
-        if (isMonochrome) {
-            forbiddenPatterns.push(/\b(?:monochrome|greyscale|grayscale|manga)\b/gi);
-        }
-        let cleaned = rawNegative;
-        forbiddenPatterns.forEach(pat => {
-            cleaned = cleaned.replace(pat, '');
-        });
-        // 整理多余逗号和空白
-        return cleaned.replace(/,\s*,/g, ',').replace(/^[\s,]+|[\s,]+$/g, '').trim();
-    }
-
-    let isStudioGenerating = false;
-    let studioGenerationRatio = null;
-
-    RBQ.on('buildNaiV4Payload', (payload) => {
-        const store = getStore();
-        if (!store.enabled && !isStudioGenerating) return payload;
-
-        console.info(`[${PLUGIN_NAME}] 正在应用漫画模式 Payload 增强...`);
-
-        // 工作台独立出图画幅尺寸覆盖
-        if (isStudioGenerating && studioGenerationRatio && payload.parameters) {
-            const [sw, sh] = studioGenerationRatio.split('x').map(Number);
-            if (sw && sh) {
-                payload.parameters.width = sw;
-                payload.parameters.height = sh;
-            }
-        }
-
-        // 1. 获取选中的漫画画风
-        let styleObj = COMIC_STYLES[store.style] || COMIC_STYLES.monochrome;
-        let stylePositive = store.style === 'custom' ? (store.customPositive || '') : styleObj.positive;
-        let styleNegative = store.style === 'custom' ? (store.customNegative || '') : styleObj.negative;
-
-        // 2. 负面词净化：剔除抑制分镜与文字的词
-        const isMonochrome = (store.style === 'monochrome');
-        let currentNeg = payload.parameters?.negative_prompt || '';
-        let cleanedNeg = sanitizeMangaNegativePrompt(currentNeg, isMonochrome);
-        if (styleNegative) {
-            cleanedNeg = [cleanedNeg, styleNegative].filter(Boolean).join(', ');
-        }
-        if (payload.parameters) {
-            payload.parameters.negative_prompt = cleanedNeg;
-            if (payload.parameters.v4_negative_prompt?.caption) {
-                payload.parameters.v4_negative_prompt.caption.base_caption = cleanedNeg;
-                // 净化每一个角色的负面词
-                if (Array.isArray(payload.parameters.v4_negative_prompt.caption.char_captions)) {
-                    payload.parameters.v4_negative_prompt.caption.char_captions.forEach(cc => {
-                        if (cc && cc.char_caption) {
-                            cc.char_caption = sanitizeMangaNegativePrompt(cc.char_caption, isMonochrome);
-                        }
-                    });
-                }
-            }
-        }
-
-        // 3. 智能横向跨页检测 (見開きページ)
-        const rawBase = payload.parameters?.v4_prompt?.caption?.base_caption || payload.input || '';
-        const isDoubleSpread = /(?:見開きページ|2ページ見開き|見開き)|(?:double-page spread|2-page spread|wide spread)/i.test(rawBase);
-        if (store.autoSpread && isDoubleSpread) {
-            const w = payload.parameters?.width || 832;
-            const h = payload.parameters?.height || 1216;
-            if (w < h) {
-                payload.parameters.width = h;
-                payload.parameters.height = w;
-                console.info(`[${PLUGIN_NAME}] 检测到横向大跨页 (見開き)，自动对调尺寸为: ${h}×${w}`);
-                toastr.info(`检测到横向跨页分镜，已自动翻转为宽幅画幅 (${h}×${w})`, PLUGIN_NAME);
-            }
-        }
-
-        // 4. 正面画风拼接
-        if (stylePositive) {
-            if (payload.input && !payload.input.includes(stylePositive)) {
-                payload.input = `${stylePositive}, ${payload.input}`;
-            }
-            if (payload.parameters?.v4_prompt?.caption?.base_caption && !payload.parameters.v4_prompt.caption.base_caption.includes(stylePositive)) {
-                payload.parameters.v4_prompt.caption.base_caption = `${stylePositive}, ${payload.parameters.v4_prompt.caption.base_caption}`;
-            }
-        }
-
-        // 4.1 正面提示词净化：剔除抑制对白气泡生成的 "no text"
-        if (payload.input) {
-            payload.input = sanitizeMangaPositivePrompt(payload.input);
-        }
-        if (payload.parameters?.v4_prompt?.caption?.base_caption) {
-            payload.parameters.v4_prompt.caption.base_caption = sanitizeMangaPositivePrompt(
-                payload.parameters.v4_prompt.caption.base_caption
-            );
-        }
-
-        // 5. 确保模型版本锁定在支持漫画文字的 NAI V5 Full
-        if (payload.parameters && (!payload.parameters.model || !payload.parameters.model.includes('nai-diffusion-5'))) {
-            payload.parameters.model = 'nai-diffusion-5-full';
-        }
-
-        // 6. 核心画格重组与兜底保护 (Universal Komawari Assembler)
-        if (payload.parameters?.v4_prompt?.caption) {
-            const v4Prompt = payload.parameters.v4_prompt.caption;
-            const baseText = v4Prompt.base_caption || payload.input || '';
-
-            // 6.1 若 char_captions 为空但输入中包含 | 或 Text:，按 | 分割出各格
-            if (!Array.isArray(v4Prompt.char_captions) || v4Prompt.char_captions.length === 0) {
-                if (/\b(?:BubbleType|SFX|Text)[ \t]*[:：]/i.test(baseText)) {
-                    const segments = baseText.split(/\s*\|\s*/);
-                    if (segments.length > 1) {
-                        v4Prompt.base_caption = segments[0];
-                        v4Prompt.char_captions = segments.slice(1).map(seg => ({
-                            char_caption: seg,
-                            centers: [{ x: 0.5, y: 0.5 }]
-                        }));
-                        if (payload.parameters.v4_negative_prompt?.caption) {
-                            payload.parameters.v4_negative_prompt.caption.char_captions = segments.slice(1).map(() => ({
-                                char_caption: '',
-                                centers: [{ x: 0.5, y: 0.5 }]
-                            }));
-                        }
-                        console.info(`[${PLUGIN_NAME}] 自动从提示词 | 中分离出 ${segments.length - 1} 个漫画画格槽位`);
-                    }
-                }
-            } else {
-                // 6.2 若 char_captions 已经存在，但 base_caption 仍夹带了带 Text/SFX 的动作格，自动剥离还原入 char_captions
-                const recovered = recoverPanelFromBase(v4Prompt.base_caption);
-                if (recovered.extraPanel) {
-                    v4Prompt.base_caption = recovered.cleanBase;
-                    v4Prompt.char_captions.unshift({
-                        char_caption: recovered.extraPanel,
-                        centers: [{ x: 0.5, y: 0.5 }]
-                    });
-                    if (Array.isArray(payload.parameters.v4_negative_prompt?.caption?.char_captions)) {
-                        payload.parameters.v4_negative_prompt.caption.char_captions.unshift({
-                            char_caption: '',
-                            centers: [{ x: 0.5, y: 0.5 }]
-                        });
-                    }
-                    console.info(`[${PLUGIN_NAME}] 成功从 base_caption 剥离并回填首个画格槽位 (Panel 1)`);
-                }
-            }
-
-            // 6.3 确保 base_caption 带有 dynamic komawari 与 manga page layout
-            if (v4Prompt.base_caption && !/dynamic komawari/i.test(v4Prompt.base_caption)) {
-                if (/(?:vertical layout|white border|複数コマの漫画ページ)/i.test(v4Prompt.base_caption)) {
-                    v4Prompt.base_caption = v4Prompt.base_caption.replace(
-                        /(?:vertical layout|white border|複数コマの漫画ページ)/i,
-                        '$&, manga page layout, dynamic komawari'
-                    );
-                } else {
-                    const layoutTag = isDoubleSpread ? '見開きページ' : 'vertical layout';
-                    const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
-                    const gutterTag = gutterObj.tag;
-                    v4Prompt.base_caption = `comic, 複数コマの漫画ページ, manga page layout, ${layoutTag}, ${gutterTag}, dynamic komawari, ${v4Prompt.base_caption}`;
-                }
-            }
-        }
-
-        // 7. ⛔ 强制解除 2D 坐标束缚，全面切换为漫画画格流 (use_coords: false, use_order: true)
-        if (payload.parameters?.v4_prompt) {
-            payload.parameters.v4_prompt.use_coords = false;
-            payload.parameters.v4_prompt.use_order = true;
-            if (Array.isArray(payload.parameters.v4_prompt.caption?.char_captions)) {
-                payload.parameters.v4_prompt.caption.char_captions.forEach(cc => {
-                    cc.centers = [{ x: 0.5, y: 0.5 }];
-                    if (cc.char_caption) {
-                        cc.char_caption = sanitizeMangaPositivePrompt(cc.char_caption);
-                    }
-                });
-            }
-        }
-
-        // 8. 🎨 逐画格负面词优化与同人防夺舍 (Universal Differential UC)
-        if (payload.parameters?.v4_negative_prompt?.caption) {
-            const negPrompt = payload.parameters.v4_negative_prompt.caption;
-            const posCCList = payload.parameters?.v4_prompt?.caption?.char_captions;
-
-            // 8.1 确保负面槽位数量与正面画格槽位完全对齐
-            if (Array.isArray(posCCList) && posCCList.length > 0) {
-                if (!Array.isArray(negPrompt.char_captions) || negPrompt.char_captions.length !== posCCList.length) {
-                    negPrompt.char_captions = posCCList.map((_, i) => ({
-                        char_caption: negPrompt.char_captions?.[i]?.char_caption || '',
-                        centers: [{ x: 0.5, y: 0.5 }]
-                    }));
-                }
-            }
-
-            // 8.2 黑白漫画模式专属：色彩抑制契约注入 (10::color:: 等)
-            const COLOR_UC = '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo';
-            if (isMonochrome) {
-                if (negPrompt.base_caption && !negPrompt.base_caption.includes('color::')) {
-                    negPrompt.base_caption = [negPrompt.base_caption, COLOR_UC].filter(Boolean).join(', ');
-                }
-            }
-
-            // 8.3 逐画格槽位负面词处理 (防夺舍、色彩抑制与负面净化)
-            if (Array.isArray(negPrompt.char_captions)) {
-                negPrompt.char_captions.forEach((cc, idx) => {
-                    if (cc && typeof cc === 'object') {
-                        cc.centers = [{ x: 0.5, y: 0.5 }];
-                        let antiHijackTag = '';
-                        if (store.antiHijack) {
-                            const posCC = posCCList?.[idx];
-                            const pText = posCC?.char_caption || '';
-                            const match = pText.match(/\(([^)]+)\)/);
-                            if (match && match[1]) {
-                                const sName = match[1].trim();
-                                if (!/^(style|cosplay|parody|crossover|costume|clothes|eyes|hair)$/i.test(sName)) {
-                                    antiHijackTag = sName;
+    // Shared contract: SDT and Studio compile the same page/panels/characters tree.
+    function mangaSegmentSchema() {
+        const string = { type: 'string' };
+        return {
+            type: 'object',
+            properties: {
+                format: { type: 'string', enum: ['nai5-comic'] },
+                label: string,
+                anchor: { type: 'object', properties: { text: string }, required: ['text'] },
+                page: {
+                    type: 'object', properties: { base: string, non_character: string }, required: ['base']
+                },
+                panels: {
+                    type: 'array', minItems: 1,
+                    items: {
+                        type: 'object',
+                        properties: {
+                            id: string, description: string, non_character: string,
+                            characters: {
+                                type: 'array', items: {
+                                    type: 'object', properties: {
+                                        character_id: string, name: string, positive: string, negative: string
+                                    }, required: ['character_id', 'positive', 'negative']
                                 }
                             }
-                        }
-                        const parts = [sanitizeMangaNegativePrompt(cc.char_caption || '', isMonochrome)];
-                        if (antiHijackTag && !parts.some(p => p.includes(antiHijackTag))) {
-                            parts.push(antiHijackTag);
-                        }
-                        if (isMonochrome && !parts.some(p => p.includes('color::'))) {
-                            parts.push(COLOR_UC);
-                        }
-                        cc.char_caption = parts.filter(Boolean).join(', ');
+                        }, required: ['id', 'description', 'characters']
                     }
-                });
-            }
-        }
+                }
+            }, required: ['format', 'anchor', 'page', 'panels']
+        };
+    }
 
+    function mangaOutputSchema() {
+        return {
+            shouldDraw: 'boolean', reason: 'string (简述台本覆盖、分页依据和连续状态)',
+            segments: [{
+                format: 'nai5-comic', label: 'Page 1: 本页标题',
+                anchor: { text: '从本页对应正文逐字摘录的10~40字原句' },
+                page: { base: '本页人数、页面形态、画格数量、实际布局与全局光影', non_character: '整页非人物文字；可省略' },
+                panels: [{
+                    id: 'P1', description: '本格位置、大小、景别、环境；不写人物演出',
+                    non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
+                    characters: [{
+                        character_id: 'C1', name: '真实角色名，仅用于资料关联',
+                        positive: '本格位置、无数字主体词、本镜头可见的外貌衣着、动作、气泡；台词放末尾 Text:',
+                        negative: '仅针对本次人物出场的互斥特征；没有则为空'
+                    }]
+                }]
+            }]
+        };
+    }
+
+    function splitMangaText(value) {
+        const text = String(value || '').trim();
+        const marker = /\bText[ \t]*[:：]/i.exec(text);
+        return marker ? { visual: text.slice(0, marker.index).replace(/[,\s]+$/, ''), text: text.slice(marker.index + marker[0].length).trim() }
+            : { visual: text, text: '' };
+    }
+
+    // All visual instructions precede the single Text: tail. Dialogue is opaque.
+    function joinMangaCaptions(values) {
+        const parts = values.map(splitMangaText);
+        const visual = parts.map(p => p.visual).filter(Boolean).join(', ');
+        const texts = parts.map(p => p.text).filter(Boolean);
+        return visual + (texts.length ? '\nText: ' + texts.join('\n\n') : '');
+    }
+
+    function compileMangaPage(data) {
+        if (!data || data.format !== 'nai5-comic' || !data.page || typeof data.page.base !== 'string'
+            || !data.page.base.trim() || !Array.isArray(data.panels) || !data.panels.length) {
+            throw new Error('漫画页缺少 page.base 或 panels，请重新解析分镜');
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'characters')) throw new Error('漫画页不能混用顶层人物与格内人物');
+        if (data.position_mode && !['auto', 'manual'].includes(data.position_mode)) throw new Error('漫画定位模式无效');
+        const pieces = [data.page.base, data.page.non_character];
+        const characters = [];
+        const panelIds = new Set();
+        data.panels.forEach((panel, panelIndex) => {
+            if (!panel || typeof panel.id !== 'string' || !panel.id.trim() || panelIds.has(panel.id)
+                || typeof panel.description !== 'string' || !Array.isArray(panel.characters)) {
+                throw new Error(`漫画第 ${panelIndex + 1} 格缺少唯一 id、description 或 characters 数组`);
+            }
+            panelIds.add(panel.id);
+            pieces.push(panel.description, panel.non_character);
+            const ids = new Set();
+            panel.characters.forEach((c, index) => {
+                if (!c || typeof c.character_id !== 'string' || !c.character_id.trim() || ids.has(c.character_id)
+                    || typeof c.positive !== 'string' || !c.positive.trim() || typeof c.negative !== 'string') {
+                    throw new Error(`${panel.id} 的第 ${index + 1} 位人物缺少身份、正负词或重复出场`);
+                }
+                ids.add(c.character_id);
+                const manual = data.position_mode === 'manual';
+                if (manual && (!c.center || !Number.isFinite(c.center.x) || !Number.isFinite(c.center.y)
+                    || c.center.x < 0 || c.center.x > 1 || c.center.y < 0 || c.center.y > 1)) {
+                    throw new Error(`${panel.id}/${c.character_id} 缺少有效的手动坐标`);
+                }
+                characters.push({
+                    index: characters.length + 1, panelId: panel.id, characterId: c.character_id,
+                    name: c.name || c.character_id, _rawName: c.name || c.character_id,
+                    // Keep the shot-specific caption intact; identity memory is input to the director, not an overwrite.
+                    caption: c.positive.trim(), action: c.positive.trim(), _rawAction: c.positive.trim(),
+                    base: '', outfit: '', uc: c.negative.trim(),
+                    center: manual ? { ...c.center } : { x: 0.5, y: 0.5 }
+                });
+            });
+        });
+        return { base: joinMangaCaptions(pieces), characters, useCoords: data.position_mode === 'manual' };
+    }
+
+    const mangaProtocol = {
+        compile: compileMangaPage, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
+        systemPrompt: () => buildMangaSystemPrompt(getStore())
+    };
+    RBQ.api.mangaProtocol = mangaProtocol;
+
+    function buildMangaSystemPrompt(store) {
+        const grammar = GRAMMAR_PRESETS[store.grammar] || GRAMMAR_PRESETS.cinema;
+        const gutter = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
+        return `你是漫画分镜导演，将本轮定稿剧情完整转译为漫画。只呈现 currentMessage 中发生的事件；历史、角色记忆和世界书用于查证身份与连续状态。
+
+【分页与叙事】
+按正文顺序组织事件及其直接反应，依据事件量、文字量和画格容量决定页数。一个事件可跨格，相邻事件可在同页；不把每个动作强制扩成一页，不为凑格补剧情。每个 segment 是一页，anchor.text 从该页对应正文逐字摘录10~40字，不改写、不全部扎堆末尾。没有可呈现的新画面时 shouldDraw=false。
+普通页用 comic, 複数コマの漫画ページ；决定性瞬间可用 splash page, 単一コマ；确需横向空间才用 見開きページ。单格页只有一个 panel。画格数由叙事需要决定，不设统一的3~5格下限。
+
+【画格与阅读路径】
+日漫顺序：先上后下，同层先右后左。逐格确定可辨的位置、大小、景别和一个定格时刻；P1/C1 仅为关联编号，不能代替空间词。description 与该格所有人物 positive 使用一致的位置称呼。
+${store.grammar === '4koma' ? '当前为经典四格：四个均等画格，按起承转结排列，允许固定等分。' : '普通页按剧情分配主格与辅助格大小；不机械套固定格数或强制每格不同形状。连续反应镜头可以采用相同景别。'}
+${grammar.instruction}
+文法中的多格技法只在多格页适用；整页单格不强制辅助格或多个斜切边框。
+${gutter.instruction}
+
+【数据归属：页面 → 画格 → 格内人物】
+输出 format=nai5-comic，字段见 outputSchema。page.base 写去重后的实际人数、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
+同一人跨格使用相同 character_id，每次 positive 独立写出该镜头可见的可靠角色标签、无数字主体词 boy/girl/other、外貌、衣着、动作、持物及表情。姓名与 character_id 用于资料关联，原创姓名不作为绘图标签。全身身份资料只作参考，特写不强塞画外鞋袜和下身。
+逐格追踪左右手持物、物件状态、持续接触、服装及发型变化；裁切不等于状态消失，换镜头不自动复原。比喻只转译实际可见的本体。视觉词优先英文标签，复杂关系可用简短英日描述。
+每位人物 negative 只排除本页其他不同人物中适用且互斥的具体特征，不排除自己的正确外貌或双方共享特征，也不排除环境、漫画、文字和画质。没有适用项写空字符串。
+${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 artist: 标签或作品标签放入该人物 negative；不得从姓名括号猜造标签，不排除人物自身标签。' : ''}
+
+【对白与非人物文字】
+人物对白/心声归该人物 positive；旁白、拟音、画外对白归所属 page.non_character 或 panel.non_character，不占人物槽。原句保留说话者、次序、次数和标点；静默格不添字。长句按原有停顿分气泡，不删字。
+气泡视觉说明必须在 Text: 前写类型、位置及 Layout。普通=通常吹き出し；呐喊=叫び吹き出し；心声=思考の吹き出し；耳语=破線吹き出し；颤抖=波打つ吹き出し；广播=四角い吹き出し；旁白=ナレーション枠；画外=切り欠きのある吹き出し；无尾=しっぽなしの楕円吹き出し；连续气泡=連結吹き出し。拟音用 SFX: 擬音, 吹き出しなし。
+对白通常 Layout: 縦書き，旁白和道具字 Layout: 横書き。每字段仅在末尾写一个 Text:，其后只有原句、没有视觉标签；同人同格多句用两个换行分隔，不重复人物槽。Text: 外不包额外引号。
+文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}
+${store.style === 'monochrome' ? '黑白：页面用 monochrome, greyscale, screentone；可见外貌与衣着采用灰阶、结构和明暗描述，可靠同人角色标签保留。环境不写 full color 或彩色光照。' : '色彩遵循本轮设定与选定画风。'}
+
+【输出核对】
+核对台本起止与覆盖、画格数与页面形态、人物身份、动作连续性、每句文字归属，以及正负词是否互斥。只输出约定 JSON；reason 简述规划依据，不重复整段正文。`;
+    }
+
+    // Filter whole tags (including weighted groups), never substrings or dialogue.
+    function filterMangaTags(value, forbidden) {
+        const tokens = [];
+        let start = 0, brackets = 0, weights = 0;
+        for (let i = 0; i < value.length; i++) {
+            const openWeight = value.slice(i).match(/^-?\d+(?:\.\d+)?::/);
+            if (openWeight) { weights++; i += openWeight[0].length - 1; continue; }
+            if (value.slice(i, i + 2) === '::' && weights) { weights--; i++; continue; }
+            if ('([{'.includes(value[i])) brackets++;
+            if (')]}'.includes(value[i])) brackets--;
+            if (value[i] === ',' && brackets === 0 && weights === 0) { tokens.push(value.slice(start, i)); start = i + 1; }
+        }
+        tokens.push(value.slice(start));
+        return tokens.map(raw => {
+            const token = raw.trim();
+            const weighted = token.match(/^(-?\d+(?:\.\d+)?::)([\s\S]*)::$/);
+            if (weighted) {
+                const body = filterMangaTags(weighted[2], forbidden);
+                return body ? weighted[1] + body + '::' : '';
+            }
+            if ((token.startsWith('{') && token.endsWith('}')) || (token.startsWith('[') && token.endsWith(']'))) {
+                const body = filterMangaTags(token.slice(1, -1), forbidden);
+                return body ? token[0] + body + token.at(-1) : '';
+            }
+            return forbidden.has(token.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : token;
+        }).filter(Boolean).filter((tag, i, tags) => tags.indexOf(tag) === i).join(', ');
+    }
+
+    function sanitizeMangaPositivePrompt(value) {
+        const raw = String(value || '');
+        const marker = /\bText[ \t]*[:：]/i.exec(raw);
+        const visual = marker ? raw.slice(0, marker.index) : raw;
+        const clean = filterMangaTags(visual, new Set(['no text', 'notext']));
+        return clean + (marker ? (clean ? '\n' : '') + raw.slice(marker.index) : '');
+    }
+
+    function sanitizeMangaNegativePrompt(value, isMonochrome = true) {
+        const forbidden = new Set(['comic', 'comic panel', 'comic panels', 'comic book', 'panels', '4koma', '2koma',
+            'speech bubble', 'speech bubbles', 'thought bubble', 'thought bubbles', 'speech', 'text', 'screentone',
+            'halftone', 'dithering', 'multiple views', 'multiple scenes', 'sequence', 'border', 'frame', 'outline',
+            'margins', 'negative space', 'furryfocus']);
+        if (isMonochrome) ['monochrome', 'greyscale', 'grayscale', 'manga'].forEach(t => forbidden.add(t));
+        return filterMangaTags(String(value || ''), forbidden);
+    }
+
+    let studioGenerationRatio = null;
+    let studioRequest = null;
+
+    function enhanceMangaPayload(payload) {
+        const store = getStore();
+        const studioMatch = studioRequest && String(payload.input || '').includes(studioRequest.prompt);
+        if (!store.enabled && !studioMatch) return payload;
+        if (!payload.parameters) return payload;
+        const params = payload.parameters;
+        if (studioMatch) {
+            const [width, height] = studioGenerationRatio.split('x').map(Number);
+            if (width && height) Object.assign(params, { width, height });
+            const compiled = studioRequest.compiled;
+            params.v4_prompt = {
+                caption: { base_caption: payload.input, char_captions: compiled.characters.map(c => ({ char_caption: c.caption, centers: [c.center] })) },
+                use_coords: compiled.useCoords, use_order: true
+            };
+            params.v4_negative_prompt = {
+                caption: { base_caption: params.negative_prompt || '', char_captions: compiled.characters.map(c => ({ char_caption: c.uc, centers: [c.center] })) },
+                legacy_uc: false
+            };
+        }
+        const style = COMIC_STYLES[store.style] || COMIC_STYLES.monochrome;
+        const positive = store.style === 'custom' ? store.customPositive || '' : style.positive;
+        const negative = store.style === 'custom' ? store.customNegative || '' : style.negative;
+        const mono = store.style === 'monochrome';
+        const addStyle = value => sanitizeMangaPositivePrompt(positive && !String(value || '').includes(positive)
+            ? joinMangaCaptions([positive, value]) : value);
+        const caption = params.v4_prompt?.caption;
+        payload.input = addStyle(payload.input);
+        if (caption) {
+            caption.base_caption = addStyle(caption.base_caption);
+            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption); });
+            params.v4_prompt.use_order = true;
+        }
+        const negCaption = params.v4_negative_prompt?.caption;
+        const baseNegative = sanitizeMangaNegativePrompt([params.negative_prompt || negCaption?.base_caption || '', negative].filter(Boolean).join(', '), mono);
+        params.negative_prompt = baseNegative;
+        if (negCaption) {
+            negCaption.base_caption = baseNegative;
+            // Per-person UC comes from the director. Do not guess franchises or copy global color/quality UC here.
+            (negCaption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaNegativePrompt(c.char_caption, mono); });
+        }
+        const base = caption?.base_caption || payload.input;
+        if (store.autoSpread && /見開き|double-page spread|2-page spread|wide spread/i.test(splitMangaText(base).visual)
+            && params.width < params.height) [params.width, params.height] = [params.height, params.width];
+        payload.model = 'nai-diffusion-5-full';
+        // Some older hosts also inspect this field before serializing the request.
+        if (Object.prototype.hasOwnProperty.call(params, 'model')) params.model = payload.model;
         return payload;
-    });
+    }
+    mangaProtocol.enhancePayload = enhanceMangaPayload;
+    RBQ.on('buildNaiV4Payload', enhanceMangaPayload);
 
     // ── 6. UI Injection into Smart Draw Trigger (SDT) ──────────────
     const STYLE_TAG_ID = 'rbq-manga-mode-style';
@@ -648,6 +458,17 @@ ${antiHijackRule}
         const style = document.createElement('style');
         style.id = STYLE_TAG_ID;
         style.textContent = `
+        #mw-root-container .rbq-manga-people { min-width: 0; }
+        #mw-root-container .rbq-manga-people-body { display: grid; gap: 12px; padding-top: 8px; }
+        #mw-root-container .rbq-manga-people summary { min-height: 44px; padding: 12px 8px; color: #e2e8f0; cursor: pointer; }
+        #mw-root-container .rbq-manga-position-label { display: grid; gap: 6px; }
+        #mw-root-container .rbq-manga-position-in { width: 100%; min-height: 44px; box-sizing: border-box; }
+        #mw-root-container .rbq-manga-person { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 12px; border: 1px solid #64748b; border-radius: 8px; }
+        #mw-root-container .rbq-manga-people label { display: grid; gap: 6px; color: #e2e8f0; }
+        #mw-root-container .rbq-manga-people input,
+        #mw-root-container .rbq-manga-people textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; background: #161b24; color: #f1f5f9; border: 1px solid #64748b; border-radius: 6px; padding: 8px; }
+        #mw-root-container .rbq-manga-people textarea { min-height: 88px; resize: vertical; }
+        #mw-root-container .rbq-manga-people button { display: inline-flex !important; flex-direction: row !important; align-items: center !important; justify-content: center !important; gap: 6px !important; white-space: nowrap !important; box-sizing: border-box !important; min-height: 44px; }
         /* 漫画模式专属样式 */
         .rbq-manga-toggle-card {
             background: linear-gradient(135deg, rgba(255, 140, 0, 0.08), rgba(255, 80, 0, 0.03)) !important;
@@ -1757,6 +1578,10 @@ ${antiHijackRule}
     function syncMangaToSdt(store, shouldSave = true) {
         const sdtStore = getSdtStore();
         if (store.enabled) {
+            if (!sdtStore._mangaActive) {
+                const fields = ['systemPromptPreset', 'customSystemPrompt', 'systemPrompt', 'enhancedContext', 'multiCharOutput', 'multiCharUseCoords'];
+                sdtStore._mangaSdtSnapshot = fields.map(key => ({ key, present: Object.prototype.hasOwnProperty.call(sdtStore, key), value: sdtStore[key] }));
+            }
             // 备份原有的预设状态
             if (sdtStore.systemPromptPreset && sdtStore.systemPromptPreset !== 'custom') {
                 sdtStore._mangaSavedPreset = sdtStore.systemPromptPreset;
@@ -1777,6 +1602,7 @@ ${antiHijackRule}
             if (sdtStore.multiCharUseCoords && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedMultiCharCoords = sdtStore.multiCharUseCoords;
             }
+            sdtStore.multiCharOutput = true;
             sdtStore.multiCharUseCoords = false;
             sdtStore._mangaActive = true;
             sdtStore.systemPromptPreset = 'custom';
@@ -1803,6 +1629,13 @@ ${antiHijackRule}
                 }
                 delete sdtStore._mangaSavedPreset;
                 delete sdtStore._mangaSavedCustomPrompt;
+                if (Array.isArray(sdtStore._mangaSdtSnapshot)) {
+                    for (const entry of sdtStore._mangaSdtSnapshot) {
+                        if (entry.present) sdtStore[entry.key] = entry.value;
+                        else delete sdtStore[entry.key];
+                    }
+                    delete sdtStore._mangaSdtSnapshot;
+                }
             }
         }
         if (shouldSave) {
@@ -2436,6 +2269,43 @@ ${antiHijackRule}
         }
     ];
 
+    function createStoryboardTemplatePanels(preset) {
+        const content = {
+            'sunset-confession': [
+                ['classroom, sunset, window light', 'girl, adult, long dark hair, light blouse, pleated skirt, looking down, blush, fidgeting with skirt'],
+                ['classroom', 'girl, hands, light blouse sleeves, holding envelope with both hands'],
+                ['classroom, fluttering curtain', 'girl, adult, long dark hair, wide eyes, tears']
+            ],
+            'shonen-battle': [
+                ['battlefield, storm, destroyed city, dark clouds, lightning, debris', ''],
+                ['battlefield, electric sparks', 'boy, adult, short dark hair, cloak, unsheathing katana, sharp eyes'],
+                ['battlefield, speed lines', 'boy, adult, short dark hair, cloak, leaping forward, sword slash, shouting'],
+                ['battlefield, smoke, shattered ground', 'boy, adult, short dark hair, back view, cape fluttering, holding katana']
+            ],
+            'daily-4koma': [
+                ['kitchen, morning light', 'girl, long dark hair, blouse, pleated skirt, smiling, holding plate of toast'],
+                ['kitchen, wall clock', 'girl, long dark hair, wide eyes, sweatdrop, looking at clock'],
+                ['street, wind', 'girl, long dark hair, blouse, pleated skirt, running, toast in mouth, panicked'],
+                ['closed school gate, calendar', 'girl, long dark hair, blouse, pleated skirt, blank eyes, standing']
+            ],
+            'cinema-mystery': [
+                ['dimly lit office, rainy window, rain streaks, wet glass, night city lights, cigarette smoke', ''],
+                ['dark room, dramatic shadows', 'boy, adult, short dark hair, sharp gaze, holding magnifying glass, shadow over eyes']
+            ]
+        };
+        const rows = content[preset.id];
+        if (!rows) return JSON.parse(JSON.stringify(preset.panels));
+        return preset.panels.map((panel, i) => {
+            const [environment, actor] = rows[i];
+            const nonPersonText = ['caption', 'sfx', 'offscreen'].includes(panel.bubbleType) || !actor;
+            const bubble = studioBubbleCaption({ ...panel, bubbleLayout: panel.bubbleType === 'caption' ? 'horizontal' : 'vertical' });
+            return { ...panel, tags: environment, bubbleText: '',
+                non_character: nonPersonText ? bubble : '',
+                characters: actor ? [{ character_id: 'C1', name: '主角', positive: joinMangaCaptions([actor, nonPersonText ? '' : bubble]), negative: '' }] : []
+            };
+        });
+    }
+
     function resolveBubbleTypeTag(bType) {
         if (!bType) return '通常吹き出し';
         const lower = String(bType).toLowerCase().trim();
@@ -2459,489 +2329,154 @@ ${antiHijackRule}
         return 'Layout: 縦書き';
     }
 
-    function composeStudioPrompt(store) {
+    function defaultPanelPosition(index, count, grammar) {
+        if (count === 1) return 'full-page panel';
+        if (grammar === '4koma') return ['top panel', 'upper-middle panel', 'lower-middle panel', 'bottom panel'][index] || `tier ${index + 1} panel`;
+        const layouts = {
+            2: ['top panel', 'bottom panel'],
+            3: ['top-right small panel', 'top-left small panel', 'bottom wide focal panel'],
+            4: ['top wide panel', 'middle-right small panel', 'middle-left small panel', 'bottom wide focal panel'],
+            5: ['top-right small panel', 'top-left small panel', 'middle wide focal panel', 'bottom-right small panel', 'bottom-left small panel']
+        };
+        return layouts[count]?.[index] || `tier ${index + 1} panel`;
+    }
+
+    function studioBubbleCaption(panel) {
+        const text = String(panel.bubbleText || '').trim();
+        if (!text) return '';
+        const type = panel.bubbleType || 'speech';
+        const visual = type === 'sfx' ? 'SFX: 擬音, 吹き出しなし' : `BubbleType: ${resolveBubbleTypeTag(type)}, ${type === 'offscreen' ? '画面外' : '右上'}`;
+        return `${visual}, ${resolveBubbleLayoutTag(panel.bubbleLayout, type)}, Text: ${text}`;
+    }
+
+    function buildStudioPage(store) {
         const studio = store.studio;
-        const grammarKey = store.grammar || 'cinema';
-        const grammarTag = GRAMMAR_TAGS[grammarKey] || GRAMMAR_TAGS.cinema;
-        const styleKey = store.style || 'monochrome';
-        const styleObj = COMIC_STYLES[styleKey] || COMIC_STYLES.monochrome;
-        const stylePos = styleKey === 'custom' ? (store.customPositive || '') : styleObj.positive;
-
-        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
-        const gutterTag = gutterObj.tag;
-
-        const isDoubleSpread = studio.ratio === '1216x832';
-        const layoutTag = isDoubleSpread ? '見開きページ' : 'vertical layout';
-        const panelCountTag = `${studio.panels.length}panels`;
-
-        const baseParts = [
-            stylePos,
-            grammarTag,
-            'comic, 複数コマの漫画ページ, manga page layout',
-            layoutTag,
-            gutterTag,
-            'dynamic komawari',
-            panelCountTag
-        ].filter(Boolean);
-
-        const isMonochrome = (styleKey === 'monochrome');
-        let baseCaption = baseParts.join(', ');
-
-        const panelSegments = studio.panels.map((p, idx) => {
-            const parts = [];
-            // 自动补全版面方位词（若未显式指定方位词时，按日漫顺序兜底补全）
-            let shotStr = (p.shot || '').trim();
-            const total = studio.panels.length;
-            if (!/\b(?:top(?:-right|-left)?|upper|middle(?:-right|-left)?|bottom(?:-right|-left)?|lower|left|right|vertical|wide|inset)\s+panel\b/i.test(shotStr)) {
-                let posPrefix = 'middle panel';
-                if (idx === 0) posPrefix = 'top panel';
-                else if (idx === total - 1 && total > 1) posPrefix = 'bottom panel';
-                shotStr = shotStr ? `${posPrefix}, ${shotStr}` : posPrefix;
-            }
-            if (shotStr) parts.push(shotStr);
-            if (p.tags) {
-                const tagStr = (p.tags || '').trim();
-                if (tagStr) parts.push(tagStr);
-            }
-
-            let text = (p.bubbleText || '').trim();
-            if (text) {
-                // 剥离多余外层引号与括号对齐原版规范
-                text = text.replace(/^["'“”‘’「」]+|["'“”‘’「」]+$/g, '').trim();
-                const bType = p.bubbleType || 'speech';
-                const typeTag = resolveBubbleTypeTag(bType);
-                const layoutTag = resolveBubbleLayoutTag(p.bubbleLayout, bType);
-                let posTag = '右上';
-                if (bType === 'screaming' || bType === 'whisper' || bType === 'shiver') posTag = '口元';
-                else if (bType === 'offscreen') posTag = '画面外';
-
-                if (typeTag === '擬音, 吹き出しなし' || bType === 'sfx') {
-                    parts.push('SFX: 擬音, 吹き出しなし');
-                    parts.push(layoutTag);
-                    parts.push(`Text: ${text}`);
-                } else {
-                    parts.push(`BubbleType: ${typeTag}, ${posTag}`);
-                    parts.push(layoutTag);
-                    parts.push(`Text: ${text}`);
-                }
-            }
-            return parts.join(', ');
+        const count = studio.panels.length;
+        const seen = new Map();
+        const panels = studio.panels.map((p, index) => {
+            const position = p.position || defaultPanelPosition(index, count, store.grammar);
+            const structured = Array.isArray(p.characters);
+            const characters = (p.characters || []).map(c => {
+                seen.set(c.character_id, c);
+                return { ...c, positive: joinMangaCaptions([position, p.shot, c.positive]) };
+            });
+            return {
+                id: `P${index + 1}`,
+                // Legacy mixed tags remain visible page content until explicitly re-parsed; never guess a person from them.
+                description: joinMangaCaptions([position, p.shot, p.tags]),
+                non_character: (p.non_character || (!structured && p.bubbleText))
+                    ? joinMangaCaptions([position, p.non_character, structured ? '' : studioBubbleCaption(p)]) : '',
+                characters
+            };
         });
-
-        if (panelSegments.length > 0) {
-            return [baseCaption, ...panelSegments].join(' | ');
-        }
-        return baseCaption;
-    }
-
-    async function callLlmStoryboardParser(storyText, grammar, language, panelCountMode = 'auto', onProgress) {
-        const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
-        const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
-        const apiKey = (sdtStore.openaiApiKey || '').trim();
-        const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
-
-        const isFixed = panelCountMode && panelCountMode !== 'auto';
-        const panelCountInstruction = isFixed
-            ? `【重要画格数硬性要求】：你必须将用户提供的自然语言剧情严格拆解为恰好 ${panelCountMode} 个连续画格（Panels 数组长度必须严格等于 ${panelCountMode}）！`
-            : `你的任务是将用户提供的自然语言剧情故事拆解为 1~4 个连续且具视觉冲击力的漫画画格（依据剧情容量自适应规划画格数，通常为 2~4 格）。`;
-
-        const countReq = isFixed ? `必须严格规划为恰好 ${panelCountMode} 个画格（panels 数组必须恰好有 ${panelCountMode} 项）` : `自动规划（根据情节容量自适应 1~4 格）`;
-
-        const store = getStore();
-        const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
-        const grammarInstruction = grammarObj.instruction || '';
-        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
-        const gutterInstruction = gutterObj.instruction || '';
-        const colorRule = (store.style === 'monochrome')
-            ? `\n【色彩与角色DNA要求】：当前处于黑白漫画模式。对于同人角色，请务必保留官方完整角色标签（如 tatsumaki (one punch man)）与标志性特征；场景与一般服装请使用 dark/light 等灰阶明暗与光影词汇，避免输出 colorful, full color, warm light 等环境色相词。`
-            : '';
-        const langInstruction = language === 'ja'
-            ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
-            : '【台词偏好语言】：简体中文 (Chinese) - 保留或输出生动贴切的中文漫画对白。';
-
-        const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
-${panelCountInstruction}
-【当前分镜文法纲领】：
-${grammarInstruction}
-【当前排版留白与出血规则】：
-${gutterInstruction}${colorRule}
-
-【漫画分镜分析规划五大导演核心法则】：
-1. 【戏剧主次与非对称画格规划 (Focal Panel & Asymmetry)】：
-   - 依据输入剧情的情感高潮与动作冲突，确立 1 个核心主画格（focal panel，占据半页以上面积或强烈视觉动势的大横通栏/纵长长格/大斜切格）；
-   - 其余格子作为辅助格（远景交代格 wide establishing shot、中景互动格 medium shot、特写反应格 close-up reaction、拟声词格 SFX）；
-   - ⛔【严禁套用死板三段式横条或四等分网格】：每个画格必须具有不同的尺寸与形态（错位分割、单列通栏、同层双并排、纵长长格或角部插入格），形成鲜明的视觉呼吸与节奏落差！
-2. 【映画阅读动线与版面方位 (Universal Komawari Spatial Flow)】：
-   - 严格遵循日式漫画正统阅读顺序（右至左、上至下）：先读上段，后读下段；同段先读右侧，后读左侧！
-   - 每个画格的 shot 开头必须包含该格在本页内的清晰版面方位与构图大小：
-     * 单列通栏：top panel / middle panel / bottom panel 单列通栏；
-     * 同层双列并排（右先左后）：top-right panel (先) / top-left panel (后)；middle-right panel (先) / middle-left panel (后)；bottom-right panel (先) / bottom-left panel (后)；
-     * 特殊形态格：left vertical panel (纵贯长格)；wide panel (大景深横通栏)；inset panel (角落插入特写格)。
-     * 紧随方位词挂载主次权重：focal panel (核心主格) | reaction panel (反应格) | small panel (小格) 及专业景别词。
-3. 【修辞转实体与纯正 Danbooru Tag (Rhetoric to Entity)】：
-   - ⛔【绝对禁止文学比喻直译】：原文中的比喻描写（如“狂风暴雨般的进攻”、“眼神如万年寒冰”、“像猛兽一般”）绝对禁止直接输出带有 like a beast, ice in eyes 等破坏画面的词汇！必须转化为具象的动作、神态、光影与构图标签（如 fast punch, aggressive, shadow over eyes, intense gaze）；
-   - 纯英文 Danbooru/NAI Tag，动作、神态、光影、环境背景明确，严禁输出画风词（由全局画风层负责）；
-   - 纯背景空镜格或拟声词格，严禁写入 solo 或任何人物主体词。
-4. 【11 种日漫原生对白气泡精准匹配 (11 Bubble Types)】：
-   - speech: 普通对白（日常说话，平淡对白默认）
-   - screaming: 怒喊/惊呼/高声（带尖锐齿状边框 ギザギザ吹き出し）
-   - thought: 心理活动/心声/独白（雲形椭圆气泡，圆点尾巴）
-   - whisper: 耳语/心虚/虚弱微声（破线虚线气泡）
-   - shiver: 发颤/发虚/恐惧打颤（波浪状发抖气泡）
-   - broadcast: 电话/广播/机械/扩音音（矩形方框气泡）
-   - caption: 客观旁白/时空说明（矩形横排旁白框）
-   - sfx: 拟声拟态词（SFX 拟音文字格）
-   - offscreen: 画外对白（说话者在格外出声，气泡切角贴在格边）
-   - tailless: 旁白感自语/无尾气泡（纯椭圆无尾巴）
-   - connected: 同一角色连续两句紧凑相连气泡（双联气泡）
-5. 【静默格留白与台词呼吸拆分 (Silent Panels & Breath Splitting)】：
-   - ⛔【静默格留白】：纯动作格、眼神对峙格、环境交代格或情绪反应格，bubbleText 必须填写空字符串 ""，严禁无中生有硬编对白！
-   - 台词呼吸拆分：若同一角色有多段话，必须使用 \\n\\n 拆分为独立气泡；单句台词尽量控制在 25 字以内，避免气泡遮挡画面人脸。
-
-必须输出纯 JSON，绝不要包含 Markdown 代码块（如 \`\`\`json）或任何额外文字。
-JSON 格式规范：
-{
-  "panels": [
-    {
-      "title": "画格概括（中文，5-10字，如：黄昏教室的迟疑）",
-      "shot": "画格版面方位+构图大小与景别机位英文（遵循日漫読み順与非对称主格，如：top-right panel, focal panel, medium shot）",
-      "tags": "该画格专属英文 Danbooru/NAI Tag（纯动作/神态/光影/背景，修辞转实体，无画风词）",
-      "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
-      "bubbleText": "画格内角色台词、心声或旁白文字（纯动作/眼神静默格保持留白填 \"\"，多句用 \\n\\n 分隔）",
-      "bubbleLayout": "vertical | horizontal"
-    }
-  ]
-}`;
-
-        const userContent = `【剧情叙事】：${storyText}\n【画格数规划要求】：${countReq}\n【分镜文法风格】：${grammarObj.name}\n【边框留白排版】：${gutterObj.name}\n${langInstruction}`;
-
-        if (baseUrl) {
-            try {
-                if (onProgress) onProgress('正在调用大模型进行分镜剧情推演...');
-                const url = `${baseUrl}/chat/completions`;
-                const reqBody = {
-                    model,
-                    temperature: 0.3,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userContent }
-                    ]
-                };
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
-                    },
-                    body: JSON.stringify(reqBody)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const rawReply = data.choices?.[0]?.message?.content || '';
-                    const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const parsed = JSON.parse(cleanJson);
-                    if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
-                        parsed.panels.forEach((p, idx) => {
-                            if (!p.desc) p.desc = p.title || `画格 #${idx + 1}`;
-                            if (p.bubbleText) p.bubbleText = String(p.bubbleText).trim();
-                        });
-                        return parsed.panels;
-                    }
-                }
-            } catch (e) {
-                console.warn(`[Manga Studio] LLM API call failed, using heuristic:`, e);
+        const allStructured = studio.panels.every(p => Array.isArray(p.characters));
+        let people = '';
+        if (allStructured) {
+            const totals = { girl: 0, boy: 0, other: 0 };
+            for (const c of seen.values()) {
+                const visual = splitMangaText(c.positive).visual;
+                if (/\b(?:girl|woman|female)\b/i.test(visual)) totals.girl++;
+                else if (/\b(?:boy|man|male)\b/i.test(visual)) totals.boy++;
+                else totals.other++;
             }
+            people = !seen.size ? 'no humans' : Object.entries(totals).filter(([, n]) => n).map(([t, n]) => `${n}${t}${n > 1 ? 's' : ''}`).join(', ');
         }
-
-        if (onProgress) onProgress('正在应用漫画导演分镜文法推演...');
-        return runHeuristicStoryboardParser(storyText, grammar, language, panelCountMode);
-    }
-
-    function parseSentenceToPanelData(sentence, i = 0, panelCount = 3) {
-        if (!sentence) sentence = '';
-        let bubbleType = 'speech';
-        let bubbleText = '';
-        let bubbleLayout = (i % 2 === 0) ? 'vertical' : 'horizontal';
-
-        // 智能根据叙事情绪分配专业漫画机位
-        let shot = 'medium shot';
-        if (/尾随|跟踪|背后|后面|跟随|脚步声/i.test(sentence)) {
-            shot = 'from behind';
-        } else if (/小巷|街道|教室|天台|黑夜|城市|废墟|远/i.test(sentence) && (i === 0 || i === panelCount - 1)) {
-            shot = 'wide establishing shot';
-        } else if (/恐慌|害怕|惊恐|惊慌|颤抖|冷汗|发抖|逃/i.test(sentence)) {
-            shot = 'dutch angle';
-        } else if (/眼神|凝视|盯着|瞳孔|惊愕|睁大/i.test(sentence)) {
-            shot = 'extreme close-up on eyes';
-        } else if (/泪|哭|红脸|脸|喘息|微笑|神情/i.test(sentence)) {
-            shot = 'face close-up';
-        } else if (/抓|拉|拖|按|推|倒|斩|冲|击|伸出/i.test(sentence)) {
-            shot = 'foreshortening';
-        } else if (/对峙|对话|问|说|转过身|看着/i.test(sentence)) {
-            shot = 'over-the-shoulder';
-        } else {
-            const defaultFlow = ['wide establishing shot', 'face close-up', 'dutch angle', 'foreshortening', 'medium shot'];
-            shot = defaultFlow[i % defaultFlow.length];
-        }
-
-        const sfxMatch = sentence.match(/[【\[](.+?)[】\]]/);
-        const thoughtMatch = sentence.match(/[\*（\(](.+?)[\*）\)]/);
-        const captionMatch = sentence.match(/[\{｛](.+?)[\}｝]/);
-        const screamMatch = sentence.match(/[“"「](.+?[！!]{1,})[”"」]/);
-        const speechMatch = sentence.match(/[“"「](.+?)[”"」]/);
-
-        if (sfxMatch) {
-            bubbleType = 'sfx';
-            bubbleText = sfxMatch[1].trim();
-        } else if (captionMatch) {
-            bubbleType = 'caption';
-            bubbleText = captionMatch[1].trim();
-        } else if (thoughtMatch) {
-            bubbleType = 'thought';
-            bubbleText = thoughtMatch[1].trim();
-        } else if (screamMatch) {
-            bubbleType = 'screaming';
-            bubbleText = screamMatch[1].trim();
-        } else if (speechMatch) {
-            bubbleType = 'speech';
-            bubbleText = speechMatch[1].trim();
-        } else if (sentence.includes('！') || sentence.includes('!')) {
-            bubbleType = 'screaming';
-            bubbleText = (sentence.slice(0, 16) || '').trim();
-        } else {
-            bubbleType = (i === 0) ? 'caption' : 'speech';
-            bubbleText = (sentence.slice(0, 18) || '').trim();
-        }
-
-        const tags = [];
-        if (/女|少女|妹|她/i.test(sentence)) tags.push('1girl');
-        if (/男|少年|他/i.test(sentence)) tags.push('1boy');
-        if (/红脸|害羞|羞/i.test(sentence)) tags.push('blushing');
-        if (/泪|哭|湿润/i.test(sentence)) tags.push('tears, tears prickling in eyes');
-        if (/黄昏|夕阳/i.test(sentence)) tags.push('sunset, orange light');
-        if (/教室|学校/i.test(sentence)) tags.push('classroom, school desk');
-        if (/信|信封|情书/i.test(sentence)) tags.push('focus on hands, holding love letter, white envelope');
-        if (/笑|微笑/i.test(sentence)) tags.push('gentle smile, expressive eyes');
-        if (/看|凝视|视线/i.test(sentence)) tags.push('looking at viewer');
-        if (/风|吹/i.test(sentence)) tags.push('fluttering hair, wind blowing');
-
-        if (tags.length === 0) {
-            tags.push('dramatic lighting', 'expressive eyes');
-        }
-
+        const form = count === 1 ? 'splash page, 単一コマ' : `comic, 複数コマの漫画ページ, ${count} panels`;
+        const layout = studio.ratio === '1216x832' ? '見開きページ' : 'vertical layout';
+        const gutter = (GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed).tag;
         return {
-            title: `第 ${i + 1} 格 · ${sentence.slice(0, 8) || '画格'}`,
-            desc: sentence,
-            shot,
-            tags: tags.join(', '),
-            bubbleType,
-            bubbleText,
-            bubbleLayout
+            format: 'nai5-comic',
+            page: { base: [form, people, layout, gutter, GRAMMAR_TAGS[store.grammar] || '',
+                ...studio.panels.map((p, i) => p.position || defaultPanelPosition(i, count, store.grammar))].filter(Boolean).join(', ') },
+            panels
         };
     }
 
-    function runHeuristicStoryboardParser(text, grammar, language, panelCountMode = 'auto') {
-        if (!text || !text.trim()) {
-            text = '夕阳西下的教室，女主角红着脸低下头。男主角鼓起勇气递上一封情书。女主角惊慌地抬起头，眼睛里闪烁着泪光，窗外的风吹动窗帘。';
-        }
-        const sentences = text
-            .split(/(?<=[。！？!\?\n])/)
-            .map(s => s.trim())
-            .filter(s => s.length > 1);
+    function composeStudioPrompt(store) {
+        const compiled = compileMangaPage(buildStudioPage(store));
+        return [compiled.base, ...compiled.characters.map(c => c.caption)].join(' | ');
+    }
 
-        const isFixed = panelCountMode && panelCountMode !== 'auto';
-        const panelCount = isFixed
-            ? Math.max(1, Math.min(5, Number(panelCountMode) || 3))
-            : Math.max(2, Math.min(4, sentences.length || 3));
-        const panels = [];
+    function studioPanelFromProtocol(panel, index = 0) {
+        // Studio keeps position/shot separate so edits apply to every person in a panel.
+        return {
+            title: panel.title || `画格 ${index + 1}`, desc: panel.desc || panel.title || '',
+            position: panel.position || '', shot: panel.shot || '', tags: panel.description || '',
+            non_character: panel.non_character || '', characters: panel.characters.map(c => ({ ...c })),
+            bubbleText: '', bubbleType: 'caption', bubbleLayout: 'horizontal'
+        };
+    }
 
-        for (let i = 0; i < panelCount; i++) {
-            const sentence = sentences[i] || (sentences[sentences.length - 1] ? `${sentences[sentences.length - 1]} (续)` : `场景片段 ${i + 1}`);
-            panels.push(parseSentenceToPanelData(sentence, i, panelCount));
+    function studioDirectorPrompt(store, task) {
+        return buildMangaSystemPrompt({ ...store, antiHijack: store.studio?.antiHijack ?? store.antiHijack }) + `
+【工作台任务】${task}
+拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
+只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
+position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、positive、negative。character_id 跨格同人保持一致。description 不含人物动作，人物外貌动作和对白全部进自己的 positive；没有人物时 characters=[]。
+同格双人对话必须两个角色条目，每人 Text: 只包含自己的话；非人物文字不要建人物。任何没有原文依据的文字都不要编造。保留句子、人物、道具和动作先后，不截断故事末尾。
+仅有局部镜头时保留该部位可见的身份特征，勿把整份外貌档案硬塞进去。`;
+    }
+
+    async function requestStudioPanels(store, task, content, expectedCount) {
+        const config = getSdtStore();
+        const baseUrl = String(config.openaiBaseUrl || '').trim().replace(/\/+$/, '');
+        const model = String(config.openaiModelCustom || config.openaiModel || '').trim();
+        if (!baseUrl || !model) throw new Error('请先在智能生图中配置 OpenAI 兼容接口和模型；现有分镜已保留');
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
+            body: JSON.stringify({ model, temperature: 0.2, messages: [
+                { role: 'system', content: studioDirectorPrompt(store, task) }, { role: 'user', content }
+            ] })
+        });
+        if (!response.ok) throw new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
+        const result = await response.json();
+        const reply = String(result.choices?.[0]?.message?.content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+        const data = JSON.parse(reply);
+        if (!Array.isArray(data.panels) || !data.panels.length || data.panels.length > 5
+            || (expectedCount && data.panels.length !== expectedCount)) throw new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
+        compileMangaPage({ format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels });
+        return data.panels.map(studioPanelFromProtocol);
+    }
+
+    async function callLlmStoryboardParser(storyText, grammar, language, panelCountMode = 'auto', onProgress) {
+        const store = { ...getStore(), grammar, language };
+        if (grammar === '4koma' && panelCountMode !== 'auto' && Number(panelCountMode) !== 4) {
+            throw new Error('经典四格请选择自动规划或4格；其他格数请切换分镜文法');
         }
-        return panels;
+        const fixed = panelCountMode !== 'auto' ? Math.max(1, Math.min(5, Number(panelCountMode) || 1)) : (grammar === '4koma' ? 4 : 0);
+        if (onProgress) onProgress('正在按画格、人物与文字归属解析剧情...');
+        return requestStudioPanels(store, fixed ? `本页明确要求 ${fixed} 格，请完整安排剧情。` : '为本页自适应规划1至5格，允许整页单格；相邻事件按容量合并，完整覆盖剧情。', storyText, fixed);
     }
 
     async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0) {
-        const store = getStore();
-        const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
-        const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
-        const apiKey = (sdtStore.openaiApiKey || '').trim();
-        const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
-
-        let otherContext = '';
-        if (Array.isArray(allPanels) && allPanels.length > 1) {
-            const others = allPanels
-                .map((p, i) => {
-                    if (i === currentIndex) return null;
-                    const descPart = p.desc || p.title || '';
-                    const tagPart = p.tags ? `[已有Tag参考: ${p.tags}]` : '';
-                    return `画格 #${i + 1}: ${descPart} ${tagPart}`.trim();
-                })
-                .filter(Boolean);
-            if (others.length > 0) {
-                otherContext = `\n【当前整页其他画格参考 (必须严格继承同一角色的外貌特征、发色与服装，保持人设一致)】：\n${others.join('\n')}`;
-            }
-        }
-
-        const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
-        const grammarInstruction = grammarObj.instruction || '';
-        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
-        const gutterInstruction = gutterObj.instruction || '';
-        const colorRule = (store.style === 'monochrome')
-            ? `\n【色彩与角色DNA要求】：当前处于黑白漫画模式。对于同人角色，请务必保留官方完整角色标签（如 tatsumaki (one punch man)）与标志性特征；场景与一般服装请使用 dark/light 等灰阶明暗与光影词汇，避免输出 colorful, full color, warm light 等环境色相词。`
-            : '';
-        const langInstruction = language === 'ja'
-            ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
-            : '【台词偏好语言】：简体中文 (Chinese) - 保留或输出生动贴切的中文漫画对白。';
-
-        const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
-你的任务是将用户提供的单一漫画画格剧情句子转换为专业的 NAI 提示词。
-如果提供了其他画格的参考内容，请务必继承已确立的角色外貌（例如角色名、发色发型、瞳色、服装等），保持同一漫画单页内人设连贯，在此基础上根据本格剧情生成动作、神态、光影和机位！
-【分镜文法参考】：
-${grammarInstruction}
-【排版留白与出血规则】：
-${gutterInstruction}${colorRule}
-必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
-JSON 格式规范：
-{
-  "title": "画格简短标题（5-10字中文）",
-  "shot": "景别机位英文（支持：close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）",
-  "tags": "该画格专属纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，不要画风词。修辞转实体：小说比喻转为具象动作神态Tag，严禁输出 like a beast 等比喻词。若为纯环境空镜格，严禁写入 solo 或任何人物主体词）",
-  "bubbleType": "speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected",
-  "bubbleText": "画格内角色台词或心声文字",
-  "bubbleLayout": "vertical | horizontal"
-}`;
-
-        const userContent = `【本格剧情描述】：${sentence}\n【当前机位参考】：${currentShot || 'medium shot'}\n【分镜文法风格】：${grammarObj.name}\n【边框留白排版】：${gutterObj.name}\n${langInstruction}${otherContext}`;
-
-        if (baseUrl) {
-            try {
-                const url = `${baseUrl}/chat/completions`;
-                const reqBody = {
-                    model,
-                    temperature: 0.3,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userContent }
-                    ]
-                };
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
-                    },
-                    body: JSON.stringify(reqBody)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const rawReply = data.choices?.[0]?.message?.content || '';
-                    const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const parsed = JSON.parse(cleanJson);
-                    if (parsed && (parsed.tags || parsed.shot)) {
-                        if (parsed.bubbleText) parsed.bubbleText = String(parsed.bubbleText).trim();
-                        return parsed;
-                    }
-                }
-            } catch (e) {
-                console.warn(`[Manga Studio] Single Panel LLM API call failed, using heuristic:`, e);
-            }
-        }
-        return parseSentenceToPanelData(sentence, 0, 1);
+        const result = await requestStudioPanels({ ...getStore(), grammar, language },
+            '只返回正在编辑的一个画格；不因整页文法扩写其他格。参照已有角色身份，保持同一 character_id；不要复述其他格事件。',
+            JSON.stringify({ currentMessage: sentence, currentShot, currentIndex, otherPanels: allPanels }), 1);
+        return result[0];
     }
 
     async function callLlmBatchSentenceExpander(panels, grammar, language, onProgress) {
-        const store = getStore();
-        const sdtStore = RBQ.api.getSettings()?._smartDrawTrigger || {};
-        const baseUrl = (sdtStore.openaiBaseUrl || '').trim().replace(/\/+$/, '');
-        const apiKey = (sdtStore.openaiApiKey || '').trim();
-        const model = (sdtStore.openaiModelCustom || '').trim() || sdtStore.openaiModel || 'gpt-4o-mini';
-
-        const grammarObj = GRAMMAR_PRESETS[grammar] || GRAMMAR_PRESETS.cinema;
-        const grammarInstruction = grammarObj.instruction || '';
-        const gutterObj = GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed;
-        const gutterInstruction = gutterObj.instruction || '';
-        const colorRule = (store.style === 'monochrome')
-            ? `\n【色彩与角色DNA要求】：当前处于黑白漫画模式。对于同人角色，请务必保留官方完整角色标签（如 tatsumaki (one punch man)）与标志性特征；场景与一般服装请使用 dark/light 等灰阶明暗与光影词汇，避免输出 colorful, full color, warm light 等环境色相词。`
-            : '';
-        const langInstruction = language === 'ja'
-            ? '【台词偏好语言】：日文 (Japanese) - 请将对白、心声或旁白自然转译为地道标准的日式漫画台词。'
-            : '【台词偏好语言】：简体中文 (Chinese) - 保留或输出生动贴切的中文漫画对白。';
-
-        const promptList = panels.map((p, idx) => `画格 #${idx + 1}: ${p.desc || p.title || '（未输入描述）'}`).join('\n');
-
-        const systemPrompt = `你是一位顶级日式漫画分镜大师兼 NAI Anime 提示词导演。
-用户已经确定了整页漫画包含 ${panels.length} 个画格，并给出了每一个画格的具体剧情/动作描写。
-【分镜文法参考】：
-${grammarInstruction}
-【排版留白与出血规则】：
-${gutterInstruction}${colorRule}
-你的任务是为每个画格分别生成：
-1. title: 画格概括（中文，5-10字）
-2. shot: 从以下 19 种专业漫画镜头中挑选最契合剧情的词（close-up focus | face close-up | extreme close-up on eyes | medium shot | cowboy shot | full body | wide establishing shot | eye-level shot | dynamic low angle | high angle | bird's-eye view | ground angle | dutch angle | from behind | over-the-shoulder | pov, first-person view | profile | fisheye lens | foreshortening）
-3. tags: 纯英文 Danbooru/NAI Tag（包含角色动作、神态、光影、环境背景，保持同一角色在各画格间的外观特征连贯，不要画风词）
-4. bubbleType: speech | screaming | thought | whisper | shiver | broadcast | caption | sfx | offscreen | tailless | connected
-5. bubbleText: 提炼出的画格内角色台词、心声或旁白
-6. bubbleLayout: vertical | horizontal
-
-必须输出纯 JSON，绝不要包含 Markdown 代码块或额外文字。
-JSON 格式规范：
-{
-  "panels": [
-    {
-      "index": 1,
-      "title": "...",
-      "shot": "...",
-      "tags": "...",
-      "bubbleType": "...",
-      "bubbleText": "...",
-      "bubbleLayout": "..."
+        if (grammar === '4koma' && panels.length !== 4) throw new Error('经典四格需要4个画格；请调整格数或切换文法');
+        if (onProgress) onProgress('正在核对逐格人物、对白和连续状态...');
+        return requestStudioPanels({ ...getStore(), grammar, language }, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属。`, JSON.stringify(panels), panels.length);
     }
-  ]
-}`;
 
-        const userContent = `【分镜文法风格】：${grammarObj.name}\n【边框留白排版】：${gutterObj.name}\n${langInstruction}\n【用户指定的逐格剧情如下】：\n${promptList}`;
-
-        if (baseUrl) {
-            try {
-                if (onProgress) onProgress('正在调用大模型为各画格生成提示词与机位...');
-                const url = `${baseUrl}/chat/completions`;
-                const reqBody = {
-                    model,
-                    temperature: 0.3,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userContent }
-                    ]
-                };
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
-                    },
-                    body: JSON.stringify(reqBody)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const rawReply = data.choices?.[0]?.message?.content || '';
-                    const cleanJson = rawReply.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const parsed = JSON.parse(cleanJson);
-                    if (Array.isArray(parsed?.panels) && parsed.panels.length > 0) {
-                        parsed.panels.forEach(p => {
-                            if (p.bubbleText) p.bubbleText = String(p.bubbleText).trim();
-                        });
-                        return parsed.panels;
-                    }
-                }
-            } catch (e) {
-                console.warn(`[Manga Studio] Batch Sentence LLM API call failed, using heuristic:`, e);
-            }
-        }
-
-        if (onProgress) onProgress('正在应用漫画导演分镜文法逐格推演...');
-        return panels.map((p, idx) => parseSentenceToPanelData(p.desc || p.title, idx, panels.length));
+    function renderStudioCharacterFields(panel) {
+        const esc = RBQ.utils.escapeHtml;
+        if (!Array.isArray(panel.characters)) return '<div class="mw-desc">旧版混合标签已保留。点击“AI 润色本格”或“批量解析”可拆分格内人物与对白。</div>';
+        return `<details class="rbq-manga-people" ${panel._editorOpen ? 'open' : ''}><summary>格内人物与文字 · ${panel.characters.length} 人</summary><div class="rbq-manga-people-body">
+            <label>本格旁白 / 拟音 / 画外文字<textarea class="rbq-manga-non-character" placeholder="视觉说明，Layout: 横書き，Text: 原文">${esc(panel.non_character || '')}</textarea></label>
+            ${panel.characters.map((c, i) => `<fieldset class="rbq-manga-person" data-person="${i}">
+                <legend>人物 ${i + 1}</legend>
+                <label>身份编号（同一人跨格保持相同）<input data-field="character_id" value="${esc(c.character_id || '')}"></label>
+                <label>姓名<input data-field="name" value="${esc(c.name || '')}"></label>
+                <label>本镜头人物与对白<textarea data-field="positive" placeholder="girl, 可见外貌与动作, BubbleType: 通常吹き出し, Layout: 縦書き, Text: 台词">${esc(c.positive || '')}</textarea></label>
+                <label>人物负面词<textarea data-field="negative">${esc(c.negative || '')}</textarea></label>
+                <button type="button" class="mw-btn rbq-manga-remove-person">移除本格出场</button>
+            </fieldset>`).join('')}
+            <button type="button" class="mw-btn rbq-manga-add-person">添加本格人物</button>
+            ${panel.characters.length ? '' : '<span class="mw-desc">当前为空镜，不创建人物槽。</span>'}
+        </div></details>`;
     }
 
     function extractChatNarrative() {
@@ -3218,7 +2753,8 @@ JSON 格式规范：
 
         function updatePromptPreview() {
             if (promptPreviewEl) {
-                promptPreviewEl.textContent = composeStudioPrompt(store);
+                try { promptPreviewEl.textContent = composeStudioPrompt(store); }
+                catch (error) { promptPreviewEl.textContent = error.message; }
             }
         }
 
@@ -3236,11 +2772,7 @@ JSON 格式规范：
             function renderPlaceholder() {
                 viewportEl.innerHTML = `
                     <div class="mw-blueprint-placeholder">
-                        <div class="mw-bp-panel">Panel 1 · 漫画分镜预览位</div>
-                        <div style="display:flex;gap:5px;flex:1;">
-                            <div class="mw-bp-panel">Panel 2 · 特写机位</div>
-                            <div class="mw-bp-panel">Panel 3 · 对白气泡位</div>
-                        </div>
+                        <div class="mw-bp-panel">漫画原图预览<br>生成后显示</div>
                     </div>
                 `;
                 if (btnSendChat) btnSendChat.disabled = true;
@@ -3301,12 +2833,14 @@ JSON 格式规范：
                         </div>
                         <div class="mw-panel-tags-box">
                             <span class="mw-tags-badge"><i class="fa-solid fa-tags"></i> TAGS</span>
-                            <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="输入本格专属英文 Danbooru / NAI tags...">
+                            <input type="text" class="mw-panel-tag-in" value="${RBQ.utils.escapeHtml(p.tags || '')}" placeholder="本格环境与构图（人物写入下方独立出场）...">
                         </div>
                     </div>
 
                     <!-- Row 4: Speech Bubble Composer -->
-                    <div class="mw-bubble-row">
+                    <label class="rbq-manga-position-label">画格位置与大小<input class="mw-panel-desc-in rbq-manga-position-in" value="${RBQ.utils.escapeHtml(p.position || '')}" placeholder="${defaultPanelPosition(idx, studio.panels.length, store.grammar)}"></label>
+                    ${renderStudioCharacterFields(p)}
+                    <div class="mw-bubble-row" ${Array.isArray(p.characters) ? 'style="display:none !important"' : ''}>
                         <div class="mw-bubble-type-pill">
                             <i class="fa-regular fa-comment-dots" style="color:#38bdf8"></i>
                             <select class="mw-bubble-type-sel">
@@ -3338,6 +2872,9 @@ JSON 格式规范：
                 const p = studio.panels[idx];
                 if (!p) return;
 
+                card.querySelector('.rbq-manga-position-in')?.addEventListener('input', e => {
+                    p.position = e.target.value; updatePromptPreview(); save();
+                });
                 card.querySelector('.mw-panel-title-in')?.addEventListener('input', (e) => {
                     p.title = e.target.value;
                     save();
@@ -3345,6 +2882,27 @@ JSON 格式规范：
                 card.querySelector('.mw-panel-desc-in')?.addEventListener('input', (e) => {
                     p.desc = e.target.value;
                     save();
+                });
+                card.querySelector('.rbq-manga-people')?.addEventListener('toggle', e => { p._editorOpen = e.target.open; });
+                card.querySelector('.rbq-manga-non-character')?.addEventListener('input', e => {
+                    p.non_character = e.target.value; updatePromptPreview(); save();
+                });
+                card.querySelectorAll('.rbq-manga-person').forEach(row => {
+                    const personIndex = Number(row.dataset.person);
+                    row.querySelectorAll('[data-field]').forEach(input => input.addEventListener('input', e => {
+                        p.characters[personIndex][input.dataset.field] = e.target.value;
+                        updatePromptPreview(); save();
+                    }));
+                    row.querySelector('.rbq-manga-remove-person')?.addEventListener('click', () => {
+                        p.characters.splice(personIndex, 1); renderPanelCards(); updatePromptPreview(); save();
+                    });
+                });
+                card.querySelector('.rbq-manga-add-person')?.addEventListener('click', () => {
+                    const used = new Set(studio.panels.flatMap(panel => (panel.characters || []).map(c => c.character_id)));
+                    let number = 1;
+                    while (used.has(`C${number}`)) number++;
+                    p.characters.push({ character_id: `C${number}`, name: '', positive: 'girl', negative: '' });
+                    renderPanelCards(); updatePromptPreview(); save();
                 });
                 const btnSingleAi = card.querySelector('.mw-panel-ai-single');
                 btnSingleAi?.addEventListener('click', async () => {
@@ -3358,12 +2916,7 @@ JSON 格式规范：
                     try {
                         const expanded = await callLlmSingleSentenceExpander(sentence, p.shot, store.grammar, store.language, studio.panels, idx);
                         if (expanded) {
-                            if (expanded.title) p.title = expanded.title;
-                            if (expanded.shot) p.shot = expanded.shot;
-                            if (expanded.tags) p.tags = expanded.tags;
-                            if (expanded.bubbleType) p.bubbleType = expanded.bubbleType;
-                            if (expanded.bubbleText !== undefined) p.bubbleText = expanded.bubbleText;
-                            if (expanded.bubbleLayout) p.bubbleLayout = expanded.bubbleLayout;
+                            Object.assign(p, expanded);
                             renderPanelCards();
                             updatePromptPreview();
                             save();
@@ -3416,6 +2969,7 @@ JSON 格式规范：
                         const temp = studio.panels[idx];
                         studio.panels[idx] = studio.panels[idx - 1];
                         studio.panels[idx - 1] = temp;
+                        studio.panels.forEach(panel => { panel.position = ''; });
                         renderPanelCards();
                         updatePromptPreview();
                         save();
@@ -3426,6 +2980,7 @@ JSON 格式规范：
                         const temp = studio.panels[idx];
                         studio.panels[idx] = studio.panels[idx + 1];
                         studio.panels[idx + 1] = temp;
+                        studio.panels.forEach(panel => { panel.position = ''; });
                         renderPanelCards();
                         updatePromptPreview();
                         save();
@@ -3438,6 +2993,7 @@ JSON 格式规范：
                     const clone = JSON.parse(JSON.stringify(p));
                     clone.title += ' (副本)';
                     studio.panels.splice(idx + 1, 0, clone);
+                    studio.panels.forEach(panel => { panel.position = ''; });
                     renderPanelCards();
                     updatePromptPreview();
                     save();
@@ -3445,6 +3001,7 @@ JSON 格式规范：
                 card.querySelector('.mw-panel-del')?.addEventListener('click', () => {
                     if (studio.panels.length <= 1) return;
                     studio.panels.splice(idx, 1);
+                    studio.panels.forEach(panel => { panel.position = ''; });
                     renderPanelCards();
                     updatePromptPreview();
                     save();
@@ -3570,12 +3127,8 @@ JSON 格式规范：
                     results.forEach((item, i) => {
                         const targetPanel = studio.panels[i];
                         if (targetPanel && item) {
-                            if (item.title) targetPanel.title = item.title;
-                            if (item.shot) targetPanel.shot = item.shot;
-                            if (item.tags) targetPanel.tags = item.tags;
-                            if (item.bubbleType) targetPanel.bubbleType = item.bubbleType;
-                            if (item.bubbleText !== undefined) targetPanel.bubbleText = item.bubbleText;
-                            if (item.bubbleLayout) targetPanel.bubbleLayout = item.bubbleLayout;
+                            Object.assign(targetPanel, item);
+
                         }
                     });
                     renderPanelCards();
@@ -3597,11 +3150,12 @@ JSON 格式规范：
             if (studio.panels.length >= 5) {
                 return toastr.warning('单页漫画最多支持 5 个画格', PLUGIN_NAME);
             }
+            studio.panels.forEach(panel => { panel.position = ''; });
             studio.panels.push({
                 title: `第 ${studio.panels.length + 1} 格 · 画面`,
                 desc: '',
                 shot: 'medium shot',
-                tags: '1girl, expressive eyes',
+                tags: '', characters: [], non_character: '',
                 bubbleType: 'speech',
                 bubbleText: '',
                 bubbleLayout: 'vertical'
@@ -3614,8 +3168,8 @@ JSON 格式规范：
         // Preset templates button
         container.querySelector('#mw-btn-template')?.addEventListener('click', () => {
             showPresetPickerModal((preset) => {
-                studio.panels = JSON.parse(JSON.stringify(preset.panels));
-                if (preset.grammar && COMIC_GRAMMARS[preset.grammar]) {
+                studio.panels = createStoryboardTemplatePanels(preset);
+                if (preset.grammar && GRAMMAR_PRESETS[preset.grammar]) {
                     store.grammar = preset.grammar;
                     const gSel = container.querySelector('#mw-hdr-grammar');
                     if (gSel) gSel.value = preset.grammar;
@@ -3633,7 +3187,7 @@ JSON 格式规范：
         container.querySelector('#mw-btn-reset-panels')?.addEventListener('click', () => {
             if (!confirm('确定要重置当前工作台的分镜画格吗？')) return;
             const defaultPreset = STORYBOARD_PRESETS[0];
-            studio.panels = JSON.parse(JSON.stringify(defaultPreset.panels));
+            studio.panels = createStoryboardTemplatePanels(defaultPreset);
             renderPanelCards();
             updatePromptPreview();
             save();
@@ -3642,7 +3196,9 @@ JSON 格式规范：
 
         // Copy assembled prompt button
         container.querySelector('#mw-btn-copy-prompt')?.addEventListener('click', () => {
-            const prompt = composeStudioPrompt(store);
+            let prompt;
+            try { prompt = composeStudioPrompt(store); }
+            catch (error) { return toastr.warning(error.message, PLUGIN_NAME); }
             RBQ.utils.copyToClipboard(prompt);
             toastr.success('已复制完整 NAI 漫画装配提示词！', PLUGIN_NAME);
         });
@@ -3652,13 +3208,16 @@ JSON 格式规范：
             if (!RBQ.api || typeof RBQ.api.generateImage !== 'function') {
                 return toastr.error('RBQ Core 生图接口不可用', PLUGIN_NAME);
             }
-            const prompt = composeStudioPrompt(store);
+            let compiled;
+            try { compiled = compileMangaPage(buildStudioPage(store)); }
+            catch (error) { return toastr.warning(error.message, PLUGIN_NAME); }
+            const prompt = compiled.base;
             const origHtml = btnGenerate.innerHTML;
             btnGenerate.disabled = true;
             btnGenerate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向生图引擎提交漫画任务...';
 
-            isStudioGenerating = true;
             studioGenerationRatio = studio.ratio || '832x1216';
+            studioRequest = { prompt, compiled };
 
             try {
                 const result = await RBQ.api.generateImage(prompt, 'manga-workshop', {}, (progress) => {
@@ -3669,7 +3228,7 @@ JSON 格式规范：
 
                 if (result && result.url) {
                     studio.lastGeneratedUrl = result.url;
-                    studio.lastGeneratedPrompt = prompt;
+                    studio.lastGeneratedPrompt = [compiled.base, ...compiled.characters.map(c => c.caption)].join(' | ');
                     save();
                     updateViewport();
                     toastr.success('🎉 漫画单页生成完毕！', PLUGIN_NAME);
@@ -3680,8 +3239,8 @@ JSON 格式规范：
                 console.error('[Manga Studio] 出图失败:', err);
                 toastr.error('漫画单页生成失败: ' + (err.message || String(err)), PLUGIN_NAME);
             } finally {
-                isStudioGenerating = false;
                 studioGenerationRatio = null;
+                studioRequest = null;
                 btnGenerate.disabled = false;
                 btnGenerate.innerHTML = origHtml;
             }
@@ -3844,6 +3403,7 @@ JSON 格式规范：
 
     // 卸载与清理函数
     function cleanup() {
+        if (RBQ.api.mangaProtocol === mangaProtocol) delete RBQ.api.mangaProtocol;
         if (mountPollTimer) {
             clearInterval(mountPollTimer);
             mountPollTimer = null;

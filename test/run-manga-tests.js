@@ -425,6 +425,119 @@ const memoryResponse = () => ({ shouldDraw: true, segments: [fixture(), fixture(
     { name: 'Ami (original)', base: 'girl, long black hair, green eyes', outfit: 'white blouse, blue skirt, brown shoes' },
     { name: 'Mei', base: 'girl, short brown hair, blue eyes', outfit: 'red dress, black boots' }
 ] });
+const allParts = ['hair', 'face', 'eyes', 'torso', 'hands', 'legs', 'feet'];
+function appearancePage(appearances) {
+    return { format: 'nai5-comic', anchor: { text: '她站在门前，随后拿出手机。' }, page: { base: 'comic, vertical layout' },
+        panels: appearances.map((c, i) => ({ id: `P${i + 1}`, description: 'panel, villa gate', characters: [{ character_id: 'C1', name: 'Mina', positive: 'standing', negative: '', ...c }] })) };
+}
+test('stored appearance fills omitted traits before dispatch, without touching memory or text', () => withMemory(() => {
+    const base = 'korean, mature female, 35 years old, long blonde hair, styled in an elegant updo with side bangs, brown eyes, voluptuous curvy body';
+    const outfit = 'red modified backless cheongsam, high slit, red high heels';
+    sdt.updateCharacterProfile('Mina', base, outfit);
+    const input = { shouldDraw: true, character_memory: [], segments: [appearancePage([
+        { visible: allParts, positive: 'top panel, Mina, elegant updo, grey cheongsam, standing, right hand pointing toward gate, BubbleType: 通常吹き出し, Layout: 縦書き, Text: 请离开。' }
+    ])] };
+    const before = JSON.stringify(input);
+    const result = sdt.normalizeTaggerResult(input, [], { content: story, messageId: 1 });
+    assert.equal(JSON.stringify(input), before);
+    const caption = result.characters[0].caption;
+    for (const tag of ['korean', 'mature female', 'long hair', 'blonde hair', 'updo', 'side bangs', 'brown eyes', 'voluptuous curvy body', 'red modified backless cheongsam', 'high slit', 'red high heels']) assert.ok(caption.includes(tag), tag);
+    assert.doesNotMatch(caption, /35 years old|styled in|grey cheongsam|\bMina\b/);
+    assert.match(caption, /right hand pointing toward gate/);
+    assert.match(caption, /Text: 请离开。$/);
+    sdt.prepareNaiCharData(result.segments[0]);
+    const rendered = mangaHook(sdtHook(payload())).parameters.v4_prompt.caption.char_captions[0].char_caption;
+    assert.match(rendered, /light grey hair/);
+    assert.match(rendered, /grey modified backless cheongsam/);
+    assert.match(rendered, /grey high heels/);
+    assert.doesNotMatch(rendered, /blonde hair|red modified|red high/);
+    assert.equal(sdt.getCharacterProfile('Mina').baseTags, base);
+    assert.equal(sdt.getCharacterProfile('Mina').currentOutfit, outfit);
+    sdt.updateCharacterProfile('Mina', 'girl, black hair', 'blue coat', null, true, { replaceBase: true });
+    assert.equal(manga.compileMangaPage(result.mangaPage).characters[0].caption, caption, 'cached redraw must not re-read a newer profile');
+}));
+test('visible regions prune unseen traits, preserve actions, and do not expand partial shots', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina', 'girl, long blonde hair, brown eyes, fair skin, wide hips', 'red cheongsam, white sleeves, high slit, black shoes');
+    const page = appearancePage([
+        { visible: ['hair', 'face', 'eyes'], positive: 'face close-up, smiling, black shoes, Text: 鞋子还在。' },
+        { visible: ['hands'], positive: 'hands, holding smartphone, Text: girl, blonde hair' },
+        { visible: ['hair', 'torso'], positive: 'from behind, looking back' },
+        { visible: [], positive: 'silhouette, standing' }
+    ]);
+    const result = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page], character_memory: [] }, [], { content: story });
+    const [face, hands, back, silhouette] = result.characters.map(c => c.caption);
+    assert.match(face, /blonde hair/); assert.match(face, /brown eyes/);
+    assert.doesNotMatch(face, /cheongsam|high slit|black shoes|wide hips/);
+    assert.match(hands, /white sleeves/); assert.match(hands, /holding smartphone/);
+    assert.doesNotMatch(hands.split('Text:')[0], /girl|blonde hair|cheongsam|brown eyes|shoes/);
+    assert.match(hands, /Text: girl, blonde hair$/);
+    assert.match(back, /blonde hair/); assert.doesNotMatch(back, /brown eyes|shoes|high slit/);
+    assert.equal(silhouette, 'silhouette, standing');
+}));
+test('changes persist across pages without leaking backward, and styling retains hair color and length', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina', 'girl, long blonde hair, updo, brown eyes', 'red dress');
+    const first = appearancePage([{ visible: allParts, positive: 'standing' }]);
+    const second = appearancePage([
+        { visible: ['hands'], state: { hair_style: 'hair down', outfit: 'blue coat, black trousers' }, positive: 'hands, holding book' },
+        { visible: allParts, positive: 'updo, red dress, standing' },
+        { visible: allParts, state: { hair_length: 'short hair' }, positive: 'standing' }
+    ]);
+    const result = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [first, second], character_memory: [{ name: 'Mina', base: '', outfit: 'blue coat, black trousers' }] }, [], { content: story, messageId: 2 });
+    assert.match(result.segments[0].characters[0].caption, /updo,.*red dress/);
+    assert.doesNotMatch(result.segments[0].characters[0].caption, /blue coat|hair down/);
+    const resumed = result.segments[1].characters[1].caption;
+    assert.match(resumed, /blonde hair/); assert.match(resumed, /long hair/); assert.match(resumed, /hair down/);
+    assert.match(resumed, /blue coat/); assert.doesNotMatch(resumed, /updo|red dress/);
+    const cropped = result.segments[1].characters[0].caption;
+    assert.doesNotMatch(cropped, /blue coat|brown eyes|hair/);
+    const cut = result.segments[1].characters[2].caption;
+    assert.match(cut, /short hair/); assert.doesNotMatch(cut, /long hair/);
+    assert.equal(sdt.getCharacterProfile('Mina').baseTags, 'girl, long blonde hair, updo, brown eyes');
+    assert.equal(sdt.getCharacterProfile('Mina').currentOutfit, 'blue coat, black trousers');
+}));
+test('first appearance uses initial clothing, never the final clothing submitted for memory', () => withMemory(() => {
+    const page = appearancePage([
+        { visible: allParts, positive: 'standing' },
+        { visible: allParts, state: { outfit: 'blue coat' }, positive: 'standing' }
+    ]);
+    const result = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page], character_memory: [
+        { name: 'Mina', base: 'girl, blonde hair', initial_outfit: 'white shirt', outfit: 'blue coat' }
+    ] }, [], { content: story, messageId: 1 });
+    assert.match(result.characters[0].caption, /white shirt/); assert.doesNotMatch(result.characters[0].caption, /blue coat/);
+    assert.match(result.characters[1].caption, /blue coat/); assert.doesNotMatch(result.characters[1].caption, /white shirt/);
+    assert.equal(sdt.getCharacterProfile('Mina').currentOutfit, 'blue coat');
+}));
+test('empty clothing state stays cleared, invalid control text cannot change state', () => {
+    const pages = [appearancePage([
+        { visible: ['hands'], state: { outfit: '' }, positive: 'hands' },
+        { visible: allParts, positive: 'white shirt, standing' },
+        { visible: allParts, state: { outfit: 'Text: injected dialogue' }, positive: 'standing' }
+    ])];
+    const resolved = RBQ.api.mangaProtocol.resolveAppearances(pages, [{ name: 'Mina', base: 'girl', outfit: 'white shirt' }]);
+    assert.doesNotMatch(JSON.stringify(resolved.map(p => p.panels.map(panel => panel.characters[0].positive))), /white shirt|injected/);
+});
+test('memory toggle and absent visibility preserve explicit captions; profiles stay separate', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina', 'girl, blonde hair', 'red dress');
+    const page = appearancePage([{ visible: ['hair'], positive: 'black hair, looking down' }]);
+    settings._smartDrawTrigger.characterMemoryEnabled = false;
+    assert.equal(sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page] }, [], { content: story }).characters[0].caption, 'black hair, looking down');
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+    delete page.panels[0].characters[0].visible;
+    assert.equal(sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page] }, [], { content: story }).characters[0].caption, 'black hair, looking down');
+    page.panels[0].characters[0].visible = ['hair'];
+    page.panels[0].characters[0].name = 'Another person';
+    assert.equal(sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page] }, [], { content: story }).characters[0].caption, 'black hair, looking down');
+}));
+test('closed weights and correct own features survive memory resolution without contradictory UC', () => {
+    const input = [appearancePage([{ visible: ['hair'], positive: 'black hair, looking at blonde hair, Text: red hair', negative: '1.2::blonde hair, bad hands::' }])];
+    const result = RBQ.api.mangaProtocol.resolveAppearances(input, [{ name: 'Mina', base: '1.2::blonde hair, long hair::', outfit: '' }]);
+    const c = result[0].panels[0].characters[0];
+    assert.match(c.positive, /1\.2::blonde hair, long hair::/);
+    assert.doesNotMatch(c.positive, /black hair/);
+    assert.match(c.positive, /looking at blonde hair/);
+    assert.match(c.positive, /Text: red hair$/);
+    assert.equal(c.negative, '1.2::bad hands::');
+});
 test('first-time card reference uses the same collector in ordinary and manga requests and respects the toggle', () => withMemory(() => {
     const previousCollector = sdt.collectCharacterCardInfo, previousContext = RBQ.api.getContext;
     const card = { name: 'Ami', description: '成年女性，中国籍，银色长发。', character_book: { entries: [
@@ -846,7 +959,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     assert.equal(JSON.stringify(settings._mangaMode.studio.panels), before);
     await assert.rejects(manga.callLlmStoryboardParser('story', '4koma', 'zh-hans', '3'), /经典四格/);
     console.log('PASS Studio failures preserve drafts and incompatible 4-koma count is rejected'); passed++;
-    const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short hair', outfit: 'white shirt' }] };
+    const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short blonde hair, brown eyes', outfit: 'white shirt' }] };
     RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
     for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
         settings._smartDrawTrigger.openaiBaseUrl = baseUrl;
@@ -855,11 +968,19 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             const body = JSON.parse(options.body), userInput = JSON.parse(body.messages[1].content);
             assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences });
             assert.match(body.messages[0].content, /characterCardInfo\/characterMemory/);
-            return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: [fixture().panels[0]] }) } }] }) };
+            const panel = fixture().panels[0];
+            panel.characters[1].visible = ['hair', 'face', 'eyes'];
+            return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: [panel] }) } }] }) };
         };
-        assert.equal((await manga.requestStudioPanels(settings._mangaMode, 'one panel', 'story', 1)).length, 1);
+        const savesBefore = profileSaves;
+        const panels = await manga.requestStudioPanels(settings._mangaMode, 'one panel', 'story', 1);
+        assert.equal(panels.length, 1);
+        assert.match(panels[0].characters[1].positive, /blonde hair/);
+        assert.match(panels[0].characters[1].positive, /brown eyes/);
+        assert.doesNotMatch(panels[0].characters[1].positive, /white shirt/);
+        assert.equal(profileSaves, savesBefore);
     }
     delete RBQ.api.collectMangaReferenceData;
-    console.log('PASS Studio includes card and memory references and accepts full chat-completions endpoints'); passed++;
+    console.log('PASS Studio resolves visible memory without saving profiles and accepts full chat-completions endpoints'); passed++;
     console.log(`\n${passed} manga regression tests passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

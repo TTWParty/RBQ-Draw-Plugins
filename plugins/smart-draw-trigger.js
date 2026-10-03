@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.2.3';
+    const PLUGIN_VERSION = '6.2.4';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2754,10 +2754,14 @@ Zimage 擅长理解复杂的英文长句和语境。
     function getCharacterMemoryTagSpecification() {
         return `【角色记忆标签规格】
 base/outfit 使用英文逗号分隔的可视标签，优先常用 Danbooru 标签；无合适标签时仅用短视觉词组，不写人物小传或整句说明。
-base 按七维检查已知特征：① girl/boy 等主体类别（不带 1girl/2boys 等人数）；② 面部特征；③ 年龄阶段；④ 发色、长度、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例；⑦ 肤色、永久标记及幻想种族特征。依据角色卡、世界书和明确设定，保留辨识特征；未知年龄、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等设定转为对应的可见年龄阶段和体型，不机械抄成“30 years old appearance”“180cm height”等标签，不承诺还原数值。
+base 按七维逐项检查，已明确的特征不得遗漏：
+① girl/boy 等主体类别（不带 1girl/2boys 等人数）。
+② 族裔、国籍/地域背景、面相：保留角色卡、世界书或可靠原作设定已明确的身份标签，如 chinese、japanese、east asian；面相另按已知特征描述。国籍、族裔与脸部形态不能互相替代，不因动漫画风默认 japanese，也不凭姓名猜国籍。
+③ 年龄阶段，保留设定中的成熟程度，不统一套用少女或成年模板。
+④ 发色、发长、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例及有辨识度的体态；⑦ 肤色、永久身体标记及幻想种族特征。
+依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等设定转为对应的可见年龄阶段和体型，不机械抄成“30 years old appearance”“180cm height”等标签，不承诺还原数值。
 outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
-base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。原创姓名只放 name，同人身份仅保留可靠角色标签。可脱卸配饰归 outfit，永久生理特征归 base。
-示例：base="girl, mature female, tall, silver hair, long hair, straight bangs, purple eyes, fair skin, mole under eye"；outfit="navy blue coat, wool coat, long coat, long sleeves, white shirt, collared shirt, black trousers, brown ankle boots"。示例不是默认人物，不能照抄到无关角色。`;
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。原创姓名只放 name，同人身份仅保留可靠角色标签。可脱卸配饰归 outfit，永久生理特征归 base。`;
     }
 
     function buildCharacterMemoryPromptModule(store) {
@@ -6430,7 +6434,7 @@ ${getCharacterMemoryTagSpecification()}
             type: 'array', description: 'Only when character memory is enabled: one update per named visible person; [] if unchanged. Not render captions.',
             items: { type: 'object', properties: {
                 name: { type: 'string', description: 'Stable name matching panels[].characters[].name, never a panel/character ID' },
-                base: { type: 'string', description: 'Comma-separated English appearance tags per the seven-aspect memory specification, without counts (girl, not 1girl); empty if already known. No clothing/shot/action/dialogue/style.' },
+                base: { type: 'string', description: 'Comma-separated English identity/appearance tags per the seven-aspect memory specification, including explicitly established nationality/ethnicity and facial traits; without counts (girl, not 1girl). Empty if already known. No clothing/shot/action/dialogue/style.' },
                 outfit: { type: 'string', description: 'Comma-separated English tags for complete known clothing at final appearance: color, known material, garment, length/state and details. Only initial clothing or explicit change; empty preserves saved clothing.' }
             }, required: ['name', 'base', 'outfit'] }
         };
@@ -6439,7 +6443,7 @@ ${getCharacterMemoryTagSpecification()}
     function getMangaOutputSchema(store = getStore()) {
         const schema = getMangaProtocol().outputSchema();
         if (store.characterMemoryEnabled) {
-            schema.character_memory = [{ name: '与格内人物一致的稳定姓名', base: '按七维规格提炼的英文逗号标签，无人数、衣物或动作；已有则为空', outfit: '按颜色/已知材质/款式/长度与状态逐件列出的英文逗号标签；首次或明确换装才更新，否则为空' }];
+            schema.character_memory = [{ name: '与格内人物一致的稳定姓名', base: '按七维规格提炼的英文逗号标签，保留已知国籍/族裔/面相等身份外貌，无人数、衣物或动作；已有则为空', outfit: '按颜色/已知材质/款式/长度与状态逐件列出的英文逗号标签；首次或明确换装才更新，否则为空' }];
         }
         return schema;
     }

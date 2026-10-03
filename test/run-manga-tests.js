@@ -40,6 +40,7 @@ Object.assign(sdt, {
 });
 RBQ.api.getRecentMessages = () => [];
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function getEnhancedContextPayload('), sdtSource.indexOf('    function splitTurnsByColon(')), sdt);
+vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function sanitizeSdtResult('), sdtSource.indexOf('    function saveMsgExtraSdt(')), sdt);
 const sdtHook = hooks[1];
 const person = (id, hair, text = '') => ({ character_id: id, name: id === 'C1' ? 'Ami (original)' : 'Mei (original)',
     positive: `girl, ${hair} hair, looking at another` + (text ? `, BubbleType: 通常吹き出し, Layout: 縦書き, Text: ${text}` : ''),
@@ -152,12 +153,132 @@ test('spread detection ignores dialogue and retains upstream Prompt Presets', ()
 test('real request builder and system prompt agree with the nested tool schema', () => {
     const { payload: request } = sdt.buildRequestPayload(1, { type: 'auto' });
     assert.equal(request.outputSchema.segments[0].format, 'nai5-comic');
-    assert.match(request.mangaInstruction, /characters/);
+    assert.equal(request.mangaInstruction, undefined, 'OpenAI system prompt is not duplicated into the user payload');
+    assert.ok(request.outputSchema.story_plan);
     const prompt = sdt.getSystemPromptWithPresets(settings._smartDrawTrigger, true);
     assert.match(prompt, /格内人物/);
     assert.doesNotMatch(prompt, /数组长度严格等于|每个节拍规划为 1 页/);
     const four = manga.buildMangaSystemPrompt({ ...settings._mangaMode, grammar: '4koma' });
     assert.match(four, /允许固定等分/); assert.doesNotMatch(four, /禁止.*四等分/);
+});
+test('comic page count ignores ordinary quotas and photo markers; ordinary requests retain them', () => {
+    const previous = { ...settings._smartDrawTrigger }, snapshot = sdt.getMessageSnapshot;
+    try {
+        settings._smartDrawTrigger.minSegments = 9;
+        sdt.getMessageSnapshot = () => ({ mes: '[图组1]她递出信。[图组2]他接住信。' });
+        let request = sdt.buildRequestPayload(1, { type: 'auto' }).payload;
+        assert.equal(request.minSegments, undefined);
+        assert.match(request.segmentInstruction, /一个 segment 是一张漫画图片/);
+        settings._smartDrawTrigger._mangaActive = false; settings._smartDrawTrigger.enhancedContext = 'off';
+        request = sdt.buildRequestPayload(1, { type: 'auto' }).payload;
+        assert.equal(request.minSegments, 2);
+        assert.match(request.segmentInstruction, /严格 1:1/);
+        sdt.getMessageSnapshot = () => ({ mes: '她们交谈后转身离开了教室。' });
+        assert.equal(sdt.buildRequestPayload(1, { type: 'auto' }).payload.minSegments, 9);
+    } finally { settings._smartDrawTrigger = previous; sdt.getMessageSnapshot = snapshot; }
+});
+test('manga inherits past state only, accepts short visible events and transports custom-HTTP instructions', () => {
+    const snapshot = sdt.getMessageSnapshot, history = RBQ.api.getRecentMessages, previous = { ...settings._smartDrawTrigger };
+    try {
+        sdt.getMessageSnapshot = () => ({ mes: '她笑了。' });
+        RBQ.api.getRecentMessages = () => [
+            { id: 0, mes: '她身穿雨衣。' }, { id: 1, mes: '她笑了。' }, { id: 2, mes: '她换上制服。' }
+        ];
+        settings._smartDrawTrigger.provider = 'custom';
+        settings._smartDrawTrigger.enhancedContext = 'v13'; // Active manga still owns its planner.
+        const request = sdt.buildRequestPayload(1, { type: 'auto' }).payload;
+        assert.deepEqual(json(request.recentMessages.map(m => m.id)), [0]);
+        assert.match(request.mangaInstruction, /漫画前情与本楼规划/);
+        assert.match(request.mangaInstruction, /后文换装\/放下物品不能提前/);
+        assert.doesNotMatch(request.mangaInstruction, /7 步|七步思维链/);
+        const protocol = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters;
+        assert.ok(protocol.required.includes('story_plan'));
+        assert.ok(protocol.properties.segments.items.properties.panels.items.required.includes('beat_ids'));
+    } finally { sdt.getMessageSnapshot = snapshot; RBQ.api.getRecentMessages = history; settings._smartDrawTrigger = previous; }
+});
+
+const story = '雨停后，小林把折好的信递给阿岚。阿岚接过信，低头读完，眼眶渐渐泛红。片刻后，两人走出车站，看见远处亮起的灯塔。';
+const planned = () => {
+    const page = fixture();
+    page.anchor = { text: '小林把折好的信递给阿岚。' };
+    page.intent = '递信、阅读与情绪反应，以阅读为主格，动作连续可在同页承载。';
+    page.panels[0].beat_ids = ['B1']; page.panels[1].beat_ids = ['B2']; page.panels[2].beat_ids = ['B3'];
+    const ending = fixture();
+    ending.anchor = { text: '两人走出车站，看见远处亮起的灯塔。' };
+    ending.intent = '转场后用整页揭示灯塔，给相逢留下停顿。';
+    ending.page.base = 'splash page, 単一コマ, lighthouse, 2girls';
+    ending.panels = [{ ...ending.panels[0], beat_ids: ['B4'] }];
+    return { shouldDraw: true, reason: '递信与反应同页，灯塔揭示单独一页，共2页。', story_plan: {
+        continuity: '历史明确两人在车站避雨；衣着无可靠记录。', beats: [
+            { id: 'B1', source: '小林把折好的信递给阿岚。', decision: 'draw', summary: '递信' },
+            { id: 'B2', source: '阿岚接过信，低头读完', decision: 'draw', summary: '阅读来信' },
+            { id: 'B3', source: '眼眶渐渐泛红。', decision: 'draw', summary: '情绪变化' },
+            { id: 'B4', source: '两人走出车站，看见远处亮起的灯塔。', decision: 'draw', summary: '转场与灯塔揭示' }
+        ]
+    }, segments: [page, ending] };
+};
+test('several beats share a page and a reveal gets a splash; plan metadata never enters image captions', () => {
+    const result = sdt.normalizeTaggerResult(planned(), [], { content: story });
+    assert.equal(result.segments.length, 2);
+    assert.equal(result.mangaStoryPlan.beats.length, 4);
+    assert.equal(result.segments[0].mangaPage.intent, planned().segments[0].intent);
+    assert.equal(result.segments[0].reason, planned().segments[0].intent);
+    assert.match(result.reason, /^共 2 页漫画/);
+    assert.deepEqual(json(sdt.sanitizeSdtResult(result).mangaStoryPlan), planned().story_plan);
+    assert.doesNotMatch(result.segments.map(s => s.prompt).join('\n'), /B1|B4|转场后用整页|历史明确/);
+});
+test('single beat may span adjacent panels or pages without inventing new beats', () => {
+    const result = planned();
+    result.story_plan.beats = [result.story_plan.beats[0]];
+    result.segments.forEach(page => {
+        page.anchor = { text: result.story_plan.beats[0].source };
+        page.panels.forEach(panel => { panel.beat_ids = ['B1']; });
+    });
+    assert.equal(sdt.normalizeTaggerResult(result, [], { content: story }).segments.length, 2);
+});
+test('no-image decisions require consistent empty pages and no selected beats', () => {
+    const result = { shouldDraw: false, segments: [], story_plan: { continuity: '没有状态变化', beats: [
+        { id: 'B1', source: '好，明天聊。', decision: 'omit', summary: '重复寒暄，无新信息' }
+    ] } };
+    assert.equal(sdt.normalizeTaggerResult(result, [], { content: '好，明天聊。' }).shouldDraw, false);
+    result.story_plan.beats[0].decision = 'draw';
+    assert.throws(() => sdt.normalizeTaggerResult(result, [], { content: '好，明天聊。' }), /不一致/);
+});
+test('missing beats, history leakage, wrong anchors, reversed pages and bad references are rejected before rendering', () => {
+    const cases = [
+        [r => { delete r.story_plan; }, /story_plan/],
+        [r => { r.story_plan.beats[0].source = '上一楼的历史动作'; }, /不在当前正文/],
+        [r => { r.story_plan.beats.reverse(); }, /顺序颠倒/],
+        [r => { r.story_plan.beats[1].id = 'B1'; }, /唯一 id/],
+        [r => { r.segments[0].panels.pop(); }, /未分配画格/],
+        [r => { r.segments[0].panels[0].beat_ids = ['unknown']; }, /不存在/],
+        [r => { r.story_plan.beats[0].decision = 'omit'; }, /omit/],
+        [r => { r.segments[0].panels[0].beat_ids = []; }, /beat_ids/],
+        [r => { r.segments[0].anchor.text = r.segments[1].anchor.text; }, /anchor.text/],
+        [r => { r.segments[0].anchor.text = '她把信递出去了'; }, /anchor.text/],
+        [r => { r.segments.reverse(); }, /顺序倒退/],
+        [r => { r.segments[0].panels.reverse(); }, /顺序倒退/],
+        [r => { r.shouldDraw = false; }, /不一致/],
+        [r => { r.segments[0] = null; }, /intent/],
+        [r => { r.segments[0].panels[0].characters = null; }, /characters/]
+    ];
+    for (const [mutate, expected] of cases) {
+        const result = planned(); mutate(result);
+        assert.throws(() => sdt.normalizeTaggerResult(result, [], { content: story }), error => {
+            assert.equal(error.code, 'MANGA_PLAN_INVALID');
+            assert.match(error.message, expected);
+            assert.ok(error.mangaRejectedPlan);
+            return true;
+        });
+    }
+    assert.throws(() => sdt.normalizeTaggerResult({ content: 'null' }, [], { content: story }), /story_plan/);
+});
+test('tool responses use the same plan validation as text JSON', () => {
+    const result = planned();
+    const wrap = value => ({ choices: [{ message: { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(value) } }] } }] });
+    assert.equal(sdt.normalizeTaggerResult(wrap(result), [], { content: story }).segments.length, 2);
+    result.segments[1].panels[0].beat_ids = ['nope'];
+    assert.throws(() => sdt.normalizeTaggerResult(wrap(result), [], { content: story }), /不存在/);
 });
 test('new defaults and every built-in template use explicit nested characters', () => {
     assert.ok(manga.createInitialStudioPanels().every(p => Array.isArray(p.characters)));
@@ -195,6 +316,80 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     assert.ok(schema.properties.scene); assert.ok(schema.properties.characters); assert.equal(schema.properties.panels, undefined);
 });
 (async () => {
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function callCustomHttp('), sdtSource.indexOf('    function visibleTextNodes(')), sdt);
+    const oldSettings = settings._smartDrawTrigger, snapshot = sdt.getMessageSnapshot;
+    settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', provider: 'custom', customUrl: 'https://test.invalid/tagger' };
+    sdt.getMessageSnapshot = () => ({ mes: story });
+    sdt.checkUrlSafety = () => {}; sdt.logTaggerPayload = () => {};
+    sdt.validateStructuredResult = result => result;
+    sdt.safeReadJsonResponse = async response => response.json();
+    try {
+        let requests = [];
+        const installResponse = produce => {
+            requests = [];
+            sdt.smartFetch = async (_url, options) => {
+                requests.push(JSON.parse(options.body));
+                return { ok: true, json: async () => produce(requests.length) };
+            };
+        };
+        installResponse(() => planned());
+        assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
+        assert.equal(requests.length, 1, 'valid planning never adds an API call');
+        installResponse(attempt => {
+            const result = planned();
+            if (attempt === 1) result.segments[0].panels.pop();
+            return result;
+        });
+        assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
+        assert.equal(requests.length, 2);
+        assert.match(requests[1].mangaPlanCorrection.issue, /B3/);
+        assert.equal(requests[1].mangaPlanCorrection.previousPlan.segments[0].panels[0].characters, undefined);
+        assert.equal(requests[1].currentMessage.content, story);
+        console.log('PASS production custom-HTTP path validates source and corrects a missing beat once'); passed++;
+
+        installResponse(() => ({ shouldDraw: true, segments: [] }));
+        await assert.rejects(sdt.callTagger(1, { type: 'auto' }), /规划校验失败/);
+        assert.equal(requests.length, 2, 'invalid correction stops instead of retrying forever');
+        const abort = new AbortController();
+        installResponse(() => { abort.abort(); return {}; });
+        await assert.rejects(sdt.callTagger(1, { type: 'auto' }, { signal: abort.signal }), /规划校验失败/);
+        assert.equal(requests.length, 1, 'cancellation prevents the correction request');
+        let networkCalls = 0;
+        sdt.smartFetch = async () => { networkCalls++; throw new Error('network unavailable'); };
+        await assert.rejects(sdt.callTagger(1, { type: 'auto' }), /network unavailable/);
+        assert.equal(networkCalls, 1);
+        console.log('PASS planning correction is bounded and does not retry network failures or cancellation'); passed++;
+
+        vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function callOpenAiCompatible('), sdtSource.indexOf('    async function callCustomHttp(')), sdt);
+        Object.assign(sdt, {
+            normalizeBaseUrl: value => value, getActiveJailbreakPrompt: () => '', applyPostProcessPrompt() {},
+            buildThinkingParams: () => ({}), DRAW_SPEC_TOOL_RULE: 'Submit via generate_draw_spec'
+        });
+        Object.assign(settings._smartDrawTrigger, { provider: 'openai', openaiBaseUrl: 'https://test.invalid/v1', openaiModel: 'test', squashMessages: false });
+        for (const toolCallMode of [false, true]) {
+            settings._smartDrawTrigger.toolCallMode = toolCallMode;
+            let calls = 0;
+            sdt.callApiWithJsonFallback = async (_url, _options, body) => {
+                calls++;
+                assert.equal(body.messages[0].role, 'system');
+                assert.equal(body.messages[0].content.split('你是漫画分镜导演').length - 1, 1);
+                assert.equal(body.messages[0].content.split('【漫画前情与本楼规划】').length - 1, 1);
+                const request = JSON.parse(body.messages[1].content);
+                assert.equal(request.mangaInstruction, undefined);
+                if (toolCallMode) assert.ok(body.tools[0].function.parameters.required.includes('story_plan'));
+                const output = planned();
+                if (calls === 1) output.segments[0].panels.pop();
+                else assert.match(request.mangaPlanCorrection.issue, /B3/);
+                return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ choices: [{ message: toolCallMode
+                    ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(output) } }] }
+                    : { content: JSON.stringify(output) } }] }) };
+            };
+            assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
+            assert.equal(calls, 2);
+        }
+        console.log('PASS production OpenAI JSON and tool requests share planning, validation and bounded correction'); passed++;
+    } finally { settings._smartDrawTrigger = oldSettings; sdt.getMessageSnapshot = snapshot; }
+
     settings._smartDrawTrigger.openaiBaseUrl = 'https://test.invalid/v1';
     settings._smartDrawTrigger.openaiModel = 'test';
     const before = JSON.stringify(settings._mangaMode.studio.panels);

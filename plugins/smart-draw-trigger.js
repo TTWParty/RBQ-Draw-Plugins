@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.1.0';
+    const PLUGIN_VERSION = '6.2.0';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6417,6 +6417,7 @@ ${activeRegistrySection}`;
     function getMangaProtocol() {
         const protocol = RBQ.api.mangaProtocol;
         if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
+        if (!protocol.validatePlan || !protocol.planningPrompt || !protocol.planSchema) throw new Error('请将漫画模式更新到 1.6.0 或更高版本，并刷新酒馆');
         return protocol;
     }
 
@@ -6426,12 +6427,13 @@ ${activeRegistrySection}`;
             label: String(item.label || `Page ${index + 1}`), anchor: normalizeAnchor(item.anchor, index + 1),
             scene: compiled.base, characters: compiled.characters, multiChar: compiled.characters.length > 1,
             prompt: [compiled.base, ...compiled.characters.map(c => c.caption)].filter(Boolean).join(' | '),
+            reason: String(item.intent || ''),
             negative: String(item.negative || ''), mangaPage: JSON.parse(JSON.stringify(item)),
             mangaUseCoords: compiled.useCoords
         };
     }
 
-    function normalizeTaggerResult(data, matchedLorebooks = []) {
+    function normalizeTaggerResult(data, matchedLorebooks = [], mangaContext = null) {
         // 1. Tool Call extraction (OpenAI tool_calls, legacy function_call, or Gemini functionCall)
         let toolRaw = null;
         const choice = data?.choices?.[0];
@@ -6525,6 +6527,23 @@ ${activeRegistrySection}`;
             : (typeof rawContent === 'string'
                 ? extractJson(rawContent)
                 : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {})));
+        if (mangaContext) {
+            try {
+                getMangaProtocol().validatePlan(source, mangaContext.content);
+            } catch (error) {
+                if (error.code === 'MANGA_PLAN_INVALID') {
+                    // A compact rejected plan is enough for one correction; do not resend all render captions.
+                    error.mangaRejectedPlan = {
+                        shouldDraw: source?.shouldDraw, story_plan: source?.story_plan,
+                        segments: Array.isArray(source?.segments) ? source.segments.map(page => ({
+                            intent: page?.intent, anchor: page?.anchor,
+                            panels: Array.isArray(page?.panels) ? page.panels.map(panel => ({ id: panel?.id, beat_ids: panel?.beat_ids })) : []
+                        })) : []
+                    };
+                }
+                throw error;
+            }
+        }
         const rawSegmentsList = Array.isArray(source?.segments)
             ? source.segments
             : (Array.isArray(source?.segment)
@@ -6672,6 +6691,9 @@ ${activeRegistrySection}`;
             }
         }
 
+        if (mangaContext && shouldDraw) {
+            decisionReason = `共 ${segments.length} 页漫画。` + segments.map((seg, index) => `第 ${index + 1} 页：${seg.reason}`).join('；');
+        }
         const normalized = {
             shouldDraw,
             label: segments.length ? (segments[0].label || '') : (decodeUnicodeEscapes(String(source?.label || source?.title || '')).trim() || '分镜01·剧情插画'),
@@ -6683,6 +6705,7 @@ ${activeRegistrySection}`;
             ...(segments[0]?.mangaPage ? { mangaPage: segments[0].mangaPage, mangaUseCoords: segments[0].mangaUseCoords } : {}),
             anchor: normalizeAnchor(source?.anchor, 1),
             reason: decisionReason,
+            ...(source.story_plan ? { mangaStoryPlan: JSON.parse(JSON.stringify(source.story_plan)) } : {}),
             thinkContent,
             rawOutput: rawOutputText,
             segments,
@@ -9249,6 +9272,7 @@ SCHEMA:
                 const segResult = {
                     ...seg,
                     reason: seg.reason || '',
+                    ...(seg.mangaPage ? { rawOutput: result.rawOutput || '' } : {}),
                     matchedLorebooks: result.matchedLorebooks || [],
                 };
 
@@ -9426,6 +9450,7 @@ SCHEMA:
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
             ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords } : {}),
+            ...(result.mangaStoryPlan ? { mangaStoryPlan: result.mangaStoryPlan } : {}),
             anchor: result.anchor || { type: 'bottom' },
             reason: String(result.reason || '').slice(0, 500),
             thinkContent: String(result.thinkContent || '').slice(0, 1000),
@@ -9659,7 +9684,7 @@ SCHEMA:
     function getEnhancedContextPayload(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
-            v_manga: "Plan comic pages from narrative capacity; use nested page/panels/characters. Preserve event order, visible character identity, props and dialogue ownership. Do not force one page per event or a fixed panel count.",
+            v_manga: "Use story_plan to select current-message visual beats and track inherited state; allocate every draw beat to panel beat_ids, then group panels into readable comic pages. Each segment is one image, not one beat. Return concise facts and page intents, not extended reasoning.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
@@ -9670,7 +9695,7 @@ SCHEMA:
     function getEnhancedContextSystemPrompt(ec) {
         const activeEc = (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
-            v_manga: `漫画分页依据正文事件、文字量与画格容量；相邻事件可同页，单格页可只含一个决定性瞬间。按 page/panels/characters 嵌套协议输出，每格人物数量与画格数无关。核对台本覆盖、空间位置、人物状态和文字归属。`,
+            v_manga: activeEc === 'v_manga' ? getMangaProtocol().planningPrompt() : '',
             v14: "【V14·自适应节拍与极简四公理推演 (分析生图位置与数量)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）完成推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史）：顺着正文时间线地毯式扫描，推演正文中【哪里需要生图】与【需要生几张】：\n  * 哪里生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面构成的，绝不仅有最后的大高潮才算画面！正文中凡是出现以下视觉跃迁节点（①造型服饰高光/换装脱衣/湿身暴露、②动作演进/肢体接触/体位姿态升级、③神态特写/动情红晕/眼神对视、④空间场景或机位景别转换、⑤显式图组[图组XX]/插画），每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜，绝严禁只挑最后一个动作而把前面的精彩画面全部漏掉！每个选定画面精准摘取 10~40 字逐字原文 anchor.text 并拟定 label；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要该生图的地方就必须有图，几张不设死板指标；单一瞬间=1张；多节拍推进=自然拆分多张独立分镜填入 segments，绝不草率压缩为单张；纯抽象理论探讨/毫无画面的纯闲聊才判 0 张（shouldDraw: false）。\n②【主题与分层】：确立主体层级（无近身实体接触则自然省略 Foreground 降级为双层，严禁强凑）。\n③【视点位姿与高差】：明确观察者自身体态（站/坐/跪/躺/覆身）与视点坐标；判定与目标高差——垂直落差 ≥ 50cm 绝对禁止单纯 close-up，强制使用俯/仰角度景别配合透视短缩链（head tilted back / foreshortening）；同高度特写才成立。\n④【视锥探入与受力闭环】：探入实体（手脚/道具/武器/器官）一律从画框下边缘向前上方延伸，严禁上方逆向垂落；必须具备物理接触受力面闭环（抓胯/托脸/握柄/按压），无接触则留白。\n⑤【实体解耦与分级底线】：POV 观察者绝对不出镜、严禁创建为 Character，其探入实体归入 Scene 前景，Scene 负面必补 boy, male 防骨骼分裂；判定 Safe / R / X 并填齐底线负面词。\n⑥【自检输出】：确认字段自洽后直接输出合法 JSON，禁止输出任何多余标记。",
             v13: "【9.7 全息节拍推演与自适应视点动力学七步思维链 (V13 · 推荐)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息节拍与自适应视点强化七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史楼层）：通读并深入推演当前消息正文，准确分析正文中【哪里需要生图】以及【需要生几张】：\n  * 哪里需要生图（视觉全流程节点覆盖法则 · 绝不遗漏）：顺着正文时间线自上而下地毯式扫描，绝不仅有最后的大高潮才算画面！凡是出现具备独立画面表现力与叙事价值的节点，每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜并精准锚定，绝严禁只挑最后一个大动作而掠过前文的精彩画面：\n    - 角色造型与服装高光（登场外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点）；\n    - 动作阶段演进与互动升级（肢体接触、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换、姿势切换）；\n    - 情感张力与神态特写（动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写表情）；\n    - 空间机位转换与环境氛围（场景地点转移、景别与俯仰视角切换）；\n    - 显式媒介内容（如 [图组XX]、[插画]、照片、手机屏幕等）：必须 1:1 提取对应数量的分镜；\n    - 每一个选定画面，必须从 currentMessage 中精准摘取对应段落的逐字原文（10~40字）作为 anchor.text，并拟定 5~15 字中文分镜名（label）；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻数量自然决定——只要该生图的地方就必须有图，几张不设固定指标；正文篇幅紧凑且仅包含单一瞬间动作则提取 1 张；长文多阶段演进自然拆分对应数量的独立分镜全部填入 segments 数组；纯日常闲聊/纯抽象内心独白无画面变化才判 0 张（shouldDraw: false）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间哲学】：\n- 前景四大合法形态：框架借景(door frame/window)/物理承载(desk/steering wheel)/视锥探入实体(anchored limb/prop/weapon)/氛围粒子(rain/cherry blossoms blur)。\n- 空即是景：无近身接触或前景物时自然降级为双层（Middle ground + Background），严禁为了凑层硬编断肢或杂物；前景必须带 strongly out of focus / foreground blur / depth of field 虚化与边缘裁切。\n⑤【观察者体态位姿与自适应人眼视点几何】：\n- 【机位锚定：摄像机 ＝ 观察者双眼当前三维坐标】：POV 摄像机严格绑定观察者当前动作与体态下的真实人眼视点：\n  * 站姿(Standing, ~1.7m)：看站姿为平视(eye level)，看坐姿为微俯视，看跪/趴/躺为大俯视(steep high angle from standing height)；\n  * 坐姿(Sitting, ~1.1m~1.2m)：看坐姿为平视，看跪在腿间/地面为俯视(looking down between knees, from seated height)，看站立为仰视(low angle from below)；\n  * 跪姿(Kneeling, ~0.9m~1.0m)：同跪为平视(kneeling face-to-face)，看站立为大仰视(steep low angle looking up)；\n  * 躺卧/仰卧(Lying on back, ~0.2m~0.4m)：看被跨坐/骑乘为大仰视(steep low angle, looking up from below, lying on back looking up at her)，同躺为枕边平视(eye level, lying side by side)；\n  * 俯身/覆身在上(Leaning over / Missionary)：居高临下直视笼罩(leaning over her, looking down close-up)。\n- ⛔【垂直高差与特写互斥铁律】：凡观察者视点与目标面部存在显著垂直落差（落差 ≥ 50cm，如站看跪/躺、跪看站、仰卧看骑乘），绝对禁止使用单纯 close-up！强制使用带俯仰透视景别（bust shot from above / looking up from below），配合仰头/低头短缩链（head tilted back / head lowered, foreshortening）；平视特写仅限双方同等高度；\n- 【视锥探入与物理受力闭环】：凡探入视锥近景的实体（肢体/道具/武器/器官），其透视起点一律锁定画框下边缘/底角向前上方延伸（仰卧被跨坐时向上托扶），严禁上方逆向垂落；探入必须具备「动作+物理接触受力面/受体」闭环；无接触则自然留白；探入肢体默认单侧防多肢体；\n- 【零角色解耦】：POV 观察者的一切身体部位与探入实体 100% 写入 Scene 或单人交互描述，绝对禁入 characters 数组，Scene 负面补 boy, male 防鬼影与多骨骼分裂。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认观察者位姿与机位视角自洽、高差与景别自洽、探入实体受力闭环、服装四要素签名完备、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
             v11: "【9.7 全息空间七步思维链推演 (V11)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）严格执行 9.7 全息七步推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描 currentMessage 正文（严禁提取历史）：深入推演【哪里需要生图】（顺着正文时间线地毯式扫描造型服饰、肢体动作演进、体位切换、神态特写、显式图组等关键节点，每一个画面节点均提取独立分镜与 10~40 字逐字 anchor.text，绝不只挑最后一幕）与【需要生几张】（数量由视觉节点自然衍生，只要该生图的地方就必须有图；单一瞬间=1张；长文多阶段推进=自然拆分多张独立分镜入 segments；纯抽象无画面闲聊=0张）。\n②【L0~L2 一致性控制与状态流转】：\n- L0 角色一致性：从 recentMessages 继承固有外貌特征与气质气场；同人角色 OOC 严禁脑补，用基础标签+自然语言覆盖差异，UC 排斥原设特征；原创角色必须细节丰满、辨识度高；\n- L1 场景一致性：同空间时间连续沿用环境与光影，换地点新建；同场景光影随时间推移逻辑渐变；\n- L2 瞬态痕迹：汗水(sweat)、红晕(blush)、战损、体液残留(cumdrip)、湿衣、发型散乱遵循渐进消退法则，禁止自动复原；仅当明确触发擦干/整理/沐浴/换衣/休息/第二天时才清零；\n- 多角色特征强隔离：各角色独立追踪，严禁特征串味；分清动作施受方（source#/target#/mutual#）。\n③【Q1~Q3 独立分级判定】：\n- Q1 有裸体？Q2 有性器官露出？Q3 有性行为？全无→Safe | 有裸无器官无行为→R | 有器官或行为→X；\n- Safe 必含 nude, completely nude 到 uc；R 严禁器官直述，强化 see-through, cleavage, wet clothes 等遮挡暗示，uc 填 nipples, genitals, penetration；X 必须器官与行为实写齐全，uc 填 censored, mosaic；体液/事后痕迹显性呈现强制判 R。\n④【全息分层空间矩阵】：\n- 前景(Foreground) / 中景(Middle ground) / 背景(Background), 主体落层自由；【前景克制】：日常对话/开门/对视场景天然为双层，严禁强行编造入镜断手(reaching hands/pov hands)，无直接接触道具时直接省略 Foreground 降为双层！\n⑤【镜头组合与情境速查】：\n- 视角：第三人称客观（角色均入 characters，面对彼此 facing_another/eye_contact）/ 第一人称 POV（视角主人⛔严禁创建为 Character，非直接接触场景严禁生成入镜手，仅保留出镜角色；Scene 负面补 boy/male 防鬼影）；\n- 景别与机位：按情境意图精准匹配景别（特写 close-up/近景 bust_shot/中景 cowboy_shot/全景 full_body/远景 wide_shot）与水平机位（正位/前侧3/4/侧位/后侧3/4/背位）、垂直机位（平视/俯视/仰视/顶视/虫视）。\n⑥【可见性清理与 UC 冲突下放】：\n- 景别裁切下放：特写移除颈以下，Char UC 补 feet, shoes, legs；近景移除腰以下；局部特写剔除无关面貌；朝向背位移除正面细节（Char UC 填 face, front_view）；遮挡闭眼移除瞳色；性质替换束胸换 flat chest；\n- 冲突下放与克制原则：全场不能有进 Scene UC；通用词误伤个别角色时（如混穿）下放进特定角色 Char UC；不堆万能默认词，每个词答得出防什么。\n⑦【自检确认】：确认字段自洽、服装四要素签名完备（带长度/颜色）、左右手动作独立、坐标网格清晰后输出合法 JSON。\n\n严格输出包含所有选定 segment 的合法 JSON，禁止输出任何多余标记。",
@@ -9697,12 +9722,14 @@ SCHEMA:
         }
     }
 
-    function buildRequestPayload(messageId, trigger, { skipLorebook = false } = {}) {
+    function buildRequestPayload(messageId, trigger, { skipLorebook = false, planningFeedback = null } = {}) {
         const store = getStore();
         const current = getMessageSnapshot(messageId);
         if (!current) throw new Error(`未找到当前消息 #${messageId}`);
 
-        const recentMessages = RBQ.api.getRecentMessages(messageId, store.contextCount).map(item => ({
+        const recentMessages = RBQ.api.getRecentMessages(messageId, store.contextCount)
+            .filter(item => !isMangaRequest(store) || item.id == null || Number(item.id) < Number(messageId))
+            .map(item => ({
             id: item.id,
             role: item.is_user ? 'user' : 'assistant',
             name: item.name,
@@ -9716,7 +9743,7 @@ SCHEMA:
 
         const minSeg = Number(store.minSegments) || 0;
         const rawContent = String(current?.mes || '');
-        if (rawContent.trim().length < 5) {
+        if (!rawContent.trim() || (!isMangaRequest(store) && rawContent.trim().length < 5)) {
             throw new Error(`消息 #${messageId} 正文内容为空或尚未生成，无法提取分镜`);
         }
         const photoGroupMatches = rawContent.match(/\[(?:图组|插画|照片|分镜|连拍)\s*\d*[^\]]*\]/g) || [];
@@ -9734,21 +9761,22 @@ SCHEMA:
             },
             recentMessages,
             contextCount: Number(store.contextCount) || 5,
-            ...(detectedPhotoCount > 0 ? {
+            ...(isMangaRequest(store) ? {
+                segmentInstruction: '先选择本楼有叙事价值的节点，再按可读容量分页；一个 segment 是一张漫画图片。提交 story_plan、每页 intent 和各格 beat_ids。普通插画最少分镜数及图组标记不决定漫画页数，重要媒介内容可放入合适画格；不要漏掉正文开端或结尾。'
+            } : detectedPhotoCount > 0 ? {
                 minSegments: detectedPhotoCount,
                 segmentInstruction: `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！【最高警告：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对禁止提取历史楼层（recentMessages）中的图组或场景！】`
             } : minSeg > 0 ? {
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
-            } : isMangaRequest(store) ? {
-                segmentInstruction: '每个 segment 对应一页。按文字量、事件与画格容量分页，不强制每事件一页或每页固定格数；anchor.text 逐字摘录本页对应正文。page 描述全页，panels 描述画格，各格 characters 只列实际可见人物，空镜为 []。'
             } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
                 segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
-            ...getEnhancedContextPayload(store.enhancedContext),
-            ...(isMangaRequest(store) ? { mangaInstruction: getMangaProtocol().systemPrompt() } : {}),
+            ...getEnhancedContextPayload(isMangaRequest(store) ? 'v_manga' : store.enhancedContext),
+            ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
+            ...(isMangaRequest(store) && planningFeedback ? { mangaPlanCorrection: planningFeedback } : {}),
             outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
@@ -10067,7 +10095,10 @@ SCHEMA:
     function getDrawSpecTool(store) {
         if (!isMangaRequest(store)) return DRAW_SPEC_TOOL;
         const tool = JSON.parse(JSON.stringify(DRAW_SPEC_TOOL));
-        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema();
+        tool.function.parameters.properties.story_plan = getMangaProtocol().planSchema();
+        tool.function.parameters.properties.reason.description = 'Brief summary of selected story beats, actual page count and page allocation; no extended reasoning.';
+        tool.function.parameters.required = ['shouldDraw', 'story_plan', 'segments'];
+        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema(true);
         tool.function.parameters.properties.segments.description = 'Comic pages in narrative order; each page contains panels and each panel contains its visible characters.';
         return tool;
     }
@@ -10322,18 +10353,18 @@ SCHEMA:
         }
     }
 
-    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false } = {}) {
+    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, planningFeedback = null } = {}) {
         const store = getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
         if (!modelName) throw new Error('请先填写模型名称');
         checkUrlSafety(url);
-        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook });
+        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook, planningFeedback });
         logTaggerPayload('tagger request body', payload);
 
         const systemPrompt = getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64));
-        const ecSysPrompt = getEnhancedContextSystemPrompt(store.enhancedContext);
+        const ecSysPrompt = getEnhancedContextSystemPrompt(isMangaRequest(store) ? 'v_manga' : store.enhancedContext);
         const toolRule = store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
 
         // Combine all system directives into the top system message so Gemini never errors with "System instruction only at start"
@@ -10386,7 +10417,7 @@ SCHEMA:
             if (store.lorebookWafRetry && isInputWafHttpError && !retryWithoutLorebook && hasLorebookAttached) {
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
+                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, planningFeedback });
             }
             throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
         }
@@ -10468,7 +10499,7 @@ SCHEMA:
                         if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${sseState.safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
+                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, planningFeedback });
                         }
 
                         const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${sseState.safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
@@ -10639,7 +10670,7 @@ SCHEMA:
                             if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
                                 console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
                                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
+                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, planningFeedback });
                             }
                             const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
                             err.debugInfo = {
@@ -10687,7 +10718,7 @@ SCHEMA:
         }
 
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? payload.currentMessage : null));
         logTaggerPayload('tagger normalized result', normalized);
         if (retryWithoutLorebook) {
             toastr.warning('由于世界书含受限敏感词，本次已自动剥离世界书保底完成生图分镜', PLUGIN_NAME);
@@ -10695,7 +10726,7 @@ SCHEMA:
         return normalized;
     }
 
-    async function callCustomHttp(messageId, trigger, { signal } = {}) {
+    async function callCustomHttp(messageId, trigger, { signal, planningFeedback = null } = {}) {
         const store = getStore();
         const url = String(store.customUrl || '').trim();
         if (!url) throw new Error('请先填写自定义 HTTP 接口地址');
@@ -10705,7 +10736,7 @@ SCHEMA:
             const headerName = store.customApiKeyHeader || 'Authorization';
             headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
         }
-        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger);
+        const { payload, rawLorebooks } = buildRequestPayload(messageId, trigger, { planningFeedback });
         logTaggerPayload('tagger request body', payload);
         const response = await smartFetch(url, {
             method: 'POST',
@@ -10716,7 +10747,7 @@ SCHEMA:
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await safeReadJsonResponse(response);
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? payload.currentMessage : null));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
@@ -10726,9 +10757,19 @@ SCHEMA:
         if (store.lorebookEnabled) {
             try { await warmLorebookMemoryCache(); } catch (_e) {}
         }
-        return store.provider === 'custom'
-            ? callCustomHttp(messageId, trigger, { signal })
-            : callOpenAiCompatible(messageId, trigger, { signal });
+        const request = options => store.provider === 'custom'
+            ? callCustomHttp(messageId, trigger, options)
+            : callOpenAiCompatible(messageId, trigger, options);
+        try {
+            return await request({ signal });
+        } catch (error) {
+            if (error.code !== 'MANGA_PLAN_INVALID' || signal?.aborted || !isMangaRequest(store)) throw error;
+            debugInfo('漫画规划未通过校验，尝试一次修正', error.mangaPlanFeedback);
+            return request({ signal, planningFeedback: {
+                instruction: '上一版规划未通过校验。结合当前正文重新核对选取、分页和引用，修正下列错误后返回完整 JSON。不要只返回补丁，不要通过删除关键剧情规避错误。',
+                issue: error.mangaPlanFeedback, previousPlan: error.mangaRejectedPlan
+            } });
+        }
     }
 
     function visibleTextNodes(root) {
@@ -14359,13 +14400,13 @@ SCHEMA:
                 recentMessages,
                 lorebook,
                 contextCount: useContext ? (Number(store.contextCount) || 5) : 1,
-                ...(minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `\u672c\u6b21\u8bf7\u6c42\u8981\u6c42\u81f3\u5c11\u751f\u6210 ${minSeg} \u4e2a segment \u5206\u955c\u3002` } : {}),
+                ...(!isMangaRequest(store) && minSeg > 0 ? { minSegments: minSeg, segmentInstruction: `\u672c\u6b21\u8bf7\u6c42\u8981\u6c42\u81f3\u5c11\u751f\u6210 ${minSeg} \u4e2a segment \u5206\u955c\u3002` } : {}),
                 manualMode: true,
                 manualInstruction: useContext
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
-                ...getEnhancedContextPayload(store.enhancedContext),
-            ...(isMangaRequest(store) ? { mangaInstruction: getMangaProtocol().systemPrompt() } : {}),
+                ...getEnhancedContextPayload(isMangaRequest(store) ? 'v_manga' : store.enhancedContext),
+                ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
                 outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -14419,7 +14460,7 @@ SCHEMA:
 
             // Build messages exactly like callOpenAiCompatible / callCustomHttp
             const systemPrompt = getSystemPromptWithPresets(store, !!manualPayload.characterCardInfo);
-            const ecSysPrompt = getEnhancedContextSystemPrompt(store.enhancedContext);
+            const ecSysPrompt = getEnhancedContextSystemPrompt(isMangaRequest(store) ? 'v_manga' : store.enhancedContext);
             const fullSystemPrompt = [systemPrompt, ecSysPrompt].filter(Boolean).join('\n\n');
 
             const jailbreakPrompt = getActiveJailbreakPrompt(store);
@@ -14463,7 +14504,7 @@ SCHEMA:
             }
 
             // Normalize with lorebook (same as normal flow — applies character memory)
-            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
+            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? manualPayload.currentMessage : null));
             logTaggerPayload('manual draw tagger result', normalized);
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
@@ -15859,6 +15900,7 @@ SCHEMA:
             contextCount: 1,
             manualMode: true,
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
+            ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
             outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
@@ -15869,7 +15911,7 @@ SCHEMA:
 
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt() : `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
+        const systemPrompt = isMangaRequest(store) ? getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() : `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
 
 请分析用户的场景描述，并将其转化为如下 JSON 结构：
 {
@@ -15937,7 +15979,7 @@ SCHEMA:
             json = await safeReadJsonResponse(response);
         }
 
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? manualPayload.currentMessage : null));
         logTaggerPayload('test draw tagger result', normalized);
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {

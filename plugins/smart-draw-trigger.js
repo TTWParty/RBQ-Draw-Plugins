@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.2.1';
+    const PLUGIN_VERSION = '6.2.2';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2758,7 +2758,13 @@ Zimage 擅长理解复杂的英文长句和语境。
         if (isMangaRequest(store)) {
             const references = profileEntries
                 .map(([name, p]) => ({ name, base: p.baseTags || '', outfit: p.currentOutfit || '' }));
-            return '【漫画人物资料参考】以下为身份及衣着资料。按当前镜头的可见范围写入各人物 positive，保留剧情已生效的变化；不要将完整档案机械复制进局部特写。人物姓名仅作关联。\n' + JSON.stringify(references);
+            return `【漫画角色记忆】
+以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。按镜头可见范围使用已有外貌，剧情变化优先；特写不要强塞画外服装。
+本次同时输出 character_memory 数组，每人最多一项 {name,base,outfit}，不另发请求。只提交出镜且需要首次建档、补全空白资料或更新衣着的人物；无更新写 []。
+base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；原创姓名不作标签，同人可保留可靠角色标签。新人物没有明示外貌时可做克制且一致的视觉设定；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留。
+outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
+base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
+已有资料：` + JSON.stringify(references);
         }
 
         let activeRegistrySection = '';
@@ -6421,6 +6427,80 @@ ${activeRegistrySection}`;
         return protocol;
     }
 
+    function getMangaMemorySchema() {
+        return {
+            type: 'array', description: 'Only when character memory is enabled: one update per named visible person; [] if unchanged. Not render captions.',
+            items: { type: 'object', properties: {
+                name: { type: 'string', description: 'Stable name matching panels[].characters[].name, never a panel/character ID' },
+                base: { type: 'string', description: 'Reusable identity and appearance for a new profile; empty if already known. No shot/action/dialogue/style.' },
+                outfit: { type: 'string', description: 'Complete known clothing at final appearance, only for initial clothing or explicit change; empty preserves saved clothing.' }
+            }, required: ['name', 'base', 'outfit'] }
+        };
+    }
+
+    function getMangaOutputSchema(store = getStore()) {
+        const schema = getMangaProtocol().outputSchema();
+        if (store.characterMemoryEnabled) {
+            schema.character_memory = [{ name: '与格内人物一致的稳定姓名', base: '首次建档的固定外貌；已有则为空', outfit: '首次着装或明确变化后的完整已知着装；无更新则为空' }];
+        }
+        return schema;
+    }
+
+    // Learn once per response, after all pages compile. Never infer persistent traits from shot captions.
+    function learnMangaCharacterMemory(source, segments, context) {
+        if (!getStore().characterMemoryEnabled || !segments.some(s => s.mangaPage)) return;
+        if (!Array.isArray(source.character_memory)) {
+            debugInfo('漫画角色记忆：模型未返回 character_memory，本次仍使用有效页格生图');
+            return;
+        }
+        const validName = value => {
+            if (typeof value !== 'string') return '';
+            const name = getCanonicalCharName(value);
+            return !name || isJunkCharacterName(name) || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(name) ? '' : name;
+        };
+        const visible = new Map();
+        for (const segment of segments) {
+            for (const panel of segment.mangaPage?.panels || []) {
+                for (const person of panel.characters) {
+                    const name = validName(person.name);
+                    if (name) visible.set(name.toLowerCase(), name);
+                }
+            }
+        }
+        const cleanField = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
+        const updates = new Map();
+        for (const row of source.character_memory) {
+            const key = validName(row?.name).toLowerCase();
+            const name = visible.get(key);
+            if (!name) continue;
+            const next = updates.get(key) || { name, base: '', outfit: '' };
+            next.base ||= cleanField(row.base);
+            next.outfit = cleanField(row.outfit) || next.outfit;
+            updates.set(key, next);
+        }
+        const messageId = context?.messageId;
+        const hasMessageId = Number.isInteger(messageId) && messageId >= 0;
+        for (const row of updates.values()) {
+            const profile = getCharacterProfile(row.name);
+            const base = profile?.baseTags ? '' : row.base;
+            // Re-parsing an older floor must not revert a later outfit learned by manga mode.
+            const older = hasMessageId && Number.isInteger(profile?.mangaOutfitMessageId) && messageId < profile.mangaOutfitMessageId;
+            const outfit = older ? '' : row.outfit;
+            if (!base && (!outfit || outfit === profile?.currentOutfit)) {
+                if (outfit && hasMessageId && profile.mangaOutfitMessageId !== messageId) {
+                    profile.mangaOutfitMessageId = messageId;
+                    save();
+                }
+                continue;
+            }
+            updateCharacterProfile(row.name, base, outfit, null, true);
+            if (outfit && hasMessageId) {
+                const saved = getCharacterProfile(row.name);
+                if (saved) { saved.mangaOutfitMessageId = messageId; save(); }
+            }
+        }
+    }
+
     function normalizeMangaSegment(item, index = 0) {
         const compiled = getMangaProtocol().compile(item);
         return {
@@ -6711,6 +6791,7 @@ ${activeRegistrySection}`;
             }];
         }
 
+        if (normalized.shouldDraw) learnMangaCharacterMemory(source, segments, mangaContext);
         return normalized;
     }
 
@@ -9766,7 +9847,7 @@ SCHEMA:
             }),
             ...getEnhancedContextPayload(isMangaRequest(store) ? 'v_manga' : store.enhancedContext),
             ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
-            outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
+            outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
                 segments: ((store.enhancedContext && store.enhancedContext !== 'off') || effectiveMinSeg > 1) ? [
@@ -10086,7 +10167,14 @@ SCHEMA:
         const tool = JSON.parse(JSON.stringify(DRAW_SPEC_TOOL));
         tool.function.parameters.properties.reason.description = 'Brief summary of selected story beats, actual page count and page allocation; no extended reasoning.';
         tool.function.parameters.required = ['shouldDraw', 'segments'];
+        if (store.characterMemoryEnabled) {
+            tool.function.parameters.properties.character_memory = getMangaMemorySchema();
+            tool.function.parameters.required.push('character_memory');
+        }
         tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema();
+        if (store.characterMemoryEnabled) {
+            tool.function.parameters.properties.segments.items.properties.panels.items.properties.characters.items.required.push('name');
+        }
         tool.function.parameters.properties.segments.description = 'Comic pages in narrative order; each page contains panels and each panel contains its visible characters.';
         return tool;
     }
@@ -10706,7 +10794,7 @@ SCHEMA:
         }
 
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? payload.currentMessage : null));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? { ...payload.currentMessage, messageId: payload.messageId } : null));
         logTaggerPayload('tagger normalized result', normalized);
         if (retryWithoutLorebook) {
             toastr.warning('由于世界书含受限敏感词，本次已自动剥离世界书保底完成生图分镜', PLUGIN_NAME);
@@ -10735,7 +10823,7 @@ SCHEMA:
         if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status} ${await response.text()}`);
         const json = await safeReadJsonResponse(response);
         logTaggerPayload('tagger raw response', json);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? payload.currentMessage : null));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? { ...payload.currentMessage, messageId: payload.messageId } : null));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
@@ -14385,7 +14473,7 @@ SCHEMA:
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
                 ...getEnhancedContextPayload(isMangaRequest(store) ? 'v_manga' : store.enhancedContext),
                 ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
-                outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
+                outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                         characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'string', uc: 'string' }]
@@ -15879,7 +15967,7 @@ SCHEMA:
             manualMode: true,
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
             ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
-            outputSchema: isMangaRequest(store) ? getMangaProtocol().outputSchema() : {
+            outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                     characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'object | string', uc: 'string' }]

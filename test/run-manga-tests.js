@@ -41,6 +41,11 @@ Object.assign(sdt, {
 RBQ.api.getRecentMessages = () => [];
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function getEnhancedContextPayload('), sdtSource.indexOf('    function splitTurnsByColon(')), sdt);
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function sanitizeSdtResult('), sdtSource.indexOf('    function saveMsgExtraSdt(')), sdt);
+// Exercise the real chat-scoped profile store, updater and wardrobe archiver, not a memory mock.
+let memoryChat = 'manga-memory-test', profileRefreshes = 0, profileSaves = 0;
+Object.assign(sdt, { getChatKey: () => memoryChat, save: () => { profileSaves++; }, refreshCharacterProfileListUi: () => { profileRefreshes++; } });
+vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function isJunkCharacterName('), sdtSource.indexOf('    function getActiveCharacterName(')), sdt);
+vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function getCharacterProfiles('), sdtSource.indexOf('    function addCharacterWardrobeOutfit(')), sdt);
 const sdtHook = hooks[1];
 const person = (id, hair, text = '') => ({ character_id: id, name: id === 'C1' ? 'Ami (original)' : 'Mei (original)',
     positive: `girl, ${hair} hair, looking at another` + (text ? `, BubbleType: 通常吹き出し, Layout: 縦書き, Text: ${text}` : ''),
@@ -265,6 +270,94 @@ test('tool responses accept final pages directly without source or beat referenc
     const wrapped = { choices: [{ message: { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(result) } }] } }] };
     assert.equal(sdt.normalizeTaggerResult(wrapped, [], { content: story }).segments.length, 1);
 });
+function withMemory(run) {
+    const prior = settings._smartDrawTrigger;
+    settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', characterMemoryEnabled: true, characterProfiles: {} };
+    profileRefreshes = 0; profileSaves = 0; memoryChat = 'manga-memory-test';
+    try { run(); } finally { settings._smartDrawTrigger = prior; memoryChat = 'manga-memory-test'; }
+}
+const memoryResponse = () => ({ shouldDraw: true, segments: [fixture(), fixture()], character_memory: [
+    { name: 'Ami (original)', base: 'girl, long black hair, green eyes', outfit: 'white blouse, blue skirt, brown shoes' },
+    { name: 'Mei', base: 'girl, short brown hair, blue eyes', outfit: 'red dress, black boots' }
+] });
+test('manga creates chat-scoped characters once across panels/pages and archives initial clothes', () => withMemory(() => {
+    const response = memoryResponse(), before = response.segments[0].panels[0].characters[0].positive;
+    const output = sdt.normalizeTaggerResult(response, [], { content: story, messageId: 3 });
+    const profiles = sdt.getCharacterProfiles();
+    assert.deepEqual(Object.keys(profiles), ['Ami', 'Mei']);
+    assert.equal(profileRefreshes, 2);
+    assert.ok(profileSaves >= 2);
+    assert.equal(profiles.Ami.baseTags, response.character_memory[0].base);
+    assert.equal(profiles.Ami.wardrobe.length, 1);
+    assert.equal(profiles.Ami.currentOutfit, response.character_memory[0].outfit);
+    assert.equal(output.segments[0].characters[0].caption, before);
+    assert.doesNotMatch(output.segments[0].characters[0].caption, /brown shoes/);
+    const nextRequest = sdt.buildRequestPayload(4, { type: 'auto' }).payload;
+    assert.equal(nextRequest.characterMemory.find(p => p.name === 'Ami').base, profiles.Ami.baseTags);
+    assert.match(sdt.getSystemPromptWithPresets(settings._smartDrawTrigger), /long black hair/);
+    memoryChat = 'another-chat';
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()), []);
+}));
+test('closeups preserve full wardrobe; explicit outfit updates preserve identity and ignore older floors', () => withMemory(() => {
+    sdt.normalizeTaggerResult(memoryResponse(), [], { content: story, messageId: 3 });
+    const base = sdt.getCharacterProfile('Ami').baseTags;
+    const closeup = memoryResponse();
+    closeup.segments[0].panels[0].characters[0].positive = 'girl, face close-up, collar, crying, Text: 别走';
+    closeup.character_memory = [{ name: 'ami', base: 'girl, short pink hair', outfit: '' }];
+    sdt.normalizeTaggerResult(closeup, [], { content: story, messageId: 4 });
+    assert.equal(sdt.getCharacterProfile('Ami').baseTags, base);
+    assert.equal(sdt.getCharacterProfile('Ami').currentOutfit, 'white blouse, blue skirt, brown shoes');
+    closeup.character_memory[0].outfit = 'black coat, white shirt, dark trousers, boots';
+    sdt.normalizeTaggerResult(closeup, [], { content: story, messageId: 8 });
+    const profile = sdt.getCharacterProfile('Ami');
+    assert.equal(profile.currentOutfit, closeup.character_memory[0].outfit);
+    assert.equal(profile.wardrobe.length, 2);
+    sdt.normalizeTaggerResult(memoryResponse(), [], { content: story, messageId: 3 });
+    assert.equal(profile.currentOutfit, closeup.character_memory[0].outfit);
+    assert.equal(profile.wardrobe.length, 2);
+    assert.equal(profile.baseTags, base);
+}));
+test('memory ignores IDs, absent people and dialogue-contaminated fields; duplicate updates save once', () => withMemory(() => {
+    const response = memoryResponse();
+    response.segments[0].panels[0].characters.push({ character_id: 'C3', name: 'C3', positive: 'girl', negative: '' });
+    response.character_memory.push(
+        { name: 'C3', base: 'girl', outfit: 'shirt' },
+        { name: 'Panel 1', base: 'girl', outfit: 'shirt' },
+        { name: 'Not in any panel', base: 'girl', outfit: 'shirt' },
+        { name: '__proto__', base: 'girl', outfit: 'shirt' },
+        { name: 'Ami', base: 'girl, Text: 台词不能建档', outfit: 'BubbleType: 通常吹き出し' }
+    );
+    sdt.normalizeTaggerResult(response, [], { content: story });
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()), ['Ami', 'Mei']);
+    assert.equal(profileRefreshes, 2);
+    assert.doesNotMatch(sdt.getCharacterProfile('Ami').baseTags, /Text/);
+    assert.doesNotMatch(sdt.getCharacterProfile('Ami').currentOutfit, /BubbleType/);
+}));
+test('memory is requested only when enabled and missing metadata never blocks valid pages', () => withMemory(() => {
+    let schema = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters;
+    assert.ok(schema.required.includes('character_memory'));
+    assert.ok(sdt.getMangaOutputSchema().character_memory);
+    const plain = memoryResponse(); delete plain.character_memory;
+    assert.equal(sdt.normalizeTaggerResult(plain, [], { content: story }).segments.length, 2);
+    assert.equal(profileRefreshes, 0);
+    settings._smartDrawTrigger.characterMemoryEnabled = false;
+    schema = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters;
+    assert.equal(schema.properties.character_memory, undefined);
+    assert.equal(sdt.getMangaOutputSchema().character_memory, undefined);
+    sdt.normalizeTaggerResult(memoryResponse(), [], { content: story });
+    assert.equal(profileRefreshes, 0);
+}));
+test('invalid later page causes no partial memory writes and tool results create the same profiles', () => withMemory(() => {
+    const response = memoryResponse(); response.segments[1].panels[0].characters = null;
+    assert.throws(() => sdt.normalizeTaggerResult(response, [], { content: story }), /characters/);
+    assert.equal(profileRefreshes, 0);
+    const wrapped = { choices: [{ message: { tool_calls: [{ function: {
+        name: 'generate_draw_spec', arguments: JSON.stringify(memoryResponse())
+    } }] } }] };
+    sdt.normalizeTaggerResult(wrapped, [], { content: story });
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()), ['Ami', 'Mei']);
+    assert.equal(profileRefreshes, 2);
+}));
 test('new defaults and every built-in template use explicit nested characters', () => {
     assert.ok(manga.createInitialStudioPanels().every(p => Array.isArray(p.characters)));
     for (const preset of manga.presets) {
@@ -328,6 +421,15 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(requests[0].mangaPlanCorrection, undefined);
         console.log('PASS production custom-HTTP path accepts B6 source mismatch with one call'); passed++;
 
+        settings._smartDrawTrigger.characterMemoryEnabled = true;
+        installResponse(() => memoryResponse());
+        await sdt.callTagger(1, { type: 'auto' });
+        assert.equal(requests.length, 1);
+        assert.ok(requests[0].outputSchema.character_memory);
+        assert.match(requests[0].mangaInstruction, /漫画角色记忆/);
+        assert.equal(sdt.getCharacterProfile('Ami').baseTags, memoryResponse().character_memory[0].base);
+        console.log('PASS custom-HTTP creates reusable profiles in the existing single request'); passed++;
+
         installResponse(() => ({ shouldDraw: true, segments: [] }));
         await assert.rejects(sdt.callTagger(1, { type: 'auto' }), /shouldDraw\/segments/);
         assert.equal(requests.length, 1, 'malformed responses are not automatically regenerated');
@@ -351,10 +453,13 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 assert.equal(body.messages[0].role, 'system');
                 assert.equal(body.messages[0].content.split('你是漫画分镜导演').length - 1, 1);
                 assert.equal(body.messages[0].content.split('【漫画前情与本楼规划】').length - 1, 1);
+                assert.match(body.messages[0].content, /漫画角色记忆/);
                 const request = JSON.parse(body.messages[1].content);
                 assert.equal(request.mangaInstruction, undefined);
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('story_plan'));
-                const output = { shouldDraw: true, segments: planned().segments };
+                if (toolCallMode) assert.ok(body.tools[0].function.parameters.required.includes('character_memory'));
+                const output = memoryResponse();
+                assert.ok(request.outputSchema.character_memory);
                 assert.equal(request.outputSchema.story_plan, undefined);
                 assert.equal(request.mangaPlanCorrection, undefined);
                 return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ choices: [{ message: toolCallMode
@@ -363,6 +468,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             };
             assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
             assert.equal(calls, 1);
+            assert.ok(sdt.getCharacterProfile('Mei').baseTags);
         }
         console.log('PASS production OpenAI JSON and tool requests render final pages in one call'); passed++;
     } finally { settings._smartDrawTrigger = oldSettings; sdt.getMessageSnapshot = snapshot; }

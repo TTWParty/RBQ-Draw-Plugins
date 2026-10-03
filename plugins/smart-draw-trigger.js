@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.3.1';
+    const PLUGIN_VERSION = '6.3.2';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3372,7 +3372,7 @@ ${activeRegistrySection}`;
         }
     }
 
-    // Read-only references for standalone manga entry points (Studio and test draw).
+    // References for standalone manga entry points; obsolete versioned states are pruned on read.
     function collectMangaReferenceData(content = '') {
         const references = {};
         const cards = collectCharacterCardInfo(content, []);
@@ -6457,18 +6457,61 @@ ${getCharacterMemoryTagSpecification()}
         return schema;
     }
 
+    function getMangaMessageVersion(messageId) {
+        if (!Number.isInteger(messageId) || messageId < 0) return null;
+        // Read the stored message, not the DOM (which may contain injected image cards).
+        const message = typeof RBQ.api.getMessage === 'function' ? RBQ.api.getMessage(messageId) : getMessageSnapshot(messageId);
+        if (!message) return 'missing';
+        return hashText(JSON.stringify([message.mes || '', message.swipe_id ?? null, message.name || '', !!message.is_user]));
+    }
+
+    function invalidateMangaStateHistory(fromMessageId = Infinity) {
+        const profiles = Object.values(getCharacterProfiles()).filter(p => p && typeof p === 'object');
+        const versions = new Map();
+        for (const profile of profiles) for (const entry of Array.isArray(profile.mangaStateHistory) ? profile.mangaStateHistory : []) {
+            if (!entry?.messageVersion || !Number.isInteger(entry.messageId) || entry.messageId < 0) continue; // Legacy records have no provable source version.
+            if (!versions.has(entry.messageId)) versions.set(entry.messageId, getMangaMessageVersion(entry.messageId));
+            if (versions.get(entry.messageId) !== entry.messageVersion) fromMessageId = Math.min(fromMessageId, entry.messageId);
+        }
+        if (!Number.isFinite(fromMessageId)) return;
+        let changed = false;
+        for (const profile of profiles) {
+            const history = (Array.isArray(profile.mangaStateHistory) ? profile.mangaStateHistory : [])
+                .filter(e => e && Number.isInteger(e.messageId) && e.before && e.after).sort((a, b) => a.messageId - b.messageId);
+            if (!history.some(e => e.messageId >= fromMessageId)) continue;
+            const retained = history.filter(e => e.messageId < fromMessageId);
+            const state = retained.at(-1)?.after || history[0].before;
+            // Preserve a manual wardrobe selection made outside the recorded timeline.
+            if (profile.currentOutfit === history.at(-1).after.outfit) {
+                profile.currentOutfit = state.outfit || '';
+                profile.currentOutfitId = (profile.wardrobe || []).find(w => w.outfit === profile.currentOutfit)?.id || '';
+            }
+            profile.mangaStateHistory = retained;
+            profile.mangaBaselineState = { ...history[0].before };
+            if (retained.length) profile.mangaOutfitMessageId = retained.at(-1).messageId;
+            else delete profile.mangaOutfitMessageId;
+            changed = true;
+        }
+        if (changed) { save(); refreshCharacterProfileListUi(); }
+    }
+
     // Use the state preceding this floor, not the latest state of a future floor being re-parsed.
     function getMangaMemoryReferences(messageId) {
+        invalidateMangaStateHistory();
         const chronological = Number.isInteger(messageId) && messageId >= 0;
         return Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
             const history = (Array.isArray(p.mangaStateHistory) ? p.mangaStateHistory : [])
                 .filter(e => Number.isInteger(e.messageId) && e.before && e.after).sort((a, b) => a.messageId - b.messageId);
             const latest = history.at(-1);
             const preceding = chronological ? history.filter(e => e.messageId < messageId).at(-1) : latest;
-            const state = { ...(preceding?.after || history[0]?.before || {}) };
+            const state = { ...(preceding?.after || history[0]?.before || p.mangaBaselineState || {}) };
             // A wardrobe selection outside the manga timeline remains an explicit current override.
             if ((!chronological || !latest || messageId > latest.messageId) && latest
                 && p.currentOutfit !== latest.after.outfit) {
+                state.outfit = p.currentOutfit || '';
+                state.outfitSet = true;
+            }
+            if (!latest && p.mangaBaselineState && p.currentOutfit !== state.outfit) {
                 state.outfit = p.currentOutfit || '';
                 state.outfitSet = true;
             }
@@ -6478,15 +6521,24 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function captureMangaRequestContext(currentMessage, messageId) {
+        const references = getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [];
         return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
+            messageVersion: getMangaMessageVersion(messageId),
+            currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
+                [getCanonicalCharName(profile.displayName || name).toLowerCase(), profile.currentOutfit || ''])),
             memoryEnabled: !!getStore().characterMemoryEnabled,
-            references: JSON.parse(JSON.stringify(getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [])) };
+            references: JSON.parse(JSON.stringify(references)) };
     }
 
     function assertMangaRequestContext(context) {
         if (context?.chatKey !== undefined && (context.chatKey !== getChatKey()
             || context.epoch !== (captureMangaRequestContext.epoch || 0))) {
             const error = new Error('聊天已切换，已停止旧请求回填与角色记忆写入');
+            error.name = 'AbortError';
+            throw error;
+        }
+        if (context?.messageVersion != null && context.messageVersion !== getMangaMessageVersion(context.messageId)) {
+            const error = new Error('正文或回复分支已改变，已停止旧漫画请求回填，请重新解析当前正文');
             error.name = 'AbortError';
             throw error;
         }
@@ -6555,8 +6607,9 @@ ${getCharacterMemoryTagSpecification()}
             const finalOutfit = typeof after.outfit === 'string' ? after.outfit : row.outfit;
             // Re-parsing an older floor must not revert a later outfit learned by manga mode.
             const older = hasMessageId && Number.isInteger(profile?.mangaOutfitMessageId) && messageId < profile.mangaOutfitMessageId;
-            const requested = context?.references?.find(ref => getCanonicalCharName(ref.name).toLowerCase() === row.name.toLowerCase());
-            const changedDuringRequest = profile && requested && profile.currentOutfit !== requested.outfit;
+            const requestedOutfits = context?.currentOutfits;
+            const changedDuringRequest = profile && requestedOutfits && Object.hasOwn(requestedOutfits, row.name.toLowerCase())
+                && profile.currentOutfit !== requestedOutfits[row.name.toLowerCase()];
             const preserveCurrent = older || changedDuringRequest;
             const outfit = preserveCurrent ? '' : finalOutfit;
             if (base || (outfit && outfit !== profile?.currentOutfit)) updateCharacterProfile(row.name, base, outfit, null, true);
@@ -6585,7 +6638,7 @@ ${getCharacterMemoryTagSpecification()}
             if (hasMessageId && (snapshot || row.outfit)) {
                 const history = Array.isArray(saved.mangaStateHistory) ? saved.mangaStateHistory : [];
                 saved.mangaStateHistory = history.filter(e => e.messageId !== messageId);
-                saved.mangaStateHistory.push({ messageId, before, after });
+                saved.mangaStateHistory.push({ messageId, messageVersion: context?.messageVersion ?? getMangaMessageVersion(messageId), before, after });
                 saved.mangaStateHistory.sort((a, b) => a.messageId - b.messageId);
                 if (!older) saved.mangaOutfitMessageId = messageId;
                 save();
@@ -6601,6 +6654,7 @@ ${getCharacterMemoryTagSpecification()}
             prompt: [compiled.base, ...compiled.characters.map(c => c.caption)].filter(Boolean).join(' | '),
             reason: String(item.intent || ''),
             negative: String(item.negative || ''), mangaPage: JSON.parse(JSON.stringify(item)),
+            mangaWarnings: compiled.warnings || [],
             mangaUseCoords: compiled.useCoords
         };
     }
@@ -6895,7 +6949,16 @@ ${getCharacterMemoryTagSpecification()}
             normalized.memoryWarnings = [...new Set(memoryWarnings)];
             normalized.reason += '\n角色记忆提示：' + normalized.memoryWarnings.join('；');
         }
+        const renderWarnings = segments.flatMap((segment, index) => (segment.mangaWarnings || []).map(w => `Page ${index + 1}: ${w}`));
+        if (renderWarnings.length) {
+            normalized.renderWarnings = [...new Set(renderWarnings)];
+            normalized.reason += '\n漫画提示：' + normalized.renderWarnings.join('；');
+        }
         if (normalized.shouldDraw) learnMangaCharacterMemory(source, segments, mangaContext);
+        else if (mangaContext && getStore().characterMemoryEnabled && mangaContext.memoryEnabled !== false
+            && Number.isInteger(mangaContext.messageId) && mangaContext.messageId >= 0) {
+            invalidateMangaStateHistory(mangaContext.messageId);
+        }
         // These temporary assembly records are not render data; do not duplicate profiles in every cached appearance.
         for (const segment of segments) for (const panel of segment.mangaPage?.panels || []) for (const person of panel.characters) {
             delete person._mangaAppearance;
@@ -9271,7 +9334,7 @@ SCHEMA:
         if (segmentResult?.mangaPage || (isMangaRequest() && Array.isArray(segmentResult?.characters))) {
             pendingNaiCharData = {
                 manga: true, useCoords: !!segmentResult.mangaUseCoords,
-                characters: (segmentResult.characters || []).map(c => ({ caption: c.caption, center: c.center, uc: c.uc || '' }))
+                characters: (segmentResult.characters || []).map(c => ({ name: c.name || c._rawName, caption: c.caption, center: c.center, uc: c.uc || '' }))
             };
             return;
         }
@@ -9333,7 +9396,7 @@ SCHEMA:
 
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
         pendingNaiCharData = null; // consume
-        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true) : payload;
+        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true, characters.map(c => c.name)) : payload;
     });
 
     /* ── ComfyUI payload hook: inject char placeholders ── */

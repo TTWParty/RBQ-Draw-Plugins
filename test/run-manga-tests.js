@@ -31,6 +31,7 @@ const sdt = vm.createContext({ RBQ, console: silentConsole, getStore: () => sett
     sdtParseCoord: c => typeof c === 'object' ? c : { x: 0.5, y: 0.5 }
 });
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function isMangaRequest('), sdtSource.indexOf('    function isMeaningfulLorebookEntry(')), sdt);
+vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function hashText('), sdtSource.indexOf('    function parseMarkers(')), sdt);
 vm.runInContext('let pendingNaiCharData = null;\n' + sdtSource.slice(sdtSource.indexOf('    function getFinalPrompt('), sdtSource.indexOf('    /* ── ComfyUI payload hook')), sdt);
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    const DRAW_SPEC_TOOL ='), sdtSource.indexOf('    const DRAW_SPEC_TOOL_RULE')), sdt);
 Object.assign(sdt, {
@@ -669,6 +670,168 @@ test('chat switches including A to B to A invalidate captured response contexts'
     assert.throws(() => sdt.normalizeTaggerResult(memoryResponse(), [], context), /聊天已切换/);
     assert.deepEqual(Object.keys(sdt.getCharacterProfiles()), []);
 }));
+test('same-floor reparse compares live wardrobe at request start, not the pre-floor outfit', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina', 'girl, blonde hair, updo', 'red dress');
+    const response = outfit => ({ shouldDraw: true, segments: [appearancePage([{ visible: allParts, state: { outfit } }])] });
+    sdt.normalizeTaggerResult(response('blue coat'), [], sdt.captureMangaRequestContext({ content: story }, 1));
+    const context = sdt.captureMangaRequestContext({ content: story }, 1);
+    assert.equal(context.references[0].outfit, 'red dress');
+    assert.equal(context.currentOutfits.mina, 'blue coat');
+    const result = sdt.normalizeTaggerResult(response('green coat'), [], context);
+    assert.match(result.characters[0].caption, /green coat/);
+    assert.equal(sdt.getCharacterProfile('Mina').currentOutfit, 'green coat');
+    assert.equal(sdt.getMangaMemoryReferences(2)[0].outfit, 'green coat');
+}));
+test('no-draw reparse rolls back that floor and dependent later states', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina', 'girl, blonde hair, updo', 'red dress');
+    sdt.normalizeTaggerResult({ shouldDraw: true, segments: [appearancePage([{ visible: allParts, state: { hair_style: 'hair down', outfit: 'blue coat' } }])] }, [], { content: story, messageId: 1 });
+    sdt.normalizeTaggerResult({ shouldDraw: true, segments: [appearancePage([{ visible: allParts, state: { outfit: 'green coat' } }])] }, [], { content: story, messageId: 2 });
+    sdt.normalizeTaggerResult({ shouldDraw: false, segments: [] }, [], sdt.captureMangaRequestContext({ content: story }, 1));
+    const reference = sdt.getMangaMemoryReferences(3)[0];
+    assert.equal(reference.outfit, 'red dress');
+    assert.equal(reference.state.hair_style, undefined);
+    assert.equal(sdt.getCharacterProfile('Mina').mangaStateHistory.length, 0);
+    assert.equal(sdt.getCharacterProfile('Mina').baseTags, 'girl, blonde hair, updo');
+}));
+test('message edits, swipe changes and deletions invalidate versioned state without a model call', () => {
+    const getMessage = RBQ.api.getMessage;
+    try {
+        for (const change of ['edit', 'swipe', 'delete']) withMemory(() => {
+            const messages = { 1: { mes: '她披上蓝色外套。', name: 'Mina', swipe_id: 0 }, 2: { mes: '她拿起书。', name: 'Mina', swipe_id: 0 } };
+            RBQ.api.getMessage = id => messages[id];
+            sdt.updateCharacterProfile('Mina', 'girl, blonde hair, updo', 'red dress');
+            const response = state => ({ shouldDraw: true, segments: [appearancePage([{ visible: allParts, ...(state ? { state } : {}) }])] });
+            sdt.normalizeTaggerResult(response({ hair_style: 'hair down', outfit: 'blue coat' }), [], sdt.captureMangaRequestContext({ content: messages[1].mes }, 1));
+            sdt.normalizeTaggerResult(response(), [], sdt.captureMangaRequestContext({ content: messages[2].mes }, 2));
+            if (change === 'edit') messages[1].mes = '她仍穿着红裙。';
+            if (change === 'swipe') messages[1].swipe_id = 1;
+            if (change === 'delete') delete messages[1];
+            assert.equal(sdt.getMangaMemoryReferences(3)[0].outfit, 'red dress', change);
+            assert.equal(sdt.getCharacterProfile('Mina').mangaStateHistory.length, 0, change);
+        });
+    } finally { RBQ.api.getMessage = getMessage; }
+});
+test('invalidating an edited floor preserves preceding state and a manual wardrobe selection', () => withMemory(() => {
+    const getMessage = RBQ.api.getMessage;
+    const messages = { 1: { mes: '散发蓝衣' }, 2: { mes: '绿衣' } };
+    RBQ.api.getMessage = id => messages[id];
+    try {
+        sdt.updateCharacterProfile('Mina', 'girl, blonde hair, updo', 'red dress');
+        for (const [id, state] of [[1, { hair_style: 'hair down', outfit: 'blue coat' }], [2, { outfit: 'green coat' }]]) {
+            sdt.normalizeTaggerResult({ shouldDraw: true, segments: [appearancePage([{ visible: allParts, state }])] }, [], sdt.captureMangaRequestContext(null, id));
+        }
+        sdt.updateCharacterProfile('Mina', '', 'white shirt');
+        messages[2].mes = '没有换装';
+        const reference = sdt.getMangaMemoryReferences(3)[0];
+        assert.equal(reference.outfit, 'white shirt');
+        assert.equal(reference.state.hair_style, 'hair down');
+        assert.equal(sdt.getCharacterProfile('Mina').mangaStateHistory.length, 1);
+    } finally { RBQ.api.getMessage = getMessage; }
+}));
+test('an in-flight response for an edited message cannot write profiles or render stale pages', () => withMemory(() => {
+    const getMessage = RBQ.api.getMessage;
+    let message = { mes: '原正文', swipe_id: 0 };
+    RBQ.api.getMessage = () => message;
+    try {
+        const context = sdt.captureMangaRequestContext({ content: message.mes }, 1);
+        message = { mes: '新正文', swipe_id: 1 };
+        assert.throws(() => sdt.normalizeTaggerResult(memoryResponse(), [], context), /正文或回复分支已改变/);
+        assert.deepEqual(Object.keys(sdt.getCharacterProfiles()), []);
+    } finally { RBQ.api.getMessage = getMessage; }
+}));
+test('user appearance aliases resolve hairstyle changes and body crops without modifying profiles', () => withMemory(() => {
+    const base = 'Mina, korean, 35 years old, 180cm height, blonde hair, long hair, elegant updo style, voluptuous body, red lipstick';
+    const outfit = 'red modified cheongsam, keyhole cutout, backless, side slit, black pantyhose, red high heels';
+    sdt.updateCharacterProfile('Mina', base, outfit);
+    const result = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [appearancePage([
+        { visible: ['hair', 'face', 'torso'], state: { hair_style: 'hair down' }, positive: 'elegant updo style, standing' },
+        { visible: ['hands'], positive: 'holding cup' },
+        { visible: ['legs'], positive: 'standing' }
+    ])] }, [], { content: story });
+    assert.match(result.characters[0].caption, /hair down/);
+    assert.match(result.characters[0].caption, /keyhole cutout/);
+    assert.doesNotMatch(result.characters[0].caption, /updo|side slit/);
+    assert.doesNotMatch(result.characters[1].caption, /hair|updo|body|lipstick/);
+    assert.match(result.characters[2].caption, /side slit/);
+    assert.equal(sdt.getCharacterProfile('Mina').baseTags, base);
+    assert.equal(sdt.getCharacterProfile('Mina').currentOutfit, outfit);
+}));
+test('garment slots preserve independent accessories and remove only conflicting known clothes', () => {
+    const pages = [appearancePage([{ visible: allParts, positive: 'black shirt, glasses, necklace, holding book' }])];
+    const result = RBQ.api.mangaProtocol.resolveAppearances(pages, [{ name: 'Mina', base: 'girl', outfit: 'white shirt' }]);
+    const caption = result[0].panels[0].characters[0].positive;
+    for (const tag of ['white shirt', 'glasses', 'necklace', 'holding book']) assert.ok(caption.includes(tag), tag);
+    assert.doesNotMatch(caption, /black shirt/);
+});
+test('explicit wardrobe changes remove old garment groups even when the model used grey aliases', () => {
+    const pages = [appearancePage([
+        { visible: allParts, state: { outfit: 'blue coat, black trousers' }, positive: 'grey dress, custom embroidered clasp, glasses, standing' },
+        { visible: allParts, positive: 'grey dress, holding book' },
+        { visible: allParts, state: { outfit: 'red dress, custom embroidered clasp' }, positive: 'grey coat, standing' }
+    ])];
+    const result = RBQ.api.mangaProtocol.resolveAppearances(pages, [{ name: 'Mina', base: 'girl', outfit: 'red dress, custom embroidered clasp' }])[0].panels;
+    assert.doesNotMatch(result[0].characters[0].positive, /dress|embroidered/);
+    assert.match(result[0].characters[0].positive, /glasses/);
+    assert.doesNotMatch(result[1].characters[0].positive, /dress/);
+    assert.match(result[2].characters[0].positive, /red dress, custom embroidered clasp/);
+    assert.doesNotMatch(result[2].characters[0].positive, /coat|trousers/);
+});
+test('unclassified profile details follow model crop selection and remain intact in full views', () => {
+    const reference = [{ name: 'Mina', base: 'Mina, girl, custom facial mark', outfit: 'white shirt, custom embroidered clasp' }];
+    const result = RBQ.api.mangaProtocol.resolveAppearances([appearancePage([
+        { visible: ['hands'], positive: 'holding book' },
+        { visible: ['torso'], positive: 'custom embroidered clasp, standing' },
+        { visible: allParts, positive: 'standing' }
+    ])], reference)[0].panels.map(p => p.characters[0].positive);
+    assert.doesNotMatch(result[0], /custom facial mark|embroidered/);
+    assert.match(result[1], /custom embroidered clasp/);
+    assert.match(result[2], /custom facial mark/);
+    assert.match(result[2], /custom embroidered clasp/);
+    assert.equal(reference[0].outfit, 'white shirt, custom embroidered clasp');
+});
+test('monochrome fallback covers page objects, environment and makeup while preserving speech and names', () => {
+    const input = payload('comic, red pen, brown wooden desk, blue walls, Text: 红笔与 blue walls', [
+        { char_caption: 'Mina, korean, 35 years old, red lipstick, holding red pen, flesh-colored ultra-thin stockings, red panda, artist: red_pen, hatsune_miku (vocaloid), Text: red lipstick' }
+    ]);
+    const result = mangaHook(input);
+    assert.match(result.input, /grey pen, dark grey wooden desk, grey walls/);
+    assert.match(result.input, /Text: 红笔与 blue walls$/);
+    const caption = result.parameters.v4_prompt.caption.char_captions[0].char_caption;
+    for (const value of ['grey lipstick', 'holding grey pen', 'light grey ultra-thin stockings', 'red panda', 'artist: red_pen', 'hatsune_miku (vocaloid)', 'Mina', 'korean', '35 years old']) assert.ok(caption.includes(value), value);
+    assert.match(caption, /Text: red lipstick$/);
+    assert.deepEqual(json(mangaHook(result)), json(result), 'hook is idempotent');
+});
+test('names resembling color phrases survive both hook orders without leaking protocol metadata', () => {
+    for (const order of [[sdtHook, mangaHook], [mangaHook, sdtHook]]) {
+        sdt.prepareNaiCharData({ mangaPage: true, characters: [{ name: 'Red Pen', caption: 'Red Pen, girl, red lipstick, holding red pen', uc: '', center: { x: 0.5, y: 0.5 } }] });
+        let result = payload('comic');
+        for (const hook of order) result = hook(result);
+        const caption = result.parameters.v4_prompt.caption.char_captions[0];
+        assert.match(caption.char_caption, /^Red Pen, girl, grey lipstick, holding grey pen$/);
+        assert.deepEqual(Object.keys(caption).sort(), ['centers', 'char_caption']);
+    }
+});
+test('panel count correction is local, non-mutating and preserves valid layout geometry and text', () => {
+    const page = appearancePage([{ visible: allParts }]);
+    page.page.base = 'comic, 4 panels, full-page panel, Text: four panels';
+    const before = JSON.stringify(page);
+    const compiled = manga.compileMangaPage(page);
+    assert.match(compiled.base, /1 panel, full-page panel/);
+    assert.match(compiled.base, /Text: four panels$/);
+    assert.ok(compiled.warnings.some(w => w.includes('修正为 1 格')));
+    assert.equal(JSON.stringify(page), before);
+    const layout = 'comic, 3 panels, bottom focal panel occupying half the page, top-right small panel beside top-left medium panel';
+    page.page.base = layout; page.panels = [1, 2, 3].map(i => ({ id: 'P' + i, description: 'indoors', characters: [] }));
+    assert.ok(manga.compileMangaPage(page).base.startsWith(layout));
+});
+test('misplaced speech produces a diagnostic without guessing speaker, deleting text or retrying', () => {
+    const page = appearancePage([{ visible: allParts }]);
+    page.panels[0].non_character = 'top panel, BubbleType: 通常吹き出し, Text: 先等一等。';
+    const result = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page] }, [], { content: story });
+    assert.ok(result.renderWarnings.some(w => w.includes('non_character')));
+    assert.match(result.scene, /Text: 先等一等。$/);
+    assert.doesNotMatch(result.characters[0].caption, /先等一等/);
+});
 test('first-time card reference uses the same collector in ordinary and manga requests and respects the toggle', () => withMemory(() => {
     const previousCollector = sdt.collectCharacterCardInfo, previousContext = RBQ.api.getContext;
     const card = { name: 'Ami', description: '成年女性，中国籍，银色长发。', character_book: { entries: [

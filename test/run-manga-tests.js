@@ -1239,6 +1239,15 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(requests[0].mangaCanvas, undefined);
         console.log('PASS production custom-HTTP path accepts B6 source mismatch with one call'); passed++;
 
+        settings._smartDrawTrigger.enhancedContext = 'v_manga_185';
+        installResponse(() => planned());
+        assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
+        assert.equal(requests.length, 1);
+        assert.deepEqual(requests[0].mangaCanvas, json(RBQ.api.mangaProtocol.planningContext()));
+        assert.ok(requests[0].mangaInstruction.endsWith(RBQ.api.mangaProtocol.planningPrompt('v_manga_185')));
+        settings._smartDrawTrigger.enhancedContext = 'v_manga';
+        console.log('PASS alternate automatic custom-HTTP planner includes historical canvas without extra calls'); passed++;
+
         settings._smartDrawTrigger.characterMemoryEnabled = true;
         installResponse(() => memoryResponse());
         await sdt.callTagger(1, { type: 'auto' });
@@ -1264,7 +1273,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             buildThinkingParams: () => ({}), DRAW_SPEC_TOOL_RULE: 'Submit via generate_draw_spec'
         });
         Object.assign(settings._smartDrawTrigger, { provider: 'openai', openaiBaseUrl: 'https://test.invalid/v1', openaiModel: 'test', squashMessages: false });
-        for (const toolCallMode of [false, true]) {
+        for (const ec of ['v_manga', 'v_manga_185']) for (const toolCallMode of [false, true]) {
+            settings._smartDrawTrigger.enhancedContext = ec;
             settings._smartDrawTrigger.toolCallMode = toolCallMode;
             let calls = 0;
             sdt.callApiWithJsonFallback = async (_url, _options, body) => {
@@ -1275,7 +1285,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 assert.match(body.messages[0].content, /漫画角色记忆/);
                 assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
                 const request = JSON.parse(body.messages[1].content);
-                assert.equal(request.mangaCanvas, undefined);
+                assert.deepEqual(request.mangaCanvas, ec === 'v_manga_185' ? json(RBQ.api.mangaProtocol.planningContext()) : undefined);
+                assert.ok(body.messages[0].content.includes(RBQ.api.mangaProtocol.planningPrompt(ec)));
                 assert.equal(request.mangaInstruction, undefined);
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('story_plan'));
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('character_memory'));
@@ -1291,8 +1302,10 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             assert.equal(calls, 1);
             assert.ok(sdt.getCharacterProfile('Mei').baseTags);
         }
+        settings._smartDrawTrigger.enhancedContext = 'v_manga';
         console.log('PASS production OpenAI JSON and tool requests render final pages in one call'); passed++;
-        for (const provider of ['custom', 'openai']) {
+        for (const ec of ['v_manga', 'v_manga_185']) for (const provider of ['custom', 'openai']) {
+            settings._smartDrawTrigger.enhancedContext = ec;
             settings._smartDrawTrigger.provider = provider;
             let release, calls = 0;
             const suspendedResponse = () => {
@@ -1323,14 +1336,16 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', injectCharacterCard: true,
             customUrl: 'https://test.invalid', openaiBaseUrl: 'https://test.invalid', openaiModel: 'test', squashMessages: false };
         sdt.collectCharacterCardInfo = (content, recent) => { assert.equal(content, 'library'); assert.equal(recent.length, 0); return testCard; };
-        for (const provider of ['custom', 'openai']) {
+        for (const ec of ['v_manga', 'v_manga_185']) for (const provider of ['custom', 'openai']) {
+            settings._smartDrawTrigger.enhancedContext = ec;
             settings._smartDrawTrigger.provider = provider;
             let calls = 0;
             const checkRequest = body => {
                 calls++;
                 const request = provider === 'custom' ? body : JSON.parse(body.messages[1].content);
-                assert.equal(request.mangaCanvas, undefined);
-                assert.equal(request.contextAnalysisInstructions, undefined);
+                assert.deepEqual(request.mangaCanvas, ec === 'v_manga_185' ? json(RBQ.api.mangaProtocol.planningContext()) : undefined);
+                assert.equal(!!request.contextAnalysisInstructions, ec === 'v_manga_185');
+                assert.ok((provider === 'custom' ? request.mangaInstruction : body.messages[0].content).includes(RBQ.api.mangaProtocol.planningPrompt(ec)));
                 assert.deepEqual(request.characterCardInfo, testCard);
                 assert.match(provider === 'custom' ? request.mangaInstruction : body.messages[0].content, /漫画角色卡信息参考指令/);
                 return { ok: true, json: async () => ({ shouldDraw: true, segments: [fixture()] }) };
@@ -1343,6 +1358,39 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         sdt.prepareNaiCharData(null);
         console.log('PASS test-draw entry includes card references in both provider paths with one request'); passed++;
     } finally { sdt.collectCharacterCardInfo = oldCollector; settings._smartDrawTrigger = previousTestSettings; }
+
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function submitManualDraw('), sdtSource.indexOf('    /* ── 🗂️ 剧情漫画时间轴')), sdt);
+    const manualSettings = settings._smartDrawTrigger;
+    const manualKeys = ['document', 'localStorage', 'toastr', 'PLUGIN_NAME', 'closeManualDrawDialog', 'generateSdtImage', 'collectCharacterCardInfo'];
+    const manualOriginals = Object.fromEntries(manualKeys.map(key => [key, sdt[key]]));
+    try {
+        const fields = { 'rbq-sdt-manual-input': { value: '她们交谈后转身离开了教室。' },
+            'rbq-sdt-manual-status': {}, 'rbq-sdt-manual-submit': {}, 'rbq-sdt-manual-use-context': { checked: false } };
+        let generated = 0;
+        Object.assign(sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
+            toastr: { warning() {}, success() {}, error: text => { throw new Error(text); } }, PLUGIN_NAME: 'test',
+            closeManualDrawDialog() {}, generateSdtImage: async () => { generated++; }, collectCharacterCardInfo: () => [] });
+        for (const ec of ['v_manga', 'v_manga_185']) for (const provider of ['custom', 'openai']) {
+            settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: ec, provider,
+                customUrl: 'https://test.invalid', openaiBaseUrl: 'https://test.invalid', openaiModel: 'test', squashMessages: false };
+            let calls = 0;
+            const checkRequest = body => {
+                calls++;
+                const request = provider === 'custom' ? body : JSON.parse(body.messages[1].content);
+                const directives = provider === 'custom' ? request.mangaInstruction : body.messages[0].content;
+                assert.ok(directives.includes(RBQ.api.mangaProtocol.planningPrompt(ec)));
+                assert.equal(directives.split('【漫画前情与本楼规划】').length - 1, 1);
+                assert.deepEqual(request.mangaCanvas, ec === 'v_manga_185' ? json(RBQ.api.mangaProtocol.planningContext()) : undefined);
+                return { ok: true, json: async () => ({ shouldDraw: true, segments: [fixture()] }) };
+            };
+            sdt.smartFetch = async (_url, options) => checkRequest(JSON.parse(options.body));
+            sdt.callApiWithJsonFallback = async (_url, _options, body) => checkRequest(body);
+            await sdt.submitManualDraw();
+            assert.equal(calls, 1);
+        }
+        assert.equal(generated, 4);
+        console.log('PASS manual draw routes both planners and both providers with one request each'); passed++;
+    } finally { Object.assign(sdt, manualOriginals); settings._smartDrawTrigger = manualSettings; }
 
     vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function runSegmentAiRefinement('),sdtSource.indexOf('    function setCardLoadingState(')),sdt);
     const refinementSettings = settings._smartDrawTrigger, refinementStyle = settings._mangaMode.style;
@@ -1518,12 +1566,15 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     console.log('PASS Studio failures preserve drafts and incompatible 4-koma count is rejected'); passed++;
     const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short blonde hair, brown eyes', outfit: 'white shirt' }] };
     RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
-    for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
+    for (const ec of ['v_manga', 'v_manga_185']) for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
+        settings._smartDrawTrigger.enhancedContext = ec;
         settings._smartDrawTrigger.openaiBaseUrl = baseUrl;
         manga.fetch = async (url, options) => {
             assert.equal(url, 'https://test.invalid/v1/chat/completions');
             const body = JSON.parse(options.body), userInput = JSON.parse(body.messages[1].content);
-            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences });
+            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences,
+                ...(ec === 'v_manga_185' ? { mangaCanvas: json(RBQ.api.mangaProtocol.planningContext(settings._mangaMode.studio.ratio)) } : {}) });
+            assert.equal(body.messages[0].content.includes('输入 mangaCanvas 是本页实际画布像素与方向'), ec === 'v_manga_185');
             assert.match(body.messages[0].content, /characterCardInfo\/characterMemory/);
             const panel = fixture().panels[0];
             panel.characters[1].base = ''; panel.characters[1].outfit = '';
@@ -1538,6 +1589,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.match(panels[0].characters[1].positive, /white shirt/);
         assert.equal(profileSaves, savesBefore);
     }
+    settings._smartDrawTrigger.enhancedContext = 'v_manga';
 
     RBQ.api.collectMangaReferenceData = () => ({ characterMemory: [{ name: 'Mina', base: 'girl, blonde hair', outfit: 'red dress' }] });
     const draft = appearancePage([

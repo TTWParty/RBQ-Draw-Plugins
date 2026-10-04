@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.4';
+        const VERSION = '1.9.5';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -687,18 +687,42 @@
         appearanceStateVersion: 2, monochromeRenderVersion: 1, renderCacheVersion: 1,
         appearanceSourceKey: mangaAppearanceSourceKey, cachedReferenceViews: mangaCachedReferenceViews,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
-        planningPrompt: buildMangaPlanningPrompt,
+        planningPrompt: buildMangaPlanningPrompt, planningContext: buildMangaPlanningContext,
         systemPrompt: () => buildMangaSystemPrompt(getStore())
     };
     RBQ.api.mangaProtocol = mangaProtocol;
 
-    function buildMangaPlanningPrompt() {
-        return `【漫画前情与本楼规划】
+    // Historical planning texts; the existing SDT context selector chooses the variant.
+    const MANGA_PLANNING_PROMPTS = {
+        v_manga: `【漫画前情与本楼规划】
 一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
 前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
 从本楼开端看到结尾，保留重要动作及结果、关键对白、情绪转折、线索与转场；无大动作的告白或拒绝也值得画。重复描写合并，无新信息的寒暄、抽象议论和未发生的假设不硬画，不重画历史。
 先考虑每格呈现的定格，再按人物、动作、对白容量组合成页：多个相邻事件可同页，长对白或复杂互动可跨页。普通页通常2～5格只是参考，单格页合法；不按句号、图组数量或 minSegments 凑页。保留因果、说话者和反应，不为了少页删掉转折，也不为多页补无意义镜头。
-每页先选主画面，再把剩余事件安排到辅助格；在 page.base 写主格位置及大致面积、辅助格大小和相互排列，不能只报格数或 vertical layout。每格选一个定格时刻，明确人物、动作对象、持物和接触，再选景别；位置称呼贯穿 description 与人物 positive。对白容量不足时调整格大小或分页，不牺牲最后事件。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`;
+每页先选主画面，再把剩余事件安排到辅助格；在 page.base 写主格位置及大致面积、辅助格大小和相互排列，不能只报格数或 vertical layout。每格选一个定格时刻，明确人物、动作对象、持物和接触，再选景别；位置称呼贯穿 description 与人物 positive。对白容量不足时调整格大小或分页，不牺牲最后事件。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`,
+        v_manga_185: `【漫画前情与本楼规划】
+一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
+前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
+从本楼开端看到结尾，保留重要动作及结果、关键对白、情绪转折、线索与转场；无大动作的告白或拒绝也值得画。重复描写合并，无新信息的寒暄、抽象议论和未发生的假设不硬画，不重画历史。
+先考虑每格呈现的定格，再按人物、动作、对白容量组合成页：多个相邻事件可同页，长对白或复杂互动可跨页。普通页通常2～5格只是参考，单格页合法；不按句号、图组数量或 minSegments 凑页。保留因果、说话者和反应，不为了少页删掉转折，也不为多页补无意义镜头。
+每页先选主画面，再把剩余事件安排到辅助格；在 page.base 写主格位置及大致面积、辅助格大小和相互排列，不能只报格数或 vertical layout。每格选一个定格时刻，明确人物、动作对象、持物和接触，再选景别；位置称呼贯穿 description 与人物 positive。
+输入 mangaCanvas 是实际画布像素与方向，按其可读空间同时安排人物、动作和文字；小格不能承载长段对白。正文中的完整问答保留次序，长句按已有停顿分泡或跨相邻格/页续接，不能为了压到预想页数而摘掉条件、理由或句尾；不以固定字数限额删字。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`
+    };
+
+    function buildMangaPlanningPrompt(ec = getSdtStore().enhancedContext) {
+        return MANGA_PLANNING_PROMPTS[ec === 'v_manga_185' ? 'v_manga_185' : 'v_manga'];
+    }
+
+    function buildMangaPlanningContext(ratio, ec = getSdtStore().enhancedContext) {
+        if (ec !== 'v_manga_185') return null;
+        const settings = RBQ.api.getSettings();
+        const mode = settings.currentMode || 'nai';
+        const fallback = mode === 'nai' ? [832, 1216] : [1024, 1024];
+        const selected = typeof ratio === 'string' ? ratio.split('x').map(Number) : [];
+        const valid = value => Number.isFinite(Number(value)) && Number(value) > 0;
+        const width = Math.round(valid(selected[0]) ? selected[0] : valid(settings[`${mode}Width`]) ? Number(settings[`${mode}Width`]) : fallback[0]);
+        const height = Math.round(valid(selected[1]) ? selected[1] : valid(settings[`${mode}Height`]) ? Number(settings[`${mode}Height`]) : fallback[1]);
+        return { width, height, orientation: width > height ? 'landscape' : width < height ? 'portrait' : 'square', autoSpread: !!getStore().autoSpread };
     }
 
     function buildMangaSystemPrompt(store) {
@@ -1050,6 +1074,11 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         }
         .rbq-manga-field select:focus, .rbq-manga-field textarea:focus {
             border-color: #ff9f43 !important;
+        }
+        #rbq-sdt-enhanced-context {
+            min-height: 44px !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
         }
         .rbq-manga-desc {
             font-size: 11px !important;
@@ -2019,11 +2048,11 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             if (sdtStore.customSystemPrompt && sdtStore.systemPromptPreset === 'custom' && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedCustomPrompt = sdtStore.customSystemPrompt;
             }
-            // 备份并锁定前情增强分析 (锁定至 v_manga 动态事件驱动推演，原版条目33)
+            // Back up ordinary context once; preserve the selected comic planner during saves.
             if (sdtStore.enhancedContext && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedEnhancedContext = sdtStore.enhancedContext;
             }
-            sdtStore.enhancedContext = 'v_manga';
+            if (!['v_manga', 'v_manga_185'].includes(sdtStore.enhancedContext)) sdtStore.enhancedContext = 'v_manga';
             // 自动开启多角色独立生图以确保 char_captions 注入
             if (sdtStore.multiCharOutput === false) {
                 sdtStore._mangaSavedMultiChar = false;
@@ -2046,7 +2075,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                 if (sdtStore._mangaSavedEnhancedContext) {
                     sdtStore.enhancedContext = sdtStore._mangaSavedEnhancedContext;
                     delete sdtStore._mangaSavedEnhancedContext;
-                } else if (sdtStore.enhancedContext === 'v_manga') {
+                } else if (['v_manga', 'v_manga_185'].includes(sdtStore.enhancedContext)) {
                     sdtStore.enhancedContext = 'v13';
                 }
                 if (typeof sdtStore._mangaSavedMultiChar === 'boolean') {
@@ -2071,6 +2100,14 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         if (shouldSave) {
             save();
         }
+    }
+
+    function restoreMangaContextOption(option) {
+        if (!Object.hasOwn(option.dataset, 'rbqMangaHidden')) return;
+        option.hidden = option.dataset.rbqMangaHidden === 'true';
+        option.disabled = option.dataset.rbqMangaDisabled === 'true';
+        delete option.dataset.rbqMangaHidden;
+        delete option.dataset.rbqMangaDisabled;
     }
 
     function updateUiState() {
@@ -2130,40 +2167,40 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             }
         }
 
-        // 锁定/解锁前情增强分析 (锁定至 v_manga 动态事件驱动推演，原版条目33)
+        // Reuse SDT's existing selector for the two comic planners.
         const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
         const ecField = ecSelect ? ecSelect.closest('.st-scene-trigger-field') : null;
         if (ecSelect && ecField) {
-            // 防御性补齐：若 DOM 选项中尚未包含 v_manga，自动动态追加
-            if (!ecSelect.querySelector('option[value="v_manga"]')) {
-                const opt = document.createElement('option');
-                opt.value = 'v_manga';
-                opt.textContent = '漫画 · 导演分镜与全息推演 (原版条目33&20&57 · 推荐)';
-                ecSelect.appendChild(opt);
+            for (const [value, label] of [
+                ['v_manga', '漫画 1.8.4 · 前情规划（619字）'],
+                ['v_manga_185', '漫画 1.8.5 · 前情规划（717字 · 参考画布）']
+            ]) {
+                let option = ecSelect.querySelector(`option[value="${value}"]`);
+                if (!option) { option = document.createElement('option'); option.value = value; ecSelect.appendChild(option); }
+                option.textContent = label;
             }
-            if (store.enabled) {
-                if (ecSelect.value !== 'v_manga') ecSelect.value = 'v_manga';
-                ecSelect.disabled = true;
-                ecField.classList.add('rbq-sdt-preset-locked');
-                let badge = ecField.querySelector('.rbq-sdt-preset-lock-badge');
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'rbq-sdt-preset-lock-badge';
-                    badge.innerHTML = '<i class="fa-solid fa-lock"></i> 漫画模式锁定 (条目33&20&57)';
-                    const titleSpan = ecField.querySelector('span');
-                    if (titleSpan) titleSpan.appendChild(badge);
+            for (const option of ecSelect.options) {
+                if (['v_manga', 'v_manga_185'].includes(option.value)) {
+                    option.hidden = !store.enabled;
+                    option.disabled = !store.enabled;
+                    continue;
                 }
-            } else {
-                const sdtStore = getSdtStore();
-                const expectedEc = sdtStore._mangaSavedEnhancedContext || sdtStore.enhancedContext || 'v13';
-                if (ecSelect.value !== expectedEc) {
-                    ecSelect.value = expectedEc;
-                }
-                ecSelect.disabled = false;
-                ecField.classList.remove('rbq-sdt-preset-locked');
-                const badge = ecField.querySelector('.rbq-sdt-preset-lock-badge');
-                if (badge) badge.remove();
+                if (store.enabled) {
+                    if (!Object.hasOwn(option.dataset, 'rbqMangaHidden')) {
+                        option.dataset.rbqMangaHidden = String(option.hidden);
+                        option.dataset.rbqMangaDisabled = String(option.disabled);
+                    }
+                    option.hidden = true; option.disabled = true;
+                } else restoreMangaContextOption(option);
             }
+            const sdtStore = getSdtStore();
+            const expectedEc = store.enabled
+                ? (sdtStore.enhancedContext === 'v_manga_185' ? 'v_manga_185' : 'v_manga')
+                : sdtStore.enhancedContext || 'v13';
+            if (ecSelect.value !== expectedEc) ecSelect.value = expectedEc;
+            ecSelect.disabled = false;
+            ecField.classList.remove('rbq-sdt-preset-locked');
+            ecField.querySelector('.rbq-sdt-preset-lock-badge')?.remove();
         }
 
         // 锁定/解锁多角色输出模式与 2D 坐标 (漫画模式按画格槽位接管，Game HUD 双行信息流)
@@ -2846,9 +2883,9 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         };
     }
 
-    function studioDirectorPrompt(store, task) {
+    function studioDirectorPrompt(store, task, ec = getSdtStore().enhancedContext) {
         return buildMangaSystemPrompt({ ...store, antiHijack: store.studio?.antiHijack ?? store.antiHijack }) + `
-【工作台任务】${task}
+【工作台任务】${task}${ec === 'v_manga_185' ? '\n输入 mangaCanvas 是本页实际画布像素与方向，按文字和主动作共同需要分配画格空间；调整格大小和对白分泡，保留关键问答。' : ''}
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
 只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
@@ -2866,12 +2903,15 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const references = typeof RBQ.api.collectMangaReferenceData === 'function' ? RBQ.api.collectMangaReferenceData(content) : {};
         const cacheContext = !editingSnapshots ? RBQ.api.captureMangaRenderCacheContext?.() : null;
         if (cacheContext) cacheContext.renderSettings = { ...store };
-        const userContent = Object.keys(references).length ? JSON.stringify({ currentMessage: content, ...references }) : content;
+        const ec = config.enhancedContext;
+        const canvas = buildMangaPlanningContext(store.studio?.ratio, ec);
+        const userContent = canvas ? JSON.stringify({ currentMessage: content, ...references, mangaCanvas: canvas })
+            : Object.keys(references).length ? JSON.stringify({ currentMessage: content, ...references }) : content;
         const endpoint = /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`;
         const response = await fetch(endpoint, {
             method: 'POST', headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
             body: JSON.stringify({ model, temperature: 0.2, messages: [
-                { role: 'system', content: studioDirectorPrompt(store, task) + (editingSnapshots
+                { role: 'system', content: studioDirectorPrompt(store, task, ec) + (editingSnapshots
                     ? '\n本次润色已有分镜：已有格内 positive 是该时刻的完整外貌衣着快照，优先于聊天档案默认服装。保留既有和前格持续状态，按本格明确变化调整；将已有完整快照拆成 base/outfit/positive，保留全部外貌服装与本格动作，不只返回增量。' : '') }, { role: 'user', content: userContent }
             ] })
         });
@@ -3896,6 +3936,12 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         // 还原 SDT 前情增强分析下拉框
         const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
         if (ecSelect) {
+            for (const option of ecSelect.options) {
+                restoreMangaContextOption(option);
+                if (['v_manga', 'v_manga_185'].includes(option.value)) {
+                    option.hidden = true; option.disabled = true;
+                }
+            }
             ecSelect.disabled = false;
             const field = ecSelect.closest('.st-scene-trigger-field');
             if (field) {
@@ -3942,6 +3988,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             const s = getStore();
             s.enabled = false;
             syncMangaToSdt(s, true);
+            if (ecSelect) ecSelect.value = getSdtStore().enhancedContext || 'v13';
         } catch (_e) {}
 
         console.info(`[${PLUGIN_NAME}] 插件已彻底卸载并清理`);

@@ -2748,7 +2748,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
     function getCanonicalCharName(name) {
         if (!name) return '';
-        return String(name).replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
+        return String(name).trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
     }
 
     function getCharacterMemoryTagSpecification() {
@@ -2761,7 +2761,7 @@ base 按七维逐项检查，已明确的特征不得遗漏：
 ④ 发色、发长、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例及有辨识度的体态；⑦ 肤色、永久身体标记及幻想种族特征。
 依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等已有数值如 35 years old、180cm height 原样保留，可同时补对应的已知年龄阶段和体型；不能以视觉化为由删掉明确数值。
 outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
-base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。name 填稳定姓名，base 必须包含身份标签：普通角色保留已有姓名；已明确识别的同人角色写可靠的通用角色 Tag，并保留已知作品限定，不能只填外貌或只把姓名放进 name。不得因姓名与 name 重复就省略；无法确定通用 Tag 时保留已知姓名，不臆造英文译名或作品。可脱卸配饰归 outfit，永久生理特征归 base。`;
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。name 是用于绘图和资料关联的完整身份：原创用已知姓名 (original)，同人用已确认的通用姓名 (作品)，优先复用已有英文身份，不猜未知译名或作品。新外貌 base 不必重复 name，程序会自动拼入并保存；已存 base 含有的普通姓名、角色 Tag、original 或作品后缀原样保留。可脱卸配饰归 outfit，永久生理特征归 base。`;
     }
 
     function buildCharacterMemoryPromptModule(store, messageId) {
@@ -2773,7 +2773,7 @@ base 不含衣物、动作、表情、手持物、构图、画风或对白；out
             return `【漫画角色记忆】
 以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
 各格 base/outfit 与普通模式共用建档和复用原则；不另发请求。character_memory 为兼容字段，可省略或写 []；需要补充独立长期资料时每人最多一项 {name,base,initial_outfit,outfit}。
-base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；普通姓名或可靠同人角色标签必须实际写入 base，不能只放 name。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
+base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；完整身份填写 name，程序自动拼入 base；已有 base 中的姓名和角色标签原样复用。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
 initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已知服装，不能用楼末换装结果代替；已知则可省略。
 兼容字段 character_memory[].outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。格内 characters[].outfit 始终对应当前格，不能套用末格状态。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
@@ -3270,13 +3270,7 @@ ${activeRegistrySection}`;
 
         // Build weighted base for NAI: apply name weight + memory base
         // For 同人 characters with stored memory, re-apply name weight to the stored base
-        let displayBase = finalBase;
-        if (profile && cleanName) {
-            // Stored base already contains the clean name; replace with weighted version
-            if (displayBase.startsWith(cleanName)) {
-                displayBase = weightedName + displayBase.slice(cleanName.length);
-            }
-        }
+        const displayBase = renderCharacterMemoryBase(cleanName, finalBase);
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
         const wrappedBase = (['v40_worldbook_97_opt', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
@@ -3299,11 +3293,16 @@ ${activeRegistrySection}`;
             const groupId = ctx.groupId;
 
             if (groupId != null && String(groupId).trim() !== '') {
+                const group = Array.isArray(ctx.groups) ? ctx.groups.find(g => String(g?.id) === String(groupId)) : null;
+                const members = new Set((Array.isArray(group?.members) ? group.members : [])
+                    .map(member => typeof member === 'string' ? member : member?.avatar).filter(Boolean));
                 for (const char of characters) {
-                    if (char && char.name) {
+                    if (char?.name && members.has(char.avatar)) {
                         activeChars.push(char);
                     }
                 }
+                // Some hosts expose only the current speaker. Never substitute the entire card library.
+                if (!group && characters[ctx.characterId]?.name) activeChars.push(characters[ctx.characterId]);
             } else {
                 const char = characters[ctx.characterId];
                 if (char && char.name) {
@@ -3317,7 +3316,7 @@ ${activeRegistrySection}`;
             for (const char of activeChars) {
                 const name = char.name;
                 const profile = getCharacterProfile(name);
-                if (String(profile?.baseTags || '').trim()) {
+                if (store.characterMemoryEnabled && String(profile?.baseTags || '').trim()) {
                     continue;
                 }
 
@@ -3450,7 +3449,7 @@ ${activeRegistrySection}`;
                     role: 'system',
                     content: `你是角色视觉资料提炼助手。读取角色卡与世界书，仅提取当前指定角色的固定外貌和默认衣着，不混入其他角色。
 ${getCharacterMemoryTagSpecification()}
-只提取有依据的资料；服装未知写空字符串。仅输出纯 JSON：{"base":"英文标签", "outfit":"英文标签"}，不输出解释或 Markdown。`
+只提取有依据的资料；服装未知写空字符串。身份 name 与普通模式一致：原创使用已知姓名 (original)，同人使用已确认的通用姓名 (作品)，已有英文身份优先复用，不猜作品；无法确认译名时保留已知姓名。仅输出纯 JSON：{"name":"完整绘图身份", "base":"英文外貌标签", "outfit":"英文标签"}，不输出解释或 Markdown。`
                 },
                 {
                     role: 'user',
@@ -3509,7 +3508,7 @@ ${getCharacterMemoryTagSpecification()}
             const avatarUrl = char.avatar ? `/characters/${char.avatar}` : null;
 
             assertMangaRequestContext(requestContext);
-            updateCharacterProfile(cleanCharName, ensureCharacterNameTag(cleanCharName, extractedBase), extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
+            updateCharacterProfile(cleanCharName, ensureCharacterNameTag(typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : name, extractedBase), extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
             toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
             return getCharacterProfile(cleanCharName);
         } catch (err) {
@@ -6431,18 +6430,41 @@ ${getCharacterMemoryTagSpecification()}
 
     // Keep the supplied identity in every learned base. Never guess translations or source works.
     function ensureCharacterNameTag(name, base) {
-        if (typeof base !== 'string' || !base.trim()) return base || '';
-        const canonical = getCanonicalCharName(name);
+        const value = typeof base === 'string' ? base : '';
+        const identity = String(name || '').trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1');
+        const canonical = getCanonicalCharName(identity);
         if (!canonical || isJunkCharacterName(canonical)
-            || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(canonical)) return base;
+            || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(canonical)) return value;
         const key = canonical.toLowerCase().replace(/_/g, ' ');
-        const containsName = base.split(/[,，\n]/).some(tag => {
-            const plain = tag.trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').replace(/^[{]+|[}]+$/g, '').trim();
+        const tokens = value.split(/[,，\n]/);
+        const index = tokens.findIndex(tag => {
+            const plain = tag.trim().replace(/^[{]+|[}]+$/g, '').trim();
             return getCanonicalCharName(plain).toLowerCase().replace(/_/g, ' ') === key;
         });
-        return containsName ? base : `${canonical}, ${base}`;
+        if (index >= 0) {
+            // Restore an explicitly supplied suffix without stripping richer existing identities.
+            if (identity !== canonical && tokens[index].trim().toLowerCase().replace(/_/g, ' ') === key) {
+                tokens[index] = tokens[index].replace(tokens[index].trim(), identity);
+                return tokens.join(',');
+            }
+            return value;
+        }
+        return [identity, value].filter(Boolean).join(', ');
+    }
+    // Apply ordinary character-name weighting only to visual identity tags, never dialogue or memory.
+    function renderCharacterMemoryBase(name, base) {
+        const value = String(base || '');
+        const textAt = value.search(/\bText[ \t]*[:：]/i);
+        const visual = textAt < 0 ? value : value.slice(0, textAt);
+        const key = getCanonicalCharName(name).toLowerCase().replace(/_/g, ' ');
+        const rendered = visual.replace(/(^|[,，\n])([ \t]*)([^,，\n]+)/g, (all, sep, space, tag) => {
+            if (!key || getCanonicalCharName(tag.trim()).toLowerCase().replace(/_/g, ' ') !== key) return all;
+            return sep + space + weightCharacterName(tag.trim()) + (tag.match(/\s+$/)?.[0] || '');
+        });
+        return rendered + (textAt < 0 ? '' : value.slice(textAt));
     }
     RBQ.api.ensureCharacterNameTag = ensureCharacterNameTag;
+    RBQ.api.renderCharacterMemoryBase = renderCharacterMemoryBase;
 
     // Ordinary images and manga share the same immutable-base/current-outfit selection.
     // Pure: callers control when complete, validated results are saved to the profile.
@@ -6544,6 +6566,7 @@ ${getCharacterMemoryTagSpecification()}
     function captureMangaRequestContext(currentMessage, messageId) {
         const references = getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [];
         return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
+            manga: isMangaRequest(),
             messageVersion: getMangaMessageVersion(messageId),
             currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
                 [getCanonicalCharName(profile.displayName || name).toLowerCase(), profile.currentOutfit || ''])),
@@ -6552,6 +6575,11 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function assertMangaRequestContext(context) {
+        if (typeof context?.manga === 'boolean' && context.manga !== isMangaRequest()) {
+            const error = new Error('漫画模式已切换，已停止旧请求回填与角色记忆写入，请重新解析');
+            error.name = 'AbortError';
+            throw error;
+        }
         if (context?.chatKey !== undefined && (context.chatKey !== getChatKey()
             || context.epoch !== (captureMangaRequestContext.epoch || 0))) {
             const error = new Error('聊天已切换，已停止旧请求回填与角色记忆写入');
@@ -6571,7 +6599,7 @@ ${getCharacterMemoryTagSpecification()}
         if (!getStore().characterMemoryEnabled || context?.memoryEnabled === false || !segments.some(s => s.mangaPage)) return;
         const validName = value => {
             if (typeof value !== 'string') return '';
-            const name = getCanonicalCharName(value);
+            const name = String(value).trim();
             return !name || isJunkCharacterName(name) || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(name) ? '' : name;
         };
         const cleanField = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
@@ -6582,7 +6610,7 @@ ${getCharacterMemoryTagSpecification()}
                 for (const person of panel.characters) {
                     const name = validName(person.name);
                     if (name) {
-                        const key = name.toLowerCase();
+                        const key = getCanonicalCharName(name).toLowerCase();
                         visible.set(key, name);
                         if (person._mangaAppearance) {
                             const prior = snapshots.get(key);
@@ -6597,7 +6625,7 @@ ${getCharacterMemoryTagSpecification()}
         }
         const updates = new Map();
         for (const row of Array.isArray(source.character_memory) ? source.character_memory : []) {
-            const key = validName(row?.name).toLowerCase();
+            const key = getCanonicalCharName(validName(row?.name)).toLowerCase();
             const name = visible.get(key);
             if (!name) continue;
             const next = updates.get(key) || { name, base: '', outfit: '' };
@@ -6616,7 +6644,7 @@ ${getCharacterMemoryTagSpecification()}
             const profile = getCharacterProfile(row.name);
             const namedBase = ensureCharacterNameTag(row.name, profile?.baseTags || row.base);
             const base = namedBase !== profile?.baseTags ? namedBase : '';
-            const snapshot = snapshots.get(row.name.toLowerCase());
+            const snapshot = snapshots.get(getCanonicalCharName(row.name).toLowerCase());
             const stateFields = value => {
                 const state = { outfit: value?.outfit || '', outfitSet: !!value?.outfitSet };
                 for (const field of ['hair_style', 'hair_length', 'hair_color', 'render_base', 'render_base_source', 'outfit']) {
@@ -6631,8 +6659,8 @@ ${getCharacterMemoryTagSpecification()}
             // Re-parsing an older floor must not revert a later outfit learned by manga mode.
             const older = hasMessageId && Number.isInteger(profile?.mangaOutfitMessageId) && messageId < profile.mangaOutfitMessageId;
             const requestedOutfits = context?.currentOutfits;
-            const changedDuringRequest = profile && requestedOutfits && Object.hasOwn(requestedOutfits, row.name.toLowerCase())
-                && profile.currentOutfit !== requestedOutfits[row.name.toLowerCase()];
+            const changedDuringRequest = profile && requestedOutfits && Object.hasOwn(requestedOutfits, getCanonicalCharName(row.name).toLowerCase())
+                && profile.currentOutfit !== requestedOutfits[getCanonicalCharName(row.name).toLowerCase()];
             const preserveCurrent = older || changedDuringRequest;
             const outfit = preserveCurrent ? '' : finalOutfit;
             if (base || (outfit && outfit !== profile?.currentOutfit)) updateCharacterProfile(row.name, base, outfit, null, true, { replaceBase: !!profile?.baseTags && !!base });
@@ -7316,7 +7344,7 @@ SCHEMA:
 
         if (segResult?.mangaPage) {
             const page = getMangaProtocol().resolveAppearances([{ ...parsed, anchor: segResult.anchor }], [])[0];
-            return { ...normalizeMangaSegment(page), matchedLorebooks: segResult.matchedLorebooks || [] };
+            return { ...normalizeMangaSegment(page), ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
         }
 
         let charactersList = [];
@@ -8181,7 +8209,7 @@ SCHEMA:
                 prepareNaiCharData(updatedSeg);
                 const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-manual-refine', {
                     messageId: wrapper?.dataset?.messageId || viewerContext?.currentItem?.messageId || null,
-                    negative_prompt: updatedSeg.negativePrompt || undefined,
+                    negative_prompt: getSegmentNegative(updatedSeg),
                 }, (progress) => {
                     if (wrapper) setCardLoadingState(wrapper, true, '🏷️ 手动调整生图中...', typeof progress === 'string' ? progress : '');
                 });
@@ -9353,28 +9381,37 @@ SCHEMA:
             .join(', ');
     }
 
+    function getSegmentNegative(segment) {
+        if (typeof segment?.negativePrompt === 'string') return segment.negativePrompt;
+        if (typeof segment?.uc === 'string') return segment.uc;
+        if (typeof segment?.negative === 'string' && segment.negative.trim()) return segment.negative;
+        return undefined;
+    }
+
     function cacheWrapperCharacterData(wrapper, segment) {
         if (!wrapper?.dataset) return;
         wrapper.dataset.rbqSdtCharData = JSON.stringify(segment?.characters || []);
         wrapper.dataset.rbqSdtManga = segment?.mangaPage ? '1' : '';
         wrapper.dataset.rbqSdtMangaCoords = segment?.mangaUseCoords ? '1' : '';
+        const negative = getSegmentNegative(segment);
+        if (negative !== undefined) wrapper.dataset.rbqSdtNegative = negative;
+        else delete wrapper.dataset.rbqSdtNegative;
     }
 
-    /** Prepare structured char data for the NAI V4 payload hook */
-    function prepareNaiCharData(segmentResult) {
+    /** Build a snapshot owned by one image request, including empty manga pages. */
+    function buildNaiCharData(segmentResult) {
         if (segmentResult?.mangaPage || (isMangaRequest() && Array.isArray(segmentResult?.characters))) {
-            pendingNaiCharData = {
-                manga: true, useCoords: !!segmentResult.mangaUseCoords,
+            return {
+                manga: true, useCoords: !!segmentResult.mangaUseCoords, negative: getSegmentNegative(segmentResult),
+                renderSettings: RBQ.api.mangaProtocol?.captureRenderSettings?.(),
                 characters: (segmentResult.characters || []).map(c => ({ name: c.name || c._rawName, caption: c.caption, center: c.center, uc: c.uc || '' }))
             };
-            return;
         }
         if (!segmentResult || !Array.isArray(segmentResult.characters) || segmentResult.characters.length === 0) {
-            pendingNaiCharData = null;
-            return;
+            return null;
         }
-        pendingNaiCharData = {
-            scene: deduplicateQualityTags(segmentResult.scene || ''),
+        return {
+            scene: deduplicateQualityTags(segmentResult.scene || ''), negative: getSegmentNegative(segmentResult),
             characters: segmentResult.characters.map(c => ({
                 caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
                 center: c.center || { x: 0.5, y: 0.5 },
@@ -9383,10 +9420,35 @@ SCHEMA:
         };
     }
 
+    // Legacy public API for older callers; parsing alone must never prepare a draw.
+    function prepareNaiCharData(segmentResult) {
+        pendingNaiCharData = buildNaiCharData(segmentResult);
+    }
+
+    let legacyImageQueue = Promise.resolve();
+    function generateSdtImage(segment, prompt, reason, meta = {}, onProgress = null) {
+        const data = buildNaiCharData(segment);
+        if (RBQ.api.generationContextVersion >= 1) {
+            return RBQ.api.generateImage(prompt, reason, { ...meta, sdtCharacterData: data }, onProgress);
+        }
+        // Old hosts have no request context. Serialize SDT submissions rather than
+        // letting queued/reference-image preprocessing overwrite a shared slot.
+        const run = legacyImageQueue.then(async () => {
+            pendingNaiCharData = data ? { ...data, prompt } : null;
+            const pending = pendingNaiCharData;
+            try { return await RBQ.api.generateImage(prompt, reason, meta, onProgress); }
+            finally { if (pendingNaiCharData === pending) pendingNaiCharData = null; }
+        });
+        legacyImageQueue = run.catch(() => {});
+        return run;
+    }
+
     /* ── NAI V4 payload hook: inject char_captions directly ── */
-    RBQ.on('buildNaiV4Payload', (payload) => {
-        if (!pendingNaiCharData || (!pendingNaiCharData.manga && !getStore().multiCharOutput)) return payload;
-        const { characters, manga, useCoords } = pendingNaiCharData;
+    RBQ.on('buildNaiV4Payload', (payload, context) => {
+        const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
+        if (!data || (data.prompt && !String(payload.input || '').includes(data.prompt))
+            || (!data.manga && !getStore().multiCharOutput)) return payload;
+        const { characters, manga, useCoords, negative, renderSettings } = data;
         if (!characters.length && !manga) return payload;
 
         const charCaptions = characters.map(c => ({
@@ -9398,8 +9460,9 @@ SCHEMA:
             centers: [sdtParseCoord(c.center)],
         }));
 
-        let existingNegBase = payload.parameters?.v4_negative_prompt?.caption?.base_caption
+        let existingNegBase = negative !== undefined ? negative : payload.parameters?.v4_negative_prompt?.caption?.base_caption
             || payload.parameters?.negative_prompt || '';
+        if (negative !== undefined) payload.parameters.negative_prompt = negative;
 
         // Build base_caption: Prompt Presets prefix (from payload.input before our scene) + deduped scene
         // payload.input = [Presets prefix], [getFinalPrompt scene]
@@ -9426,14 +9489,15 @@ SCHEMA:
         };
 
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
-        pendingNaiCharData = null; // consume
-        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true, characters.map(c => c.name)) : payload;
+        if (!context) pendingNaiCharData = null; // legacy callers only
+        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true, characters.map(c => c.name), renderSettings) : payload;
     });
 
     /* ── ComfyUI payload hook: inject char placeholders ── */
-    RBQ.on('buildComfyUiWorkflow', (payload) => {
-        if (!pendingNaiCharData || !getStore().multiCharOutput) return payload;
-        const { characters } = pendingNaiCharData;
+    RBQ.on('buildComfyUiWorkflow', (payload, context) => {
+        const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
+        if (!data || !getStore().multiCharOutput) return payload;
+        const { characters } = data;
         if (!characters.length) return payload;
 
         let payloadStr = JSON.stringify(payload);
@@ -9456,7 +9520,7 @@ SCHEMA:
             console.error('[Smart Draw Trigger] Failed to parse ComfyUI workflow after injecting characters', e);
         }
         
-        pendingNaiCharData = null; // consume
+        if (!context) pendingNaiCharData = null;
         return payload;
     });
 
@@ -9722,6 +9786,7 @@ SCHEMA:
             shouldDraw: !!result.shouldDraw,
             prompt: String(result.prompt || ''),
             negative: String(result.negative || ''),
+            ...(getSegmentNegative(result) !== undefined ? { negativePrompt: getSegmentNegative(result) } : {}),
             multiChar: !!result.multiChar,
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
@@ -10125,7 +10190,7 @@ SCHEMA:
                 character: p.displayName || k,
                 wardrobe: p.wardrobe.map(w => ({ name: w.name, outfit: w.outfit, triggers: w.triggers }))
             }));
-        if (wardrobeList.length > 0) {
+        if (store.characterMemoryEnabled && wardrobeList.length > 0) {
             payload.characterWardrobes = wardrobeList;
         }
 
@@ -11007,7 +11072,7 @@ SCHEMA:
 
         logTaggerPayload('tagger raw response', json);
         assertMangaRequestContext(requestContext);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
         if (retryWithoutLorebook) {
             toastr.warning('由于世界书含受限敏感词，本次已自动剥离世界书保底完成生图分镜', PLUGIN_NAME);
@@ -11037,7 +11102,7 @@ SCHEMA:
         const json = await safeReadJsonResponse(response);
         logTaggerPayload('tagger raw response', json);
         assertMangaRequestContext(requestContext);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
     }
@@ -11785,7 +11850,7 @@ SCHEMA:
             if (charDataJson) {
                 try {
                     const chars = JSON.parse(charDataJson);
-                    prepareNaiCharData({ characters: chars, mangaPage: wrapper.dataset.rbqSdtManga === '1', mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1' });
+                    prepareNaiCharData({ characters: chars, mangaPage: wrapper.dataset.rbqSdtManga === '1', mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1', negativePrompt: wrapper.dataset.rbqSdtNegative });
                 } catch (_e) { /* noop */ }
             }
             const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
@@ -14791,7 +14856,8 @@ SCHEMA:
             }
 
             // Normalize with lorebook (same as normal flow — applies character memory)
-            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
+            assertMangaRequestContext(requestContext);
+            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
             logTaggerPayload('manual draw tagger result', normalized);
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
@@ -15262,6 +15328,7 @@ SCHEMA:
                             mangaPage: seg.mangaPage, mangaUseCoords: !!seg.mangaUseCoords,
                             prompt: promptText,
                             negative: String(seg.negative || sdt.negative || '').trim(),
+                            negativePrompt: getSegmentNegative(seg) ?? getSegmentNegative(sdt),
                             url: hasImg ? (imgRes.url || imgRes.displayUrl || '') : '',
                             displayUrl: hasImg ? (imgRes.displayUrl || imgRes.url || '') : '',
                             cacheId: hasImg ? (imgRes.cacheId || '') : '',
@@ -15321,6 +15388,7 @@ SCHEMA:
                                 mangaPage: sdt.mangaPage, mangaUseCoords: !!sdt.mangaUseCoords,
                                 prompt: promptText,
                                 negative: String(sdt.negative || '').trim(),
+                                negativePrompt: getSegmentNegative(sdt),
                                 url: hasImg ? (imgRes.url || imgRes.displayUrl || '') : '',
                                 displayUrl: hasImg ? (imgRes.displayUrl || imgRes.url || '') : '',
                                 cacheId: hasImg ? (imgRes.cacheId || '') : '',
@@ -15660,7 +15728,7 @@ SCHEMA:
             // Keep page metadata and clear stale captions for empty manga panels.
             if (item.mangaPage || (Array.isArray(item.characters) && item.characters.length > 0)) {
                 try {
-                    prepareNaiCharData({ characters: item.characters, mangaPage: item.mangaPage, mangaUseCoords: item.mangaUseCoords });
+                    prepareNaiCharData({ characters: item.characters, mangaPage: item.mangaPage, mangaUseCoords: item.mangaUseCoords, negativePrompt: getSegmentNegative(item) });
                 } catch (_e) { /* ignore */ }
             }
 
@@ -16276,7 +16344,8 @@ SCHEMA:
             json = await safeReadJsonResponse(response);
         }
 
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, isMangaRequest(store) ? requestContext : null));
+        assertMangaRequestContext(requestContext);
+        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
         logTaggerPayload('test draw tagger result', normalized);
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {

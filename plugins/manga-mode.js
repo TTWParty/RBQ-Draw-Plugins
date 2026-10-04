@@ -69,7 +69,7 @@
         monochrome: {
             name: '黑白 (画风-黑白)',
             positive: 'artist:2015x127, 0.5::artist:du_nyak::, 0.5::artist:yujo_kei::, greyscale, monochrome, screentone, manga, bold linework, incredibly absurdres, very aesthetic, highres, masterpiece, best quality, amazing quality, best illustration',
-            negative: '10::color::, colorful, vibrant colors, painted, watercolor, pastel, 3D, realistic photo, logo, watermark, too many watermarks, reference, signature, artist name, dated, chibi, artistic error, scan artifacts, jpeg artifacts, aliasing, chromatic aberration, digital dissolve, artist collaboration, one-hour drawing challenge, mutated, mutation, deformed, distorted, disfigured, bad anatomy, unnatural hair, bad face, mob face, cloned face, distorted face, poorly drawn face, ugly, bad eyes, empty eyes, extra eyes, lazy eye, asymmetrical eyes, cross-eyed, bad proportions, wrong body proportions, unrealistic proportions, distorted body, long neck, wrong head size, bad limbs, missing limbs, extra limbs, amputee, bad arm, bad hands, malformed hands, poorly drawn hands, bad hand structure, extra digits, fewer digits, extra fingers, fused fingers, bad leg, extra leg, distorted composition, bad perspective, disorganized colors, unfinished, incomplete, duplicate, worst quality, bad quality, messy details, fewer details, bad portrait, awkward, bad posture',
+            negative: '10::color::, colorful, vibrant colors, painted, watercolor, pastel, logo, watermark, too many watermarks, reference, signature, artist name, dated, chibi, artistic error, scan artifacts, jpeg artifacts, aliasing, chromatic aberration, digital dissolve, artist collaboration, one-hour drawing challenge, mutated, mutation, deformed, distorted, disfigured, bad anatomy, unnatural hair, bad face, mob face, cloned face, distorted face, poorly drawn face, ugly, bad eyes, empty eyes, extra eyes, lazy eye, asymmetrical eyes, cross-eyed, bad proportions, wrong body proportions, unrealistic proportions, distorted body, long neck, wrong head size, bad limbs, missing limbs, extra limbs, amputee, bad arm, bad hands, malformed hands, poorly drawn hands, bad hand structure, extra digits, fewer digits, extra fingers, fused fingers, bad leg, extra leg, distorted composition, bad perspective, disorganized colors, unfinished, incomplete, duplicate, worst quality, bad quality, messy details, fewer details, bad portrait, awkward, bad posture',
             desc: '原版 v1.1.json 条目 64：细腻网点纸、三大名家混血质感、墨线张力与纯正日漫印刷风。'
         },
         soft_color: {
@@ -231,8 +231,8 @@
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
-                                        character_id: string, name: string,
-                                        base: { type: 'string', description: 'Full stable identity/appearance tags, including the supplied name or a reliably identified canonical fan-character tag. Name must not exist only in the name field. Same as ordinary character memory. Reuse saved base exactly; no shot-based cropping. No clothes or dialogue.' },
+                                        character_id: string, name: { type: 'string', description: 'Full drawing identity: known name (original) for original characters, confirmed Name (Series) for fan characters. Reuse established identity across panels; never replace with a panel ID.' },
+                                        base: { type: 'string', description: 'Full stable appearance tags, same as ordinary character memory. Program injects the full name identity; preserve identity tags already in saved base. Reuse saved base exactly; no shot-based cropping. No clothes or dialogue.' },
                                         outfit: { type: 'string', description: 'Full current outfit including all layers/accessories. Empty reuses known outfit; return complete clothing on first appearance or actual change.' },
                                         state: { type: 'object', properties: {
                                             base: { type: 'string', description: 'Only an explicit plot appearance change: complete temporary appearance tags after the change, retaining all unchanged identity traits. Not a crop and never permanent memory.' },
@@ -264,7 +264,7 @@
                     id: 'P1', description: '英文逗号分隔的位置、大小、景别、环境标签；不写人物演出或故事长句',
                     non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
                     characters: [{
-                        character_id: 'C1', name: '真实角色名，仅用于资料关联',
+                        character_id: 'C1', name: '完整绘图身份：原创 Name (original)，同人已确认的 Name (Series)；跨格同名，程序拼入外貌',
                         base: '与普通模式一致的完整固定外貌；已有档案原样复用，不按镜头裁剪',
                         outfit: '完整当前服装，含内外层与配饰；空字符串沿用已知衣着',
                         positive: '本格位置、姿势、肢体动作与对象、表情视线；外貌服装放 base/outfit；气泡说明在唯一末尾 Text: 前，后面只有台词',
@@ -322,6 +322,7 @@
             || !data.page.base.trim() || !Array.isArray(data.panels) || !data.panels.length) {
             throw new Error('漫画页缺少 page.base 或 panels，请重新解析分镜');
         }
+        if (data.page.non_character !== undefined && typeof data.page.non_character !== 'string') throw new Error('漫画 page.non_character 必须是字符串');
         if (Object.prototype.hasOwnProperty.call(data, 'characters')) throw new Error('漫画页不能混用顶层人物与格内人物');
         if (data.position_mode && !['auto', 'manual'].includes(data.position_mode)) throw new Error('漫画定位模式无效');
         const warnings = [];
@@ -348,6 +349,7 @@
                 throw new Error(`漫画第 ${panelIndex + 1} 格缺少唯一 id、description 或 characters 数组`);
             }
             panelIds.add(panel.id);
+            if (panel.non_character !== undefined && typeof panel.non_character !== 'string') throw new Error(`${panel.id} 的 non_character 必须是字符串`);
             if (splitMangaText(panel.description).text) warnings.push(`${panel.id} 的 description 含文字，未按文字归属分栏`);
             if (panel.characters.length && /BubbleType\s*[:：]\s*(?:通常吹き出し|叫び吹き出し|思考の吹き出し)/i.test(panel.non_character || '')) {
                 warnings.push(`${panel.id} 的 non_character 含人物气泡，请核对说话者是否应归本格人物；程序未猜测或移动台词`);
@@ -380,7 +382,8 @@
                     || c.center.x < 0 || c.center.x > 1 || c.center.y < 0 || c.center.y > 1)) {
                     throw new Error(`${panel.id}/${c.character_id} 缺少有效的手动坐标`);
                 }
-                const positive = joinMangaCaptions([c.base, c.outfit, c.positive]);
+                const appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function' ? RBQ.api.renderCharacterMemoryBase(c.name, c.base || '') : c.base;
+                const positive = joinMangaCaptions([appearance, c.outfit, c.positive]);
                 characters.push({
                     index: characters.length + 1, panelId: panel.id, characterId: c.character_id,
                     name: c.name || c.character_id, _rawName: c.name || c.character_id,
@@ -397,7 +400,7 @@
     // Resolve appearances once during parsing. Cached pages contain final snapshots;
     // compilation/redraw never reads the current profile or replays state changes.
     function mangaIdentityKey(name) {
-        return String(name || '').replace(/\s*[（(\[【](?:original|原创|fanart|同人)[）)\]】]/gi, '').trim().toLowerCase();
+        return String(name || '').trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').replace(/\s*[（(\[【](?:original|原创|fanart|同人)[）)\]】]/gi, '').trim().toLowerCase();
     }
 
     function resolveMangaAppearances(pages, references = [], newMemory = [], warnings = []) {
@@ -411,11 +414,12 @@
             return RBQ.api.ensureCharacterNameTag(name, base);
         };
         const clean = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
+        const knownBase = (name, value) => clean(value) ? withName(name, clean(value)) : '';
         for (const row of references) {
             const name = mangaIdentityKey(row?.name);
             const key = name ? `name:${name}` : '';
             if (!key) continue;
-            const state = { base: withName(row.name, clean(row.base)), outfit: clean(row.outfit), outfitSet: !!clean(row.outfit) };
+            const state = { base: knownBase(row.name, row.base), outfit: clean(row.outfit), outfitSet: !!clean(row.outfit) };
             for (const field of ['hair_style', 'hair_length', 'hair_color', 'render_base', 'outfit']) {
                 if (field === 'outfit' && row.state?.outfitSet === false) continue;
                 if (typeof row.state?.[field] === 'string' && (!row.state[field].trim() || clean(row.state[field]))) {
@@ -436,37 +440,45 @@
             if (!name || /^(?:[cp]\d+|unknown|unnamed|路人|匿名|无名|__proto__|constructor|prototype)$/.test(name)) continue;
             const key = `name:${name}`;
             const state = states.get(key) || { base: '', outfit: '', outfitSet: false };
-            state.base ||= withName(row.name, clean(row.base));
+            state.base ||= knownBase(row.name, row.base);
             // Legacy character_memory.outfit is the END state, not opening clothing.
             if (!state.outfitSet) state.outfit = clean(row.initial_outfit);
             state.outfitSet ||= !!state.outfit;
             states.set(key, state);
         }
         for (const [key, state] of states) initial.set(key, { ...state });
+        const declaredNames = new Map();
         for (const page of result) for (const panel of page.panels) for (const c of panel.characters) {
+            if (!c.name?.trim()) continue;
+            if (!declaredNames.has(c.character_id)) declaredNames.set(c.character_id, new Map());
+            declaredNames.get(c.character_id).set(mangaIdentityKey(c.name), c.name);
+        }
+        for (const page of result) for (const panel of page.panels) for (const c of panel.characters) {
+            const knownNames = declaredNames.get(c.character_id);
+            if (!c.name?.trim() && knownNames?.size === 1) c.name = knownNames.values().next().value;
             delete c._mangaAppearance;
             delete c._mangaInitialAppearance;
             const name = mangaIdentityKey(c.name);
             const anonymous = !name || /^(?:[cp]\d+|character\s*\d+|角色\s*\d+|unknown|unnamed|路人|匿名|无名)$/.test(name);
             const key = anonymous ? `local:${c.character_id}` : `name:${name}`;
-            const hasFields = typeof c.base === 'string' && typeof c.outfit === 'string';
+            const hasFields = typeof c.base === 'string' || typeof c.outfit === 'string';
             let state = states.get(key);
             if (!state && hasFields) {
-                state = { base: withName(c.name, clean(c.base)), outfit: clean(c.outfit), outfitSet: !!clean(c.outfit) };
+                state = { base: knownBase(c.name, c.base), outfit: clean(c.outfit), outfitSet: !!clean(c.outfit) };
                 states.set(key, state);
                 initial.set(key, { ...state });
             }
             if (!state) continue;
             if (!seen.has(key)) {
                 const opening = initial.get(key);
-                opening.base ||= withName(c.name, clean(c.base));
+                opening.base ||= knownBase(c.name, c.base);
                 if (!opening.outfitSet && clean(c.outfit)) {
                     opening.outfit = clean(c.outfit);
                     opening.outfitSet = true;
                 }
                 seen.add(key);
             }
-            state.base ||= withName(c.name, clean(c.base));
+            state.base ||= knownBase(c.name, c.base);
             if (hasFields && clean(c.outfit)) {
                 state.outfit = clean(c.outfit);
                 state.outfitSet = true;
@@ -538,7 +550,7 @@ ${gutter.instruction}
 
 【数据归属：页面 → 画格 → 格内人物】
 输出 format=nai5-comic，字段见 outputSchema。page.base 写整页去重后的可见人数（同一人跨格不重复计数）、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
-同一人跨格使用相同 character_id，base 必须包含已有普通姓名或已确认的同人角色 Tag（已知作品限定保留；不猜译名），不能只把名字放在 name。base 同时写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。姓名与 character_id 用于资料关联，保留资料中已有的普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
+同一人跨格使用相同 character_id，name 填完整绘图身份（原创 Name (original)，同人已确认的 Name (Series)，优先沿用已有英文身份，未知译名/作品不猜），程序自动拼入 base。base 写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。name 同时用于绘图与资料关联，character_id 只用于跨格关联，保留资料中已有的普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【角色记忆落实：与普通模式共用】
@@ -675,7 +687,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
             params.v4_prompt.use_order = true;
         }
         const negCaption = params.v4_negative_prompt?.caption;
-        const baseNegative = sanitizeMangaNegativePrompt([params.negative_prompt || negCaption?.base_caption || '', negative].filter(Boolean).join(', '), mono);
+        const baseNegative = sanitizeMangaNegativePrompt([typeof params.negative_prompt === 'string' ? params.negative_prompt : negCaption?.base_caption || '', negative].filter(Boolean).join(', '), mono);
         params.negative_prompt = baseNegative;
         if (negCaption) {
             negCaption.base_caption = baseNegative;
@@ -2615,7 +2627,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
                     else if (/^(?:\d+)?others?$/i.test(tag)) seen.get(c.character_id).add('other');
                     return tag;
                 });
-                return { ...c, positive: joinMangaCaptions([position, p.shot, c.positive]) };
+                return { ...c, positive: joinMangaCaptions([position, p.shot, typeof RBQ.api.renderCharacterMemoryBase === 'function' ? RBQ.api.renderCharacterMemoryBase(c.name, c.positive) : c.positive]) };
             });
             return {
                 id: `P${index + 1}`,

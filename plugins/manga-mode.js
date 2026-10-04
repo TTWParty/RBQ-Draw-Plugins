@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.8.3';
+        const VERSION = '1.8.4';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -287,23 +287,40 @@
         const layout = /^Layout\s*[:：]\s*(?:縦書き|横書き)$/i;
         const location = /^(?:右上|左上|右下|左下|口元|画面外|頭上|上部|下部)$/;
         const sfx = /^(?:SFX\s*[:：]\s*擬音|吹き出しなし)$/i;
-        for (;;) {
-            const next = /\bText[ \t]*[:：]/i.exec(literal);
-            if (!next) break;
-            const tokens = literal.slice(0, next.index).split(/[,，\n]+/).map(t => t.trim()).filter(Boolean);
+        const recoverHeader = (part, explicit = false) => {
+            const next = /\bText[ \t]*[:：]/i.exec(part);
+            if (!next) return null;
+            const tokens = part.slice(0, next.index).split(/[,，\n]+/).map(t => t.trim()).filter(Boolean);
             if (!tokens.length || !tokens.some(t => bubble.test(t) || layout.test(t) || sfx.test(t))
-                || !tokens.every(t => bubble.test(t) || layout.test(t) || location.test(t) || sfx.test(t))) break;
+                || !tokens.every(t => bubble.test(t) || layout.test(t) || location.test(t) || sfx.test(t))
+                || (explicit && !tokens.some(t => /^(?:BubbleType|SFX)\s*[:：]/i.test(t)))) return null;
             const header = tokens.map(t => bubble.test(t) && !/^BubbleType/i.test(t) ? `BubbleType: ${t}` : t).join(', ');
             visual = [visual, header].filter(Boolean).join(', ');
-            literal = literal.slice(next.index + next[0].length).trim();
+            return part.slice(next.index + next[0].length).trim();
+        };
+        for (;;) {
+            const recovered = recoverHeader(literal);
+            if (recovered === null) break;
+            literal = recovered;
         }
+        // Legacy captions may interleave later bubble headers with real dialogue.
+        // Only an independent paragraph starting with explicit, known protocol
+        // fields is recoverable; inline mentions and quoted examples stay literal.
+        literal = literal.split(/(\n[ \t]*\n)/).map((part, index) => {
+            if (index < 2 || index % 2) return part;
+            let recovered;
+            while ((recovered = recoverHeader(part, true)) !== null) part = recovered;
+            return part;
+        }).join('');
         // Remove only a complete outer quotation wrapper, preserving inner punctuation/quotations.
         literal = literal.split(/\n[ \t]*\n/).map(part => {
             const trimmed = part.trim();
             const pairs = { '「': '」', '『': '』', '“': '”', '"': '"' };
             const close = pairs[trimmed[0]];
             if (close && trimmed.length >= 2 && trimmed.endsWith(close)
-                && !trimmed.slice(1, -1).includes(close) && !trimmed.slice(1, -1).includes(trimmed[0])) return trimmed.slice(1, -1);
+                && !trimmed.slice(1, -1).includes(close) && !trimmed.slice(1, -1).includes(trimmed[0])
+                // Keep quoted protocol examples opaque on every subsequent pass.
+                && !/^(?:BubbleType|SFX)\s*[:：]/i.test(trimmed.slice(1, -1))) return trimmed.slice(1, -1);
             return part;
         }).join('\n\n');
         return { visual, text: literal };
@@ -584,7 +601,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
     }
 
     // Filter whole tags (including weighted groups), never substrings or dialogue.
-    function filterMangaTags(value, forbidden, transform = tag => tag) {
+    function filterMangaTags(value, forbidden, transform = tag => tag, preserveProtocol = false) {
         const tokens = [];
         let start = 0, brackets = 0, weights = 0;
         for (let i = 0; i < value.length; i++) {
@@ -600,15 +617,17 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
             const token = raw.trim();
             const weighted = token.match(/^(-?\d+(?:\.\d+)?::)([\s\S]*)::$/);
             if (weighted) {
-                const body = filterMangaTags(weighted[2], forbidden, transform);
+                const body = filterMangaTags(weighted[2], forbidden, transform, preserveProtocol);
                 return body ? weighted[1] + body + '::' : '';
             }
             if ((token.startsWith('{') && token.endsWith('}')) || (token.startsWith('[') && token.endsWith(']'))) {
-                const body = filterMangaTags(token.slice(1, -1), forbidden, transform);
+                const body = filterMangaTags(token.slice(1, -1), forbidden, transform, preserveProtocol);
                 return body ? token[0] + body + token.at(-1) : '';
             }
             return forbidden.has(token.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : transform(token);
-        }).filter(Boolean).filter((tag, i, tags) => tags.indexOf(tag) === i).join(', ');
+        }).filter(Boolean).filter((tag, i, tags) => tags.indexOf(tag) === i
+            // Repeated bubble fields describe different utterances, not redundant tags.
+            || (preserveProtocol && /^(?:(?:BubbleType|Layout|SFX)\s*[:：]|(?:右上|左上|右下|左下|口元|画面外|頭上|上部|下部|吹き出しなし)$)/i.test(tag))).join(', ');
     }
 
     // Rendering-only fallback for explicit visual color phrases in any caption.
@@ -631,7 +650,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
     function sanitizeMangaPositivePrompt(value, monochromeCharacter = false, names = new Set()) {
         const { visual, text } = splitMangaText(value);
         const clean = filterMangaTags(visual, new Set(['no text', 'notext']), tag =>
-            monochromeCharacter && !names.has(mangaIdentityKey(tag)) ? monochromeCharacterTag(tag) : tag);
+            monochromeCharacter && !names.has(mangaIdentityKey(tag)) ? monochromeCharacterTag(tag) : tag, true);
         return clean + (text ? (clean ? '\n' : '') + 'Text: ' + text : '');
     }
 

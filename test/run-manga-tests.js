@@ -111,6 +111,43 @@ test('literal protocol words inside speech stay intact and independent quoted bu
     assert.equal(manga.splitMangaText('girl, Text: “甲”“乙”').text, '“甲”“乙”');
     assert.equal(manga.splitMangaText('girl, Text: Layout: 是单词，Text: 也是。').text, 'Layout: 是单词，Text: 也是。');
 });
+test('later independent bubble headers move before Text while all utterances retain their order', () => {
+    const bad = 'girl, holding envelope, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 信收到了。\n\nBubbleType: 通常吹き出し, 左下, Layout: 縦書き, Text: 谢谢你！\n\nSFX: 擬音, 吹き出しなし, Text: 咔哒';
+    const repaired = manga.sanitizeMangaPositivePrompt(bad);
+    assert.equal(repaired, 'girl, holding envelope, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, BubbleType: 通常吹き出し, 左下, Layout: 縦書き, SFX: 擬音, 吹き出しなし\nText: 信收到了。\n\n谢谢你！\n\n咔哒');
+    assert.equal(manga.sanitizeMangaPositivePrompt(repaired), repaired);
+    const page = fixture(); page.panels[0].characters[0].positive = bad;
+    assert.equal(manga.compileMangaPage(page).characters[0].caption, repaired);
+    const output = mangaHook(payload('comic', [{ char_caption: bad }]));
+    assert.equal(output.parameters.v4_prompt.caption.char_captions[0].char_caption, repaired);
+});
+test('later header recovery preserves literal examples, inline mentions and bilingual dialogue', () => {
+    const speech = '原句（译文）\n\n“BubbleType: 通常吹き出し, Layout: 縦書き, Text: 示例”\n\n请填写 BubbleType: 通常吹き出し, Text: 内容。\n\nLayout: 是单词，Text: 也是。';
+    assert.equal(manga.splitMangaText('girl, Text: ' + speech).text, speech);
+    const sanitized = manga.sanitizeMangaPositivePrompt('girl, Text: ' + speech);
+    assert.equal(manga.sanitizeMangaPositivePrompt(sanitized), sanitized);
+    assert.equal(manga.splitMangaText('girl, Text: 收到。 BubbleType: 通常吹き出し, Text: 好。').text,
+        '收到。 BubbleType: 通常吹き出し, Text: 好。');
+    assert.equal(manga.splitMangaText('girl, Text: 原句（译文）\n\nBubbleType: 通常吹き出し, 左下, Layout: 縦書き, Text: 次句（译文）').text,
+        '原句（译文）\n\n次句（译文）');
+});
+test('each consecutive bubble retains repeated type, location and layout through redraw', () => {
+    const input = 'girl, girl, holding envelope, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 第一句。\n\n第二句。';
+    const expected = input.replace('girl, girl,', 'girl,').replace(', Text:', '\nText:');
+    assert.equal(manga.sanitizeMangaPositivePrompt(input), expected);
+    const page = fixture(); page.panels[0].characters[0].positive = input;
+    const compiled = manga.compileMangaPage(page);
+    const run = order => {
+        sdt.prepareNaiCharData({ mangaPage: true, characters: compiled.characters });
+        let output = payload(compiled.base);
+        for (const hook of order) output = hook(output);
+        return output;
+    };
+    const output = run([sdtHook, mangaHook]);
+    assert.equal(output.parameters.v4_prompt.caption.char_captions[0].char_caption, expected);
+    assert.deepEqual(json(output), json(run([mangaHook, sdtHook])));
+    assert.equal(mangaHook(output).parameters.v4_prompt.caption.char_captions[0].char_caption, expected);
+});
 test('non-person bubble formatting repairs locally and cached captions are repaired by either hook order', () => {
     const page = fixture();
     page.page.non_character = 'Text: BubbleType: ナレーション枠, Layout: 横書き, Text: 「第二天」';

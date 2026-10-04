@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.8.2';
+        const VERSION = '1.8.3';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -647,13 +647,29 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
     let studioGenerationRatio = null;
     let studioRequest = null;
     const mangaPayloadNames = new WeakMap();
+    const mangaPayloadSettings = new WeakMap();
 
-    function enhanceMangaPayload(payload, forceManga = false, characterNames = []) {
-        const store = getStore();
+    function captureMangaRenderSettings() {
+        const { enabled, style, customPositive, customNegative, gutter, autoSpread } = getStore();
+        return { enabled, style, customPositive, customNegative, gutter, autoSpread };
+    }
+    mangaProtocol.captureRenderSettings = captureMangaRenderSettings;
+
+    function enhanceMangaPayload(payload, forceManga = false, characterNames = [], renderSettings) {
+        const store = renderSettings || mangaPayloadSettings.get(payload) || getStore();
         const studioMatch = studioRequest && String(payload.input || '').includes(studioRequest.prompt);
         if (!store.enabled && !studioMatch && forceManga !== true) return payload;
         if (!payload.parameters) return payload;
+        mangaPayloadSettings.set(payload, store);
         const params = payload.parameters;
+        // v1.1 assembles its own quality/UC library explicitly. Disable NAI's
+        // implicit presets so they cannot reintroduce comic/text exclusions.
+        params.qualityToggle = false;
+        params.ucPreset = 3;
+        if (store.ratio) {
+            const [width, height] = store.ratio.split('x').map(Number);
+            if (width > 0 && height > 0) Object.assign(params, { width, height });
+        }
         const names = mangaPayloadNames.get(payload) || new Set();
         for (const name of characterNames) if (name) names.add(mangaIdentityKey(name));
         if (studioMatch) for (const c of studioRequest.compiled.characters) if (c.name) names.add(mangaIdentityKey(c.name));
@@ -710,7 +726,11 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
         return payload;
     }
     mangaProtocol.enhancePayload = enhanceMangaPayload;
-    RBQ.on('buildNaiV4Payload', payload => enhanceMangaPayload(payload));
+    RBQ.on('buildNaiV4Payload', (payload, context) => {
+        const pending = context ? context.meta?.sdtCharacterData : RBQ.api.getPendingSdtImageData?.();
+        const request = pending && (!pending.prompt || String(payload.input || '').includes(pending.prompt)) ? pending : null;
+        return enhanceMangaPayload(payload, !!request?.manga, request?.characters?.map(c => c.name) || [], request?.renderSettings);
+    });
 
     // ── 6. UI Injection into Smart Draw Trigger (SDT) ──────────────
     const STYLE_TAG_ID = 'rbq-manga-mode-style';
@@ -2670,7 +2690,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
         return {
             title: panel.title || `画格 ${index + 1}`, desc: panel.desc || panel.title || '',
             position: panel.position || '', shot: panel.shot || '', tags: panel.description || '',
-            non_character: panel.non_character || '', characters: panel.characters.map(({ base, outfit, ...c }) => ({ ...c, positive: joinMangaCaptions([base, outfit, c.positive]) })),
+            non_character: panel.non_character || '', characters: panel.characters.map(({ base, outfit, state, _mangaAppearance, _mangaInitialAppearance, ...c }) => ({ ...c, positive: joinMangaCaptions([base, outfit, c.positive]) })),
             bubbleText: '', bubbleType: 'caption', bubbleLayout: 'horizontal'
         };
     }
@@ -3493,14 +3513,22 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             btnGenerate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向生图引擎提交漫画任务...';
 
             studioGenerationRatio = studio.ratio || '832x1216';
-            studioRequest = { prompt, compiled };
+            const generatePage = RBQ.api.generateSdtImage;
+            // New SDT owns the character/settings snapshot; legacy hosts retain
+            // the original Studio compatibility bridge.
+            studioRequest = typeof generatePage === 'function' ? null : { prompt, compiled };
+            const segment = { mangaPage: true, mangaUseCoords: compiled.useCoords, characters: compiled.characters,
+                mangaRenderSettings: { ...captureMangaRenderSettings(), ratio: studioGenerationRatio } };
 
             try {
-                const result = await RBQ.api.generateImage(prompt, 'manga-workshop', {}, (progress) => {
+                const onProgress = (progress) => {
                     if (typeof progress === 'string') {
                         btnGenerate.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 16)}...`;
                     }
-                });
+                };
+                const result = typeof generatePage === 'function'
+                    ? await generatePage(segment, prompt, 'manga-workshop', {}, onProgress)
+                    : await RBQ.api.generateImage(prompt, 'manga-workshop', {}, onProgress);
 
                 if (result && result.url) {
                     studio.lastGeneratedUrl = result.url;

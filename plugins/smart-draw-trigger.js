@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.4.2';
+    const PLUGIN_VERSION = '6.4.3';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3828,7 +3828,7 @@ ${getCharacterMemoryTagSpecification()}
 
                 const testPrompt = composeCharacterTestPrompt(cleanName, baseTags, outfitTags, currentMode, transparentBg);
 
-                const result = await RBQ.api.generateImage(testPrompt, 'sdt-char-test', {}, (progress) => {
+                const result = await generateSdtImage(null, testPrompt, 'sdt-char-test', {}, (progress) => {
                     if (triggerBtn && typeof progress === 'string') {
                         const prefix = mode === 'all' ? `[${i + 1}/3] ` : '';
                         triggerBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${prefix}${progress.slice(0, 8)}...`;
@@ -4827,7 +4827,7 @@ ${getCharacterMemoryTagSpecification()}
             toastr.info(`正在测试生图「${entryTitle}」...`, PLUGIN_NAME);
 
             try {
-                const result = await RBQ.api.generateImage(finalPromptText, 'sdt-wb-test', {}, (progress) => {
+                const result = await generateSdtImage(null, finalPromptText, 'sdt-wb-test', {}, (progress) => {
                     if (submitBtn && typeof progress === 'string') {
                         submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 8)}...`;
                     }
@@ -7263,6 +7263,7 @@ ${getCharacterMemoryTagSpecification()}
 
     async function runSegmentAiRefinement(segResult, userInstructions) {
         const store = getStore();
+        const requestContext = segResult?.mangaPage ? captureMangaRequestContext() : null;
         const segJson = JSON.stringify(segResult || {});
         const systemPrompt = segResult?.mangaPage
             ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit 与本格动作对白 positive，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
@@ -7330,6 +7331,7 @@ SCHEMA:
             json = await safeReadJsonResponse(response);
         }
 
+        if (requestContext) assertMangaRequestContext(requestContext);
         const rawContent = json?.choices?.[0]?.message?.content || json?.content || json;
         const parsedRaw = typeof rawContent === 'object' && rawContent !== null ? rawContent : extractJson(rawContent);
 
@@ -7527,11 +7529,9 @@ SCHEMA:
                 close();
                 toastr.info('分镜重构完成，开始生成新图像...', PLUGIN_NAME);
 
-                prepareNaiCharData(updatedSeg);
                 const newFinalPrompt = getFinalPrompt(updatedSeg);
                 if (wrapper) {
-                    wrapper.dataset.prompt = newFinalPrompt;
-                    cacheWrapperCharacterData(wrapper, updatedSeg);
+                    persistSegmentEdits(wrapper, updatedSeg, newFinalPrompt);
                 }
 
                 const baseKey = wrapper?.dataset?.rbqSdtBaseKey;
@@ -7543,7 +7543,7 @@ SCHEMA:
 
                 if (wrapper) setCardLoadingState(wrapper, true, '✨ AI 微调重绘中...', userInstructions.slice(0, 30));
 
-                const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-refine', {
+                const imageResult = await generateSdtImage(updatedSeg, newFinalPrompt, 'sdt-refine', {
                     messageId: wrapper?.dataset?.messageId || viewerContext?.currentItem?.messageId || null,
                 }, (progress) => {
                     if (wrapper) setCardLoadingState(wrapper, true, '✨ AI 微调重绘中...', typeof progress === 'string' ? progress : '');
@@ -7606,7 +7606,7 @@ SCHEMA:
         const characters = isMultiChar ? segResult.characters : [];
         const initialScene = String(segResult?.scene || '').trim();
         const initialFullPrompt = String(getFinalPrompt(segResult) || segResult?.prompt || segResult?.scene || '').trim();
-        const initialNegative = String(segResult?.negativePrompt || segResult?.uc || '').trim();
+        const initialNegative = String(getSegmentNegative(segResult) ?? '').trim();
 
         const COORD_OPTIONS = [
             { val: 'C3', label: 'C3 (居中·站姿)' },
@@ -8106,10 +8106,8 @@ SCHEMA:
         }
 
         function syncUpdatedSegmentState(updatedSeg, newFinalPrompt) {
+            persistSegmentEdits(wrapper, updatedSeg, newFinalPrompt);
             if (wrapper) {
-                wrapper.dataset.prompt = newFinalPrompt;
-                wrapper.dataset.rbqSdtFinalPrompt = newFinalPrompt;
-                cacheWrapperCharacterData(wrapper, updatedSeg);
                 renderCardBadges(wrapper, updatedSeg);
             }
 
@@ -8121,20 +8119,6 @@ SCHEMA:
             if (viewerContext?.currentItem?.url) sdtSegmentMap.set(viewerContext.currentItem.url, segData);
             if (viewerContext?.currentItem?.displayUrl) sdtSegmentMap.set(viewerContext.currentItem.displayUrl, segData);
             sdtSegmentMap.set(newFinalPrompt, segData);
-
-            if (baseKey) {
-                const store = getStore();
-                const cache = store?.cache?.[baseKey];
-                if (cache) {
-                    if (segmentKey && cache.segments) {
-                        const m = segmentKey.match(/-seg-(\d+)$/);
-                        if (m && cache.segments[parseInt(m[1], 10)]) {
-                            cache.segments[parseInt(m[1], 10)] = { ...cache.segments[parseInt(m[1], 10)], ...updatedSeg };
-                        }
-                    }
-                    save();
-                }
-            }
 
             if (viewerContext) {
                 if (viewerContext.currentItem) {
@@ -8171,7 +8155,7 @@ SCHEMA:
         const submitBtn = modal.querySelector('#rbq-sdt-manual-submit');
         submitBtn?.addEventListener('click', async () => {
             const updatedSeg = gatherUpdatedSegment(activeTab);
-            prepareNaiCharData(updatedSeg);
+
             const newFinalPrompt = getFinalPrompt(updatedSeg);
             if (!newFinalPrompt) {
                 toastr.warning('提示词不能为空', PLUGIN_NAME);
@@ -8206,8 +8190,8 @@ SCHEMA:
             toastr.info('开始按手动调整的 Tag 重新生图...', PLUGIN_NAME);
 
             try {
-                prepareNaiCharData(updatedSeg);
-                const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-manual-refine', {
+
+                const imageResult = await generateSdtImage(updatedSeg, newFinalPrompt, 'sdt-manual-refine', {
                     messageId: wrapper?.dataset?.messageId || viewerContext?.currentItem?.messageId || null,
                     negative_prompt: getSegmentNegative(updatedSeg),
                 }, (progress) => {
@@ -8420,11 +8404,10 @@ SCHEMA:
             close();
 
             try {
-                prepareNaiCharData(updatedSeg);
+
                 const newFinalPrompt = getFinalPrompt(updatedSeg);
                 if (wrapper) {
-                    wrapper.dataset.prompt = newFinalPrompt;
-                    cacheWrapperCharacterData(wrapper, updatedSeg);
+                    persistSegmentEdits(wrapper, updatedSeg, newFinalPrompt);
                 }
 
                 const baseKey = wrapper?.dataset?.rbqSdtBaseKey;
@@ -8436,7 +8419,7 @@ SCHEMA:
 
                 if (wrapper) setCardLoadingState(wrapper, true, '👗 角色换装重绘中...', '正在替换服装并请求生图...');
 
-                const imageResult = await RBQ.api.generateImage(newFinalPrompt, 'sdt-outfit-swap', {
+                const imageResult = await generateSdtImage(updatedSeg, newFinalPrompt, 'sdt-outfit-swap', {
                     messageId: wrapper?.dataset?.messageId || viewerContext?.currentItem?.messageId || null,
                 }, (progress) => {
                     if (wrapper) setCardLoadingState(wrapper, true, '👗 角色换装重绘中...', typeof progress === 'string' ? progress : '');
@@ -9398,13 +9381,45 @@ SCHEMA:
         else delete wrapper.dataset.rbqSdtNegative;
     }
 
+    function persistSegmentEdits(wrapper, segment, prompt) {
+        if (!wrapper?.dataset) return;
+        wrapper.dataset.prompt = prompt;
+        wrapper.dataset.rbqSdtFinalPrompt = prompt;
+        cacheWrapperCharacterData(wrapper, segment);
+        const baseKey = wrapper.dataset.rbqSdtBaseKey;
+        if (!baseKey) return;
+        const segmentKey = wrapper.dataset.rbqSdtSegmentKey || baseKey;
+        const match = segmentKey.match(/-seg-(\d+)$/);
+        const edited = JSON.parse(JSON.stringify(sanitizeSdtResult(segment)));
+        if (!Object.hasOwn(segment, 'shouldDraw')) delete edited.shouldDraw;
+        if (typeof segment.label === 'string') edited.label = segment.label;
+        if (Array.isArray(segment.mangaWarnings)) edited.mangaWarnings = [...segment.mangaWarnings];
+        const update = entry => {
+            if (!entry) return false;
+            if (Array.isArray(entry.segments) && entry.segments.length) {
+                const index = match ? Number(match[1]) : entry.segments.length === 1 ? 0 : -1;
+                if (!entry.segments[index]) return false;
+                entry.segments[index] = { ...entry.segments[index], ...edited };
+            } else Object.assign(entry, edited);
+            return true;
+        };
+        if (update(getStore().cache?.[baseKey])) save();
+        const messageId = wrapper.dataset.messageId;
+        if (messageId === undefined || messageId === '') return;
+        const extra = getMsgExtraSdt(messageId);
+        // The key includes chat/message content; a detached old wrapper cannot
+        // write its edited page into a replacement or another chat's message.
+        if (extra?.key === baseKey && update(extra)) saveMsgExtraSdt(messageId, extra);
+    }
+
     /** Build a snapshot owned by one image request, including empty manga pages. */
     function buildNaiCharData(segmentResult) {
         if (segmentResult?.mangaPage || (isMangaRequest() && Array.isArray(segmentResult?.characters))) {
             return {
                 manga: true, useCoords: !!segmentResult.mangaUseCoords, negative: getSegmentNegative(segmentResult),
-                renderSettings: RBQ.api.mangaProtocol?.captureRenderSettings?.(),
-                characters: (segmentResult.characters || []).map(c => ({ name: c.name || c._rawName, caption: c.caption, center: c.center, uc: c.uc || '' }))
+                renderSettings: { ...(segmentResult.mangaRenderSettings || RBQ.api.mangaProtocol?.captureRenderSettings?.()) },
+                characters: (segmentResult.characters || []).map(c => ({ name: c.name || c._rawName, caption: c.caption,
+                    center: typeof c.center === 'object' && c.center ? { ...c.center } : c.center, uc: c.uc || '' }))
             };
         }
         if (!segmentResult || !Array.isArray(segmentResult.characters) || segmentResult.characters.length === 0) {
@@ -9412,9 +9427,11 @@ SCHEMA:
         }
         return {
             scene: deduplicateQualityTags(segmentResult.scene || ''), negative: getSegmentNegative(segmentResult),
+            useCoords: !!getStore().multiCharUseCoords,
+            enabled: !!getStore().multiCharOutput,
             characters: segmentResult.characters.map(c => ({
                 caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
-                center: c.center || { x: 0.5, y: 0.5 },
+                center: typeof c.center === 'object' && c.center ? { ...c.center } : c.center || { x: 0.5, y: 0.5 },
                 uc: c.uc || '',
             })),
         };
@@ -9447,7 +9464,7 @@ SCHEMA:
     RBQ.on('buildNaiV4Payload', (payload, context) => {
         const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
         if (!data || (data.prompt && !String(payload.input || '').includes(data.prompt))
-            || (!data.manga && !getStore().multiCharOutput)) return payload;
+            || (!data.manga && !data.enabled)) return payload;
         const { characters, manga, useCoords, negative, renderSettings } = data;
         if (!characters.length && !manga) return payload;
 
@@ -9464,9 +9481,7 @@ SCHEMA:
             || payload.parameters?.negative_prompt || '';
         if (negative !== undefined) payload.parameters.negative_prompt = negative;
 
-        // Build base_caption: Prompt Presets prefix (from payload.input before our scene) + deduped scene
-        // payload.input = [Presets prefix], [getFinalPrompt scene]
-        // We replace the scene portion with the deduped version stored in pendingNaiCharData
+        // Retain the host prompt and any prefixes assembled by earlier hooks.
         const baseCaptionFinal = payload.input;
 
         // 【优化】根据官方文档：生成 H 内容时，需从 UC 中移除 nsfw，否则内容会被抑制
@@ -9477,7 +9492,7 @@ SCHEMA:
 
         payload.parameters.v4_prompt = {
             caption: { base_caption: baseCaptionFinal, char_captions: charCaptions },
-            use_coords: manga ? useCoords : !!getStore().multiCharUseCoords,
+            use_coords: useCoords,
             use_order: true,
             legacy_uc: false,
         };
@@ -9496,7 +9511,7 @@ SCHEMA:
     /* ── ComfyUI payload hook: inject char placeholders ── */
     RBQ.on('buildComfyUiWorkflow', (payload, context) => {
         const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
-        if (!data || !getStore().multiCharOutput) return payload;
+        if (!data || !data.enabled) return payload;
         const { characters } = data;
         if (!characters.length) return payload;
 
@@ -11845,15 +11860,11 @@ SCHEMA:
             setWrapperStage(wrapper, 'generating-image');
             setWrapperLoading(wrapper, 'tagger 已完成，正在调用 RBQ 生图...');
             setGenerateButtonState(wrapper, true, '生成中...', true);
-            // Restore structured char data for NAI V4 hook
+            const segment = { characters: [], mangaPage: wrapper.dataset.rbqSdtManga === '1',
+                mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1', negativePrompt: wrapper.dataset.rbqSdtNegative };
             const charDataJson = wrapper?.dataset?.rbqSdtCharData;
-            if (charDataJson) {
-                try {
-                    const chars = JSON.parse(charDataJson);
-                    prepareNaiCharData({ characters: chars, mangaPage: wrapper.dataset.rbqSdtManga === '1', mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1', negativePrompt: wrapper.dataset.rbqSdtNegative });
-                } catch (_e) { /* noop */ }
-            }
-            const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
+            if (charDataJson) segment.characters = JSON.parse(charDataJson);
+            const image = await generateSdtImage(segment, finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
@@ -11927,13 +11938,13 @@ SCHEMA:
             setWrapperStage(wrapper, 'generating-image');
             setWrapperLoading(wrapper, 'tagger 已返回，正在调用 RBQ 生图...');
             setGenerateButtonState(wrapper, true, '自动生成中...', true);
-            prepareNaiCharData(result);
+
             const finalPrompt = getFinalPrompt(result);
             if (!finalPrompt || finalPrompt === '[Smart Draw]') {
                 console.warn(`[${PLUGIN_NAME}] Auto-generate skipped: empty or placeholder prompt`, result);
                 return;
             }
-            const image = await RBQ.api.generateImage(finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
+            const image = await generateSdtImage(result, finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
@@ -14877,10 +14888,10 @@ SCHEMA:
             for (let i = 0; i < segments.length; i++) {
                 const seg = segments[i];
                 statusEl.textContent = `\u6b63\u5728\u751f\u6210\u7b2c ${i + 1}/${segments.length} \u5f20...`;
-                prepareNaiCharData(seg);
+
                 const finalPrompt = getFinalPrompt(seg);
                 try {
-                    await RBQ.api.generateImage(finalPrompt, 'sdt-manual-draw', {}, (progressText) => {
+                    await generateSdtImage(seg, finalPrompt, 'sdt-manual-draw', {}, (progressText) => {
                         statusEl.textContent = `[${i + 1}/${segments.length}] ${progressText}`;
                     });
                     successCount++;
@@ -15725,15 +15736,8 @@ SCHEMA:
         btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生图...';
 
         try {
-            // Keep page metadata and clear stale captions for empty manga panels.
-            if (item.mangaPage || (Array.isArray(item.characters) && item.characters.length > 0)) {
-                try {
-                    prepareNaiCharData({ characters: item.characters, mangaPage: item.mangaPage, mangaUseCoords: item.mangaUseCoords, negativePrompt: getSegmentNegative(item) });
-                } catch (_e) { /* ignore */ }
-            }
-
             // 2. Call RBQ image generation
-            const image = await RBQ.api.generateImage(
+            const image = await generateSdtImage(item,
                 item.prompt,
                 'smart-draw-trigger',
                 { messageId: item.messageId },
@@ -16353,7 +16357,7 @@ SCHEMA:
         }
 
         const seg = normalized.segments[0];
-        prepareNaiCharData(seg);
+
         const finalPrompt = getFinalPrompt(seg);
 
         return { segment: seg, finalPrompt };
@@ -16367,8 +16371,7 @@ SCHEMA:
         const { segment: seg, finalPrompt } = await parseTaggerSegment(description, onProgress);
         if (onProgress) onProgress('Tagger 分析成功，开始生成图像...');
 
-        prepareNaiCharData(seg);
-        const result = await RBQ.api.generateImage(finalPrompt, 'sdt-test', {}, onProgress);
+        const result = await generateSdtImage(seg, finalPrompt, 'sdt-test', {}, onProgress);
         if (result && typeof result === 'object') {
             result.segment = seg;
             result.finalPrompt = finalPrompt;
@@ -16379,6 +16382,8 @@ SCHEMA:
 
     RBQ.api.openSegmentManualTagModal = openSegmentManualTagModal;
     RBQ.api.prepareNaiCharData = prepareNaiCharData;
+    RBQ.api.generateSdtImage = generateSdtImage;
+    RBQ.api.getPendingSdtImageData = () => pendingNaiCharData;
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);
@@ -16593,8 +16598,8 @@ SCHEMA:
                 generateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>正在生成图像...</span>';
                 toastr.info('开始按当前提炼 Tag 生成图像...', PLUGIN_NAME);
                 try {
-                    prepareNaiCharData(segment);
-                    const drawResult = await RBQ.api.generateImage(currentPrompt, 'sdt-test');
+
+                    const drawResult = await generateSdtImage(segment, currentPrompt, 'sdt-test');
                     toastr.success('智能测试生图完成！', PLUGIN_NAME);
                     renderSdtTestResultCard({
                         result: drawResult,
@@ -16622,8 +16627,8 @@ SCHEMA:
                 redrawBtn.disabled = true;
                 redrawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>生成中...</span>';
                 try {
-                    prepareNaiCharData(segment);
-                    const drawResult = await RBQ.api.generateImage(currentPrompt, 'sdt-test-redraw');
+
+                    const drawResult = await generateSdtImage(segment, currentPrompt, 'sdt-test-redraw');
                     toastr.success('重新生图完成！', PLUGIN_NAME);
                     renderSdtTestResultCard({
                         result: drawResult,
@@ -16696,11 +16701,11 @@ SCHEMA:
     }
 
     const handleSdtTestRedraw = async (newSeg, newPrompt) => {
-        prepareNaiCharData(newSeg);
+
         RBQ?.ui?.setTestResult?.('<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> 正在按微调后的 Tag 重新生图...</span>');
         toastr.info('开始按微调后的 Tag 重新生图...', PLUGIN_NAME);
         try {
-            const newResult = await RBQ.api.generateImage(newPrompt, 'sdt-test-redraw');
+            const newResult = await generateSdtImage(newSeg, newPrompt, 'sdt-test-redraw');
             toastr.success('重新生图完成', PLUGIN_NAME);
             renderSdtTestResultCard({
                 result: newResult,
@@ -16739,7 +16744,6 @@ SCHEMA:
                         setResult(`<span style="color: var(--linear-text-muted); font-size: 14px;"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(progressText)}</span>`);
                     });
 
-                    prepareNaiCharData(seg);
                     toastr.success('分镜 Tag 提炼完成，可预览词条后点击「立即生图」', PLUGIN_NAME);
 
                     renderSdtTestResultCard({

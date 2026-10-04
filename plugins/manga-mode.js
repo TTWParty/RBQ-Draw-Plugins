@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.5';
+        const VERSION = '1.9.6';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -32,6 +32,7 @@
                 ratio: '832x1216',
                 autoSfx: true,
                 antiHijack: true,
+                useChatChars: false,
                 lastGeneratedUrl: '',
                 lastGeneratedPrompt: '',
                 panels: createInitialStudioPanels(),
@@ -39,6 +40,9 @@
         }
         if (!s[STORAGE_KEY].studio.panelCountMode) {
             s[STORAGE_KEY].studio.panelCountMode = 'auto';
+        }
+        if (s[STORAGE_KEY].studio.useChatChars === undefined) {
+            s[STORAGE_KEY].studio.useChatChars = false;
         }
         return s[STORAGE_KEY];
     }
@@ -2886,7 +2890,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
     function studioDirectorPrompt(store, task, ec = getSdtStore().enhancedContext) {
         return buildMangaSystemPrompt({ ...store, antiHijack: store.studio?.antiHijack ?? store.antiHijack }) + `
 【工作台任务】${task}${ec === 'v_manga_185' ? '\n输入 mangaCanvas 是本页实际画布像素与方向，按文字和主动作共同需要分配画格空间；调整格大小和对白分泡，保留关键问答。' : ''}
-若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
+若输入带 characterCardInfo/characterMemory，按姓名严格对应参考角色卡与已存外貌衣着；严禁将剧情中明确出现的新角色、同人角色或不同人物篡改/替换为参考档案角色，仅当剧情明确描写该角色时才使用其设定。未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
 只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
 position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作和对白进自己的 positive，外貌与服装分别进 base/outfit；没有人物时 characters=[]。
@@ -2900,8 +2904,9 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const baseUrl = String(config.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const model = String(config.openaiModelCustom || config.openaiModel || '').trim();
         if (!baseUrl || !model) throw new Error('请先在智能生图中配置 OpenAI 兼容接口和模型；现有分镜已保留');
-        const references = typeof RBQ.api.collectMangaReferenceData === 'function' ? RBQ.api.collectMangaReferenceData(content) : {};
-        const cacheContext = !editingSnapshots ? RBQ.api.captureMangaRenderCacheContext?.() : null;
+        const useChatChars = store.studio?.useChatChars === true;
+        const references = (useChatChars && typeof RBQ.api.collectMangaReferenceData === 'function') ? RBQ.api.collectMangaReferenceData(content) : {};
+        const cacheContext = (!editingSnapshots && useChatChars) ? RBQ.api.captureMangaRenderCacheContext?.() : null;
         if (cacheContext) cacheContext.renderSettings = { ...store };
         const ec = config.enhancedContext;
         const canvas = buildMangaPlanningContext(store.studio?.ratio, ec);
@@ -2923,7 +2928,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             || (expectedCount && data.panels.length !== expectedCount)) throw new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
         const rawPage = { format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels };
         // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
-        const page = resolveMangaAppearances([rawPage], editingSnapshots ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
+        const page = resolveMangaAppearances([rawPage], (editingSnapshots || !useChatChars) ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
         compileMangaPage(page);
         if (cacheContext) RBQ.api.saveMangaRenderCache?.([page], cacheContext);
         return page.panels.map(studioPanelFromProtocol);
@@ -3163,6 +3168,13 @@ position 单独写位置，description/positive 不重复画格位置；系统�
                                             <option value="5" ${studio.panelCountMode === '5' ? 'selected' : ''}>5 格 (密集)</option>
                                         </select>
                                     </div>
+                                    <label class="mw-chip-toggle" title="开启后，解析分镜将参考当前酒馆角色的卡片与记忆外貌；关闭时工作台完全独立，绝不带入正文角色">
+                                        <input type="checkbox" id="mw-chk-use-chat-chars" ${studio.useChatChars ? 'checked' : ''}>
+                                        <span class="mw-chip-body">
+                                            <span class="mw-chip-dot"></span>
+                                            <span>关联正文角色</span>
+                                        </span>
+                                    </label>
                                     <label class="mw-chip-toggle">
                                         <input type="checkbox" id="mw-chk-anti-hijack" ${studio.antiHijack !== false ? 'checked' : ''}>
                                         <span class="mw-chip-body">
@@ -3539,6 +3551,10 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             studio.panelCountMode = e.target.value;
             save();
         });
+        container.querySelector('#mw-chk-use-chat-chars')?.addEventListener('change', (e) => {
+            studio.useChatChars = e.target.checked;
+            save();
+        });
         container.querySelector('#mw-chk-anti-hijack')?.addEventListener('change', (e) => {
             studio.antiHijack = e.target.checked;
             save();
@@ -3553,9 +3569,12 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             const narrative = extractChatNarrative();
             if (narrative) {
                 studio.storyText = narrative;
+                studio.useChatChars = true;
                 if (storyInputEl) storyInputEl.value = narrative;
+                const chk = container.querySelector('#mw-chk-use-chat-chars');
+                if (chk) chk.checked = true;
                 save();
-                toastr.success('已提取当前酒馆会话的最新剧情！', PLUGIN_NAME);
+                toastr.success('已提取当前酒馆会话的最新剧情，并自动关联正文角色！', PLUGIN_NAME);
             }
         });
 

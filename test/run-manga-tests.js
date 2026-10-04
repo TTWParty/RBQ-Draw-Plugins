@@ -8,7 +8,7 @@ const sdtSource = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-tr
 const settings = {
     currentMode: 'nai',
     _mangaMode: { enabled: true, style: 'monochrome', grammar: 'cinema', gutter: 'bleed', language: 'zh-hans', autoSpread: true, antiHijack: true,
-        studio: { ratio: '832x1216', panels: [], panelCountMode: 'auto' } },
+        studio: { ratio: '832x1216', panels: [], panelCountMode: 'auto', useChatChars: false } },
     _smartDrawTrigger: { _mangaActive: true, enhancedContext: 'v_manga', multiCharOutput: true, multiCharUseCoords: false }
 };
 const hooks = [];
@@ -1566,6 +1566,15 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     console.log('PASS Studio failures preserve drafts and incompatible 4-koma count is rejected'); passed++;
     const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short blonde hair, brown eyes', outfit: 'white shirt' }] };
     RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
+    // Studio defaults to independent mode (useChatChars: false): references must NOT leak into LLM input
+    manga.fetch = async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.equal(body.messages[1].content, 'story', 'Default studio mode passes raw input without injecting characterCardInfo or characterMemory');
+        return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: [fixture().panels[0]] }) } }] }) };
+    };
+    await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
+
+    settings._mangaMode.studio.useChatChars = true;
     for (const ec of ['v_manga', 'v_manga_185']) for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
         settings._smartDrawTrigger.enhancedContext = ec;
         settings._smartDrawTrigger.openaiBaseUrl = baseUrl;
@@ -1589,9 +1598,11 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.match(panels[0].characters[1].positive, /white shirt/);
         assert.equal(profileSaves, savesBefore);
     }
+    settings._mangaMode.studio.useChatChars = false;
     settings._smartDrawTrigger.enhancedContext = 'v_manga';
 
     RBQ.api.collectMangaReferenceData = () => ({ characterMemory: [{ name: 'Mina', base: 'girl, blonde hair', outfit: 'red dress' }] });
+    settings._mangaMode.studio.useChatChars = true;
     const draft = appearancePage([
         { visible: allParts, state: { outfit: 'blue coat' }, positive: 'girl, blonde hair, blue coat, standing' },
         { visible: allParts, positive: 'girl, blonde hair, blue coat, holding book' }
@@ -1622,6 +1633,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     assert.doesNotMatch(changedDraft[1].characters[0].positive,/long hair|white shirt|red dress/);
     console.log('PASS Studio refinement applies explicit structured changes without live memory overriding drafts'); passed++;
     settings._mangaMode.style = draftStyle;
+    settings._mangaMode.studio.useChatChars = false;
     delete RBQ.api.collectMangaReferenceData;
     console.log('PASS Studio reuses complete ordinary memory without saving profiles and accepts full chat-completions endpoints'); passed++;
     console.log(`\n${passed} manga regression tests passed.`);

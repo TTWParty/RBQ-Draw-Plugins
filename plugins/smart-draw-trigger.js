@@ -8670,10 +8670,11 @@ SCHEMA:
 
         const titleEl = document.createElement('div');
         titleEl.className = 'rbq-sdt-debug-title';
+        const titleText = result?.title || (isError ? 'Tagger 解析失败诊断' : 'Tagger 判定无需生图原因');
         if (isError) {
-            titleEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <span>Tagger 解析失败诊断</span>';
+            titleEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>${(typeof escapeHtml === 'function' ? escapeHtml(titleText) : titleText)}</span>`;
         } else {
-            titleEl.innerHTML = '<i class="fa-solid fa-circle-question"></i> <span>Tagger 判定无需生图原因</span>';
+            titleEl.innerHTML = `<i class="fa-solid fa-circle-question"></i> <span>${(typeof escapeHtml === 'function' ? escapeHtml(titleText) : titleText)}</span>`;
         }
 
         const reasonEl = document.createElement('div');
@@ -8709,9 +8710,9 @@ SCHEMA:
             } else if (errStr.includes('404') || errStr.includes('model_not_found') || errStr.includes('model not found')) {
                 specificTip = '⚠️ <strong>模型不存在 (404 Not Found)</strong>：当前配置的模型名称在服务商处不存在。<br>'
                     + '👉 <strong>解决方案</strong>：请点击「获取模型列表」重新选择可用模型，或核对自定义模型名称拼写。';
-            } else if (errStr.includes('safety') || errStr.includes('prohibited') || errStr.includes('sensitive words') || errStr.includes('finish_reason: safety')) {
-                specificTip = '⚠️ <strong>内容审核拦截 (Safety Refusal)</strong>：当前剧情触发了服务商的内容安全审查或流式外审熔断。<br>'
-                    + '👉 <strong>解决方案</strong>：请开启<strong>「🛡️ 工具调用抗外审 (Tool Call)」</strong>或在破限预设中选择<strong>「酒馆沙盒纯净版」</strong>。';
+            } else if (errStr.includes('safety') || errStr.includes('prohibited') || errStr.includes('sensitive words') || errStr.includes('finish_reason: safety') || errStr.includes('抱歉') || errStr.includes('违规') || errStr.includes('色情') || errStr.includes('性描写')) {
+                specificTip = '⚠️ <strong>内容审核拦截或模型拒答 (Safety Refusal)</strong>：当前剧情触发了服务商的内容安全审查或模型拒绝回答。<br>'
+                    + '👉 <strong>解决方案</strong>：请在「智能触发」设置中开启<strong>「开启破限 (Jailbreak)」</strong>并选择<strong>「酒馆沙盒纯净版」</strong>；如使用 Gemini，建议开启尾部输出引导防模型拒绝。';
             } else {
                 specificTip = '💡 <strong>排查建议：</strong><br>'
                     + '1. 若提示安全审查 / 内容熔断，可开启<strong>「🛡️ 工具调用抗外审」</strong>或<strong>「开启破限」</strong>。<br>'
@@ -16554,6 +16555,22 @@ SCHEMA:
     RBQ.api.prepareNaiCharData = prepareNaiCharData;
     RBQ.api.generateSdtImage = generateSdtImage;
     RBQ.api.getPendingSdtImageData = () => pendingNaiCharData;
+    RBQ.api.renderTaggerDebugInfo = renderTaggerDebugInfo;
+    RBQ.api.buildSdtMessages = (systemPrompt, userContent, customStore = null) => {
+        const store = customStore || getStore();
+        const jailbreakPrompt = getActiveJailbreakPrompt(store);
+        const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+            ? parseJailbreakMessages(jailbreakPrompt, systemPrompt)
+            : [{ role: 'system', content: systemPrompt }];
+
+        rawMessages.push({ role: 'user', content: typeof userContent === 'string' ? userContent : JSON.stringify(userContent, null, 2) });
+
+        applyPostProcessPrompt(rawMessages, store);
+
+        return store.squashMessages !== false
+            ? squashConsecutiveMessages(rawMessages)
+            : rawMessages;
+    };
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);

@@ -1604,8 +1604,31 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     const parsedWithPreamble = await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
     assert.equal(parsedWithPreamble.length, 1);
     manga.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '抱歉，根据安全规范，我无法生成包含显式性行为的内容。' } }] }) });
-    await assert.rejects(manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1), /AI 模型未返回有效分镜/);
-    console.log('PASS Studio robustly extracts JSON across thinking blocks, conversational preambles and reports refusals'); passed++;
+    let refusalErr;
+    try {
+        await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
+    } catch (e) {
+        refusalErr = e;
+    }
+    assert.match(refusalErr?.message, /AI 模型未返回有效分镜/);
+    assert.match(refusalErr?.rawOutput, /包含显式性行为/);
+    assert.match(refusalErr?.rawOutput, /【模型原始返回正文/);
+    console.log('PASS Studio robustly extracts JSON across thinking blocks, conversational preambles and reports refusals with raw trace'); passed++;
+
+    RBQ.api.buildSdtMessages = (sys, user, cfg) => {
+        if (cfg.geminiJailbreak) return [{ role: 'system', content: `[JAILBREAK]\n${sys}` }, { role: 'user', content: user }];
+        return [{ role: 'system', content: sys }, { role: 'user', content: user }];
+    };
+    settings._smartDrawTrigger.geminiJailbreak = true;
+    manga.fetch = async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.match(body.messages[0].content, /\[JAILBREAK\]/);
+        return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: [fixture().panels[0]] }) } }] }) };
+    };
+    await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
+    settings._smartDrawTrigger.geminiJailbreak = false;
+    delete RBQ.api.buildSdtMessages;
+    console.log('PASS Studio inherits SDT jailbreak wrapper when enabled'); passed++;
     const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short blonde hair, brown eyes', outfit: 'white shirt' }] };
     RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
     // Studio defaults to independent mode (useChatChars: false): references must NOT leak into LLM input

@@ -2045,6 +2045,106 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             color: #94a3b8 !important;
             line-height: 1.4 !important;
         }
+        /* Studio Diagnostic & Trace Box */
+        .mw-studio-debug-wrap {
+            margin-bottom: 10px !important;
+        }
+        .mw-studio-debug-wrap:empty {
+            display: none !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-box {
+            margin-top: 0 !important;
+            padding: 10px 12px !important;
+            border-radius: 8px !important;
+            font-size: 12px !important;
+            line-height: 1.5 !important;
+            background: rgba(0, 0, 0, 0.35) !important;
+            border: 1px dashed rgba(255, 180, 50, 0.4) !important;
+            color: #e0e0e0 !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-box.is-error {
+            border: 1px dashed rgba(239, 68, 68, 0.6) !important;
+            background: rgba(239, 68, 68, 0.09) !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-title {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 6px !important;
+            font-weight: 600 !important;
+            font-size: 12.5px !important;
+            color: #f87171 !important;
+            margin-bottom: 4px !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-title-left {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-close-btn {
+            background: none !important;
+            border: none !important;
+            color: #94a3b8 !important;
+            cursor: pointer !important;
+            font-size: 13px !important;
+            padding: 2px 4px !important;
+            line-height: 1 !important;
+            border-radius: 4px !important;
+            transition: color 0.15s !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-close-btn:hover {
+            color: #fff !important;
+            background: rgba(255, 255, 255, 0.1) !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-reason {
+            font-size: 12px !important;
+            color: #eee !important;
+            word-break: break-word !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-tip {
+            font-size: 11px !important;
+            margin-top: 6px !important;
+            padding: 6px 8px !important;
+            background: rgba(239, 68, 68, 0.12) !important;
+            border-left: 3px solid #ef4444 !important;
+            border-radius: 3px !important;
+            line-height: 1.4 !important;
+            color: #ffcdd2 !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-details {
+            margin-top: 8px !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+            padding-top: 6px !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-details summary {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            cursor: pointer !important;
+            font-size: 11px !important;
+            opacity: 0.8 !important;
+            user-select: none !important;
+            outline: none !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-details summary:hover {
+            opacity: 1 !important;
+        }
+        .mw-studio-debug-wrap .rbq-sdt-debug-raw {
+            margin-top: 6px !important;
+            max-height: 240px !important;
+            overflow-y: auto !important;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            font-size: 11px !important;
+            white-space: pre-wrap !important;
+            word-break: break-all !important;
+            padding: 8px 10px !important;
+            background: rgba(0, 0, 0, 0.5) !important;
+            border-radius: 6px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #a8d1ff !important;
+            user-select: text !important;
+            margin-bottom: 0 !important;
+        }
         `;
         (document.head || document.documentElement || document.body)?.appendChild(style);
     }
@@ -3022,26 +3122,98 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const userContent = canvas ? JSON.stringify({ currentMessage: content, ...references, mangaCanvas: canvas })
             : Object.keys(references).length ? JSON.stringify({ currentMessage: content, ...references }) : content;
         const endpoint = /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`;
-        const response = await fetch(endpoint, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
-            body: JSON.stringify({ model, temperature: 0.2, messages: [
-                { role: 'system', content: studioDirectorPrompt(store, task, ec) + (editingSnapshots
-                    ? '\n本次润色已有分镜：已有格内 positive 是该时刻的完整外貌衣着快照，优先于聊天档案默认服装。保留既有和前格持续状态，按本格明确变化调整；将已有完整快照拆成 base/outfit/positive，保留全部外貌服装与本格动作，不只返回增量。' : '') }, { role: 'user', content: userContent }
-            ] })
-        });
-        if (!response.ok) throw new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
-        const result = await response.json();
-        const rawReply = String(result.choices?.[0]?.message?.content || '').trim();
+
+        const systemContent = studioDirectorPrompt(store, task, ec) + (editingSnapshots
+            ? '\n本次润色已有分镜：已有格内 positive 是该时刻的完整外貌衣着快照，优先于聊天档案默认服装。保留既有和前格持续状态，按本格明确变化调整；将已有完整快照拆成 base/outfit/positive，保留全部外貌服装与本格动作，不只返回增量。' : '');
+
+        let messages;
+        if (typeof RBQ?.api?.buildSdtMessages === 'function') {
+            messages = RBQ.api.buildSdtMessages(systemContent, userContent, config);
+        } else {
+            messages = [{ role: 'system', content: systemContent }, { role: 'user', content: userContent }];
+        }
+
+        const reqBody = {
+            model,
+            temperature: 0.2,
+            messages,
+            response_format: { type: 'json_object' }
+        };
+
+        let response;
+        try {
+            response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
+                body: JSON.stringify(reqBody)
+            });
+            if (!response.ok && response.status === 400 && typeof response.clone === 'function') {
+                const errCloned = await response.clone().text().catch(() => '');
+                if (errCloned.toLowerCase().includes('response_format')) {
+                    delete reqBody.response_format;
+                    response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
+                        body: JSON.stringify(reqBody)
+                    });
+                }
+            }
+        } catch (netErr) {
+            const err = new Error(`漫画分镜接口连接失败: ${netErr.message || String(netErr)}；现有分镜已保留`);
+            err.rawOutput = `【网络请求异常】: ${netErr.message || String(netErr)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
+            throw err;
+        }
+
+        if (!response.ok) {
+            let errText = '';
+            if (typeof response.text === 'function') {
+                try { errText = await response.text(); } catch (_) {}
+            }
+            const err = new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
+            err.rawOutput = `【HTTP 状态码】: ${response.status}\n【服务端返回原始报文】:\n${errText || '（无响应体）'}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
+            throw err;
+        }
+
+        let rawText = '';
+        let result;
+        if (typeof response.text === 'function') {
+            try {
+                rawText = await response.text();
+                result = JSON.parse(rawText);
+            } catch (_) {
+                if (typeof response.json === 'function') {
+                    try { result = await response.json(); } catch (_e) {}
+                }
+            }
+        } else if (typeof response.json === 'function') {
+            result = await response.json();
+            rawText = JSON.stringify(result);
+        }
+
+        if (result?.error) {
+            const err = new Error(`AI 模型接口返回错误: ${result.error.message || JSON.stringify(result.error)}；现有分镜已保留`);
+            err.rawOutput = `【服务端返回错误对象】:\n${JSON.stringify(result, null, 2)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
+            throw err;
+        }
+
+        const rawReply = String(result?.choices?.[0]?.message?.content || '').trim();
         const data = extractStudioJson(rawReply);
         if (!data || typeof data !== 'object') {
             const preview = rawReply.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
-            if (/^(?:抱歉|sorry|对不起|无法|不能|违规|安全规范)/i.test(preview) || preview.length < 300) {
-                throw new Error(`AI 模型未返回有效分镜（可能触发了模型安全审核或拒绝回答）：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`);
-            }
-            throw new Error(`分镜解析失败：模型未返回合法 JSON 格式。模型返回片段：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`);
+            const isRefusal = /^(?:抱歉|sorry|对不起|无法|不能|违规|安全规范)/i.test(preview);
+            const err = new Error(isRefusal
+                ? `AI 模型未返回有效分镜（可能触发了模型安全审核或拒绝回答）：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`
+                : `分镜解析失败：模型未返回合法 JSON 格式。片段：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`);
+            err.rawOutput = `【模型原始返回正文 (Raw Output)】:\n${rawReply || '（空响应正文）'}\n\n【完整服务端返回报文 (Full Response)】:\n${rawText || '（无）'}\n\n【请求地址与模型】:\n- Endpoint: ${endpoint}\n- Model: ${model}\n\n【发送的消息列表 (Messages)】:\n${JSON.stringify(messages, null, 2)}`;
+            throw err;
         }
         if (!Array.isArray(data.panels) || !data.panels.length || data.panels.length > 5
-            || (expectedCount && data.panels.length !== expectedCount)) throw new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
+            || (expectedCount && data.panels.length !== expectedCount)) {
+            const err = new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
+            err.rawOutput = `【模型原始返回正文 (Raw Output)】:\n${rawReply}\n\n【解析得到的 JSON 数据】:\n${JSON.stringify(data, null, 2)}\n\n【期望画格数】: ${expectedCount || '自动规划 (1~5 格)'}\n【实际画格数】: ${Array.isArray(data.panels) ? data.panels.length : 0}`;
+            throw err;
+        }
+        store.studio._lastDebug = { isError: false, rawOutput: rawReply, messages, data };
         const rawPage = { format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels };
         // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
         const page = resolveMangaAppearances([rawPage], (editingSnapshots || !useChatChars) ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
@@ -3197,6 +3369,123 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         });
     }
 
+    function clearStudioDebugBox(container) {
+        if (!container) return;
+        const wrap = container.querySelector('#mw-studio-debug-container');
+        if (wrap) wrap.innerHTML = '';
+    }
+
+    function renderStudioDebugBox(container, { isError = true, reason = '', rawOutput = '', title = '分镜推演失败诊断' } = {}) {
+        if (!container) return;
+        const wrap = container.querySelector('#mw-studio-debug-container');
+        if (!wrap) return;
+        wrap.innerHTML = '';
+
+        const debugBox = document.createElement('div');
+        debugBox.className = isError ? 'rbq-sdt-debug-box is-error' : 'rbq-sdt-debug-box no-draw';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'rbq-sdt-debug-title';
+
+        const titleLeft = document.createElement('div');
+        titleLeft.className = 'rbq-sdt-debug-title-left';
+        titleLeft.innerHTML = `<i class="fa-solid fa-${isError ? 'triangle-exclamation' : 'circle-question'}"></i> <span>${RBQ.utils.escapeHtml(title)}</span>`;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'rbq-sdt-debug-close-btn';
+        closeBtn.title = '关闭诊断提示';
+        closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        closeBtn.onclick = () => { wrap.innerHTML = ''; };
+
+        titleEl.append(titleLeft, closeBtn);
+
+        const reasonEl = document.createElement('div');
+        reasonEl.className = 'rbq-sdt-debug-reason';
+        reasonEl.textContent = reason;
+
+        debugBox.append(titleEl, reasonEl);
+
+        if (isError) {
+            const tipEl = document.createElement('div');
+            tipEl.className = 'rbq-sdt-debug-tip';
+
+            const errStr = (reason + ' ' + rawOutput).toLowerCase();
+            let specificTip = '';
+
+            if (errStr.includes('429') || errStr.includes('quota') || errStr.includes('rate limit') || errStr.includes('resource has been exhausted')) {
+                specificTip = '⚠️ <strong>频次超限或额度耗尽 (429 Too Many Requests)</strong>：触发了服务商的速率限制或账户余额不足。<br>'
+                    + '👉 <strong>解决方案</strong>：请稍后重试，或检查服务商后台的账户余额与并发配额。';
+            } else if (errStr.includes('401') || errStr.includes('unauthorized') || errStr.includes('invalid api key') || errStr.includes('incorrect api key')) {
+                specificTip = '⚠️ <strong>鉴权失败 (401 Unauthorized)</strong>：API Key 无效、过期或未正确配置。<br>'
+                    + '👉 <strong>解决方案</strong>：请检查「智能触发」设置中的 API Key 是否填写正确。';
+            } else if (errStr.includes('404') || errStr.includes('model_not_found') || errStr.includes('model not found')) {
+                specificTip = '⚠️ <strong>模型不存在 (404 Not Found)</strong>：当前配置的模型名称在服务商处不存在。<br>'
+                    + '👉 <strong>解决方案</strong>：请检查自定义模型名称拼写或切换模型。';
+            } else if (errStr.includes('safety') || errStr.includes('prohibited') || errStr.includes('sensitive words') || errStr.includes('finish_reason: safety') || errStr.includes('抱歉') || errStr.includes('违规') || errStr.includes('色情') || errStr.includes('性描写')) {
+                specificTip = '⚠️ <strong>内容审核拦截或模型拒答 (Safety Refusal)</strong>：当前剧情触发了服务商的内容安全审查或模型拒绝回答。<br>'
+                    + '👉 <strong>解决方案</strong>：请在智能触发中开启<strong>「开启破限 (Jailbreak)」</strong>并选择<strong>「酒馆沙盒纯净版」</strong>；如使用 Gemini，建议开启尾部输出引导防模型拒绝。';
+            } else if (errStr.includes('ending with a model turn') || errStr.includes('model turn are not supported')) {
+                specificTip = '⚠️ <strong>请求结构错误 (400 Bad Request)</strong>：Google Gemini API 规范强制要求消息序列末尾必须是 User 回合，不支持以 Assistant (model) 结尾。<br>'
+                    + '👉 <strong>解决方案</strong>：进入设置将「引导身份 (Role)」切换为「User 末尾追加 (Gemini 3.6+ 推荐)」，或取消勾选「启用尾部输出引导」。';
+            } else if (errStr.includes('must alternate') || errStr.includes('alternate between user and model')) {
+                specificTip = '⚠️ <strong>角色交替错误 (400 Bad Request)</strong>：模型 API 要求 User 与 Model 严格交替。<br>'
+                    + '👉 <strong>解决方案</strong>：请在智能触发设置中勾选开启「合并相同角色连续的发言」。';
+            } else {
+                specificTip = '💡 <strong>排查建议：</strong><br>'
+                    + '1. 若提示安全审查 / 内容熔断，可开启<strong>「开启破限」</strong>或在故事描述中做适当修饰。<br>'
+                    + '2. 可展开下方「详细错误诊断与原始数据」查看模型实际返回全文与报错日志。';
+            }
+            tipEl.innerHTML = specificTip;
+            debugBox.append(tipEl);
+        }
+
+        if (rawOutput) {
+            const details = document.createElement('details');
+            details.className = 'rbq-sdt-debug-details';
+            details.open = true;
+
+            const summary = document.createElement('summary');
+            const titleSpan = document.createElement('span');
+            titleSpan.innerHTML = '<i class="fa-solid fa-code"></i> 详细错误诊断与原始数据 (Debug Trace)';
+            summary.append(titleSpan);
+
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'mw-btn sm cy';
+            copyBtn.style.cssText = 'font-size: 11px !important; padding: 1px 8px !important; margin: 0 !important; cursor: pointer; white-space: nowrap !important; flex-shrink: 0 !important; line-height: normal !important;';
+            copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> 复制';
+            copyBtn.onclick = async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                let ok = false;
+                if (typeof RBQ?.utils?.copyToClipboard === 'function') {
+                    ok = await RBQ.utils.copyToClipboard(rawOutput);
+                } else if (navigator?.clipboard?.writeText) {
+                    try {
+                        await navigator.clipboard.writeText(rawOutput);
+                        ok = true;
+                    } catch (_) {}
+                }
+                if (ok) {
+                    toastr.success('已复制诊断与原始数据到剪贴板', PLUGIN_NAME);
+                } else {
+                    toastr.warning('复制失败，请手动选取', PLUGIN_NAME);
+                }
+            };
+            summary.append(copyBtn);
+
+            const pre = document.createElement('pre');
+            pre.className = 'rbq-sdt-debug-raw';
+            pre.textContent = rawOutput;
+
+            details.append(summary, pre);
+            debugBox.append(details);
+        }
+
+        wrap.append(debugBox);
+    }
+
     let refreshMangaWorkshop = null;
 
     function renderMangaWorkshop(container) {
@@ -3309,6 +3598,9 @@ position 单独写位置，description/positive 不重复画格位置；系统�
                                 <button id="mw-btn-ai-storyboard" class="mw-btn pri mw-btn-storyboard"><i class="fa-solid fa-brain"></i> AI 智能分镜推演</button>
                             </div>
                         </div>
+
+                        <!-- Studio Diagnostic & Trace Container -->
+                        <div id="mw-studio-debug-container" class="mw-studio-debug-wrap"></div>
 
                         <!-- Panels Stream Card -->
                         <div class="mw-card">
@@ -3701,6 +3993,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             if (!storyText) {
                 return toastr.warning('请先输入剧情故事或点击「提取当前对话」', PLUGIN_NAME);
             }
+            clearStudioDebugBox(container);
             const origHtml = btnAi.innerHTML;
             btnAi.disabled = true;
             btnAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在解析分镜与镜头机位...';
@@ -3720,10 +4013,25 @@ position 单独写位置，description/positive 不重复画格位置；系统�
                     updatePromptPreview();
                     save();
                     toastr.success(`🎉 AI 智能分镜解析完成，已构建 ${parsedPanels.length} 格分镜！`, PLUGIN_NAME);
+                    if (getSdtStore().showTaggerDebug && studio._lastDebug?.rawOutput) {
+                        renderStudioDebugBox(container, {
+                            isError: false,
+                            title: '分镜推演完成 (原始响应)',
+                            reason: '模型已成功生成并构建分镜数据',
+                            rawOutput: studio._lastDebug.rawOutput
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('[Manga Studio] AI Storyboard Error:', err);
-                toastr.error('分镜解析出现异常: ' + (err.message || String(err)), PLUGIN_NAME);
+                const rawTrace = err.rawOutput || `【错误诊断】: ${err.message || String(err)}\n\n【JavaScript 异常调用栈 (Stack Trace)】:\n${err.stack || ''}`;
+                renderStudioDebugBox(container, {
+                    isError: true,
+                    title: '分镜推演失败诊断',
+                    reason: err.message || String(err),
+                    rawOutput: rawTrace
+                });
+                toastr.error('分镜解析出现异常，详情见下方诊断面板', PLUGIN_NAME);
             } finally {
                 btnAi.disabled = false;
                 btnAi.innerHTML = origHtml;
@@ -3737,6 +4045,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             if (!hasAnyDesc) {
                 return toastr.warning('请先在画格中填写剧情句子', PLUGIN_NAME);
             }
+            clearStudioDebugBox(container);
             const origHtml = btnBatchAi.innerHTML;
             btnBatchAi.disabled = true;
             btnBatchAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 批量解析中...';
@@ -3754,17 +4063,31 @@ position 单独写位置，description/positive 不重复画格位置；系统�
                         const targetPanel = studio.panels[i];
                         if (targetPanel && item) {
                             Object.assign(targetPanel, item);
-
                         }
                     });
                     renderPanelCards();
                     updatePromptPreview();
                     save();
                     toastr.success(`🎉 已完成全部 ${studio.panels.length} 个画格的批量生成！`, PLUGIN_NAME);
+                    if (getSdtStore().showTaggerDebug && studio._lastDebug?.rawOutput) {
+                        renderStudioDebugBox(container, {
+                            isError: false,
+                            title: '逐格批量生成完成 (原始响应)',
+                            reason: '画格描述与镜头标签已批量解析完成',
+                            rawOutput: studio._lastDebug.rawOutput
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('[Manga Studio] Batch AI error:', err);
-                toastr.error('批量生成失败: ' + (err.message || String(err)), PLUGIN_NAME);
+                const rawTrace = err.rawOutput || `【错误诊断】: ${err.message || String(err)}\n\n【JavaScript 异常调用栈 (Stack Trace)】:\n${err.stack || ''}`;
+                renderStudioDebugBox(container, {
+                    isError: true,
+                    title: '逐格批量生成失败诊断',
+                    reason: err.message || String(err),
+                    rawOutput: rawTrace
+                });
+                toastr.error('批量生成失败，详情见下方诊断面板', PLUGIN_NAME);
             } finally {
                 btnBatchAi.disabled = false;
                 btnBatchAi.innerHTML = origHtml;

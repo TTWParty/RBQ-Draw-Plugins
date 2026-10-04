@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.8.4';
+        const VERSION = '1.8.5';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -535,9 +535,21 @@
         appearanceStateVersion: 2,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
         planningPrompt: buildMangaPlanningPrompt,
+        planningContext: buildMangaPlanningContext,
         systemPrompt: () => buildMangaSystemPrompt(getStore())
     };
     RBQ.api.mangaProtocol = mangaProtocol;
+
+    function buildMangaPlanningContext(ratio) {
+        const settings = RBQ.api.getSettings();
+        const mode = settings.currentMode || 'nai';
+        const fallback = mode === 'nai' ? [832, 1216] : [1024, 1024];
+        const selected = typeof ratio === 'string' ? ratio.split('x').map(Number) : [];
+        const valid = value => Number.isFinite(Number(value)) && Number(value) > 0;
+        const width = Math.round(valid(selected[0]) ? selected[0] : valid(settings[`${mode}Width`]) ? Number(settings[`${mode}Width`]) : fallback[0]);
+        const height = Math.round(valid(selected[1]) ? selected[1] : valid(settings[`${mode}Height`]) ? Number(settings[`${mode}Height`]) : fallback[1]);
+        return { width, height, orientation: width > height ? 'landscape' : width < height ? 'portrait' : 'square', autoSpread: !!getStore().autoSpread };
+    }
 
     function buildMangaPlanningPrompt() {
         return `【漫画前情与本楼规划】
@@ -545,7 +557,8 @@
 前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
 从本楼开端看到结尾，保留重要动作及结果、关键对白、情绪转折、线索与转场；无大动作的告白或拒绝也值得画。重复描写合并，无新信息的寒暄、抽象议论和未发生的假设不硬画，不重画历史。
 先考虑每格呈现的定格，再按人物、动作、对白容量组合成页：多个相邻事件可同页，长对白或复杂互动可跨页。普通页通常2～5格只是参考，单格页合法；不按句号、图组数量或 minSegments 凑页。保留因果、说话者和反应，不为了少页删掉转折，也不为多页补无意义镜头。
-每页先选主画面，再把剩余事件安排到辅助格；在 page.base 写主格位置及大致面积、辅助格大小和相互排列，不能只报格数或 vertical layout。每格选一个定格时刻，明确人物、动作对象、持物和接触，再选景别；位置称呼贯穿 description 与人物 positive。对白容量不足时调整格大小或分页，不牺牲最后事件。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`;
+每页先选主画面，再把剩余事件安排到辅助格；在 page.base 写主格位置及大致面积、辅助格大小和相互排列，不能只报格数或 vertical layout。每格选一个定格时刻，明确人物、动作对象、持物和接触，再选景别；位置称呼贯穿 description 与人物 positive。
+输入 mangaCanvas 是实际画布像素与方向，按其可读空间同时安排人物、动作和文字；小格不能承载长段对白。正文中的完整问答保留次序，长句按已有停顿分泡或跨相邻格/页续接，不能为了压到预想页数而摘掉条件、理由或句尾；不以固定字数限额删字。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`;
     }
 
     function buildMangaSystemPrompt(store) {
@@ -634,17 +647,18 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
     // The model translates the whole page; unknown phrases, names and Text remain intact.
     function monochromeCharacterTag(tag) {
         if (/[()]/.test(tag) || /^(?:artist|character|copyright)\s*:/i.test(tag)) return tag;
-        const colors = 'silver|blonde|blond|golden|gold|yellow|orange|red|pink|purple|violet|blue|green|cyan|teal|turquoise|navy|brown|auburn|scarlet|crimson|lavender|magenta|flesh-colored|flesh colored|skin-colored';
-        const modifiers = 'modified|backless|sleeveless|sheer|ultra-thin|silk|lace|leather|patent|high|low|long|short|straight|curly|phoenix|almond|droopy|round|wooden|metal|stone|brick|crystal|gemstone|velvet|satin';
-        const nouns = 'hair|eyes|skin|lips|lipstick|lip gloss|eyeshadow|nails|qipao|cheongsam|dress|shirt|blouse|coat|jacket|skirt|trousers|pants|shorts|socks|stockings|thighhighs|pantyhose|shoes|boots|heels|gloves|scarf|ribbon|hair bow|hat|cape|cloak|robe|uniform|pen|pencil|ink|markings|paper|envelope|book|umbrella|bag|handbag|phone|sofa|chair|table|desk|wall|walls|floor|ceiling|curtain|curtains|door|window|car|sky|light|lighting|gem|gemstone|trim|earrings|necklace';
+        const colors = 'silver|blonde|blond|golden|gold|yellow|orange|red|pink|purple|violet|blue|green|cyan|teal|turquoise|navy|brown|auburn|scarlet|crimson|lavender|magenta|beige|cream|ivory|tan|khaki|flesh-colored|flesh colored|skin-colored';
+        const modifiers = 'modified|backless|sleeveless|sheer|ultra-thin|silk|lace|leather|patent|high|low|long|short|straight|curly|phoenix|almond|droopy|round|wooden|metal|stone|brick|crystal|gemstone|velvet|satin|trench|wool|denim|knit|pleated|button-up';
+        const nouns = 'hair|eyes|skin|lips|lipstick|lip gloss|eyeshadow|nails|qipao|cheongsam|dress|shirt|blouse|coat|jacket|sweater|skirt|trousers|pants|jeans|shorts|socks|stockings|thighhighs|pantyhose|shoes|boots|heels|gloves|scarf|ribbon|hair bow|hat|cape|cloak|robe|uniform|pen|pencil|ink|markings|paper|envelope|book|umbrella|bag|handbag|phone|sofa|chair|table|desk|wall|walls|floor|ceiling|curtain|curtains|door|window|car|sky|light|lighting|gem|gemstone|trim|earrings|necklace';
         const pattern = new RegExp('\\b(?:(light|pale|dark|deep|bright)\\s+)?(' + colors + ')\\s+((?:(?:' + modifiers + ')\\s+)*(?:' + nouns + '))\\b', 'gi');
         const normalized = tag.replace(/_/g, ' ');
         const converted = normalized.replace(pattern, (_, intensity, color, object) => {
             const shade = /^(dark|deep)$/i.test(intensity || '') || /^(navy|brown|auburn|crimson)$/i.test(color)
-                ? 'dark grey' : /^(light|pale)$/i.test(intensity || '') || /^(silver|blonde|blond|golden|gold|yellow|pink|lavender|flesh-colored|flesh colored|skin-colored)$/i.test(color) ? 'light grey' : 'grey';
+                ? 'dark grey' : /^(light|pale)$/i.test(intensity || '') || /^(silver|blonde|blond|golden|gold|yellow|pink|lavender|beige|cream|ivory|tan|khaki|flesh-colored|flesh colored|skin-colored)$/i.test(color) ? 'light grey' : 'grey';
             return shade + ' ' + object;
         });
-        return converted === normalized ? tag : converted;
+        const lighting = converted.replace(/\b(?:warm|cool)(\s+(?:indoor|outdoor))?\s+(light|lighting)\b/gi, (_, place, noun) => `${place ? place.trim() + ' ' : ''}${noun}`);
+        return lighting === normalized ? tag : lighting;
     }
 
     function sanitizeMangaPositivePrompt(value, monochromeCharacter = false, names = new Set()) {
@@ -2717,6 +2731,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
     function studioDirectorPrompt(store, task) {
         return buildMangaSystemPrompt({ ...store, antiHijack: store.studio?.antiHijack ?? store.antiHijack }) + `
 【工作台任务】${task}
+输入 mangaCanvas 是本页实际画布像素与方向，按文字和主动作共同需要分配画格空间；调整格大小和对白分泡，保留关键问答。
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
 只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
@@ -2731,7 +2746,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         const model = String(config.openaiModelCustom || config.openaiModel || '').trim();
         if (!baseUrl || !model) throw new Error('请先在智能生图中配置 OpenAI 兼容接口和模型；现有分镜已保留');
         const references = typeof RBQ.api.collectMangaReferenceData === 'function' ? RBQ.api.collectMangaReferenceData(content) : {};
-        const userContent = Object.keys(references).length ? JSON.stringify({ currentMessage: content, ...references }) : content;
+        const userContent = JSON.stringify({ currentMessage: content, ...references, mangaCanvas: buildMangaPlanningContext(store.studio?.ratio) });
         const endpoint = /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`;
         const response = await fetch(endpoint, {
             method: 'POST', headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },

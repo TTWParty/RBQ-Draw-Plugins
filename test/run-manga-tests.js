@@ -287,6 +287,38 @@ test('spread detection ignores dialogue and retains upstream Prompt Presets', ()
     p = mangaHook(payload('comic, Text: 見開きページ'));
     assert.equal(p.parameters.width, 832);
 });
+test('monochrome dispatch converts neutral clothing colors and warm light while preserving saved memory', () => {
+    const caption = 'Lin Yao (original), girl, beige trench coat, blue denim jeans, dark blue pleated skirt, cream knit sweater, Text: beige trench coat，原句不改。';
+    const output = mangaHook(payload('comic, warm indoor lighting with soft shadows', [{ char_caption: caption }]));
+    const rendered = output.parameters.v4_prompt.caption.char_captions[0].char_caption;
+    assert.match(rendered, /light grey trench coat, grey denim jeans, dark grey pleated skirt, light grey knit sweater/);
+    assert.match(rendered, /Text: beige trench coat，原句不改。$/);
+    assert.match(output.input, /indoor lighting with soft shadows/);
+    assert.doesNotMatch(output.input, /warm indoor lighting/);
+    assert.equal(manga.sanitizeMangaPositivePrompt('Beige (Series), warm smile, cold weather, artist:tan, tan fox', true),
+        'Beige (Series), warm smile, cold weather, artist:tan, tan fox');
+});
+test('manga planning receives actual canvas dimensions without changing host settings or ordinary requests', () => {
+    const original = { width: settings.naiWidth, height: settings.naiHeight, mode: settings.currentMode, store: settings._smartDrawTrigger };
+    try {
+        settings.naiWidth = 1024; settings.naiHeight = 1536;
+        const context = RBQ.api.mangaProtocol.planningContext();
+        assert.deepEqual(json(context), { width: 1024, height: 1536, orientation: 'portrait', autoSpread: true });
+        assert.deepEqual(json(sdt.buildRequestPayload(1, { type: 'auto' }).payload.mangaCanvas), json(context));
+        assert.deepEqual(json(RBQ.api.mangaProtocol.planningContext('1216x832')),
+            { width: 1216, height: 832, orientation: 'landscape', autoSpread: true });
+        settings.currentMode = 'comfyui'; settings.comfyuiWidth = 768; settings.comfyuiHeight = 768;
+        assert.equal(RBQ.api.mangaProtocol.planningContext().orientation, 'square');
+        settings.currentMode = 'nai'; settings.naiWidth = NaN; settings.naiHeight = -5;
+        assert.deepEqual(json(RBQ.api.mangaProtocol.planningContext()),
+            { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
+        settings._smartDrawTrigger = { ...original.store, _mangaActive: false, enhancedContext: 'off' };
+        assert.equal(sdt.buildRequestPayload(1, { type: 'auto' }).payload.mangaCanvas, undefined);
+    } finally {
+        settings.currentMode = original.mode; settings.naiWidth = original.width; settings.naiHeight = original.height;
+        settings._smartDrawTrigger = original.store; delete settings.comfyuiWidth; delete settings.comfyuiHeight;
+    }
+});
 test('monochrome converts explicit character colors at dispatch without changing dialogue, names or saved captions', () => {
     const segment = sdt.normalizeMangaSegment(fixture());
     const original = 'top panel, girl, silver hair in high bun, 1.2::deep purple qipao, {purple eyes}::, blue_ribbon, Red (Series), red panda, Text: purple eyes, 红色的信。';
@@ -1205,6 +1237,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(requests.length, 1, 'B6 mismatch never triggers a second request');
         assert.equal(requests[0].outputSchema.story_plan, undefined);
         assert.equal(requests[0].mangaPlanCorrection, undefined);
+        assert.deepEqual(requests[0].mangaCanvas, { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
         console.log('PASS production custom-HTTP path accepts B6 source mismatch with one call'); passed++;
 
         settings._smartDrawTrigger.characterMemoryEnabled = true;
@@ -1243,6 +1276,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 assert.match(body.messages[0].content, /漫画角色记忆/);
                 assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
                 const request = JSON.parse(body.messages[1].content);
+                assert.deepEqual(request.mangaCanvas, { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
                 assert.equal(request.mangaInstruction, undefined);
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('story_plan'));
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('character_memory'));
@@ -1296,6 +1330,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             const checkRequest = body => {
                 calls++;
                 const request = provider === 'custom' ? body : JSON.parse(body.messages[1].content);
+                assert.deepEqual(request.mangaCanvas, { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
                 assert.deepEqual(request.characterCardInfo, testCard);
                 assert.match(provider === 'custom' ? request.mangaInstruction : body.messages[0].content, /漫画角色卡信息参考指令/);
                 return { ok: true, json: async () => ({ shouldDraw: true, segments: [fixture()] }) };
@@ -1482,7 +1517,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         manga.fetch = async (url, options) => {
             assert.equal(url, 'https://test.invalid/v1/chat/completions');
             const body = JSON.parse(options.body), userInput = JSON.parse(body.messages[1].content);
-            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences });
+            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences,
+                mangaCanvas: { width: 832, height: 1216, orientation: 'portrait', autoSpread: true } });
             assert.match(body.messages[0].content, /characterCardInfo\/characterMemory/);
             const panel = fixture().panels[0];
             panel.characters[1].base = ''; panel.characters[1].outfit = '';

@@ -89,17 +89,21 @@
             if (!item.id) mutated = true;
             return preset;
         }).filter(Boolean);
-        if (!store.presets.some(p => p.id === store.activeId)) {
+        if (store.activeId && !store.presets.some(p => p.id === store.activeId)) {
             store.activeId = '';
             mutated = true;
         }
-        if (mutated) save();
+        if (mutated && !isSaving) save();
         return store;
     }
 
     let renderPresetUi = null;
+    let isSaving = false;
+    let isSyncing = false;
 
     function syncToActiveProfile() {
+        if (isSyncing) return;
+        isSyncing = true;
         try {
             const activeProfile = RBQ.api.getActiveGlobalProfile?.();
             if (activeProfile && activeProfile.data && typeof activeProfile.data === 'object') {
@@ -114,11 +118,20 @@
                 activeProfile.updatedAt = Date.now();
             }
         } catch (_e) {}
+        finally {
+            isSyncing = false;
+        }
     }
 
     function save() {
-        syncToActiveProfile();
-        RBQ.api.saveSettings();
+        if (isSaving) return;
+        isSaving = true;
+        try {
+            syncToActiveProfile();
+            RBQ.api.saveSettings();
+        } finally {
+            isSaving = false;
+        }
     }
     function uid() { return 'pp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
     function getActivePreset() {
@@ -164,6 +177,8 @@
 
     function restorePresetVibesToHost(preset) {
         const vibes = Array.isArray(preset?.vibes) ? preset.vibes : [];
+        const currentVibes = getCurrentNaiVibes();
+        if (vibes.length === 0 && currentVibes.length === 0) return;
         RBQ.api.setNaiVibes?.(vibes, { source: 'plugin:preset-restore' });
         RBQ.api.refreshNaiVibeUi?.();
     }
@@ -1654,25 +1669,45 @@
             }
         }
 
+        let globalInputTimer = null;
+        const debounceSaveGlobal = () => {
+            clearTimeout(globalInputTimer);
+            globalInputTimer = setTimeout(() => {
+                save();
+            }, 300);
+        };
+
         globalPosPreInput?.addEventListener('input', () => {
             getStore().globalPositivePrefix = globalPosPreInput.value;
-            save();
+            debounceSaveGlobal();
             updateGlobalBadge();
             renderLivePreview();
+        });
+        globalPosPreInput?.addEventListener('change', () => {
+            clearTimeout(globalInputTimer);
+            save();
         });
 
         globalPosSufInput?.addEventListener('input', () => {
             getStore().globalPositiveSuffix = globalPosSufInput.value;
-            save();
+            debounceSaveGlobal();
             updateGlobalBadge();
             renderLivePreview();
+        });
+        globalPosSufInput?.addEventListener('change', () => {
+            clearTimeout(globalInputTimer);
+            save();
         });
 
         globalNegInput?.addEventListener('input', () => {
             getStore().globalNegative = globalNegInput.value;
-            save();
+            debounceSaveGlobal();
             updateGlobalBadge();
             renderLivePreview();
+        });
+        globalNegInput?.addEventListener('change', () => {
+            clearTimeout(globalInputTimer);
+            save();
         });
 
         posInput?.addEventListener('input', () => {
@@ -1808,8 +1843,11 @@
                 if (preset) {
                     restorePresetVibesToHost(preset);
                 } else {
-                    RBQ.api.setNaiVibes?.([], { source: 'plugin:preset-clear' });
-                    RBQ.api.refreshNaiVibeUi?.();
+                    const currentVibes = getCurrentNaiVibes();
+                    if (currentVibes.length > 0) {
+                        RBQ.api.setNaiVibes?.([], { source: 'plugin:preset-clear' });
+                        RBQ.api.refreshNaiVibeUi?.();
+                    }
                 }
             } catch (err) {
                 console.error('[Prompt Presets] Failed to restore preset state:', err);

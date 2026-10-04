@@ -110,6 +110,10 @@ test('non-character protocol fields reject objects instead of drawing object Obj
     for (const level of ['page','panel']) {
         const p=page([{}]); (level==='page'?p.page:p.panels[0]).non_character={Text:'incorrect field type'};
         assert.throws(()=>manga.compileMangaPage(p),/non_character.*字符串/);
+        const pNull=page([{}]); (level==='page'?pNull.page:pNull.panels[0]).non_character=null;
+        assert.doesNotThrow(()=>manga.compileMangaPage(pNull));
+        const pArr=page([{}]); (level==='page'?pArr.page:pArr.panels[0]).non_character=[];
+        assert.doesNotThrow(()=>manga.compileMangaPage(pArr));
     }
 });
 test('edited pages persist to both cache and message data so reload/drawer cannot resurrect old tags', () => {

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.0';
+        const VERSION = '1.9.1';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -352,6 +352,7 @@
             || !data.page.base.trim() || !Array.isArray(data.panels) || !data.panels.length) {
             throw new Error('漫画页缺少 page.base 或 panels，请重新解析分镜');
         }
+        if (data.page.non_character === null || (Array.isArray(data.page.non_character) && !data.page.non_character.length)) data.page.non_character = '';
         if (data.page.non_character !== undefined && typeof data.page.non_character !== 'string') throw new Error('漫画 page.non_character 必须是字符串');
         if (Object.prototype.hasOwnProperty.call(data, 'characters')) throw new Error('漫画页不能混用顶层人物与格内人物');
         if (data.position_mode && !['auto', 'manual'].includes(data.position_mode)) throw new Error('漫画定位模式无效');
@@ -374,11 +375,19 @@
         const characters = [];
         const panelIds = new Set();
         data.panels.forEach((panel, panelIndex) => {
-            if (!panel || typeof panel.id !== 'string' || !panel.id.trim() || panelIds.has(panel.id)
-                || typeof panel.description !== 'string' || !Array.isArray(panel.characters)) {
+            if (!panel || typeof panel.id !== 'string' || !panel.id.trim() || panelIds.has(panel.id)) {
                 throw new Error(`漫画第 ${panelIndex + 1} 格缺少唯一 id、description 或 characters 数组`);
             }
             panelIds.add(panel.id);
+            if (panel.description === null) panel.description = '';
+            if (typeof panel.description !== 'string' || !Array.isArray(panel.characters)) {
+                throw new Error(`漫画第 ${panelIndex + 1} 格缺少唯一 id、description 或 characters 数组`);
+            }
+            if (panel.non_character === null || (Array.isArray(panel.non_character) && !panel.non_character.length)) {
+                panel.non_character = '';
+            } else if (Array.isArray(panel.non_character)) {
+                panel.non_character = panel.non_character.filter(s => typeof s === 'string').join(', ');
+            }
             if (panel.non_character !== undefined && typeof panel.non_character !== 'string') throw new Error(`${panel.id} 的 non_character 必须是字符串`);
             if (splitMangaText(panel.description).text) warnings.push(`${panel.id} 的 description 含文字，未按文字归属分栏`);
             if (panel.characters.length && /BubbleType\s*[:：]\s*(?:通常吹き出し|叫び吹き出し|思考の吹き出し)/i.test(panel.non_character || '')) {
@@ -387,33 +396,50 @@
             pieces.push(panel.description, panel.non_character);
             const ids = new Set();
             panel.characters.forEach((c, index) => {
-                if (!c || typeof c.character_id !== 'string' || !c.character_id.trim() || ids.has(c.character_id)
-                    || typeof c.positive !== 'string' || !c.positive.trim() || typeof c.negative !== 'string') {
+                if (!c || typeof c.character_id !== 'string' || !c.character_id.trim() || ids.has(c.character_id)) {
+                    throw new Error(`${panel.id} 的第 ${index + 1} 位人物缺少身份、正负词或重复出场`);
+                }
+                if (c.positive === null) c.positive = '';
+                if (c.negative === null) c.negative = '';
+                if (typeof c.positive !== 'string' || !c.positive.trim() || typeof c.negative !== 'string') {
                     throw new Error(`${panel.id} 的第 ${index + 1} 位人物缺少身份、正负词或重复出场`);
                 }
                 for (const field of ['name', 'base', 'outfit']) {
-                    if (Object.hasOwn(c, field) && typeof c[field] !== 'string') {
-                        throw new Error(`${panel.id}/${c.character_id} 的人物 ${field} 字段必须是字符串`);
+                    if (Object.hasOwn(c, field)) {
+                        if (c[field] === null) c[field] = '';
+                        if (typeof c[field] !== 'string') {
+                            throw new Error(`${panel.id}/${c.character_id} 的人物 ${field} 字段必须是字符串`);
+                        }
                     }
                 }
                 if (Object.hasOwn(c, 'state')) {
-                    if (!c.state || typeof c.state !== 'object' || Array.isArray(c.state)) {
+                    if (c.state === null) delete c.state;
+                    else if (typeof c.state !== 'object' || Array.isArray(c.state)) {
                         throw new Error(`${panel.id}/${c.character_id} 的人物状态必须是对象`);
-                    }
-                    for (const field of ['base', 'outfit', 'hair_style', 'hair_length', 'hair_color']) {
-                        if (Object.hasOwn(c.state, field) && typeof c.state[field] !== 'string') {
-                            throw new Error(`${panel.id}/${c.character_id} 的状态 ${field} 字段必须是字符串`);
+                    } else {
+                        for (const field of ['base', 'outfit', 'hair_style', 'hair_length', 'hair_color']) {
+                            if (Object.hasOwn(c.state, field)) {
+                                if (c.state[field] === null) c.state[field] = '';
+                                if (typeof c.state[field] !== 'string') {
+                                    throw new Error(`${panel.id}/${c.character_id} 的状态 ${field} 字段必须是字符串`);
+                                }
+                            }
                         }
                     }
                 }
                 if (Object.hasOwn(c, 'render')) {
-                    if (!c.render || typeof c.render !== 'object' || Array.isArray(c.render)) {
+                    if (c.render === null) delete c.render;
+                    else if (!c.render || typeof c.render !== 'object' || Array.isArray(c.render)) {
                         throw new Error(`${panel.id}/${c.character_id} 的 render 必须是灰阶绘图对象`);
-                    }
-                    for (const field of ['base', 'outfit']) {
-                        if (Object.hasOwn(c.render, field) && (typeof c.render[field] !== 'string'
-                            || /\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(c.render[field]))) {
-                            throw new Error(`${panel.id}/${c.character_id} 的 render.${field} 必须是无对白的外貌衣着字符串`);
+                    } else {
+                        for (const field of ['base', 'outfit']) {
+                            if (Object.hasOwn(c.render, field)) {
+                                if (c.render[field] === null) c.render[field] = '';
+                                if (typeof c.render[field] !== 'string'
+                                    || /\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(c.render[field])) {
+                                    throw new Error(`${panel.id}/${c.character_id} 的 render.${field} 必须是无对白的外貌衣着字符串`);
+                                }
+                            }
                         }
                     }
                 }

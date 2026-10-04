@@ -11,9 +11,9 @@
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
     "description": "保存常用的正面/负面提示词组合为预设，生图时自动拼接到主提示词。支持预设前置词与后置词双向Tab切换并可同时生效，通栏预设选择器与多行文本框一键展开，支持全局前缀/后缀与负面词、选择性导入导出与保存 Vibe 状态。",
-    "version": "1.3.18",
+    "version": "1.3.17",
     "author": "TTWP-09",
-    "main": "plugins/prompt-presets.js?v=1.3.18"
+    "main": "plugins/prompt-presets.js?v=1.3.17"
   },
   {
     "id": "rbq-png-metadata",
@@ -27,9 +27,9 @@
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "基于 LLM 深度分镜理解的多角色自动绘图触发器，支持 2D 连续坐标触控调节、分镜 Tag 可视化调整、NAI V4.5/V5 连续坐标生成与多角色精确构图控制。",
-    "version": "6.5.0",
+    "version": "6.0.67",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=6.5.0"
+    "main": "plugins/smart-draw-trigger.js?v=6.0.67"
   },
   {
     "id": "rbq-multi-char",
@@ -59,9 +59,9 @@
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集角色7维外貌档案、差分衣柜、世界书动作智能适配与多角色同框演练于一体的智能工作台。支持 V5 连续坐标无级拖拽平移与 5×5 网格吸附、单双人自适应模板合成与一键头像立绘演练。",
-    "version": "2.2.27",
+    "version": "2.2.25",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.2.27"
+    "main": "plugins/character-workshop.js?v=2.2.25"
   },
   {
     "id": "rbq-image-privacy",
@@ -91,8 +91,16 @@
     "id": "rbq-manga-mode",
     "name": "漫画模式 (Manga Mode)",
     "description": "为智能生图（SDT）深度赋能 NovelAI V5 漫画分镜能力，并在控制面板侧边栏提供专属「漫画工作台 (Manga Studio)」。支持大段剧情 AI 自动分镜（自由指定自适应或特定格数）与逐格填句导演双模式、19大专业机位、防溢出弹性卡片流、Zero-CLS 原画级单页出图与回填酒馆聊天闭环。",
-    "version": "1.9.1",
+    "version": "1.4.10",
     "author": "TTWP-09",
-    "main": "plugins/manga-mode.js?v=1.9.1"
+    "main": "plugins/manga-mode.js?v=1.4.10"
+  },
+  {
+    "id": "rbq-fish-tts",
+    "name": "(xh)Fish语音 (Fish Audio TTS)",
+    "description": "剧情语音插件: LLM情绪导演(含NSFW破限/内心戏/旁白模式) + Fish Audio 合成。音色库全站搜索/试听/收藏、角色绑定音色、预设体系、IndexedDB持久缓存(刷新自动恢复·内容指纹防串台·WAV播放源修复时长)、酒馆服务器转发免跨域(手机通用)。",
+    "version": "0.2.7",
+    "author": "TTWP-09",
+    "main": "plugins/fish-tts.js?v=0.2.7"
   }
 ]

@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.3.2';
+    const PLUGIN_VERSION = '6.4.1';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2771,11 +2771,11 @@ base 不含衣物、动作、表情、手持物、构图、画风或对白；out
         if (isMangaRequest(store)) {
             const references = getMangaMemoryReferences(messageId);
             return `【漫画角色记忆】
-以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。按镜头可见范围使用已有外貌，剧情变化优先；特写不要强塞画外服装。
-本次同时输出 character_memory 数组，每人最多一项 {name,base,initial_outfit,outfit}，不另发请求。只提交出镜且需要首次建档、补全空白资料或更新衣着的人物；无更新写 []。
+以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
+各格 base/outfit 与普通模式共用建档和复用原则；不另发请求。character_memory 为兼容字段，可省略或写 []；需要补充独立长期资料时每人最多一项 {name,base,initial_outfit,outfit}。
 base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；普通姓名和可靠同人角色标签均可保留。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
 initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已知服装，不能用楼末换装结果代替；已知则可省略。
-outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
+兼容字段 character_memory[].outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。格内 characters[].outfit 始终对应当前格，不能套用末格状态。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
 ${getCharacterMemoryTagSpecification()}
 已有资料：` + JSON.stringify(references);
@@ -3254,8 +3254,7 @@ ${activeRegistrySection}`;
 
         if (profile) {
             // Use stored base (immutable), update outfit from LLM
-            finalBase = profile.baseTags;
-            finalOutfit = llmOutfit || profile.currentOutfit;
+            ({ base: finalBase, outfit: finalOutfit } = resolveCharacterMemoryFields(profile, llmBase, llmOutfit));
             if (llmOutfit) updateCharacterProfile(cleanName, null, llmOutfit, null, true);
             debugInfo(`角色记忆复用「${cleanName}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
@@ -6430,10 +6429,17 @@ ${getCharacterMemoryTagSpecification()}
         return !!store._mangaActive || store.enhancedContext === 'v_manga';
     }
 
+    // Ordinary images and manga share the same immutable-base/current-outfit selection.
+    // Pure: callers control when complete, validated results are saved to the profile.
+    function resolveCharacterMemoryFields(profile, base, outfit) {
+        return { base: profile ? profile.baseTags || '' : base || '', outfit: outfit || profile?.currentOutfit || '' };
+    }
+    RBQ.api.resolveCharacterMemoryFields = resolveCharacterMemoryFields;
+
     function getMangaProtocol() {
         const protocol = RBQ.api.mangaProtocol;
         if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
-        if (!protocol.planningPrompt || !protocol.resolveAppearances || protocol.appearanceStateVersion !== 1) throw new Error('请更新漫画模式插件至 1.7.2 或更高并刷新酒馆');
+        if (!protocol.planningPrompt || !protocol.resolveAppearances || protocol.appearanceStateVersion !== 2) throw new Error('请更新漫画模式插件至 1.8.0 或更高并刷新酒馆');
         return protocol;
     }
 
@@ -6548,14 +6554,12 @@ ${getCharacterMemoryTagSpecification()}
     function learnMangaCharacterMemory(source, segments, context) {
         assertMangaRequestContext(context);
         if (!getStore().characterMemoryEnabled || context?.memoryEnabled === false || !segments.some(s => s.mangaPage)) return;
-        if (!Array.isArray(source.character_memory)) {
-            debugInfo('漫画角色记忆：模型未返回 character_memory，本次仍使用有效页格生图');
-        }
         const validName = value => {
             if (typeof value !== 'string') return '';
             const name = getCanonicalCharName(value);
             return !name || isJunkCharacterName(name) || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(name) ? '' : name;
         };
+        const cleanField = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
         const visible = new Map();
         const snapshots = new Map();
         for (const segment of segments) {
@@ -6569,14 +6573,13 @@ ${getCharacterMemoryTagSpecification()}
                             const prior = snapshots.get(key);
                             snapshots.set(key, { before: prior?.before || person._mangaInitialAppearance,
                                 after: person._mangaAppearance,
-                                explicitOutfit: prior?.explicitOutfit || (typeof person.state?.outfit === 'string'
+                                explicitOutfit: prior?.explicitOutfit || !!cleanField(person.outfit) || (typeof person.state?.outfit === 'string'
                                     && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(person.state.outfit)) });
                         }
                     }
                 }
             }
         }
-        const cleanField = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
         const updates = new Map();
         for (const row of Array.isArray(source.character_memory) ? source.character_memory : []) {
             const key = validName(row?.name).toLowerCase();
@@ -6589,14 +6592,18 @@ ${getCharacterMemoryTagSpecification()}
         }
         const messageId = context?.messageId;
         const hasMessageId = Number.isInteger(messageId) && messageId >= 0;
-        for (const [key] of snapshots) if (!updates.has(key)) updates.set(key, { name: visible.get(key), base: '', outfit: '' });
+        for (const [key, snapshot] of snapshots) {
+            const update = updates.get(key) || { name: visible.get(key), base: '', outfit: '' };
+            update.base ||= snapshot.before?.base || snapshot.after?.base || '';
+            updates.set(key, update);
+        }
         for (const row of updates.values()) {
             const profile = getCharacterProfile(row.name);
             const base = profile?.baseTags ? '' : row.base;
             const snapshot = snapshots.get(row.name.toLowerCase());
             const stateFields = value => {
                 const state = { outfit: value?.outfit || '', outfitSet: !!value?.outfitSet };
-                for (const field of ['hair_style', 'hair_length', 'hair_color', 'outfit']) {
+                for (const field of ['hair_style', 'hair_length', 'hair_color', 'render_base', 'render_base_source', 'outfit']) {
                     if (typeof value?.[field] === 'string' && (field !== 'outfit' || value.outfitSet)) state[field] = value[field];
                 }
                 return state;
@@ -6778,8 +6785,8 @@ ${getCharacterMemoryTagSpecification()}
         const memoryEnabled = getStore().characterMemoryEnabled && mangaContext?.memoryEnabled !== false;
         const memoryReferences = hasMangaPages && memoryEnabled ? mangaContext?.references || getMangaMemoryReferences(mangaContext?.messageId) : [];
         const memoryWarnings = [];
-        const resolvedSegments = hasMangaPages && memoryEnabled
-            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, source.character_memory, memoryWarnings)
+        const resolvedSegments = hasMangaPages
+            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings)
             : rawSegmentsList;
         let segments = resolvedSegments.map((item, index) => {
                 if (item?.format === 'nai5-comic' || item?.page || item?.panels) return normalizeMangaSegment(item, index);
@@ -7214,7 +7221,7 @@ ${getCharacterMemoryTagSpecification()}
         const store = getStore();
         const segJson = JSON.stringify(segResult || {});
         const systemPrompt = segResult?.mangaPage
-            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；positive 必须保留完整可见外貌衣着，不能只写 state 等待补全。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
+            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit 与本格动作对白 positive，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
             : `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
@@ -7292,7 +7299,8 @@ SCHEMA:
         }
 
         if (segResult?.mangaPage) {
-            return { ...normalizeMangaSegment({ ...parsed, anchor: segResult.anchor }), matchedLorebooks: segResult.matchedLorebooks || [] };
+            const page = getMangaProtocol().resolveAppearances([{ ...parsed, anchor: segResult.anchor }], [])[0];
+            return { ...normalizeMangaSegment(page), matchedLorebooks: segResult.matchedLorebooks || [] };
         }
 
         let charactersList = [];
@@ -8039,7 +8047,14 @@ SCHEMA:
                 for (const panel of updatedSeg.mangaPage.panels) {
                     for (const person of panel.characters) {
                         const current = updatedSeg.characters.find(c => c.panelId === panel.id && c.characterId === person.character_id);
-                        if (current) { person.positive = current.caption; person.negative = current.uc || ''; person.center = sdtParseCoord(current.center); }
+                        if (current) {
+                            person.positive = current.caption;
+                            person.negative = current.uc || '';
+                            person.center = sdtParseCoord(current.center);
+                            // The editor owns the complete caption, including any deliberate removals.
+                            // Do not append stale hidden appearance fields on subsequent compilation.
+                            for (const field of ['base', 'outfit', 'state', '_mangaAppearance', '_mangaInitialAppearance']) delete person[field];
+                        }
                     }
                 }
             }
@@ -10137,7 +10152,7 @@ SCHEMA:
         if (store.injectCharacterCard && isMangaRequest(store)) {
             systemPrompt += `\n\n【漫画角色卡信息参考指令】
 当输入含 characterCardInfo 或 characterCardInfo_base64 时，读取未建档角色的 description 与 characterBookEntries，作为身份、外貌和默认衣着的依据，优先于模型常识；未知不猜，已有不漏，包含已明确的国籍/族裔/面相等特征。
-按当前剧情和景别，将可见特征用于 panels[].characters[].positive；开启角色记忆时，另按 character_memory 规则建档。`;
+按普通模式将完整身份外貌写入 panels[].characters[].base，完整当前衣着写入 outfit，不按景别裁剪；positive 只写本格位置、动作、表情与对白。开启角色记忆时直接从 base/outfit 建档，character_memory 可省略。`;
         } else if (store.injectCharacterCard && hasCardInfo) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }
@@ -10145,7 +10160,7 @@ SCHEMA:
             systemPrompt += '\n\n' + buildCharacterMemoryPromptModule(store, messageId);
         }
         if (isMangaRequest(store)) {
-            systemPrompt += '\n衣柜提供服装参考；按剧情匹配后，仅将当前镜头可见的衣着写入格内人物 positive。';
+            systemPrompt += '\n衣柜提供服装参考；按剧情匹配后，将完整当前衣着写入格内人物 outfit，保留各层衣物与配饰，不按镜头裁剪。';
         } else {
             systemPrompt += '\n\n【👗 角色差分衣柜指示】\n当 payload 中包含 `characterWardrobes` 字段时，若剧情场景、动作或台词命中了角色的某套预设服装或触发词（如泳装、睡衣、战斗服等），请优先直接采用该套服装预设中的 `outfit` 提示词，保持角色服饰的一致性与高还原度。';
         }
@@ -10348,7 +10363,6 @@ SCHEMA:
         tool.function.parameters.required = ['shouldDraw', 'segments'];
         if (store.characterMemoryEnabled) {
             tool.function.parameters.properties.character_memory = getMangaMemorySchema();
-            tool.function.parameters.required.push('character_memory');
         }
         tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema();
         if (store.characterMemoryEnabled) {

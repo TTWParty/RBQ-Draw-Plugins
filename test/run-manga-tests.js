@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const mangaSource = fs.readFileSync(path.join(__dirname, '../plugins/manga-mode.js'), 'utf8');
 const sdtSource = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-trigger.js'), 'utf8');
+const mangaPlanningPresets = ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'];
 const settings = {
     currentMode: 'nai',
     _mangaMode: { enabled: true, style: 'monochrome', grammar: 'cinema', gutter: 'bleed', language: 'zh-hans', autoSpread: true, antiHijack: true,
@@ -315,6 +316,35 @@ test('manga planning restores the 1.8.4 text and omits canvas while preserving a
         settings.naiWidth = original.width; settings.naiHeight = original.height;
         settings._smartDrawTrigger = original.store;
     }
+});
+test('all four context presets route to nested manga requests and share the existing context summary', () => {
+    const original = settings._smartDrawTrigger;
+    try {
+        let expectedSummary;
+        for (const ec of mangaPlanningPresets) {
+            settings._smartDrawTrigger = { enhancedContext: ec, _mangaActive: false };
+            assert.equal(sdt.isMangaRequest(settings._smartDrawTrigger), true, 'saved manga presets select the nested protocol');
+            assert.equal(sdt.getRequestEnhancedContext(settings._smartDrawTrigger), ec);
+            const { payload: request } = sdt.buildRequestPayload(1, { type: 'auto' });
+            assert.equal(request.outputSchema.segments[0].format, 'nai5-comic');
+            assert.equal(request.outputSchema.segments[0].characters, undefined);
+            assert.equal(request.outputSchema.story_plan, undefined);
+            assert.equal(request.mangaPlanCorrection, undefined);
+            assert.equal(sdt.getEnhancedContextSystemPrompt(ec), RBQ.api.mangaProtocol.planningPrompt(ec));
+            assert.deepEqual(request.mangaCanvas && json(request.mangaCanvas), ec === 'v_manga_185' ? json(RBQ.api.mangaProtocol.planningContext()) : undefined);
+            expectedSummary ??= request.contextAnalysisInstructions;
+            assert.equal(request.contextAnalysisInstructions, expectedSummary, 'only the Chinese planning text varies');
+            const schema = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters.properties.segments.items;
+            assert.ok(schema.properties.panels.items.properties.characters);
+            assert.equal(schema.properties.characters, undefined);
+        }
+        for (const ec of ['off', 'v13', 'v14', 'v11']) {
+            settings._smartDrawTrigger = { enhancedContext: ec, _mangaActive: false };
+            assert.equal(sdt.isMangaRequest(settings._smartDrawTrigger), false);
+            assert.equal(sdt.getRequestEnhancedContext(settings._smartDrawTrigger), ec);
+            assert.equal(sdt.buildRequestPayload(1, { type: 'auto' }).payload.mangaCanvas, undefined);
+        }
+    } finally { settings._smartDrawTrigger = original; }
 });
 test('both hook orders preserve deliberate edited colors, identity, weights and dialogue', () => {
     const segment = sdt.normalizeMangaSegment(fixture());
@@ -1239,14 +1269,19 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(requests[0].mangaCanvas, undefined);
         console.log('PASS production custom-HTTP path accepts B6 source mismatch with one call'); passed++;
 
-        settings._smartDrawTrigger.enhancedContext = 'v_manga_185';
-        installResponse(() => planned());
-        assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
-        assert.equal(requests.length, 1);
-        assert.deepEqual(requests[0].mangaCanvas, json(RBQ.api.mangaProtocol.planningContext()));
-        assert.ok(requests[0].mangaInstruction.endsWith(RBQ.api.mangaProtocol.planningPrompt('v_manga_185')));
+        for (const ec of mangaPlanningPresets) {
+            settings._smartDrawTrigger.enhancedContext = ec;
+            installResponse(() => planned());
+            assert.equal((await sdt.callTagger(1, { type: 'auto' })).segments.length, 2);
+            assert.equal(requests.length, 1);
+            assert.deepEqual(requests[0].mangaCanvas, ec === 'v_manga_185' ? json(RBQ.api.mangaProtocol.planningContext()) : undefined);
+            assert.ok(requests[0].mangaInstruction.endsWith(RBQ.api.mangaProtocol.planningPrompt(ec)));
+            assert.equal(requests[0].mangaInstruction.split(RBQ.api.mangaProtocol.planningPrompt(ec)).length - 1, 1);
+            assert.equal(requests[0].outputSchema.story_plan, undefined);
+            assert.equal(requests[0].mangaPlanCorrection, undefined);
+        }
         settings._smartDrawTrigger.enhancedContext = 'v_manga';
-        console.log('PASS alternate automatic custom-HTTP planner includes historical canvas without extra calls'); passed++;
+        console.log('PASS all four automatic custom-HTTP planners use their historical text and only 717 includes canvas with one call'); passed++;
 
         settings._smartDrawTrigger.characterMemoryEnabled = true;
         installResponse(() => memoryResponse());
@@ -1273,7 +1308,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             buildThinkingParams: () => ({}), DRAW_SPEC_TOOL_RULE: 'Submit via generate_draw_spec'
         });
         Object.assign(settings._smartDrawTrigger, { provider: 'openai', openaiBaseUrl: 'https://test.invalid/v1', openaiModel: 'test', squashMessages: false });
-        for (const ec of ['v_manga', 'v_manga_185']) for (const toolCallMode of [false, true]) {
+        for (const ec of mangaPlanningPresets) for (const toolCallMode of [false, true]) {
             settings._smartDrawTrigger.enhancedContext = ec;
             settings._smartDrawTrigger.toolCallMode = toolCallMode;
             let calls = 0;
@@ -1281,7 +1316,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 calls++;
                 assert.equal(body.messages[0].role, 'system');
                 assert.equal(body.messages[0].content.split('你是漫画分镜导演').length - 1, 1);
-                assert.equal(body.messages[0].content.split('【漫画前情与本楼规划】').length - 1, 1);
+                assert.equal(body.messages[0].content.split(RBQ.api.mangaProtocol.planningPrompt(ec)).length - 1, 1);
                 assert.match(body.messages[0].content, /漫画角色记忆/);
                 assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
                 const request = JSON.parse(body.messages[1].content);
@@ -1304,7 +1339,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         }
         settings._smartDrawTrigger.enhancedContext = 'v_manga';
         console.log('PASS production OpenAI JSON and tool requests render final pages in one call'); passed++;
-        for (const ec of ['v_manga', 'v_manga_185']) for (const provider of ['custom', 'openai']) {
+        for (const ec of mangaPlanningPresets) for (const provider of ['custom', 'openai']) {
             settings._smartDrawTrigger.enhancedContext = ec;
             settings._smartDrawTrigger.provider = provider;
             let release, calls = 0;
@@ -1336,7 +1371,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', injectCharacterCard: true,
             customUrl: 'https://test.invalid', openaiBaseUrl: 'https://test.invalid', openaiModel: 'test', squashMessages: false };
         sdt.collectCharacterCardInfo = (content, recent) => { assert.equal(content, 'library'); assert.equal(recent.length, 0); return testCard; };
-        for (const ec of ['v_manga', 'v_manga_185']) for (const provider of ['custom', 'openai']) {
+        for (const ec of mangaPlanningPresets) for (const provider of ['custom', 'openai']) {
             settings._smartDrawTrigger.enhancedContext = ec;
             settings._smartDrawTrigger.provider = provider;
             let calls = 0;
@@ -1370,7 +1405,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         Object.assign(sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
             toastr: { warning() {}, success() {}, error: text => { throw new Error(text); } }, PLUGIN_NAME: 'test',
             closeManualDrawDialog() {}, generateSdtImage: async () => { generated++; }, collectCharacterCardInfo: () => [] });
-        for (const ec of ['v_manga', 'v_manga_185']) for (const provider of ['custom', 'openai']) {
+        for (const ec of mangaPlanningPresets) for (const provider of ['custom', 'openai']) {
             settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: ec, provider,
                 customUrl: 'https://test.invalid', openaiBaseUrl: 'https://test.invalid', openaiModel: 'test', squashMessages: false };
             let calls = 0;
@@ -1379,7 +1414,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 const request = provider === 'custom' ? body : JSON.parse(body.messages[1].content);
                 const directives = provider === 'custom' ? request.mangaInstruction : body.messages[0].content;
                 assert.ok(directives.includes(RBQ.api.mangaProtocol.planningPrompt(ec)));
-                assert.equal(directives.split('【漫画前情与本楼规划】').length - 1, 1);
+                assert.equal(directives.split(RBQ.api.mangaProtocol.planningPrompt(ec)).length - 1, 1);
                 assert.deepEqual(request.mangaCanvas, ec === 'v_manga_185' ? json(RBQ.api.mangaProtocol.planningContext()) : undefined);
                 return { ok: true, json: async () => ({ shouldDraw: true, segments: [fixture()] }) };
             };
@@ -1388,8 +1423,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             await sdt.submitManualDraw();
             assert.equal(calls, 1);
         }
-        assert.equal(generated, 4);
-        console.log('PASS manual draw routes both planners and both providers with one request each'); passed++;
+        assert.equal(generated, mangaPlanningPresets.length * 2);
+        console.log('PASS manual draw routes all four planners and both providers with one request each'); passed++;
     } finally { Object.assign(sdt, manualOriginals); settings._smartDrawTrigger = manualSettings; }
 
     vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function runSegmentAiRefinement('),sdtSource.indexOf('    function setCardLoadingState(')),sdt);
@@ -1564,6 +1599,13 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     assert.equal(JSON.stringify(settings._mangaMode.studio.panels), before);
     await assert.rejects(manga.callLlmStoryboardParser('story', '4koma', 'zh-hans', '3'), /经典四格/);
     console.log('PASS Studio failures preserve drafts and incompatible 4-koma count is rejected'); passed++;
+    const wrappedPanel = JSON.stringify({ panels: [fixture().panels[0]] });
+    manga.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: `<think>分析中...</think>\n抱歉让您久等了，分镜如下：\n\`\`\`json\n${wrappedPanel}\n\`\`\`` } }] }) });
+    const parsedWithPreamble = await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
+    assert.equal(parsedWithPreamble.length, 1);
+    manga.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '抱歉，根据安全规范，我无法生成包含显式性行为的内容。' } }] }) });
+    await assert.rejects(manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1), /AI 模型未返回有效分镜/);
+    console.log('PASS Studio robustly extracts JSON across thinking blocks, conversational preambles and reports refusals'); passed++;
     const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short blonde hair, brown eyes', outfit: 'white shirt' }] };
     RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
     // Studio defaults to independent mode (useChatChars: false): references must NOT leak into LLM input
@@ -1575,7 +1617,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
 
     settings._mangaMode.studio.useChatChars = true;
-    for (const ec of ['v_manga', 'v_manga_185']) for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
+    for (const ec of mangaPlanningPresets) for (const baseUrl of ['https://test.invalid/v1', 'https://test.invalid/v1/chat/completions/']) {
         settings._smartDrawTrigger.enhancedContext = ec;
         settings._smartDrawTrigger.openaiBaseUrl = baseUrl;
         manga.fetch = async (url, options) => {

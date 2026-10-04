@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.3';
+    const PLUGIN_VERSION = '6.5.4';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2469,7 +2469,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
-        enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185
+        enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185 | v_manga_161 | v_manga_150
         postProcessEnabled: false,
         postProcessRole: 'assistant',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
@@ -6480,11 +6480,15 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function isMangaRequest(store = getStore()) {
-        return !!store._mangaActive || ['v_manga', 'v_manga_185'].includes(store.enhancedContext);
+        return !!store._mangaActive || isMangaContextPreset(store.enhancedContext);
+    }
+
+    function isMangaContextPreset(ec) {
+        return ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'].includes(ec);
     }
 
     function getRequestEnhancedContext(store = getStore()) {
-        return isMangaRequest(store) ? (store.enhancedContext === 'v_manga_185' ? 'v_manga_185' : 'v_manga') : store.enhancedContext;
+        return isMangaRequest(store) ? (isMangaContextPreset(store.enhancedContext) ? store.enhancedContext : 'v_manga') : store.enhancedContext;
     }
 
     // Keep the supplied identity in every learned base. Never guess translations or source works.
@@ -10168,7 +10172,7 @@ SCHEMA:
     }
 
     function getEnhancedContextPayload(ec) {
-        const activeEc = ec === 'v_manga_185' ? 'v_manga' : (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
+        const activeEc = isMangaContextPreset(ec) ? 'v_manga' : (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
             v_manga: "Select meaningful current-message events, preserve inherited state, and group readable panels into comic pages. Return final pages directly; no separate planning ledger. Each segment is one image.",
             v13: "SCENE-AWARE 9.7 ADAPTIVE EYE-DATUM & CONTACT ANCHORING: Execute 7-step analysis: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking & Progressive Fading, ③ Q1-Q3 Rating (Safe/R/X), ④ Spatial Depth Philosophy (Foreground/Middle/Background, 4 foreground forms, empty is valid, depth of field), ⑤ Dynamic Viewer Eye-Datum & Contact Anchoring (camera = viewer eyes 3D coords based on standing/sitting/kneeling/lying; vertical delta >= 50cm strictly forbids close-up, mandates angle + foreshortening; frustum ingress from bottom edge with contact anchoring; zero Char decoupling), ⑥ Visibility Pruning & UC Conflict Offloading, ⑦ Self-check.",
@@ -10180,7 +10184,7 @@ SCHEMA:
     }
 
     function getEnhancedContextSystemPrompt(ec) {
-        const activeEc = ec === 'v_manga_185' ? 'v_manga' : (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
+        const activeEc = isMangaContextPreset(ec) ? 'v_manga' : (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
             v_manga: activeEc === 'v_manga' ? getMangaProtocol().planningPrompt(ec) : '',
             v14: "【V14·自适应节拍与极简四公理推演 (分析生图位置与数量)】\n在输出 JSON 前，必须在思考区（输出到 reason 字段）完成推演：\n\n①【正文场景选取与生图数量决策（核心：分析哪里生图、需要生几张）】：\n- 扫描正文（仅限 currentMessage，绝对严禁提取历史）：顺着正文时间线地毯式扫描，推演正文中【哪里需要生图】与【需要生几张】：\n  * 哪里生图（视觉全流程节点覆盖法则 · 绝不遗漏）：小说/RP是由连续动态画面构成的，绝不仅有最后的大高潮才算画面！正文中凡是出现以下视觉跃迁节点（①造型服饰高光/换装脱衣/湿身暴露、②动作演进/肢体接触/体位姿态升级、③神态特写/动情红晕/眼神对视、④空间场景或机位景别转换、⑤显式图组[图组XX]/插画），每一个节点都属于【该生图的地方】，必须分别提取为一个独立分镜，绝严禁只挑最后一个动作而把前面的精彩画面全部漏掉！每个选定画面精准摘取 10~40 字逐字原文 anchor.text 并拟定 label；\n  * 需要生几张（数量自然衍生准则）：生图数量完全由正文包含的独立视觉时刻自然决定，只要该生图的地方就必须有图，几张不设死板指标；单一瞬间=1张；多节拍推进=自然拆分多张独立分镜填入 segments，绝不草率压缩为单张；纯抽象理论探讨/毫无画面的纯闲聊才判 0 张（shouldDraw: false）。\n②【主题与分层】：确立主体层级（无近身实体接触则自然省略 Foreground 降级为双层，严禁强凑）。\n③【视点位姿与高差】：明确观察者自身体态（站/坐/跪/躺/覆身）与视点坐标；判定与目标高差——垂直落差 ≥ 50cm 绝对禁止单纯 close-up，强制使用俯/仰角度景别配合透视短缩链（head tilted back / foreshortening）；同高度特写才成立。\n④【视锥探入与受力闭环】：探入实体（手脚/道具/武器/器官）一律从画框下边缘向前上方延伸，严禁上方逆向垂落；必须具备物理接触受力面闭环（抓胯/托脸/握柄/按压），无接触则留白。\n⑤【实体解耦与分级底线】：POV 观察者绝对不出镜、严禁创建为 Character，其探入实体归入 Scene 前景，Scene 负面必补 boy, male 防骨骼分裂；判定 Safe / R / X 并填齐底线负面词。\n⑥【自检输出】：确认字段自洽后直接输出合法 JSON，禁止输出任何多余标记。",
@@ -13878,7 +13882,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option></select></label>
+                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
                     </div>
                 </div>
 
@@ -14013,7 +14017,7 @@ SCHEMA:
         // Backward compat: boolean true → 'v13', removed legacy versions → fallback
         const legacyEcList = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v12'];
         const ecVal = store.enhancedContext === true || legacyEcList.includes(store.enhancedContext) ? 'v13' : (store.enhancedContext || 'off');
-        document.getElementById('rbq-sdt-enhanced-context').value = ['off', 'v13', 'v14', 'v11', 'v_manga', 'v_manga_185'].includes(ecVal) ? ecVal : 'v13';
+        document.getElementById('rbq-sdt-enhanced-context').value = (['off', 'v13', 'v14', 'v11'].includes(ecVal) || isMangaContextPreset(ecVal)) ? ecVal : 'v13';
         document.getElementById('rbq-sdt-debug').checked = !!store.debugToast;
         document.getElementById('rbq-sdt-tagger-debug').checked = !!store.showTaggerDebug;
         document.getElementById('rbq-sdt-multichar').checked = !!store.multiCharOutput;
@@ -14296,7 +14300,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-mode').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-enhanced-context').addEventListener('change', (event) => {
             const s = getStore();
-            if (isMangaRequest(s) && ['v_manga', 'v_manga_185'].includes(event.target.value)) {
+            if (isMangaRequest(s) && isMangaContextPreset(event.target.value)) {
                 s.enhancedContext = event.target.value;
                 save();
             }

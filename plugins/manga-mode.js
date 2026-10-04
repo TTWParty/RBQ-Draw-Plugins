@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.6';
+        const VERSION = '1.9.7';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -698,6 +698,13 @@
 
     // Historical planning texts; the existing SDT context selector chooses the variant.
     const MANGA_PLANNING_PROMPTS = {
+        v_manga_150: `漫画分页依据正文事件、文字量与画格容量；相邻事件可同页，单格页可只含一个决定性瞬间。按 page/panels/characters 嵌套协议输出，每格人物数量与画格数无关。核对台本覆盖、空间位置、人物状态和文字归属。`,
+        v_manga_161: `【漫画前情与本楼规划】
+一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
+前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
+从本楼开端看到结尾，保留重要动作及结果、关键对白、情绪转折、线索与转场；无大动作的告白或拒绝也值得画。重复描写合并，无新信息的寒暄、抽象议论和未发生的假设不硬画，不重画历史。
+先考虑每格呈现的定格，再按人物、动作、对白容量组合成页：多个相邻事件可同页，长对白或复杂互动可跨页。普通页通常2～5格只是参考，单格页合法；不按句号、图组数量或 minSegments 凑页。保留因果、说话者和反应，不为了少页删掉转折，也不为多页补无意义镜头。
+每页有清晰主画面；每格只画一个相容时刻，明确人物关系、景别和阅读位置，给对白留空间。提交前简要核对剧情首尾、人物状态和对白归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`,
         v_manga: `【漫画前情与本楼规划】
 一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
 前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
@@ -713,8 +720,12 @@
 输入 mangaCanvas 是实际画布像素与方向，按其可读空间同时安排人物、动作和文字；小格不能承载长段对白。正文中的完整问答保留次序，长句按已有停顿分泡或跨相邻格/页续接，不能为了压到预想页数而摘掉条件、理由或句尾；不以固定字数限额删字。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`
     };
 
+    function isMangaPlanningPreset(ec) {
+        return Object.hasOwn(MANGA_PLANNING_PROMPTS, ec);
+    }
+
     function buildMangaPlanningPrompt(ec = getSdtStore().enhancedContext) {
-        return MANGA_PLANNING_PROMPTS[ec === 'v_manga_185' ? 'v_manga_185' : 'v_manga'];
+        return MANGA_PLANNING_PROMPTS[isMangaPlanningPreset(ec) ? ec : 'v_manga'];
     }
 
     function buildMangaPlanningContext(ratio, ec = getSdtStore().enhancedContext) {
@@ -2056,7 +2067,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             if (sdtStore.enhancedContext && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedEnhancedContext = sdtStore.enhancedContext;
             }
-            if (!['v_manga', 'v_manga_185'].includes(sdtStore.enhancedContext)) sdtStore.enhancedContext = 'v_manga';
+            if (!isMangaPlanningPreset(sdtStore.enhancedContext)) sdtStore.enhancedContext = 'v_manga';
             // 自动开启多角色独立生图以确保 char_captions 注入
             if (sdtStore.multiCharOutput === false) {
                 sdtStore._mangaSavedMultiChar = false;
@@ -2079,7 +2090,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                 if (sdtStore._mangaSavedEnhancedContext) {
                     sdtStore.enhancedContext = sdtStore._mangaSavedEnhancedContext;
                     delete sdtStore._mangaSavedEnhancedContext;
-                } else if (['v_manga', 'v_manga_185'].includes(sdtStore.enhancedContext)) {
+                } else if (isMangaPlanningPreset(sdtStore.enhancedContext)) {
                     sdtStore.enhancedContext = 'v13';
                 }
                 if (typeof sdtStore._mangaSavedMultiChar === 'boolean') {
@@ -2171,20 +2182,22 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             }
         }
 
-        // Reuse SDT's existing selector for the two comic planners.
+        // Reuse SDT's existing selector for historical comic planners.
         const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
         const ecField = ecSelect ? ecSelect.closest('.st-scene-trigger-field') : null;
         if (ecSelect && ecField) {
             for (const [value, label] of [
                 ['v_manga', '漫画 1.8.4 · 前情规划（619字）'],
-                ['v_manga_185', '漫画 1.8.5 · 前情规划（717字 · 参考画布）']
+                ['v_manga_185', '漫画 1.8.5 · 前情规划（717字 · 参考画布）'],
+                ['v_manga_161', '漫画 1.6.1 · 简版（491字）'],
+                ['v_manga_150', '漫画 1.5.0 · 极简（109字）']
             ]) {
                 let option = ecSelect.querySelector(`option[value="${value}"]`);
                 if (!option) { option = document.createElement('option'); option.value = value; ecSelect.appendChild(option); }
                 option.textContent = label;
             }
             for (const option of ecSelect.options) {
-                if (['v_manga', 'v_manga_185'].includes(option.value)) {
+                if (isMangaPlanningPreset(option.value)) {
                     option.hidden = !store.enabled;
                     option.disabled = !store.enabled;
                     continue;
@@ -2199,7 +2212,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             }
             const sdtStore = getSdtStore();
             const expectedEc = store.enabled
-                ? (sdtStore.enhancedContext === 'v_manga_185' ? 'v_manga_185' : 'v_manga')
+                ? (isMangaPlanningPreset(sdtStore.enhancedContext) ? sdtStore.enhancedContext : 'v_manga')
                 : sdtStore.enhancedContext || 'v13';
             if (ecSelect.value !== expectedEc) ecSelect.value = expectedEc;
             ecSelect.disabled = false;
@@ -2898,6 +2911,102 @@ position 单独写位置，description/positive 不重复画格位置；系统�
 局部镜头用 shot 指定，base/outfit 仍保留完整资料，不按部位删标签。`;
     }
 
+    function extractStudioJson(text) {
+        let str = String(text || '').trim();
+        if (!str) return null;
+
+        // 1. Remove thinking / reasoning blocks (<think>...</think>, <thinking>...</thinking>, <os>...</os>)
+        str = str.replace(/<think(?:_nya~?)?>[\s\S]*?<\/think(?:_nya~?)?>/gi, '')
+                 .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+                 .replace(/<os>[\s\S]*?<\/os>/gi, '')
+                 .trim();
+        if (!str) return null;
+
+        // 2. Extract markdown code block if present
+        const mdMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (mdMatch) {
+            const inner = mdMatch[1].trim();
+            try {
+                const parsed = JSON.parse(inner);
+                if (parsed && typeof parsed === 'object') return parsed;
+            } catch (_e) {
+                str = inner;
+            }
+        }
+
+        // 3. Direct JSON.parse
+        try {
+            const parsed = JSON.parse(str);
+            if (parsed && typeof parsed === 'object') return parsed;
+        } catch (_e) {}
+
+        // 4. Clean control characters inside string literals & trailing commas
+        const cleanControlChars = (input) => {
+            let inStr = false, esc = false, out = '';
+            for (let i = 0; i < input.length; i++) {
+                const ch = input[i];
+                if (inStr) {
+                    if (esc) { esc = false; out += ch; }
+                    else if (ch === '\\') { esc = true; out += ch; }
+                    else if (ch === '"') { inStr = false; out += ch; }
+                    else if (ch === '\n') { out += '\\n'; }
+                    else if (ch === '\r') { out += '\\r'; }
+                    else if (ch === '\t') { out += '\\t'; }
+                    else if (ch.charCodeAt(0) < 32) { out += ' '; }
+                    else { out += ch; }
+                } else {
+                    if (ch === '"') inStr = true;
+                    out += ch;
+                }
+            }
+            return out;
+        };
+        const removeTrailingCommas = (input) => input.replace(/,\s*([}\]])/g, '$1');
+
+        // 5. Find balanced { ... }
+        const start = str.indexOf('{');
+        if (start >= 0) {
+            let depth = 0, inString = false, escaped = false, end = -1;
+            for (let i = start; i < str.length; i++) {
+                const ch = str[i];
+                if (inString) {
+                    if (escaped) { escaped = false; continue; }
+                    if (ch === '\\') { escaped = true; continue; }
+                    if (ch === '"') inString = false;
+                    continue;
+                }
+                if (ch === '"') { inString = true; continue; }
+                if (ch === '{') { depth++; continue; }
+                if (ch === '}') {
+                    depth--;
+                    if (depth === 0) { end = i; break; }
+                }
+            }
+            if (end !== -1) {
+                const candidate = str.slice(start, end + 1);
+                try {
+                    return JSON.parse(candidate);
+                } catch (_e) {
+                    try {
+                        return JSON.parse(removeTrailingCommas(cleanControlChars(candidate)));
+                    } catch (_e2) {}
+                }
+            }
+        }
+
+        // 6. Last resort: outermost { ... }
+        try {
+            const cleaned = removeTrailingCommas(cleanControlChars(str));
+            const s = cleaned.indexOf('{');
+            const e = cleaned.lastIndexOf('}');
+            if (s >= 0 && e > s) {
+                return JSON.parse(cleaned.slice(s, e + 1));
+            }
+        } catch (_e3) {}
+
+        return null;
+    }
+
     async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false) {
         store = { ...store, studio: { ...store.studio } };
         const config = getSdtStore();
@@ -2922,8 +3031,15 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         });
         if (!response.ok) throw new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
         const result = await response.json();
-        const reply = String(result.choices?.[0]?.message?.content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-        const data = JSON.parse(reply);
+        const rawReply = String(result.choices?.[0]?.message?.content || '').trim();
+        const data = extractStudioJson(rawReply);
+        if (!data || typeof data !== 'object') {
+            const preview = rawReply.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
+            if (/^(?:抱歉|sorry|对不起|无法|不能|违规|安全规范)/i.test(preview) || preview.length < 300) {
+                throw new Error(`AI 模型未返回有效分镜（可能触发了模型安全审核或拒绝回答）：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`);
+            }
+            throw new Error(`分镜解析失败：模型未返回合法 JSON 格式。模型返回片段：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`);
+        }
         if (!Array.isArray(data.panels) || !data.panels.length || data.panels.length > 5
             || (expectedCount && data.panels.length !== expectedCount)) throw new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
         const rawPage = { format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels };
@@ -3957,7 +4073,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
         if (ecSelect) {
             for (const option of ecSelect.options) {
                 restoreMangaContextOption(option);
-                if (['v_manga', 'v_manga_185'].includes(option.value)) {
+                if (isMangaPlanningPreset(option.value)) {
                     option.hidden = true; option.disabled = true;
                 }
             }

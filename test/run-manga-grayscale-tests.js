@@ -20,6 +20,7 @@ function page(people, base = 'comic, monochrome, greyscale, screentone, overhead
 const first = () => ({ base: originalBase, outfit: originalOutfit, render: { base: grayBase, outfit: grayOutfit } });
 const resolve = (pages, refs = [], style = 'monochrome') => RBQ.api.mangaProtocol.resolveAppearances(pages, refs, [], [], { style });
 const compile = p => manga.compileMangaPage(p).characters.map(c => c.caption);
+const parse = (people, messageId = 1) => sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page(people)] }, [], sdt.captureMangaRequestContext(null, messageId));
 let passed = 0;
 function test(name, run) { run(); console.log('PASS ' + name); passed++; }
 function reset(memory = true) {
@@ -90,12 +91,14 @@ test('temporary appearance changes replace gray base without touching permanent 
     assert.match(p.panels[2].characters[0]._mangaAppearance.render_base, /short red hair/);
     assert.equal(p.panels[2].characters[0].render.outfit, grayOutfit);
 });
-test('explicit removal clears both outfits and later restore requires a new gray outfit', () => {
+test('explicit removal clears both outfits and restores the earlier exact gray outfit', () => {
     const [p] = resolve([page([first(), { state: { outfit: '' }, render: { outfit: '' } }, {}])]);
     for (const c of p.panels.slice(1).map(p => p.characters[0])) { assert.equal(c.outfit, ''); assert.equal(c.render.outfit, ''); }
-    assert.throws(() => resolve([page([first(), { state: { outfit: '' } }, { outfit: originalOutfit }])]), /render.outfit/);
+    const [restored] = resolve([page([first(), { state: { outfit: '' } }, { outfit: originalOutfit }])]);
+    assert.equal(restored.panels[2].characters[0].render.outfit, grayOutfit);
+    assert.deepEqual(clone(manga.compileMangaPage(restored).warnings), []);
 });
-test('missing initial or changed gray fields fail before any memory is saved', () => {
+test('missing initial or changed gray fields preserve complete originals with visible warnings', () => {
     reset();
     for (const people of [
         [{ base: originalBase, outfit: originalOutfit }],
@@ -103,15 +106,56 @@ test('missing initial or changed gray fields fail before any memory is saved', (
         [first(), { state: { base: originalBase.replace('blonde', 'red') } }],
         [first(), { state: { outfit: 'red coat' }, render: { outfit: '' } }]
     ]) {
-        const context = sdt.captureMangaRequestContext(null, 1), before = JSON.stringify(sdt.getCharacterProfiles());
-        assert.throws(() => sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page(people)] }, [], context), /render\.(base|outfit)/);
-        assert.equal(JSON.stringify(sdt.getCharacterProfiles()), before);
+        reset();
+        const result = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page(people)] }, [], sdt.captureMangaRequestContext(null, 1));
+        assert.ok(result.renderWarnings.some(w => /render\.(base|outfit)/.test(w)));
+        assert.match(result.reason, /可能残留颜色/);
+        const last = result.segments[0].mangaPage.panels.at(-1).characters[0];
+        const field = people.length === 1 || people.at(-1).state?.base ? 'base' : 'outfit';
+        assert.equal(last.render[field], last[field], 'fallback is the complete current source');
+        assert.match(sdt.getCharacterProfile('Mina').baseTags, /long blonde hair/);
+        assert.doesNotMatch(JSON.stringify(sdt.getCharacterProfile('Mina')), /light grey hair|"render"/);
+    }
+});
+test('a later view fills an earlier omission only for the identical source', () => {
+    const [a, b] = resolve([page([{ base: originalBase, outfit: originalOutfit },
+        { state: { outfit: 'red raincoat' }, render: { outfit: 'dark raincoat' } }]),
+        page([{ state: { outfit: originalOutfit }, render: first().render }])]);
+    assert.equal(a.panels[0].characters[0].render.outfit, grayOutfit);
+    assert.equal(a.panels[1].characters[0].render.outfit, 'dark raincoat');
+    assert.equal(a.panels[0].characters[0].render.base, b.panels[0].characters[0].render.base);
+    assert.deepEqual(clone(manga.compileMangaPage(a).warnings), []);
+});
+test('missing changed view cannot borrow a different outfit and warns once per source per page', () => {
+    const [p] = resolve([page([first(), { state: { outfit: 'red raincoat, custom clasp' } }, {}, {}])]);
+    for (const c of p.panels.slice(1).map(p => p.characters[0])) {
+        assert.equal(c.render.outfit, 'red raincoat, custom clasp');
+        assert.equal(c.render.base, 'Mina (original), ' + grayBase);
+        assert.doesNotMatch(manga.compileMangaPage(p).characters[1].caption, /trench coat/);
+    }
+    assert.equal(manga.compileMangaPage(p).warnings.length, 1);
+    assert.equal(manga.compileMangaPage(clone(p)).warnings.length, 1, 'warning survives cached redraw');
+});
+test('null render objects and fields follow the missing-view fallback', () => {
+    for (const render of [null, { base: null, outfit: null }, {}]) {
+        const [p] = resolve([page([{ ...first(), render }])]);
+        assert.equal(p.panels[0].characters[0].render.base, 'Mina (original), ' + originalBase);
+        assert.equal(p.panels[0].characters[0].render.outfit, originalOutfit);
+        assert.equal(manga.compileMangaPage(p).warnings.length, 2);
     }
 });
 test('malformed render fields and embedded dialogue never enter compiler or memory', () => {
-    for (const render of [null, [], 'gray', { base: ['girl'] }, { outfit: 'Text: 测试' }]) {
+    for (const render of [[], 'gray', { base: ['girl'] }, { outfit: 'Text: 测试' }]) {
         assert.throws(() => resolve([page([{ ...first(), render }])]), /render/);
     }
+});
+test('gray source lookup stays scoped to identity even when another character has the same clothes', () => {
+    const p = page([first()]);
+    p.panels[0].characters.push({ ...first(), character_id: 'C2', name: 'Other (original)', positive: 'sitting', negative: '', render: {} });
+    const [resolved] = resolve([p]);
+    assert.equal(resolved.panels[0].characters[0].render.outfit, grayOutfit);
+    assert.equal(resolved.panels[0].characters[1].render.outfit, originalOutfit);
+    assert.equal(manga.compileMangaPage(resolved).warnings.length, 2);
 });
 test('new gray parses save full-color identity, wardrobe and temporal history only', () => {
     reset();
@@ -124,6 +168,134 @@ test('new gray parses save full-color identity, wardrobe and temporal history on
     assert.match(result.characters[1].caption, /dark coat/);
     assert.equal(result.mangaRenderSettings.style, 'monochrome');
     assert.equal(result.segments[0].mangaRenderSettings.style, 'monochrome');
+});
+test('persistent gray cache survives settings reload and a later parse can omit both views', () => {
+    reset(); const firstResult = parse([first()]);
+    const canonicalBefore = JSON.stringify(sdt.getCharacterProfiles());
+    assert.equal(sdt.getMangaRenderCacheRows().length, 2);
+    settings._smartDrawTrigger = clone(settings._smartDrawTrigger);
+    const context = sdt.captureMangaRequestContext(null, 2);
+    assert.equal(context.references[0].render.outfit, grayOutfit);
+    const next = parse([{}], 2);
+    assert.equal(next.characters[0].caption, firstResult.characters[0].caption);
+    assert.equal(next.renderWarnings, undefined);
+    assert.equal(sdt.getMangaRenderCacheRows().length, 2);
+    assert.doesNotMatch(canonicalBefore + JSON.stringify(sdt.getCharacterProfiles()), /light grey|"render"/);
+    assert.equal(next.segments[0].mangaPage.panels[0].characters[0]._mangaRenderFallbackFields, undefined);
+});
+test('request payload and field contract expose current matching cached views', () => {
+    reset(); parse([first()]);
+    const request = sdt.buildRequestPayload(2, { type: 'auto' }).payload;
+    assert.equal(request.characterMemory[0].render.outfit, grayOutfit);
+    assert.ok(manga.buildMangaSystemPrompt(settings._mangaMode).includes('首次指本次响应内'));
+    const slot = RBQ.api.mangaProtocol.segmentSchema().properties.panels.items.properties.characters.items;
+    assert.ok(slot.properties.render.description.includes('characterMemory.render'));
+});
+test('changed clothing caches only the new outfit and old clothing can be restored across responses', () => {
+    reset(); parse([first()]);
+    const next = parse([{ state: { outfit: 'red raincoat' }, render: { outfit: 'dark raincoat' } }], 2);
+    assert.match(next.characters[0].caption, /dark raincoat/);
+    assert.equal(sdt.getMangaRenderCacheRows().length, 3);
+    assert.equal(sdt.getMangaMemoryReferences(3)[0].render.outfit, 'dark raincoat');
+    const restored = parse([{ state: { outfit: originalOutfit } }], 3);
+    assert.ok(restored.characters[0].caption.includes(grayOutfit));
+    assert.equal(restored.renderWarnings, undefined);
+});
+test('uncached originals used as fallback are never promoted to valid gray cache entries', () => {
+    reset(); parse([first()]);
+    const next = parse([{ state: { outfit: 'red raincoat' } }], 2);
+    assert.match(next.reason, /render.outfit/);
+    assert.equal(sdt.getMangaRenderCacheRows().length, 2);
+    assert.equal(sdt.getMangaMemoryReferences(3)[0].render.outfit, undefined);
+    assert.equal(sdt.getMangaMemoryReferences(3)[0].render.base, 'Mina (original), ' + grayBase);
+});
+test('tag reordering and whitespace reuse views without changing original source tags or weights', () => {
+    reset(); parse([first()]);
+    const reordered = originalOutfit.split(', ').reverse().join(' ,  ');
+    const next = parse([{ outfit: reordered }], 2);
+    assert.equal(next.segments[0].mangaPage.panels[0].characters[0].outfit, reordered);
+    assert.ok(next.characters[0].caption.includes(grayOutfit));
+    assert.equal(next.renderWarnings, undefined);
+    const key = RBQ.api.mangaProtocol.appearanceSourceKey;
+    assert.equal(key('1.2::red coat, blue scarf::, tall'), key(' tall, 1.2::red coat, blue scarf::'));
+    assert.notEqual(key('1.2::red coat, blue scarf::, tall'), key('1.3::red coat, blue scarf::, tall'));
+    assert.notEqual(key('red coat'), key('blue coat'));
+});
+test('reordering stable tags preserves temporary appearance and cannot cache it under the stable source', () => {
+    for (const cacheInitialBase of [false, true]) {
+        reset();
+        const initial = first();
+        if (!cacheInitialBase) delete initial.render.base;
+        parse([initial]);
+        const shortBase = originalBase.replace('long blonde hair', 'short red hair');
+        const shortGray = grayBase.replace('long light grey hair', 'short dark hair');
+        parse([{ state: { base: shortBase }, render: { base: shortGray } }], 2);
+        const reordered = sdt.getCharacterProfile('Mina').baseTags.split(',').reverse().join(' ,  ');
+        sdt.updateCharacterProfile('Mina', reordered, originalOutfit, null, true, { replaceBase: true });
+        const next = parse([{}], 3);
+        const appearance = next.segments[0].mangaPage.panels[0].characters[0];
+        assert.match(appearance.base, /short red hair/);
+        assert.match(appearance.render.base, /short dark hair/);
+        assert.doesNotMatch(next.characters[0].caption, /long light grey hair/);
+        assert.equal(next.renderWarnings, undefined);
+        assert.equal(sdt.getCharacterProfile('Mina').baseTags, reordered);
+        for (const row of sdt.getMangaRenderCacheRows().filter(row => row.field === 'base')) {
+            assert.equal(row.source.includes('short red hair'), row.value.includes('short dark hair'));
+        }
+    }
+    reset();
+});
+test('manual base correction invalidates only the affected source and ordinary modes ignore gray cache', () => {
+    reset(); parse([first()]);
+    sdt.updateCharacterProfile('Mina', 'Mina (original), girl, short red hair', originalOutfit, null, true, { replaceBase: true });
+    const refs = sdt.getMangaMemoryReferences(2);
+    assert.equal(refs[0].render.base, undefined);
+    assert.equal(refs[0].render.outfit, grayOutfit);
+    const corrected = parse([{}], 2);
+    assert.match(corrected.characters[0].caption, /short red hair/);
+    assert.doesNotMatch(corrected.characters[0].caption, /light grey hair/);
+    settings._mangaMode.style = 'soft_color';
+    assert.equal(sdt.getMangaRenderCacheRows().length, 0);
+    assert.equal(sdt.getMangaMemoryReferences(3)[0].render, undefined);
+    settings._mangaMode.style = 'monochrome'; settings._smartDrawTrigger.characterMemoryEnabled = false;
+    const before = JSON.stringify(settings._smartDrawTrigger.mangaRenderCache);
+    parse([first()], 3);
+    assert.equal(JSON.stringify(settings._smartDrawTrigger.mangaRenderCache), before);
+    reset();
+});
+test('cache is isolated by chat and delayed or invalid responses cannot publish entries', () => {
+    reset(); parse([first()]);
+    const before = JSON.stringify(settings._smartDrawTrigger.mangaRenderCache);
+    const context = sdt.captureMangaRequestContext(null, 2), getChatKey = sdt.getChatKey;
+    sdt.getChatKey = () => 'other-chat';
+    try {
+        assert.equal(sdt.getMangaRenderCacheRows().length, 0);
+        assert.throws(() => sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page([first()])] }, [], context), /聊天已切换/);
+    } finally { sdt.getChatKey = getChatKey; }
+    const broken = page([first()]); broken.panels[0].characters[0].render.base = ['invalid'];
+    assert.throws(() => sdt.normalizeTaggerResult({ shouldDraw: true, segments: [broken] }, [], context), /render.base/);
+    assert.equal(JSON.stringify(settings._smartDrawTrigger.mangaRenderCache), before);
+});
+test('a changed grayscale rule version invalidates old cached translations', () => {
+    reset(); parse([first()]);
+    settings._smartDrawTrigger.mangaRenderCache.version = 0;
+    assert.equal(sdt.getMangaMemoryReferences(2)[0].render, undefined);
+    assert.equal(sdt.captureMangaRequestContext(null, 2).renderCache.length, 0);
+    parse([first()], 2);
+    assert.equal(settings._smartDrawTrigger.mangaRenderCache.version, RBQ.api.mangaProtocol.renderCacheVersion);
+    reset();
+});
+test('deleting a character clears only that derived cache and clearing memory clears the chat cache', () => {
+    reset(); parse([first()]);
+    parse([{ ...first(), name: 'Other (original)' }], 2);
+    assert.equal(sdt.getMangaRenderCacheRows().length, 4);
+    vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function deleteCharacterProfile('), sdtSource.indexOf('    function renderCharacterProfileList(')), sdt);
+    sdt.deleteCharacterProfile('Mina');
+    assert.equal(sdt.getMangaRenderCacheRows().length, 2);
+    assert.ok(sdt.getMangaRenderCacheRows().every(row => row.name === 'Other (original)'));
+    sdt.clearAllCharacterProfiles();
+    assert.equal(sdt.getMangaRenderCacheRows().length, 0);
+    reset();
 });
 test('memory disabled still reuses gray views and state within this response without creating profiles', () => {
     reset(false);
@@ -252,7 +424,8 @@ test('legacy cached captions are kept intact and are never reinterpreted through
         vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function callOpenAiCompatible('), sdtSource.indexOf('    async function callCustomHttp(')), sdt);
         Object.assign(sdt, { normalizeBaseUrl: value => value, getActiveJailbreakPrompt: () => '', applyPostProcessPrompt() {},
             buildThinkingParams: () => ({}), DRAW_SPEC_TOOL_RULE: 'Submit via generate_draw_spec' });
-        for (const mode of ['custom', 'json', 'tool']) {
+        for (const mode of ['custom', 'json', 'tool']) for (const omitOutfit of [false, true]) {
+            delete settings._smartDrawTrigger.mangaRenderCache;
             let calls = 0;
             settings._smartDrawTrigger.provider = mode === 'custom' ? 'custom' : 'openai';
             settings._smartDrawTrigger.toolCallMode = mode === 'tool';
@@ -261,6 +434,7 @@ test('legacy cached captions are kept intact and are never reinterpreted through
                 const request = mode === 'custom' ? body : JSON.parse(body.messages[1].content);
                 assert.ok(request.outputSchema.segments[0].panels[0].characters[0].render);
                 const reply = { shouldDraw: true, segments: [page([first(), {}])] };
+                if (omitOutfit) delete reply.segments[0].panels[0].characters[0].render.outfit;
                 return { ok: true, headers: { get: () => 'application/json' }, json: async () => mode === 'custom' ? reply : ({ choices: [{ message: mode === 'tool'
                     ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(reply) } }] }
                     : { content: JSON.stringify(reply) } }] }) };
@@ -268,10 +442,37 @@ test('legacy cached captions are kept intact and are never reinterpreted through
             sdt.smartFetch = async (_url, options) => respond(JSON.parse(options.body));
             sdt.callApiWithJsonFallback = async (_url, _options, body) => respond(body);
             const result = await sdt.callTagger(1, { type: 'auto' });
-            assert.equal(calls, 1); assert.match(result.characters[0].caption, /light grey trench coat/);
+            assert.equal(calls, 1);
+            assert.ok(result.characters[0].caption.includes(omitOutfit ? originalOutfit : grayOutfit));
+            if (omitOutfit) assert.match(result.reason, /render.outfit.*可能残留颜色/);
             assert.equal(result.characters[0].caption, result.characters[1].caption);
             assert.match(sdt.getCharacterProfile('Mina').baseTags, /blonde hair/);
         }
+    });
+    await asyncTest('all provider paths expose warm cache and accept omitted views with one model call', async () => {
+        reset(); parse([first()]);
+        Object.assign(settings._smartDrawTrigger, { customUrl: 'https://test.invalid', openaiBaseUrl: 'https://test.invalid/v1', openaiModel: 'fixture', squashMessages: false });
+        for (const mode of ['custom', 'json', 'tool']) {
+            let calls = 0;
+            settings._smartDrawTrigger.provider = mode === 'custom' ? 'custom' : 'openai';
+            settings._smartDrawTrigger.toolCallMode = mode === 'tool';
+            const respond = body => {
+                calls++;
+                const request = mode === 'custom' ? body : JSON.parse(body.messages[1].content);
+                assert.equal(request.characterMemory[0].render.outfit, grayOutfit);
+                const reply = { shouldDraw: true, segments: [page([{}])] };
+                return { ok: true, headers: { get: () => 'application/json' }, json: async () => mode === 'custom' ? reply : ({ choices: [{ message: mode === 'tool'
+                    ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(reply) } }] }
+                    : { content: JSON.stringify(reply) } }] }) };
+            };
+            sdt.smartFetch = async (_url, options) => respond(JSON.parse(options.body));
+            sdt.callApiWithJsonFallback = async (_url, _options, body) => respond(body);
+            const result = await sdt.callTagger(2, { type: 'auto' });
+            assert.equal(calls, 1);
+            assert.ok(result.characters[0].caption.includes(grayOutfit));
+            assert.equal(result.renderWarnings, undefined);
+        }
+        reset();
     });
     console.log(`\n${passed} manga grayscale rendering tests passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

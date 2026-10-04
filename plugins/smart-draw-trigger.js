@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.0';
+    const PLUGIN_VERSION = '6.5.2';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3188,12 +3188,14 @@ ${activeRegistrySection}`;
         const profiles = getCharacterProfiles();
         const canonical = getCanonicalCharName(name);
         if (profiles[canonical]) {
+            clearMangaRenderCache(canonical);
             delete profiles[canonical];
             save();
             return;
         }
         const key = String(name || '').trim().toLowerCase();
         if (key && profiles[key]) {
+            clearMangaRenderCache(key);
             delete profiles[key];
             save();
         }
@@ -3203,6 +3205,7 @@ ${activeRegistrySection}`;
         const store = getStore();
         const chatKey = getChatKey();
         if (store.characterProfiles?.[chatKey]) {
+            clearMangaRenderCache();
             store.characterProfiles[chatKey] = {};
         }
         save();
@@ -6591,11 +6594,68 @@ ${getCharacterMemoryTagSpecification()}
         if (changed) { save(); refreshCharacterProfileListUi(); }
     }
 
+    // Derived drawing data stays separate from canonical character profiles and timelines.
+    function getMangaRenderCacheRows(renderSettings) {
+        const protocol = RBQ.api.mangaProtocol;
+        if (!isMangaRequest() || !getStore().characterMemoryEnabled || (renderSettings || protocol?.captureRenderSettings?.())?.style !== 'monochrome') return [];
+        const cache = getStore().mangaRenderCache;
+        if (!protocol?.renderCacheVersion || cache?.version !== protocol.renderCacheVersion) return [];
+        const rows = cache.chats?.[JSON.stringify(getChatKey())];
+        return Array.isArray(rows) ? rows.filter(row => row && typeof row.name === 'string'
+            && ['base', 'outfit'].includes(row.field) && typeof row.source === 'string' && row.source.trim()
+            && typeof row.value === 'string' && row.value.trim()
+            && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(row.value)) : [];
+    }
+
+    function saveMangaRenderCache(pages, context) {
+        assertMangaRequestContext(context);
+        const protocol = RBQ.api.mangaProtocol;
+        if (!context || context.manga !== true || !getStore().characterMemoryEnabled || context.memoryEnabled === false
+            || context.renderSettings?.style !== 'monochrome' || !protocol?.renderCacheVersion) return;
+        // Validate every page before publishing any new derived entry.
+        pages.forEach(page => protocol.compile(page));
+        const cache = getStore().mangaRenderCache?.version === protocol.renderCacheVersion
+            ? getStore().mangaRenderCache : { version: protocol.renderCacheVersion, chats: {} };
+        const chatKey = JSON.stringify(context.chatKey);
+        const rows = [...getMangaRenderCacheRows(context.renderSettings)];
+        let changed = false;
+        for (const page of pages) for (const panel of page.panels) for (const c of panel.characters) {
+            if (!c.name || isJunkCharacterName(c.name) || /^(?:[cp]\d+|unknown|unnamed|路人|匿名|无名)$/i.test(c.name)
+                || !getCharacterProfile(c.name)) continue;
+            for (const field of ['base', 'outfit']) {
+                if (c._mangaRenderFallbackFields?.includes(field) || !c[field] || !c.render?.[field]) continue;
+                const sourceKey = protocol.appearanceSourceKey(c[field]);
+                const known = rows.some(row => getCanonicalCharName(row.name).toLowerCase() === getCanonicalCharName(c.name).toLowerCase()
+                    && row.field === field && protocol.appearanceSourceKey(row.source) === sourceKey);
+                if (!known) {
+                    rows.push({ name: c.name, field, source: c[field], value: c.render[field] });
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            cache.chats ||= {};
+            cache.chats[chatKey] = rows;
+            getStore().mangaRenderCache = cache;
+            save();
+        }
+    }
+
+    function clearMangaRenderCache(name) {
+        const cache = getStore().mangaRenderCache;
+        const chatKey = JSON.stringify(getChatKey());
+        if (!cache?.chats?.[chatKey]) return;
+        if (name) cache.chats[chatKey] = cache.chats[chatKey].filter(row => getCanonicalCharName(row.name).toLowerCase() !== getCanonicalCharName(name).toLowerCase());
+        else delete cache.chats[chatKey];
+    }
+    RBQ.api.captureMangaRenderCacheContext = () => captureMangaRequestContext(null, -1);
+    RBQ.api.saveMangaRenderCache = saveMangaRenderCache;
+
     // Use the state preceding this floor, not the latest state of a future floor being re-parsed.
     function getMangaMemoryReferences(messageId) {
         invalidateMangaStateHistory();
         const chronological = Number.isInteger(messageId) && messageId >= 0;
-        return Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
+        const references = Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
             const history = (Array.isArray(p.mangaStateHistory) ? p.mangaStateHistory : [])
                 .filter(e => Number.isInteger(e.messageId) && e.before && e.after).sort((a, b) => a.messageId - b.messageId);
             const latest = history.at(-1);
@@ -6614,6 +6674,9 @@ ${getCharacterMemoryTagSpecification()}
             return { name: p.displayName || name, base: p.baseTags || '',
                 outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
         });
+        const rows = getMangaRenderCacheRows();
+        return rows.length && RBQ.api.mangaProtocol?.cachedReferenceViews
+            ? RBQ.api.mangaProtocol.cachedReferenceViews(references, rows) : references;
     }
 
     function captureMangaRequestContext(currentMessage, messageId) {
@@ -6625,6 +6688,8 @@ ${getCharacterMemoryTagSpecification()}
             currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
                 [getCanonicalCharName(profile.displayName || name).toLowerCase(), profile.currentOutfit || ''])),
             memoryEnabled: !!getStore().characterMemoryEnabled,
+            renderCache: JSON.parse(JSON.stringify(getMangaRenderCacheRows(renderSettings).filter(row => references.some(ref =>
+                getCanonicalCharName(ref.name).toLowerCase() === getCanonicalCharName(row.name).toLowerCase())))),
             references: JSON.parse(JSON.stringify(references)) };
     }
 
@@ -6884,7 +6949,7 @@ ${getCharacterMemoryTagSpecification()}
         const memoryReferences = hasMangaPages && memoryEnabled ? mangaContext?.references || getMangaMemoryReferences(mangaContext?.messageId) : [];
         const memoryWarnings = [];
         const resolvedSegments = hasMangaPages
-            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings, mangaContext?.renderSettings)
+            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings, mangaContext?.renderSettings, mangaContext?.renderCache || [])
             : rawSegmentsList;
         let segments = resolvedSegments.map((item, index) => {
                 if (item?.format === 'nai5-comic' || item?.page || item?.panels) {
@@ -7063,7 +7128,10 @@ ${getCharacterMemoryTagSpecification()}
             normalized.renderWarnings = [...new Set(renderWarnings)];
             normalized.reason += '\n漫画提示：' + normalized.renderWarnings.join('；');
         }
-        if (normalized.shouldDraw) learnMangaCharacterMemory(source, segments, mangaContext);
+        if (normalized.shouldDraw) {
+            learnMangaCharacterMemory(source, segments, mangaContext);
+            if (hasMangaPages) saveMangaRenderCache(segments.map(s => s.mangaPage), mangaContext);
+        }
         else if (mangaContext && getStore().characterMemoryEnabled && mangaContext.memoryEnabled !== false
             && Number.isInteger(mangaContext.messageId) && mangaContext.messageId >= 0) {
             invalidateMangaStateHistory(mangaContext.messageId);
@@ -7072,6 +7140,7 @@ ${getCharacterMemoryTagSpecification()}
         for (const segment of segments) for (const panel of segment.mangaPage?.panels || []) for (const person of panel.characters) {
             delete person._mangaAppearance;
             delete person._mangaInitialAppearance;
+            delete person._mangaRenderFallbackFields;
         }
         return normalized;
     }
@@ -10102,9 +10171,7 @@ SCHEMA:
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
         };
-        return ecPayloads[activeEc] ? { contextAnalysisInstructions: ecPayloads[activeEc],
-            ...(activeEc === 'v_manga' && typeof getMangaProtocol().planningContext === 'function'
-                ? { mangaCanvas: getMangaProtocol().planningContext() } : {}) } : {};
+        return ecPayloads[activeEc] ? { contextAnalysisInstructions: ecPayloads[activeEc] } : {};
     }
 
     function getEnhancedContextSystemPrompt(ec) {
@@ -16347,7 +16414,6 @@ SCHEMA:
             contextCount: 1,
             manualMode: true,
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
-            ...(isMangaRequest(store) ? getEnhancedContextPayload('v_manga') : {}),
             ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt() } : {}),
             outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean', reason: 'string',

@@ -12,7 +12,7 @@ const settings = {
     _smartDrawTrigger: { _mangaActive: true, enhancedContext: 'v_manga', multiCharOutput: true, multiCharUseCoords: false }
 };
 const hooks = [];
-const RBQ = { api: { getSettings: () => settings }, on: (event, callback) => { if (event === 'buildNaiV4Payload') hooks.push(callback); } };
+const RBQ = { api: { getSettings: () => settings, saveSettings: () => {} }, on: (event, callback) => { if (event === 'buildNaiV4Payload') hooks.push(callback); } };
 const silentConsole = { info() {}, warn() {}, log() {}, error() {} };
 const manga = vm.createContext({ RBQ, console: silentConsole, toastr: { info() {} } });
 vm.runInContext(mangaSource.slice(mangaSource.indexOf('const PLUGIN_ID'), mangaSource.indexOf('    // ── 6. UI Injection')) + `
@@ -297,25 +297,23 @@ test('dispatch preserves existing captions instead of guessing grayscale from a 
     assert.equal(manga.sanitizeMangaPositivePrompt('Beige (Series), warm smile, cold weather, artist:tan, tan fox', true),
         'Beige (Series), warm smile, cold weather, artist:tan, tan fox');
 });
-test('manga planning receives actual canvas dimensions without changing host settings or ordinary requests', () => {
-    const original = { width: settings.naiWidth, height: settings.naiHeight, mode: settings.currentMode, store: settings._smartDrawTrigger };
+test('manga planning restores the 1.8.4 text and omits canvas while preserving automatic context', () => {
+    const original = { width: settings.naiWidth, height: settings.naiHeight, store: settings._smartDrawTrigger };
     try {
         settings.naiWidth = 1024; settings.naiHeight = 1536;
-        const context = RBQ.api.mangaProtocol.planningContext();
-        assert.deepEqual(json(context), { width: 1024, height: 1536, orientation: 'portrait', autoSpread: true });
-        assert.deepEqual(json(sdt.buildRequestPayload(1, { type: 'auto' }).payload.mangaCanvas), json(context));
-        assert.deepEqual(json(RBQ.api.mangaProtocol.planningContext('1216x832')),
-            { width: 1216, height: 832, orientation: 'landscape', autoSpread: true });
-        settings.currentMode = 'comfyui'; settings.comfyuiWidth = 768; settings.comfyuiHeight = 768;
-        assert.equal(RBQ.api.mangaProtocol.planningContext().orientation, 'square');
-        settings.currentMode = 'nai'; settings.naiWidth = NaN; settings.naiHeight = -5;
-        assert.deepEqual(json(RBQ.api.mangaProtocol.planningContext()),
-            { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
+        const prompt = RBQ.api.mangaProtocol.planningPrompt();
+        assert.equal(prompt.length, 619);
+        assert.match(prompt, /对白容量不足时调整格大小或分页，不牺牲最后事件/);
+        assert.doesNotMatch(prompt, /mangaCanvas|完整问答|跨相邻格/);
+        const request = sdt.buildRequestPayload(1, { type: 'auto' }).payload;
+        assert.equal(request.mangaCanvas, undefined);
+        assert.ok(request.contextAnalysisInstructions);
+        assert.equal(settings.naiWidth, 1024); assert.equal(settings.naiHeight, 1536);
         settings._smartDrawTrigger = { ...original.store, _mangaActive: false, enhancedContext: 'off' };
         assert.equal(sdt.buildRequestPayload(1, { type: 'auto' }).payload.mangaCanvas, undefined);
     } finally {
-        settings.currentMode = original.mode; settings.naiWidth = original.width; settings.naiHeight = original.height;
-        settings._smartDrawTrigger = original.store; delete settings.comfyuiWidth; delete settings.comfyuiHeight;
+        settings.naiWidth = original.width; settings.naiHeight = original.height;
+        settings._smartDrawTrigger = original.store;
     }
 });
 test('both hook orders preserve deliberate edited colors, identity, weights and dialogue', () => {
@@ -1238,7 +1236,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(requests.length, 1, 'B6 mismatch never triggers a second request');
         assert.equal(requests[0].outputSchema.story_plan, undefined);
         assert.equal(requests[0].mangaPlanCorrection, undefined);
-        assert.deepEqual(requests[0].mangaCanvas, { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
+        assert.equal(requests[0].mangaCanvas, undefined);
         console.log('PASS production custom-HTTP path accepts B6 source mismatch with one call'); passed++;
 
         settings._smartDrawTrigger.characterMemoryEnabled = true;
@@ -1277,7 +1275,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
                 assert.match(body.messages[0].content, /漫画角色记忆/);
                 assert.ok(body.messages[0].content.includes(sdt.getCharacterMemoryTagSpecification()));
                 const request = JSON.parse(body.messages[1].content);
-                assert.deepEqual(request.mangaCanvas, { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
+                assert.equal(request.mangaCanvas, undefined);
                 assert.equal(request.mangaInstruction, undefined);
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('story_plan'));
                 if (toolCallMode) assert.ok(!body.tools[0].function.parameters.required.includes('character_memory'));
@@ -1331,7 +1329,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             const checkRequest = body => {
                 calls++;
                 const request = provider === 'custom' ? body : JSON.parse(body.messages[1].content);
-                assert.deepEqual(request.mangaCanvas, { width: 832, height: 1216, orientation: 'portrait', autoSpread: true });
+                assert.equal(request.mangaCanvas, undefined);
+                assert.equal(request.contextAnalysisInstructions, undefined);
                 assert.deepEqual(request.characterCardInfo, testCard);
                 assert.match(provider === 'custom' ? request.mangaInstruction : body.messages[0].content, /漫画角色卡信息参考指令/);
                 return { ok: true, json: async () => ({ shouldDraw: true, segments: [fixture()] }) };
@@ -1505,7 +1504,12 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     settings._smartDrawTrigger.openaiBaseUrl = 'https://test.invalid/v1';
     settings._smartDrawTrigger.openaiModel = 'test';
     const before = JSON.stringify(settings._mangaMode.studio.panels);
-    manga.fetch = async () => ({ ok: false, status: 503 });
+    manga.fetch = async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.equal(body.messages[1].content, 'story', 'Studio without references uses the original input');
+        assert.doesNotMatch(body.messages[0].content, /mangaCanvas/);
+        return { ok: false, status: 503 };
+    };
     await assert.rejects(manga.requestStudioPanels(settings._mangaMode, 'one panel', 'story', 1), /HTTP 503/);
     manga.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"panels":[]}' } }] }) });
     await assert.rejects(manga.requestStudioPanels(settings._mangaMode, 'one panel', 'story', 1), /画格数量/);
@@ -1519,8 +1523,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         manga.fetch = async (url, options) => {
             assert.equal(url, 'https://test.invalid/v1/chat/completions');
             const body = JSON.parse(options.body), userInput = JSON.parse(body.messages[1].content);
-            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences,
-                mangaCanvas: { width: 832, height: 1216, orientation: 'portrait', autoSpread: true } });
+            assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences });
             assert.match(body.messages[0].content, /characterCardInfo\/characterMemory/);
             const panel = fixture().panels[0];
             panel.characters[1].base = ''; panel.characters[1].outfit = '';

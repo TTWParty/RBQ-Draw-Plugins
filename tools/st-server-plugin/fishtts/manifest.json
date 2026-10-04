@@ -1,0 +1,11 @@
+{
+    "display_name": "Fish语音转发 (fishtts relay)",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "author": "local",
+    "version": "0.1.0",
+    "homePage": "",
+    "auto_update": false,
+    "description": "rbq-fish-tts 配套服务端转发: /api/plugins/fishtts/tts -> api.fish.audio, 让前端合成请求走酒馆服务器, 免反代免CORS。"
+}

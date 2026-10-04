@@ -748,9 +748,6 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
         const base = caption?.base_caption || payload.input;
         if (store.autoSpread && /見開き|double-page spread|2-page spread|wide spread/i.test(splitMangaText(base).visual)
             && params.width < params.height) [params.width, params.height] = [params.height, params.width];
-        payload.model = 'nai-diffusion-5-full';
-        // Some older hosts also inspect this field before serializing the request.
-        if (Object.prototype.hasOwnProperty.call(params, 'model')) params.model = payload.model;
         return payload;
     }
     mangaProtocol.enhancePayload = enhanceMangaPayload;

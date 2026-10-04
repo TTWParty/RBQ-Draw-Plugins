@@ -150,7 +150,7 @@ test('both hook orders produce the same request without duplicating styles or pe
     }
     const first = run([sdtHook, mangaHook]), second = run([mangaHook, sdtHook]);
     assert.deepEqual(json(first), json(second));
-    assert.equal(first.model, 'nai-diffusion-5-full');
+    assert.equal(first.model, 'nai-diffusion-4-5-full', 'retains user-configured model rather than forcing NAI V5');
     assert.equal(first.parameters.v4_prompt.caption.char_captions.length, 4);
     assert.equal(first.parameters.v4_negative_prompt.caption.char_captions[0].char_caption, 'short hair');
     assert.doesNotMatch(first.parameters.v4_negative_prompt.caption.char_captions[0].char_caption, /original|color/);
@@ -297,9 +297,20 @@ test('cached manga redraw retains V5 while manga is disabled; unrelated requests
         assert.deepEqual(json(mangaHook(untouched)), json(payload('ordinary image')));
         sdt.prepareNaiCharData(sdt.normalizeMangaSegment(fixture()));
         const redrawn = mangaHook(sdtHook(payload('comic')));
-        assert.equal(redrawn.model, 'nai-diffusion-5-full');
+        assert.equal(redrawn.model, 'nai-diffusion-4-5-full', 'retains user-configured model on redraw');
         assert.equal(redrawn.parameters.v4_prompt.caption.char_captions.length, 4);
     } finally { settings._mangaMode.enabled = wasEnabled; }
+});
+test('manga mode preserves user-configured image generation model rather than forcing NAI V5', () => {
+    sdt.prepareNaiCharData(sdt.normalizeMangaSegment(fixture()));
+    for (const testModel of ['nai-diffusion-4-5-full', 'nai-diffusion-4-curated', 'nai-diffusion-3', 'custom-model']) {
+        const inputPayload = payload('comic');
+        inputPayload.model = testModel;
+        inputPayload.parameters.model = testModel;
+        const result = mangaHook(sdtHook(inputPayload));
+        assert.equal(result.model, testModel, `model ${testModel} must not be overridden`);
+        assert.equal(result.parameters.model, testModel, `parameters.model ${testModel} must not be overridden`);
+    }
 });
 test('real request builder and system prompt agree with the nested tool schema', () => {
     const { payload: request } = sdt.buildRequestPayload(1, { type: 'auto' });

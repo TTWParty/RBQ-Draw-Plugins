@@ -287,14 +287,13 @@ test('spread detection ignores dialogue and retains upstream Prompt Presets', ()
     p = mangaHook(payload('comic, Text: 見開きページ'));
     assert.equal(p.parameters.width, 832);
 });
-test('monochrome dispatch converts neutral clothing colors and warm light while preserving saved memory', () => {
+test('dispatch preserves existing captions instead of guessing grayscale from a color dictionary', () => {
     const caption = 'Lin Yao (original), girl, beige trench coat, blue denim jeans, dark blue pleated skirt, cream knit sweater, Text: beige trench coat，原句不改。';
     const output = mangaHook(payload('comic, warm indoor lighting with soft shadows', [{ char_caption: caption }]));
     const rendered = output.parameters.v4_prompt.caption.char_captions[0].char_caption;
-    assert.match(rendered, /light grey trench coat, grey denim jeans, dark grey pleated skirt, light grey knit sweater/);
+    assert.match(rendered, /beige trench coat, blue denim jeans, dark blue pleated skirt, cream knit sweater/);
     assert.match(rendered, /Text: beige trench coat，原句不改。$/);
-    assert.match(output.input, /indoor lighting with soft shadows/);
-    assert.doesNotMatch(output.input, /warm indoor lighting/);
+    assert.match(output.input, /warm indoor lighting with soft shadows/);
     assert.equal(manga.sanitizeMangaPositivePrompt('Beige (Series), warm smile, cold weather, artist:tan, tan fox', true),
         'Beige (Series), warm smile, cold weather, artist:tan, tan fox');
 });
@@ -319,7 +318,7 @@ test('manga planning receives actual canvas dimensions without changing host set
         settings._smartDrawTrigger = original.store; delete settings.comfyuiWidth; delete settings.comfyuiHeight;
     }
 });
-test('monochrome converts explicit character colors at dispatch without changing dialogue, names or saved captions', () => {
+test('both hook orders preserve deliberate edited colors, identity, weights and dialogue', () => {
     const segment = sdt.normalizeMangaSegment(fixture());
     const original = 'top panel, girl, silver hair in high bun, 1.2::deep purple qipao, {purple eyes}::, blue_ribbon, Red (Series), red panda, Text: purple eyes, 红色的信。';
     segment.characters[0].caption = original;
@@ -332,9 +331,9 @@ test('monochrome converts explicit character colors at dispatch without changing
     const first = run([sdtHook, mangaHook]), second = run([mangaHook, sdtHook]);
     assert.deepEqual(json(first), json(second));
     const actual = first.parameters.v4_prompt.caption.char_captions[0].char_caption;
-    assert.match(actual, /light grey hair in high bun/);
-    assert.match(actual, /1\.2::dark grey qipao, \{grey eyes\}::/);
-    assert.match(actual, /grey ribbon, Red \(Series\), red panda/);
+    assert.match(actual, /silver hair in high bun/);
+    assert.match(actual, /1\.2::deep purple qipao, \{purple eyes\}::/);
+    assert.match(actual, /blue_ribbon, Red \(Series\), red panda/);
     assert.match(actual, /Text: purple eyes, 红色的信。$/);
     assert.match(first.input, /artist:blue, full color/);
     assert.equal(segment.characters[0].caption, original);
@@ -499,10 +498,12 @@ test('tool responses accept final pages directly without source or beat referenc
     assert.equal(sdt.normalizeTaggerResult(wrapped, [], { content: story }).segments.length, 1);
 });
 function withMemory(run) {
-    const prior = settings._smartDrawTrigger;
+    const prior = settings._smartDrawTrigger, priorStyle = settings._mangaMode.style;
+    // Full-color memory tests compare the ordinary and manga fields verbatim.
+    settings._mangaMode.style = 'soft_color';
     settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', characterMemoryEnabled: true, characterProfiles: {} };
     profileRefreshes = 0; profileSaves = 0; memoryChat = 'manga-memory-test';
-    try { run(); } finally { settings._smartDrawTrigger = prior; memoryChat = 'manga-memory-test'; }
+    try { run(); } finally { settings._smartDrawTrigger = prior; settings._mangaMode.style = priorStyle; memoryChat = 'manga-memory-test'; }
 }
 const memoryResponse = () => ({ shouldDraw: true, segments: [fixture(), fixture()], character_memory: [
     { name: 'Ami (original)', base: 'girl, long black hair, green eyes', outfit: 'white blouse, blue skirt, brown shoes' },
@@ -707,11 +708,11 @@ test('malformed people and arrays use compiler diagnostics before any memory wri
     assert.throws(() => sdt.normalizeTaggerResult({ shouldDraw: true, segments: [bad] }, [], { content: story }), /panels/);
     assert.equal(JSON.stringify(sdt.getCharacterProfiles()), before);
 }));
-test('final weighted monochrome UC cannot exclude its own converted appearance', () => {
-    const input = payload('comic', [{ char_caption: '1.2::blonde hair::, smiling, Text: light grey hair' }]);
+test('final weighted UC cannot exclude its own actual grayscale appearance', () => {
+    const input = payload('comic', [{ char_caption: '1.2::light grey hair::, smiling, Text: light grey hair' }]);
     input.parameters.v4_negative_prompt.caption.char_captions = [{ char_caption: '1.3::light grey hair, yellow hair, bad hands::' }];
     const output = mangaHook(input);
-    assert.equal(output.parameters.v4_negative_prompt.caption.char_captions[0].char_caption, '1.3::bad hands::');
+    assert.equal(output.parameters.v4_negative_prompt.caption.char_captions[0].char_caption, '1.3::yellow hair, bad hands::');
     assert.match(output.parameters.v4_prompt.caption.char_captions[0].char_caption, /Text: light grey hair$/);
 });
 test('chat switches including A to B to A invalidate captured response contexts', () => withMemory(() => {
@@ -989,15 +990,15 @@ test('explicit profile correction supersedes obsolete temporary appearance witho
     assert.match(manga.compileMangaPage(old.mangaPage).characters[0].caption,/short hair/);
 }));
 
-test('monochrome fallback covers page objects, environment and makeup while preserving speech and names', () => {
+test('dispatch leaves objects, environment and makeup to the director and preserves literal text', () => {
     const input = payload('comic, red pen, brown wooden desk, blue walls, Text: 红笔与 blue walls', [
         { char_caption: 'Mina, korean, 35 years old, red lipstick, holding red pen, flesh-colored ultra-thin stockings, red panda, artist: red_pen, hatsune_miku (vocaloid), Text: red lipstick' }
     ]);
     const result = mangaHook(input);
-    assert.match(result.input, /grey pen, dark grey wooden desk, grey walls/);
+    assert.match(result.input, /red pen, brown wooden desk, blue walls/);
     assert.match(result.input, /Text: 红笔与 blue walls$/);
     const caption = result.parameters.v4_prompt.caption.char_captions[0].char_caption;
-    for (const value of ['grey lipstick', 'holding grey pen', 'light grey ultra-thin stockings', 'red panda', 'artist: red_pen', 'hatsune_miku (vocaloid)', 'Mina', 'korean', '35 years old']) assert.ok(caption.includes(value), value);
+    for (const value of ['red lipstick', 'holding red pen', 'flesh-colored ultra-thin stockings', 'red panda', 'artist: red_pen', 'hatsune_miku (vocaloid)', 'Mina', 'korean', '35 years old']) assert.ok(caption.includes(value), value);
     assert.match(caption, /Text: red lipstick$/);
     assert.deepEqual(json(mangaHook(result)), json(result), 'hook is idempotent');
 });
@@ -1007,7 +1008,7 @@ test('names resembling color phrases survive both hook orders without leaking pr
         let result = payload('comic');
         for (const hook of order) result = hook(result);
         const caption = result.parameters.v4_prompt.caption.char_captions[0];
-        assert.match(caption.char_caption, /^Red Pen, girl, grey lipstick, holding grey pen$/);
+        assert.match(caption.char_caption, /^Red Pen, girl, red lipstick, holding red pen$/);
         assert.deepEqual(Object.keys(caption).sort(), ['centers', 'char_caption']);
     }
 });
@@ -1345,8 +1346,9 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     } finally { sdt.collectCharacterCardInfo = oldCollector; settings._smartDrawTrigger = previousTestSettings; }
 
     vm.runInContext(sdtSource.slice(sdtSource.indexOf('    async function runSegmentAiRefinement('),sdtSource.indexOf('    function setCardLoadingState(')),sdt);
-    const refinementSettings = settings._smartDrawTrigger;
+    const refinementSettings = settings._smartDrawTrigger, refinementStyle = settings._mangaMode.style;
     try {
+        settings._mangaMode.style = 'soft_color';
         settings._smartDrawTrigger = {_mangaActive:true,provider:'custom',customUrl:'https://test.invalid'};
         const response = appearancePage([{base:'girl, long hair',outfit:'white shirt'},
             {base:'girl, long hair',outfit:'white shirt',state:{base:'girl, short hair',outfit:'blue coat'}}]);
@@ -1360,7 +1362,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.doesNotMatch(result.characters[1].caption,/long hair|white shirt/);
         assert.equal(profileSaves,saves);
         console.log('PASS SDT AI refinement resolves structured snapshots without writing memory'); passed++;
-    } finally {settings._smartDrawTrigger = refinementSettings;}
+    } finally {settings._smartDrawTrigger = refinementSettings; settings._mangaMode.style = refinementStyle;}
 
     const drawerPage = fixture(); drawerPage.position_mode = 'manual';
     drawerPage.panels.forEach(p => p.characters.forEach(c => { c.center = { x: 0, y: 1 }; }));
@@ -1526,7 +1528,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: [panel] }) } }] }) };
         };
         const savesBefore = profileSaves;
-        const panels = await manga.requestStudioPanels(settings._mangaMode, 'one panel', 'story', 1);
+        const panels = await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
         assert.equal(panels.length, 1);
         assert.match(panels[0].characters[1].positive, /blonde hair/);
         assert.match(panels[0].characters[1].positive, /brown eyes/);
@@ -1539,7 +1541,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         { visible: allParts, state: { outfit: 'blue coat' }, positive: 'girl, blonde hair, blue coat, standing' },
         { visible: allParts, positive: 'girl, blonde hair, blue coat, holding book' }
     ]).panels;
-    const draftBefore = JSON.stringify(draft);
+    const draftBefore = JSON.stringify(draft), draftStyle = settings._mangaMode.style;
+    settings._mangaMode.style = 'soft_color';
     manga.fetch = async (_url, options) => {
         const body = JSON.parse(options.body);
         assert.match(body.messages[0].content, /完整外貌衣着快照/);
@@ -1563,6 +1566,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     assert.match(changedDraft[1].characters[0].positive,/short hair, blue coat/);
     assert.doesNotMatch(changedDraft[1].characters[0].positive,/long hair|white shirt|red dress/);
     console.log('PASS Studio refinement applies explicit structured changes without live memory overriding drafts'); passed++;
+    settings._mangaMode.style = draftStyle;
     delete RBQ.api.collectMangaReferenceData;
     console.log('PASS Studio reuses complete ordinary memory without saving profiles and accepts full chat-completions endpoints'); passed++;
     console.log(`\n${passed} manga regression tests passed.`);

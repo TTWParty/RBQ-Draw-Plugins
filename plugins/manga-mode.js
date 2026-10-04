@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.8.5';
+        const VERSION = '1.9.0';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -238,6 +238,10 @@
                                             base: { type: 'string', description: 'Only an explicit plot appearance change: complete temporary appearance tags after the change, retaining all unchanged identity traits. Not a crop and never permanent memory.' },
                                             outfit: { type: 'string', description: 'Complete known outfit after explicit change, or opening outfit when no saved outfit / history differs. Empty clears clothes. No action.' }
                                         }, description: 'Optional changes take effect from this appearance onward, even off camera. Omit unchanged fields.' },
+                                        ...(getStore().style === 'monochrome' ? { render: { type: 'object', properties: {
+                                            base: { type: 'string', description: 'Complete grayscale drawing view of the resolved original base/state.base. Preserve names, identity, age, height and structure. First appearance or actual appearance change only; omit unchanged member to reuse.' },
+                                            outfit: { type: 'string', description: 'Complete grayscale drawing view of the current original outfit/state.outfit including all layers. First appearance or actual outfit change only; omit unchanged member to reuse. Empty only for no clothing.' }
+                                        }, description: 'Black-and-white drawing only; NEVER character memory. Translate color to grayscale, retain all other known traits. Unchanged appearances omit this object.' } } : {}),
                                         positive: { type: 'string', description: 'This appearance only: panel position, pose, limb action with object/contact, expression/gaze and speech. Identity and clothing belong in base/outfit. BubbleType/location/Layout BEFORE one final Text:.' },
                                         negative: string,
                                         center: { type: 'object', properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 } }, required: ['x', 'y'], description: 'Required only in manual mode; normalized position on the entire page, not inside the panel.' }
@@ -267,6 +271,8 @@
                         character_id: 'C1', name: '完整绘图身份：原创 Name (original)，同人已确认的 Name (Series)；跨格同名，程序拼入外貌',
                         base: '与普通模式一致的完整固定外貌；已有档案原样复用，不按镜头裁剪',
                         outfit: '完整当前服装，含内外层与配饰；空字符串沿用已知衣着',
+                        state: { base: '可选；明确外貌变化后的完整原色临时快照，不回写固定外貌', outfit: '可选；明确换装后的完整原色衣着；空字符串清空衣物' },
+                        ...(getStore().style === 'monochrome' ? { render: { base: '本次绘图完整灰阶外貌；首次或外貌变化时输出，其他格省略沿用；不写回记忆', outfit: '本次绘图完整灰阶衣着；首次或换装时输出，其他格省略沿用；空仅表示无衣物' } } : {}),
                         positive: '本格位置、姿势、肢体动作与对象、表情视线；外貌服装放 base/outfit；气泡说明在唯一末尾 Text: 前，后面只有台词',
                         negative: '仅针对本次人物出场的互斥特征；没有则为空'
                     }]
@@ -334,6 +340,13 @@
         return visual + (texts.length ? '\nText: ' + texts.join('\n\n') : '');
     }
 
+    function mangaCharacterCaption(c, monochrome = false) {
+        const view = monochrome && c.render ? c.render : c;
+        const appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function'
+            ? RBQ.api.renderCharacterMemoryBase(c.name, view.base || '') : view.base;
+        return joinMangaCaptions([appearance, view.outfit, c.positive]);
+    }
+
     function compileMangaPage(data) {
         if (!data || data.format !== 'nai5-comic' || !data.page || typeof data.page.base !== 'string'
             || !data.page.base.trim() || !Array.isArray(data.panels) || !data.panels.length) {
@@ -393,14 +406,24 @@
                         }
                     }
                 }
+                if (Object.hasOwn(c, 'render')) {
+                    if (!c.render || typeof c.render !== 'object' || Array.isArray(c.render)) {
+                        throw new Error(`${panel.id}/${c.character_id} 的 render 必须是灰阶绘图对象`);
+                    }
+                    for (const field of ['base', 'outfit']) {
+                        if (Object.hasOwn(c.render, field) && (typeof c.render[field] !== 'string'
+                            || /\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(c.render[field]))) {
+                            throw new Error(`${panel.id}/${c.character_id} 的 render.${field} 必须是无对白的外貌衣着字符串`);
+                        }
+                    }
+                }
                 ids.add(c.character_id);
                 const manual = data.position_mode === 'manual';
                 if (manual && (!c.center || !Number.isFinite(c.center.x) || !Number.isFinite(c.center.y)
                     || c.center.x < 0 || c.center.x > 1 || c.center.y < 0 || c.center.y > 1)) {
                     throw new Error(`${panel.id}/${c.character_id} 缺少有效的手动坐标`);
                 }
-                const appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function' ? RBQ.api.renderCharacterMemoryBase(c.name, c.base || '') : c.base;
-                const positive = joinMangaCaptions([appearance, c.outfit, c.positive]);
+                const positive = mangaCharacterCaption(c, data.render_mode === 'monochrome');
                 characters.push({
                     index: characters.length + 1, panelId: panel.id, characterId: c.character_id,
                     name: c.name || c.character_id, _rawName: c.name || c.character_id,
@@ -420,9 +443,15 @@
         return String(name || '').trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').replace(/\s*[（(\[【](?:original|原创|fanart|同人)[）)\]】]/gi, '').trim().toLowerCase();
     }
 
-    function resolveMangaAppearances(pages, references = [], newMemory = [], warnings = []) {
+    function resolveMangaAppearances(pages, references = [], newMemory = [], warnings = [], renderSettings = {}) {
         pages.forEach(compileMangaPage);
         const result = JSON.parse(JSON.stringify(pages));
+        const monochrome = renderSettings.style === 'monochrome';
+        const drawingViews = new Map();
+        for (const page of result) {
+            if (monochrome) page.render_mode = 'monochrome';
+            else delete page.render_mode;
+        }
         const states = new Map();
         const initial = new Map();
         const seen = new Set();
@@ -475,6 +504,7 @@
             if (!c.name?.trim() && knownNames?.size === 1) c.name = knownNames.values().next().value;
             delete c._mangaAppearance;
             delete c._mangaInitialAppearance;
+            if (!monochrome) delete c.render;
             const name = mangaIdentityKey(c.name);
             const anonymous = !name || /^(?:[cp]\d+|character\s*\d+|角色\s*\d+|unknown|unnamed|路人|匿名|无名)$/.test(name);
             const key = anonymous ? `local:${c.character_id}` : `name:${name}`;
@@ -525,6 +555,24 @@
             const fields = resolve({ baseTags: withName(c.name, state.render_base || state.base), currentOutfit: state.outfit }, clean(c.base), '');
             c.base = fields.base;
             c.outfit = fields.outfit;
+            if (monochrome) {
+                // Rendering views are local to this response, never part of the memory/state maps.
+                // Bind each member to its complete original so changes cannot reuse stale views.
+                const previous = drawingViews.get(key) || {};
+                const view = {};
+                for (const field of ['base', 'outfit']) {
+                    const source = fields[field];
+                    const supplied = c.render && Object.hasOwn(c.render, field);
+                    const translated = supplied ? clean(c.render[field]) : undefined;
+                    if (!source) view[field] = '';
+                    else if (previous[field + 'Source'] === source) view[field] = previous[field];
+                    else if (supplied && translated) view[field] = field === 'base' ? withName(c.name, translated) : translated;
+                    else throw new Error(`${panel.id}/${c.name || c.character_id} 缺少当前外观的 render.${field} 灰阶绘图词；请重新解析，原角色记忆未改动`);
+                    view[field + 'Source'] = source;
+                }
+                drawingViews.set(key, view);
+                c.render = { base: view.base, outfit: view.outfit };
+            }
             // positive is only this appearance's position/action/expression/dialogue.
             // No special cropping, synonym conversion, category replacement or tag deletion.
         }
@@ -532,7 +580,7 @@
     }
 
     const mangaProtocol = {
-        appearanceStateVersion: 2,
+        appearanceStateVersion: 2, monochromeRenderVersion: 1,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
         planningPrompt: buildMangaPlanningPrompt,
         planningContext: buildMangaPlanningContext,
@@ -584,10 +632,10 @@ ${gutter.instruction}
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【角色记忆落实：与普通模式共用】
-每个角色填写 name、base、outfit、positive。base 是完整稳定身份外貌，已建档时原样复用；outfit 是完整当前衣着，保留内外层、上下装、鞋袜与配饰，未换装可为空以沿用。positive 只写本格位置、动作、表情、视线和对白，不重复外貌或衣着。程序按普通模式合并“已存 base + 当前 outfit + 本格 positive”，不按身体部位分类、删词或覆盖叠穿。
+每个角色填写 name、base、outfit、positive。base 是完整稳定身份外貌，已建档时原样复用；outfit 是完整当前衣着，保留内外层、上下装、鞋袜与配饰，未换装可为空以沿用。positive 只写本格位置、动作、表情、视线和对白，不重复外貌或衣着。程序按普通模式选择完整的“已存 base + 当前 outfit”；彩色绘图与本格 positive 组装，黑白绘图用对应的 render 灰阶视图与 positive 组装。不按身体部位分类、删词或覆盖叠穿。
 特写、背面、遮挡通过 description 的景别与 positive 的姿态表达，不裁剪角色记忆，不填写 visible。姓名、国籍、年龄、身高、自定义细节按已有资料保留；未知不猜。
 换装从实际发生的格开始填写完整 outfit，后续空值沿用；衣物全部移除须显式 state.outfit=""。不把末格衣着提前填到开场格。明确束发、剪发等外貌变化时，state.base 写变化后的完整临时外貌快照，保留其他身份特征；后续沿用，不反写长期 base。普通换镜头不填写 state.base。
-base、outfit、state 与 character_memory 保留原设颜色。page.base、description、positive 按当前画风表达，黑白时使用灰阶光影；程序在最终请求中转换已识别的颜色短语。不要把临时状态或黑白处理结果写回长期外貌。
+base、outfit、state 与 character_memory 保留原设颜色，与普通模式相同。绘图按当前画风表达；黑白模式使用下述 render 灰阶视图，发送层只组装，不替你转换色相。不要把临时状态或黑白处理结果写回长期外貌。
 【视觉词与动作表达】
 page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。name 填稳定姓名并保留已有姓名标签，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
 每个人物按 base/outfit/positive 分栏；positive 依次写本格位置 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
@@ -607,7 +655,7 @@ ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 
 外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点。Layout 指令不写进台词，不按列手工断行；同人多泡把各泡类型、位置和阅读顺序全部写在 Text 前，再把各句用空行分隔。
 格式示例："top panel, girl, short hair, smiling, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 信收到了。"；拟音示例："bottom panel, SFX: 擬音, 吹き出しなし, Text: 咔哒"。BubbleType 和 Text 是两个独立字段标记，不能把 Text 当作整段气泡说明的开头。旁白用 BubbleType: ナレーション枠, Layout: 横書き，文字只取必要的时空/客观提示。
 文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}
-${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, screentone。page.base、description 与 positive 中的道具、环境色相转成灰阶/结构/明暗，光照写方向和对比，不留彩色环境或 full color；人物 base/outfit 保留资料原色，由最终发送层处理，可靠角色标签与 Text 原文不改。长期 character_memory 保留原设颜色，不能把灰阶绘图词反写档案。' : '色彩遵循选定画风，人物发眼、衣物、配饰与道具保持已知固有颜色；同地点连续时间沿用主光源方向与明暗关系，镜头变化不新造光源。仅转场、时间经过或实际光源变化才更新；固有颜色与环境照明分开写。'}
+${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则，一次解析统一完成灰阶转译。page.base 用 monochrome, greyscale, screentone；description、non_character 的视觉部分、positive 与 negative 中的人物、道具、环境都按黑/白/灰、深浅、材质和明暗关系表达，不留彩色色相或 full color。光照只写方向、强弱和对比，避免色温染色。\n人物 base/outfit/state 与 character_memory 仍完整保留原设颜色。另在首次出场输出 render:{base,outfit}，分别为当前完整外貌和完整衣着的灰阶绘图视图；已存资料原样为依据，已有姓名、同人 Tag、国籍、年龄、身高、形状、衣物层次及配饰不得遗漏，不重新猜外貌，不按景别裁剪。\n同一次响应的后续格/页，同人外观未变时省略 render；程序复用已给视图。明确换装时仅更新 render.outfit；明确临时外貌变化时仅更新 render.base，以变化后的完整 state 为依据；两者都变则一起更新。原色资料同一外观只能对应同一灰阶视图，即使重复输出也沿用首次视图。源外观已变就不能省略对应视图。无衣物用 render.outfit=""。negative 对照灰阶后的实际外貌，不靠彩色色相排除其他人物。可靠身份标签和 Text 原文不脱色；灰阶结果仅服务本次绘图，不能反写长期档案。\n黑白分栏示例（只借格式）：首次 base="girl, blonde hair, brown eyes"，outfit="beige trench coat, white shirt"，render={"base":"girl, light hair, dark eyes","outfit":"light trench coat, white shirt"}，positive="standing, holding dark umbrella"；下一格 base=""、outfit=""，省略 render，仅写本格动作。换红外套时 state.outfit="red coat"，render={"outfit":"dark coat"}，不再重复灰阶 base。' : '色彩遵循选定画风，人物发眼、衣物、配饰与道具保持已知固有颜色；同地点连续时间沿用主光源方向与明暗关系，镜头变化不新造光源。仅转场、时间经过或实际光源变化才更新；固有颜色与环境照明分开写。'}
 
 【输出核对】
 核对台本起止与覆盖、格数与页面形态、主辅格面积和相对排列、人物身份及动作连续性。逐句确认文字类型与说话者：可见人物的对白只在本人 positive，画外声/旁白/拟音才在 non_character；page.base 与 description 不放 Text。检查正负词不互斥，布局和动作信息已实际写进绘图字段，不能仅在 reason/intent 解释。直接提交最终页格，不输出额外的节点清单或覆盖报告。默认自动定位，不输出坐标；仅明确手动定位时输出 position_mode="manual"，每次人物出场附整页归一化 center:{x,y}（0～1）。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
@@ -643,28 +691,9 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
             || (preserveProtocol && /^(?:(?:BubbleType|Layout|SFX)\s*[:：]|(?:右上|左上|右下|左下|口元|画面外|頭上|上部|下部|吹き出しなし)$)/i.test(tag))).join(', ');
     }
 
-    // Rendering-only fallback for explicit visual color phrases in any caption.
-    // The model translates the whole page; unknown phrases, names and Text remain intact.
-    function monochromeCharacterTag(tag) {
-        if (/[()]/.test(tag) || /^(?:artist|character|copyright)\s*:/i.test(tag)) return tag;
-        const colors = 'silver|blonde|blond|golden|gold|yellow|orange|red|pink|purple|violet|blue|green|cyan|teal|turquoise|navy|brown|auburn|scarlet|crimson|lavender|magenta|beige|cream|ivory|tan|khaki|flesh-colored|flesh colored|skin-colored';
-        const modifiers = 'modified|backless|sleeveless|sheer|ultra-thin|silk|lace|leather|patent|high|low|long|short|straight|curly|phoenix|almond|droopy|round|wooden|metal|stone|brick|crystal|gemstone|velvet|satin|trench|wool|denim|knit|pleated|button-up';
-        const nouns = 'hair|eyes|skin|lips|lipstick|lip gloss|eyeshadow|nails|qipao|cheongsam|dress|shirt|blouse|coat|jacket|sweater|skirt|trousers|pants|jeans|shorts|socks|stockings|thighhighs|pantyhose|shoes|boots|heels|gloves|scarf|ribbon|hair bow|hat|cape|cloak|robe|uniform|pen|pencil|ink|markings|paper|envelope|book|umbrella|bag|handbag|phone|sofa|chair|table|desk|wall|walls|floor|ceiling|curtain|curtains|door|window|car|sky|light|lighting|gem|gemstone|trim|earrings|necklace';
-        const pattern = new RegExp('\\b(?:(light|pale|dark|deep|bright)\\s+)?(' + colors + ')\\s+((?:(?:' + modifiers + ')\\s+)*(?:' + nouns + '))\\b', 'gi');
-        const normalized = tag.replace(/_/g, ' ');
-        const converted = normalized.replace(pattern, (_, intensity, color, object) => {
-            const shade = /^(dark|deep)$/i.test(intensity || '') || /^(navy|brown|auburn|crimson)$/i.test(color)
-                ? 'dark grey' : /^(light|pale)$/i.test(intensity || '') || /^(silver|blonde|blond|golden|gold|yellow|pink|lavender|beige|cream|ivory|tan|khaki|flesh-colored|flesh colored|skin-colored)$/i.test(color) ? 'light grey' : 'grey';
-            return shade + ' ' + object;
-        });
-        const lighting = converted.replace(/\b(?:warm|cool)(\s+(?:indoor|outdoor))?\s+(light|lighting)\b/gi, (_, place, noun) => `${place ? place.trim() + ' ' : ''}${noun}`);
-        return lighting === normalized ? tag : lighting;
-    }
-
-    function sanitizeMangaPositivePrompt(value, monochromeCharacter = false, names = new Set()) {
+    function sanitizeMangaPositivePrompt(value) {
         const { visual, text } = splitMangaText(value);
-        const clean = filterMangaTags(visual, new Set(['no text', 'notext']), tag =>
-            monochromeCharacter && !names.has(mangaIdentityKey(tag)) ? monochromeCharacterTag(tag) : tag, true);
+        const clean = filterMangaTags(visual, new Set(['no text', 'notext']), tag => tag, true);
         return clean + (text ? (clean ? '\n' : '') + 'Text: ' + text : '');
     }
 
@@ -679,7 +708,6 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
 
     let studioGenerationRatio = null;
     let studioRequest = null;
-    const mangaPayloadNames = new WeakMap();
     const mangaPayloadSettings = new WeakMap();
 
     function captureMangaRenderSettings() {
@@ -703,10 +731,6 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
             const [width, height] = store.ratio.split('x').map(Number);
             if (width > 0 && height > 0) Object.assign(params, { width, height });
         }
-        const names = mangaPayloadNames.get(payload) || new Set();
-        for (const name of characterNames) if (name) names.add(mangaIdentityKey(name));
-        if (studioMatch) for (const c of studioRequest.compiled.characters) if (c.name) names.add(mangaIdentityKey(c.name));
-        mangaPayloadNames.set(payload, names);
         if (studioMatch) {
             const [width, height] = studioGenerationRatio.split('x').map(Number);
             if (width && height) Object.assign(params, { width, height });
@@ -727,12 +751,12 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
         const gutter = (GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed).tag;
         const addStyle = value => sanitizeMangaPositivePrompt(joinMangaCaptions([
             positive && !String(value || '').includes(positive) ? positive : '', gutter, value
-        ]), mono, names);
+        ]));
         const caption = params.v4_prompt?.caption;
         payload.input = addStyle(payload.input);
         if (caption) {
             caption.base_caption = addStyle(caption.base_caption);
-            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption, mono, names); });
+            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption); });
             params.v4_prompt.use_order = true;
         }
         const negCaption = params.v4_negative_prompt?.caption;
@@ -748,8 +772,7 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
                     return tag;
                 });
                 c.char_caption = filterMangaTags(sanitizeMangaNegativePrompt(c.char_caption, mono), new Set(), tag => {
-                    const converted = mono && !names.has(mangaIdentityKey(tag)) ? monochromeCharacterTag(tag) : tag;
-                    return ownTags.has(converted.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : converted;
+                    return ownTags.has(tag.toLowerCase().replace(/[_\s]+/g, ' ').trim()) ? '' : tag;
                 });
             });
         }
@@ -2723,7 +2746,10 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
         return {
             title: panel.title || `画格 ${index + 1}`, desc: panel.desc || panel.title || '',
             position: panel.position || '', shot: panel.shot || '', tags: panel.description || '',
-            non_character: panel.non_character || '', characters: panel.characters.map(({ base, outfit, state, _mangaAppearance, _mangaInitialAppearance, ...c }) => ({ ...c, positive: joinMangaCaptions([base, outfit, c.positive]) })),
+            non_character: panel.non_character || '', characters: panel.characters.map(person => {
+                const { base, outfit, state, render, _mangaAppearance, _mangaInitialAppearance, ...c } = person;
+                return { ...c, positive: mangaCharacterCaption(person, !!render) };
+            }),
             bubbleText: '', bubbleType: 'caption', bubbleLayout: 'horizontal'
         };
     }
@@ -2735,12 +2761,13 @@ ${store.style === 'monochrome' ? '黑白：page.base 用 monochrome, greyscale, 
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
 只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
-position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作和对白进自己的 positive，外貌与服装分别进 base/outfit；没有人物时 characters=[]。
+position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作和对白进自己的 positive，外貌与服装分别进 base/outfit；没有人物时 characters=[]。
 同格双人对话必须两个角色条目，每人 Text: 只包含自己的话；非人物文字不要建人物。任何没有原文依据的文字都不要编造。保留句子、人物、道具和动作先后，不截断故事末尾。
 局部镜头用 shot 指定，base/outfit 仍保留完整资料，不按部位删标签。`;
     }
 
     async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false) {
+        store = { ...store, studio: { ...store.studio } };
         const config = getSdtStore();
         const baseUrl = String(config.openaiBaseUrl || '').trim().replace(/\/+$/, '');
         const model = String(config.openaiModelCustom || config.openaiModel || '').trim();
@@ -2763,7 +2790,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             || (expectedCount && data.panels.length !== expectedCount)) throw new Error('返回的画格数量不符合要求，请重试；现有分镜已保留');
         const rawPage = { format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels };
         // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
-        const page = resolveMangaAppearances([rawPage], editingSnapshots ? [] : references.characterMemory || [])[0];
+        const page = resolveMangaAppearances([rawPage], editingSnapshots ? [] : references.characterMemory || [], [], [], store)[0];
         compileMangaPage(page);
         return page.panels.map(studioPanelFromProtocol);
     }

@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.4.4';
+    const PLUGIN_VERSION = '6.5.0';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2524,61 +2524,101 @@ Zimage 擅长理解复杂的英文长句和语境。
     let floatingObserver = null;
     let handleMessageRender = null;
     let handleChatChanged = null;
-    function startStreamingWatcher() {
-        if (streamingWatcherTimer) clearInterval(streamingWatcherTimer);
-        streamingWatcherTimer = setInterval(() => {
-            const streaming = isHostStreaming();
-            if (wasStreaming && !streaming) {
-                console.info(`[${PLUGIN_NAME}] ✅ streaming ended, scheduling auto-run for latest message`);
-                const latest = getLatestMessageId();
-                if (latest != null) {
-                    // 流式结束立即执行消息处理，确保卡片挂载到位
-                    clearTimeout(pendingTimers.get(latest));
-                    pendingTimers.delete(latest);
-                    processMessage(latest, { force: true });
-                }
-                setTimeout(() => triggerAutoRunForLatest(), 200);
+    function isTaggerApiConfigured() {
+        const store = getStore();
+        if (store.provider === 'custom') {
+            return !!String(store.customUrl || '').trim();
+        }
+        const url = normalizeBaseUrl(store.openaiBaseUrl);
+        const model = (store.openaiModelCustom || '').trim() || store.openaiModel;
+        return !!(url && model);
+    }
+
+    let autoRunTimer = null;
+    let autoRunPendingId = null;
+
+    function scheduleAutoRun(messageId = null) {
+        const store = getStore();
+        if (!store.enabled || !store.autoRunTagger) return;
+        const targetId = messageId != null ? Number(messageId) : getLatestMessageId();
+        if (targetId == null || !Number.isFinite(targetId)) return;
+
+        clearTimeout(autoRunTimer);
+        autoRunPendingId = targetId;
+        autoRunTimer = setTimeout(async () => {
+            autoRunTimer = null;
+            if (autoRunPendingId != null) {
+                const id = autoRunPendingId;
+                autoRunPendingId = null;
+                await triggerAutoRunForMessage(id);
             }
-            wasStreaming = streaming;
-        }, 500);
+        }, 350);
     }
 
     async function triggerAutoRunForLatest() {
+        scheduleAutoRun();
+    }
+
+    async function triggerAutoRunForMessage(targetId) {
         const store = getStore();
-        if (!store.autoRunTagger) return;
-        // Re-check: if streaming started again (e.g., brief gap between user send
-        // and assistant generation), abort this trigger
+        if (!store.enabled || !store.autoRunTagger) return;
+        if (!isTaggerApiConfigured()) {
+            debugInfo(`⏳ auto-run skipped: Tagger API not configured yet`);
+            return;
+        }
         if (isHostStreaming()) {
-            console.info(`[${PLUGIN_NAME}] ⏳ streaming active again, skipping auto-run`);
+            console.info(`[${PLUGIN_NAME}] ⏳ host is streaming/generating, deferring auto-run`);
             return;
         }
-        const latest = getLatestMessageId();
-        if (latest == null) return;
-        if (isMessageCurrentlyStreaming(latest)) {
-            console.info(`[${PLUGIN_NAME}] ⏳ latest message #${latest} is streaming/thinking, skipping auto-run`);
+        const id = Number(targetId != null ? targetId : getLatestMessageId());
+        if (!Number.isFinite(id)) return;
+        if (isMessageCurrentlyStreaming(id)) {
+            console.info(`[${PLUGIN_NAME}] ⏳ message #${id} is streaming/thinking, skipping auto-run`);
             return;
         }
-        const domText = getDomMessageText(latest);
-        const msgSnapshot = getMessageSnapshot(latest);
-        const effectiveText = String(msgSnapshot?.mes || domText || '').trim();
-        if (!effectiveText || effectiveText.length < 3) {
-            console.info(`[${PLUGIN_NAME}] ⏳ latest message #${latest} text too short or empty, skipping auto-run`);
+
+        const msgSnapshot = getMessageSnapshot(id);
+        if (!shouldHandleMessage(msgSnapshot, id)) return;
+        const trigger = getTrigger(msgSnapshot);
+        if (!trigger) return;
+
+        const effectiveText = String(msgSnapshot?.mes || getDomMessageText(id) || '').trim();
+        if (!effectiveText || effectiveText.length < 5) {
+            console.info(`[${PLUGIN_NAME}] ⏳ message #${id} text too short (< 5 chars), skipping auto-run`);
             return;
         }
-        let container = RBQ.api.getMessageTextContainer(latest);
-        if (!(container instanceof HTMLElement)) return;
+
+        const currentKey = makeKey(id, msgSnapshot, trigger.type, trigger.marker || 'auto');
+        if (inFlight.has(currentKey)) return;
+
+        // Skip if message already has a valid checked cache
+        const extraSdt = getMsgExtraSdt(id);
+        const currentMesHash = hashText(msgSnapshot?.mes || '');
+        const isExtraValid = !!(extraSdt && (
+            extraSdt.key === currentKey ||
+            (extraSdt.mesHash && extraSdt.mesHash === currentMesHash) ||
+            (typeof extraSdt.key === 'string' && extraSdt.key.includes(`:${currentMesHash}:`))
+        ));
+        const cached = (isExtraValid ? extraSdt : null) || store.cache[currentKey];
+        if (cached && cached.checked) {
+            debugInfo(`⏭️ message #${id} already has completed SDT results, skipping auto-run`);
+            return;
+        }
+
+        let container = RBQ.api.getMessageTextContainer(id);
+        if (!(container instanceof HTMLElement)) {
+            setTimeout(() => scheduleAutoRun(id), 200);
+            return;
+        }
+
         let wrapper = container.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
         if (!wrapper) {
-            // 若卡片尚未就位，强制立即挂载
-            await processMessage(latest, { force: true });
-            container = RBQ.api.getMessageTextContainer(latest);
+            await processMessage(id, { force: true });
+            container = RBQ.api.getMessageTextContainer(id);
             wrapper = container?.querySelector?.(`.${CARD_CLASS}[data-rbq-sdt-base-key]`);
         }
+
         if (!wrapper && store.cardPosition === 'message_actions') {
-            const trigger = getTrigger(msgSnapshot);
-            if (!trigger) return;
-            const currentKey = makeKey(latest, msgSnapshot, trigger.type, trigger.marker || 'auto');
-            if (inFlight.has(currentKey)) return;
             const placeholder = {
                 shouldDraw: true,
                 prompt: trigger.marker || '[Smart Draw]',
@@ -2590,40 +2630,49 @@ Zimage 擅长理解复杂的英文长句和语境。
                 characters: [],
             };
             wrapper = createConfiguredCard({
-                messageId: latest,
+                messageId: id,
                 trigger,
                 result: placeholder,
                 key: currentKey,
                 baseKey: currentKey,
                 isResult: false,
             });
+            if (wrapper) setWrapperStage(wrapper, 'idle');
         }
+
         if (!wrapper) return;
         if (wrapper.dataset.rbqSdtIsResult === '1') return;
         const stage = wrapper.dataset.rbqSdtStage;
         if (stage && stage !== 'idle') return;
-        const key = wrapper.dataset.rbqSdtBaseKey;
-        if (!key || inFlight.has(key)) return;
-        const trigger = (() => { try { return JSON.parse(wrapper.dataset.rbqSdtTrigger || 'null'); } catch (_e) { return null; } })();
-        if (!trigger) return;
 
-        // Recompute the key from the current (settled) message text.
-        // The card may have been created during streaming with a different hash.
-        const message = getMessageSnapshot(latest);
-        const currentKey = message ? makeKey(latest, message, trigger.type, trigger.marker || 'auto') : key;
-        if (currentKey !== key) {
-            console.info(`[${PLUGIN_NAME}] 🔑 updating card key: ${key} → ${currentKey}`);
-            wrapper.dataset.rbqSdtKey = currentKey;
-            wrapper.dataset.rbqSdtBaseKey = currentKey;
-        }
+        wrapper.dataset.rbqSdtKey = currentKey;
+        wrapper.dataset.rbqSdtBaseKey = currentKey;
 
-        console.info(`[${PLUGIN_NAME}] \ud83d\ude80 auto-running tagger for latest message #${latest}`);
+        console.info(`[${PLUGIN_NAME}] 🚀 auto-running tagger for message #${id}`);
         inFlight.add(currentKey);
         try {
-            await runTaggerForWrapper(wrapper, trigger, latest, currentKey);
+            await runTaggerForWrapper(wrapper, trigger, id, currentKey);
         } finally {
             inFlight.delete(currentKey);
         }
+    }
+
+    function startStreamingWatcher() {
+        if (streamingWatcherTimer) clearInterval(streamingWatcherTimer);
+        streamingWatcherTimer = setInterval(() => {
+            const streaming = isHostStreaming();
+            if (wasStreaming && !streaming) {
+                console.info(`[${PLUGIN_NAME}] ✅ streaming ended, scheduling auto-run for latest message`);
+                const latest = getLatestMessageId();
+                if (latest != null) {
+                    clearTimeout(pendingTimers.get(latest));
+                    pendingTimers.delete(latest);
+                    processMessage(latest, { force: true });
+                    scheduleAutoRun(latest);
+                }
+            }
+            wasStreaming = streaming;
+        }, 300);
     }
 
     function getStore() {
@@ -5817,7 +5866,10 @@ ${getCharacterMemoryTagSpecification()}
         const ids = [...document.querySelectorAll('.mes[mesid]')]
             .map(element => Number(element.getAttribute('mesid')))
             .filter(Number.isFinite);
-        return ids.length ? Math.max(...ids) : null;
+        if (ids.length) return Math.max(...ids);
+        const chat = RBQ?.api?.getContext?.()?.chat;
+        if (Array.isArray(chat) && chat.length > 0) return chat.length - 1;
+        return null;
     }
 
     function isLatestMessage(messageId) {
@@ -6477,6 +6529,7 @@ ${getCharacterMemoryTagSpecification()}
         const protocol = RBQ.api.mangaProtocol;
         if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
         if (!protocol.planningPrompt || !protocol.resolveAppearances || protocol.appearanceStateVersion !== 2) throw new Error('请更新漫画模式插件至 1.8.0 或更高并刷新酒馆');
+        if (protocol.monochromeRenderVersion !== 1) throw new Error('请更新漫画模式插件至 1.9.0 或更高以使用独立灰阶绘图视图，并刷新酒馆');
         return protocol;
     }
 
@@ -6565,8 +6618,9 @@ ${getCharacterMemoryTagSpecification()}
 
     function captureMangaRequestContext(currentMessage, messageId) {
         const references = getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [];
+        const renderSettings = isMangaRequest() ? getMangaProtocol().captureRenderSettings?.() : undefined;
         return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
-            manga: isMangaRequest(),
+            manga: isMangaRequest(), renderSettings,
             messageVersion: getMangaMessageVersion(messageId),
             currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
                 [getCanonicalCharName(profile.displayName || name).toLowerCase(), profile.currentOutfit || ''])),
@@ -6830,10 +6884,14 @@ ${getCharacterMemoryTagSpecification()}
         const memoryReferences = hasMangaPages && memoryEnabled ? mangaContext?.references || getMangaMemoryReferences(mangaContext?.messageId) : [];
         const memoryWarnings = [];
         const resolvedSegments = hasMangaPages
-            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings)
+            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings, mangaContext?.renderSettings)
             : rawSegmentsList;
         let segments = resolvedSegments.map((item, index) => {
-                if (item?.format === 'nai5-comic' || item?.page || item?.panels) return normalizeMangaSegment(item, index);
+                if (item?.format === 'nai5-comic' || item?.page || item?.panels) {
+                    const segment = normalizeMangaSegment(item, index);
+                    if (mangaContext?.renderSettings) segment.mangaRenderSettings = { ...mangaContext.renderSettings };
+                    return segment;
+                }
                 if (isMangaRequest()) throw new Error('漫画解析返回了旧式人物数组，请重新解析以生成 page/panels/characters 结构');
                 const anchor = normalizeAnchor(item?.anchor, index + 1);
                 const scene = decodeUnicodeEscapes(String(item?.scene || item?.environment || '').trim());
@@ -6975,7 +7033,7 @@ ${getCharacterMemoryTagSpecification()}
             multiChar: segments.length ? segments[0].multiChar : false,
             scene: segments.length ? segments[0].scene : '',
             characters: segments.length ? segments[0].characters : [],
-            ...(segments[0]?.mangaPage ? { mangaPage: segments[0].mangaPage, mangaUseCoords: segments[0].mangaUseCoords } : {}),
+            ...(segments[0]?.mangaPage ? { mangaPage: segments[0].mangaPage, mangaUseCoords: segments[0].mangaUseCoords, mangaRenderSettings: segments[0].mangaRenderSettings } : {}),
             anchor: normalizeAnchor(source?.anchor, 1),
             reason: decisionReason,
             thinkContent,
@@ -7345,8 +7403,8 @@ SCHEMA:
         }
 
         if (segResult?.mangaPage) {
-            const page = getMangaProtocol().resolveAppearances([{ ...parsed, anchor: segResult.anchor }], [])[0];
-            return { ...normalizeMangaSegment(page), ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
+            const page = getMangaProtocol().resolveAppearances([{ ...parsed, anchor: segResult.anchor }], [], [], [], requestContext?.renderSettings)[0];
+            return { ...normalizeMangaSegment(page), mangaRenderSettings: requestContext?.renderSettings, ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
         }
 
         let charactersList = [];
@@ -8097,7 +8155,7 @@ SCHEMA:
                             person.center = sdtParseCoord(current.center);
                             // The editor owns the complete caption, including any deliberate removals.
                             // Do not append stale hidden appearance fields on subsequent compilation.
-                            for (const field of ['base', 'outfit', 'state', '_mangaAppearance', '_mangaInitialAppearance']) delete person[field];
+                            for (const field of ['base', 'outfit', 'state', 'render', '_mangaAppearance', '_mangaInitialAppearance']) delete person[field];
                         }
                     }
                 }
@@ -9805,7 +9863,7 @@ SCHEMA:
             multiChar: !!result.multiChar,
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
-            ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords } : {}),
+            ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords, ...(result.mangaRenderSettings ? { mangaRenderSettings: { ...result.mangaRenderSettings } } : {}) } : {}),
             anchor: result.anchor || { type: 'bottom' },
             reason: String(result.reason || '').slice(0, 500),
             thinkContent: String(result.thinkContent || '').slice(0, 1000),
@@ -14587,7 +14645,13 @@ SCHEMA:
                                 if (pk.includes(`:${mesId}:`)) processedKeys.delete(pk);
                             }
                         }
-                        if (!isMessageCurrentlyStreaming(mesId)) scheduleProcess(mesId);
+                        if (!isMessageCurrentlyStreaming(mesId)) {
+                            scheduleProcess(mesId);
+                            const latest = getLatestMessageId();
+                            if (latest != null && Number(latest) === mesId) {
+                                scheduleAutoRun(mesId);
+                            }
+                        }
                     }
                 }
                 for (const node of mutation.addedNodes) {
@@ -14602,7 +14666,13 @@ SCHEMA:
                         for (const pk of processedKeys) {
                             if (pk.includes(`:${mesId}:`)) processedKeys.delete(pk);
                         }
-                        if (!isMessageCurrentlyStreaming(mesId)) scheduleProcess(mesId, { allowHistorical: true });
+                        if (!isMessageCurrentlyStreaming(mesId)) {
+                            scheduleProcess(mesId, { allowHistorical: true });
+                            const latest = getLatestMessageId();
+                            if (latest != null && Number(latest) === mesId) {
+                                scheduleAutoRun(mesId);
+                            }
+                        }
                     }
                 }
             }
@@ -14623,6 +14693,10 @@ SCHEMA:
                     }
                     if (!isMessageCurrentlyStreaming(mesId)) {
                         scheduleProcess(mesId, { force: true, allowHistorical: true });
+                        const latest = getLatestMessageId();
+                        if (latest != null && Number(latest) === mesId) {
+                            scheduleAutoRun(mesId);
+                        }
                     }
                 }
             };
@@ -14638,6 +14712,16 @@ SCHEMA:
                 if (et.CHARACTER_MESSAGE_RENDERED) es.on(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
                 if (et.MESSAGE_UPDATED) es.on(et.MESSAGE_UPDATED, handleMessageRender);
                 if (et.USER_MESSAGE_RENDERED) es.on(et.USER_MESSAGE_RENDERED, handleMessageRender);
+                if (et.MESSAGE_RECEIVED) es.on(et.MESSAGE_RECEIVED, handleMessageRender);
+                if (et.GENERATION_STOPPED) {
+                    es.on(et.GENERATION_STOPPED, () => {
+                        const latest = getLatestMessageId();
+                        if (latest != null) {
+                            scheduleProcess(latest, { force: true });
+                            scheduleAutoRun(latest);
+                        }
+                    });
+                }
                 if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, handleChatChanged);
             } catch (e) {
                 console.warn(`[${PLUGIN_NAME}] 订阅宿主事件失败:`, e);

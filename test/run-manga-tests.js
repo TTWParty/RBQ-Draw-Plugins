@@ -675,7 +675,7 @@ test('no-draw reparse rolls back that floor and dependent later states', () => w
     assert.equal(reference.outfit, 'red dress');
     assert.equal(reference.state.hair_style, undefined);
     assert.equal(sdt.getCharacterProfile('Mina').mangaStateHistory.length, 0);
-    assert.equal(sdt.getCharacterProfile('Mina').baseTags, 'girl, blonde hair, updo');
+    assert.equal(sdt.getCharacterProfile('Mina').baseTags, 'Mina, girl, blonde hair, updo');
 }));
 test('message edits, swipe changes and deletions invalidate versioned state without a model call', () => {
     const getMessage = RBQ.api.getMessage;
@@ -740,6 +740,74 @@ test('manga and ordinary memory use the same field resolver and preserve complet
     assert.equal(page.panels[0].characters[0].outfit, expected.outfit);
     assert.equal(manga.compileMangaPage(page).characters[0].caption, expected.base + ', ' + outfit + ', holding book');
 });
+
+test('first-time manga identity includes the supplied name when the model returns only appearance', () => withMemory(() => {
+    const base = 'girl, brown hair, blue eyes';
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰',base,outfit:'white shirt'}])]},[],{content:story,messageId:1});
+    assert.equal(sdt.getCharacterProfile('毛利兰').baseTags, '毛利兰, ' + base);
+    assert.equal(result.mangaPage.panels[0].characters[0].base, '毛利兰, ' + base);
+    assert.match(result.characters[0].caption,/^毛利兰, girl/);
+}));
+test('existing nameless memory is repaired additively without replacing appearance or clothing', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina','girl, custom exact trait','white shirt');
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{base:'wrong appearance'}])]},[],{content:story,messageId:1});
+    assert.equal(sdt.getCharacterProfile('Mina').baseTags,'Mina, girl, custom exact trait');
+    assert.equal(sdt.getCharacterProfile('Mina').currentOutfit,'white shirt');
+    assert.match(result.characters[0].caption,/^Mina, girl, custom exact trait/);
+    assert.doesNotMatch(result.characters[0].caption,/wrong appearance/);
+}));
+test('name fallback preserves supplied canonical tags, avoids duplicates and never invents an alias', () => {
+    assert.equal(sdt.ensureCharacterNameTag('Mina','Mina, girl'),'Mina, girl');
+    assert.equal(sdt.ensureCharacterNameTag('Mina','2::Mina::, girl'),'2::Mina::, girl');
+    assert.equal(sdt.ensureCharacterNameTag('毛利兰','mouri ran, girl'),'毛利兰, mouri ran, girl');
+    assert.equal(sdt.ensureCharacterNameTag('C1','girl'),'girl');
+    assert.equal(sdt.ensureCharacterNameTag('路人','girl'),'girl');
+    assert.equal(sdt.ensureCharacterNameTag('Mina',''),'');
+    assert.equal(sdt.ensureCharacterNameTag('Ann','Anna, girl'),'Ann, Anna, girl');
+});
+
+test('ordinary and manga first-time learning share the same missing-name fallback', () => withMemory(() => {
+    const merge = sdt.mergeCharacterCaption, weight = sdt.weightCharacterName;
+    try {
+        sdt.weightCharacterName = name => name;
+        vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function mergeCharacterCaption('), sdtSource.indexOf('    function collectCharacterCardInfo(')), sdt);
+        settings._smartDrawTrigger._mangaActive = false; settings._smartDrawTrigger.enhancedContext = 'off';
+        const ordinary = sdt.mergeCharacterCaption('Mina','girl, custom trait','white shirt','standing','');
+        const ordinaryBase = sdt.getCharacterProfile('Mina').baseTags;
+        memoryChat = 'fresh-manga-name';
+        settings._smartDrawTrigger._mangaActive = true; settings._smartDrawTrigger.enhancedContext = 'v_manga';
+        const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{base:'girl, custom trait',outfit:'white shirt'}])]},[],{content:story});
+        assert.equal(result.characters[0].caption,ordinary);
+        assert.equal(sdt.getCharacterProfile('Mina').baseTags,ordinaryBase);
+    } finally {sdt.mergeCharacterCaption = merge; sdt.weightCharacterName = weight;}
+}));
+test('canonical fan tag survives memory, temporary appearance and final monochrome payload', () => withMemory(() => {
+    const base = 'mouri ran, girl, brown hair, blue eyes';
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([
+        {name:'毛利兰',base,outfit:'white shirt'},
+        {name:'毛利兰',state:{base:'mouri ran, girl, brown hair, blue eyes, ponytail'}}
+    ])]},[],{content:story,messageId:1});
+    assert.match(sdt.getCharacterProfile('毛利兰').baseTags,/mouri ran/);
+    for (const c of result.characters) {
+        assert.equal(c.caption.split('mouri ran').length-1,1);
+        const final = mangaHook(payload('comic',[{char_caption:c.caption}]));
+        assert.match(final.parameters.v4_prompt.caption.char_captions[0].char_caption,/mouri ran/);
+    }
+    const next = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰'}])]},[],{content:story,messageId:2});
+    assert.match(next.characters[0].caption,/mouri ran.*ponytail/);
+}));
+test('adding a missing name does not invalidate an existing temporary appearance source', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina','girl, long hair','white shirt');
+    const profile = sdt.getCharacterProfile('Mina');
+    profile.mangaStateHistory = [{messageId:1,before:{outfit:'white shirt',outfitSet:true},
+        after:{outfit:'white shirt',outfitSet:true,render_base:'girl, short hair',render_base_source:'girl, long hair'}}];
+    const response = {shouldDraw:true,segments:[appearancePage([{}])]};
+    const result = sdt.normalizeTaggerResult(response,[],{content:story,messageId:2});
+    assert.match(result.characters[0].caption,/^Mina, girl, short hair/);
+    const next = sdt.normalizeTaggerResult(response,[],{content:story,messageId:3});
+    assert.match(next.characters[0].caption,/^Mina, girl, short hair/);
+    assert.equal(profile.baseTags,'Mina, girl, long hair');
+}));
 
 test('real ordinary merge and manga produce the same complete base, layered outfit and action', () => withMemory(() => {
     const merge = sdt.mergeCharacterCaption, weight = sdt.weightCharacterName;
@@ -942,7 +1010,7 @@ test('manga creates chat-scoped characters once across panels/pages and archives
     assert.deepEqual(Object.keys(profiles), ['Ami', 'Mei']);
     assert.equal(profileRefreshes, 2);
     assert.ok(profileSaves >= 2);
-    assert.equal(profiles.Ami.baseTags, response.character_memory[0].base);
+    assert.equal(profiles.Ami.baseTags, 'Ami, ' + response.character_memory[0].base);
     assert.equal(profiles.Ami.wardrobe.length, 1);
     assert.equal(profiles.Ami.currentOutfit, response.character_memory[0].outfit);
     assert.equal(output.segments[0].characters[0].caption, before.replace(', Text:', '\nText:'));
@@ -1110,7 +1178,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.ok(requests[0].outputSchema.character_memory);
         assert.match(requests[0].mangaInstruction, /漫画角色记忆/);
         assert.ok(requests[0].mangaInstruction.includes(sdt.getCharacterMemoryTagSpecification()));
-        assert.equal(sdt.getCharacterProfile('Ami').baseTags, memoryResponse().character_memory[0].base);
+        assert.equal(sdt.getCharacterProfile('Ami').baseTags, 'Ami, ' + memoryResponse().character_memory[0].base);
         console.log('PASS custom-HTTP creates reusable profiles in the existing single request'); passed++;
 
         installResponse(() => ({ shouldDraw: true, segments: [] }));
@@ -1277,7 +1345,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             return importResponse(extracted);
         };
         const imported = await sdt.importCharacterFromCurrentCard();
-        assert.equal(imported.baseTags, extracted.base);
+        assert.equal(imported.baseTags, 'Ami, ' + extracted.base);
         assert.equal(imported.previousBaseTags, 'girl, silver hair');
         assert.equal(imported.currentOutfit, 'navy coat, black trousers');
         assert.equal(JSON.stringify(imported.wardrobe), wardrobeBefore);
@@ -1327,7 +1395,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         };
         const created = await sdt.importCharacterFromCurrentCard();
         assert.equal(importCalls, 1);
-        assert.equal(created.baseTags, extracted.base);
+        assert.equal(created.baseTags, 'Ami, ' + extracted.base);
         assert.equal(created.currentOutfit, extracted.outfit);
         assert.equal(created.wardrobe.length, 1);
         assert.equal(created.previousBaseTags, undefined);

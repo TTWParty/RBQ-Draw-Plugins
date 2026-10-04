@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.8.1';
+        const VERSION = '1.8.2';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -232,7 +232,7 @@
                                 type: 'array', items: {
                                     type: 'object', properties: {
                                         character_id: string, name: string,
-                                        base: { type: 'string', description: 'Full stable identity/appearance tags, same as ordinary character memory. Reuse saved base exactly; no shot-based cropping. No clothes or dialogue.' },
+                                        base: { type: 'string', description: 'Full stable identity/appearance tags, including the supplied name or a reliably identified canonical fan-character tag. Name must not exist only in the name field. Same as ordinary character memory. Reuse saved base exactly; no shot-based cropping. No clothes or dialogue.' },
                                         outfit: { type: 'string', description: 'Full current outfit including all layers/accessories. Empty reuses known outfit; return complete clothing on first appearance or actual change.' },
                                         state: { type: 'object', properties: {
                                             base: { type: 'string', description: 'Only an explicit plot appearance change: complete temporary appearance tags after the change, retaining all unchanged identity traits. Not a crop and never permanent memory.' },
@@ -406,12 +406,16 @@
         const states = new Map();
         const initial = new Map();
         const seen = new Set();
+        const withName = (name, base) => {
+            if (typeof RBQ.api.ensureCharacterNameTag !== 'function') throw new Error('请更新智能生图插件至 6.4.2 或更高以完整保留角色名');
+            return RBQ.api.ensureCharacterNameTag(name, base);
+        };
         const clean = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
         for (const row of references) {
             const name = mangaIdentityKey(row?.name);
             const key = name ? `name:${name}` : '';
             if (!key) continue;
-            const state = { base: clean(row.base), outfit: clean(row.outfit), outfitSet: !!clean(row.outfit) };
+            const state = { base: withName(row.name, clean(row.base)), outfit: clean(row.outfit), outfitSet: !!clean(row.outfit) };
             for (const field of ['hair_style', 'hair_length', 'hair_color', 'render_base', 'outfit']) {
                 if (field === 'outfit' && row.state?.outfitSet === false) continue;
                 if (typeof row.state?.[field] === 'string' && (!row.state[field].trim() || clean(row.state[field]))) {
@@ -422,8 +426,8 @@
             // A full temporary snapshot belongs to the stable base it was derived from.
             // Explicit profile corrections must not be hidden by an older snapshot.
             if (typeof row.state?.render_base_source === 'string') {
-                if (row.state.render_base_source !== state.base) delete state.render_base;
-                else state.render_base_source = row.state.render_base_source;
+                if (withName(row.name, row.state.render_base_source) !== state.base) delete state.render_base;
+                else state.render_base_source = state.base;
             }
             states.set(key, state);
         }
@@ -432,7 +436,7 @@
             if (!name || /^(?:[cp]\d+|unknown|unnamed|路人|匿名|无名|__proto__|constructor|prototype)$/.test(name)) continue;
             const key = `name:${name}`;
             const state = states.get(key) || { base: '', outfit: '', outfitSet: false };
-            state.base ||= clean(row.base);
+            state.base ||= withName(row.name, clean(row.base));
             // Legacy character_memory.outfit is the END state, not opening clothing.
             if (!state.outfitSet) state.outfit = clean(row.initial_outfit);
             state.outfitSet ||= !!state.outfit;
@@ -448,21 +452,21 @@
             const hasFields = typeof c.base === 'string' && typeof c.outfit === 'string';
             let state = states.get(key);
             if (!state && hasFields) {
-                state = { base: clean(c.base), outfit: clean(c.outfit), outfitSet: !!clean(c.outfit) };
+                state = { base: withName(c.name, clean(c.base)), outfit: clean(c.outfit), outfitSet: !!clean(c.outfit) };
                 states.set(key, state);
                 initial.set(key, { ...state });
             }
             if (!state) continue;
             if (!seen.has(key)) {
                 const opening = initial.get(key);
-                opening.base ||= clean(c.base);
+                opening.base ||= withName(c.name, clean(c.base));
                 if (!opening.outfitSet && clean(c.outfit)) {
                     opening.outfit = clean(c.outfit);
                     opening.outfitSet = true;
                 }
                 seen.add(key);
             }
-            state.base ||= clean(c.base);
+            state.base ||= withName(c.name, clean(c.base));
             if (hasFields && clean(c.outfit)) {
                 state.outfit = clean(c.outfit);
                 state.outfitSet = true;
@@ -477,7 +481,7 @@
                 // Explicit plot appearance changes use a complete temporary snapshot.
                 // Never classify/remove tags or overwrite the permanent profile.
                 if (clean(c.state.base)) {
-                    state.render_base = clean(c.state.base);
+                    state.render_base = withName(c.name, clean(c.state.base));
                     state.render_base_source = state.base;
                 }
             }
@@ -489,7 +493,7 @@
             }
             const resolve = RBQ.api.resolveCharacterMemoryFields;
             if (typeof resolve !== 'function') throw new Error('请更新智能生图插件以使用共用角色记忆');
-            const fields = resolve({ baseTags: state.render_base || state.base, currentOutfit: state.outfit }, clean(c.base), '');
+            const fields = resolve({ baseTags: withName(c.name, state.render_base || state.base), currentOutfit: state.outfit }, clean(c.base), '');
             c.base = fields.base;
             c.outfit = fields.outfit;
             // positive is only this appearance's position/action/expression/dialogue.
@@ -534,7 +538,7 @@ ${gutter.instruction}
 
 【数据归属：页面 → 画格 → 格内人物】
 输出 format=nai5-comic，字段见 outputSchema。page.base 写整页去重后的可见人数（同一人跨格不重复计数）、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
-同一人跨格使用相同 character_id，base 写完整可靠角色标签、无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。姓名与 character_id 用于资料关联，保留资料中已有的普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
+同一人跨格使用相同 character_id，base 必须包含已有普通姓名或已确认的同人角色 Tag（已知作品限定保留；不猜译名），不能只把名字放在 name。base 同时写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。姓名与 character_id 用于资料关联，保留资料中已有的普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【角色记忆落实：与普通模式共用】

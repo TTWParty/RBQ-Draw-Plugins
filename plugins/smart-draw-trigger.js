@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.4.1';
+    const PLUGIN_VERSION = '6.4.2';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2761,7 +2761,7 @@ base 按七维逐项检查，已明确的特征不得遗漏：
 ④ 发色、发长、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例及有辨识度的体态；⑦ 肤色、永久身体标记及幻想种族特征。
 依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等已有数值如 35 years old、180cm height 原样保留，可同时补对应的已知年龄阶段和体型；不能以视觉化为由删掉明确数值。
 outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
-base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。name 填稳定姓名，base 保留已知普通姓名和可靠同人角色标签，不因姓名与 name 重复就删除。可脱卸配饰归 outfit，永久生理特征归 base。`;
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。name 填稳定姓名，base 必须包含身份标签：普通角色保留已有姓名；已明确识别的同人角色写可靠的通用角色 Tag，并保留已知作品限定，不能只填外貌或只把姓名放进 name。不得因姓名与 name 重复就省略；无法确定通用 Tag 时保留已知姓名，不臆造英文译名或作品。可脱卸配饰归 outfit，永久生理特征归 base。`;
     }
 
     function buildCharacterMemoryPromptModule(store, messageId) {
@@ -2773,7 +2773,7 @@ base 不含衣物、动作、表情、手持物、构图、画风或对白；out
             return `【漫画角色记忆】
 以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
 各格 base/outfit 与普通模式共用建档和复用原则；不另发请求。character_memory 为兼容字段，可省略或写 []；需要补充独立长期资料时每人最多一项 {name,base,initial_outfit,outfit}。
-base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；普通姓名和可靠同人角色标签均可保留。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
+base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；普通姓名或可靠同人角色标签必须实际写入 base，不能只放 name。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
 initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已知服装，不能用楼末换装结果代替；已知则可省略。
 兼容字段 character_memory[].outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。格内 characters[].outfit 始终对应当前格，不能套用末格状态。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
@@ -3259,7 +3259,7 @@ ${activeRegistrySection}`;
             debugInfo(`角色记忆复用「${cleanName}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
             // First time: learn from LLM and store (store clean name, not weighted)
-            finalBase = [cleanName, llmBase].filter(Boolean).join(', ');
+            finalBase = ensureCharacterNameTag(cleanName, llmBase) || cleanName;
             finalOutfit = llmOutfit || '';
             if (finalBase && cleanName) {
                 updateCharacterProfile(cleanName, finalBase, finalOutfit, null, true);
@@ -3509,7 +3509,7 @@ ${getCharacterMemoryTagSpecification()}
             const avatarUrl = char.avatar ? `/characters/${char.avatar}` : null;
 
             assertMangaRequestContext(requestContext);
-            updateCharacterProfile(cleanCharName, extractedBase, extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
+            updateCharacterProfile(cleanCharName, ensureCharacterNameTag(cleanCharName, extractedBase), extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
             toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
             return getCharacterProfile(cleanCharName);
         } catch (err) {
@@ -6429,6 +6429,21 @@ ${getCharacterMemoryTagSpecification()}
         return !!store._mangaActive || store.enhancedContext === 'v_manga';
     }
 
+    // Keep the supplied identity in every learned base. Never guess translations or source works.
+    function ensureCharacterNameTag(name, base) {
+        if (typeof base !== 'string' || !base.trim()) return base || '';
+        const canonical = getCanonicalCharName(name);
+        if (!canonical || isJunkCharacterName(canonical)
+            || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(canonical)) return base;
+        const key = canonical.toLowerCase().replace(/_/g, ' ');
+        const containsName = base.split(/[,，\n]/).some(tag => {
+            const plain = tag.trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').replace(/^[{]+|[}]+$/g, '').trim();
+            return getCanonicalCharName(plain).toLowerCase().replace(/_/g, ' ') === key;
+        });
+        return containsName ? base : `${canonical}, ${base}`;
+    }
+    RBQ.api.ensureCharacterNameTag = ensureCharacterNameTag;
+
     // Ordinary images and manga share the same immutable-base/current-outfit selection.
     // Pure: callers control when complete, validated results are saved to the profile.
     function resolveCharacterMemoryFields(profile, base, outfit) {
@@ -6599,7 +6614,8 @@ ${getCharacterMemoryTagSpecification()}
         }
         for (const row of updates.values()) {
             const profile = getCharacterProfile(row.name);
-            const base = profile?.baseTags ? '' : row.base;
+            const namedBase = ensureCharacterNameTag(row.name, profile?.baseTags || row.base);
+            const base = namedBase !== profile?.baseTags ? namedBase : '';
             const snapshot = snapshots.get(row.name.toLowerCase());
             const stateFields = value => {
                 const state = { outfit: value?.outfit || '', outfitSet: !!value?.outfitSet };
@@ -6619,7 +6635,7 @@ ${getCharacterMemoryTagSpecification()}
                 && profile.currentOutfit !== requestedOutfits[row.name.toLowerCase()];
             const preserveCurrent = older || changedDuringRequest;
             const outfit = preserveCurrent ? '' : finalOutfit;
-            if (base || (outfit && outfit !== profile?.currentOutfit)) updateCharacterProfile(row.name, base, outfit, null, true);
+            if (base || (outfit && outfit !== profile?.currentOutfit)) updateCharacterProfile(row.name, base, outfit, null, true, { replaceBase: !!profile?.baseTags && !!base });
             const saved = getCharacterProfile(row.name);
             if (!saved) continue;
             if (!Array.isArray(saved.wardrobe)) saved.wardrobe = [];

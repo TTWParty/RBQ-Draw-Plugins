@@ -12,6 +12,24 @@ function host() {
     return env;
 }
 
+function completionHost() {
+    const env = host();
+    env.vm.runInContext(env.sdtSource.slice(env.sdtSource.indexOf('    function processSseLine('), env.sdtSource.indexOf('    function parseSseStringToOpenAiJson(')), env.sdt);
+    env.vm.runInContext(env.sdtSource.slice(env.sdtSource.indexOf('    async function callStructuredCompletion('), env.sdtSource.indexOf('    async function callTagger(')), env.sdt);
+    Object.assign(env.sdt, { TextDecoder, normalizeBaseUrl: value => value, checkUrlSafety() {},
+        buildThinkingParams: () => ({}), smartFetch: () => { throw new Error('unexpected network call'); } });
+    return env;
+}
+
+function fakeJsonResponse(value, readerBody) {
+    const raw = JSON.stringify(value);
+    let sent = false;
+    return { ok: true, headers: { get: () => readerBody ? 'text/event-stream' : 'application/json' },
+        text: async () => raw,
+        ...(readerBody ? { body: { getReader: () => ({ read: async () => sent
+            ? { done: true } : (sent = true, { done: false, value: new TextEncoder().encode(raw) }) }) } } : {}) };
+}
+
 async function test(name, run) {
     await run();
     passed++;
@@ -74,6 +92,62 @@ const captionText = caption => caption.slice(caption.indexOf('Text: ') + 6);
             .panels[0].characters[0].bubbles[0].text, text);
         assert.equal(manga.extractStudioJson(damaged({ panels: source.panels })).panels[0]
             .characters[0].bubbles[0].text, text);
+    });
+
+    await test('non-stream native text and legacy/native tools normalize the same ordinary comic', () => {
+        const { sdt } = host();
+        const text = '请原样保留 <think>内容</think>。';
+        const source = { shouldDraw: true, segments: [page(person({ bubbles: [bubble(text)] }))] };
+        const raw = JSON.stringify(source), cut = Math.floor(raw.length / 2);
+        const responses = [
+            { choices: [{ message: { content: raw } }] },
+            { choices: [{ message: { function_call: { name: 'generate_draw_spec', arguments: raw } } }] },
+            { candidates: [{ content: { parts: [{ thought: true, text: '先核对普通画格。' },
+                { text: raw.slice(0, cut) }, { text: raw.slice(cut) }] } }] },
+            { candidates: [{ content: { parts: [{ functionCall: { name: 'generate_draw_spec', args: source } }] } }] }
+        ];
+        const context = sdt.captureMangaRequestContext({ content: '她说：“你好。”' }, -1);
+        for (const response of responses) {
+            const result = sdt.normalizeTaggerResult(response, [], context);
+            assert.equal(result.segments.length, 1);
+            assert.equal(captionText(result.segments[0].characters[0].caption), text);
+        }
+    });
+
+    await test('structured completion accepts modern, legacy and native tool envelopes from both complete-body paths', async () => {
+        const { sdt, settings } = completionHost();
+        Object.assign(settings._smartDrawTrigger, { openaiBaseUrl: 'https://stub.invalid/v1', openaiModel: 'stub', toolCallMode: true });
+        const source = { panels: page(person({ bubbles: [bubble('一起回家吧。')] })).panels };
+        const raw = JSON.stringify(source), functionName = 'generate_manga_storyboard';
+        const responses = [
+            { choices: [{ message: { tool_calls: [{ function: { name: functionName, arguments: raw } }] } }] },
+            { choices: [{ message: { function_call: { name: functionName, arguments: raw } } }] },
+            { choices: [{ message: { function_call: { name: functionName, arguments: source } } }] },
+            { candidates: [{ content: { parts: [{ functionCall: { name: functionName, args: source } }] } }] },
+            { candidates: [{ content: { parts: [{ functionCall: { name: functionName, args: raw } }] } }] }
+        ];
+        for (const readerBody of [false, true]) for (const response of responses) {
+            sdt.callApiWithJsonFallback = async () => fakeJsonResponse(response, readerBody);
+            const result = await sdt.callStructuredCompletion({ messages: [], tool: { function: { name: functionName } } });
+            assert.equal(result.isToolCall, true);
+            assert.deepEqual(JSON.parse(result.rawReply), source);
+        }
+    });
+
+    await test('structured completion excludes native thought parts while preserving split text and literal tags', async () => {
+        const { sdt, settings } = completionHost();
+        Object.assign(settings._smartDrawTrigger, { openaiBaseUrl: 'https://stub.invalid/v1', openaiModel: 'stub', toolCallMode: false });
+        const source = { panels: page(person({ bubbles: [bubble('请显示 <os>名称</os>。')] })).panels };
+        const raw = JSON.stringify(source), cut = Math.floor(raw.length / 2);
+        const response = { candidates: [{ content: { parts: [{ thought: true, text: '核对普通对话。' },
+            { text: raw.slice(0, cut) }, { text: raw.slice(cut) }] } }] };
+        for (const readerBody of [false, true]) {
+            sdt.callApiWithJsonFallback = async () => fakeJsonResponse(response, readerBody);
+            const result = await sdt.callStructuredCompletion({ messages: [] });
+            assert.equal(result.isToolCall, false);
+            assert.equal(result.reasoning, '核对普通对话。');
+            assert.deepEqual(JSON.parse(result.rawReply), source);
+        }
     });
 
     await test('Studio tool character schema requires compiler fields and exposes shared state/render contract', async () => {

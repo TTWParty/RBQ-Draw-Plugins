@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.18';
+        const VERSION = '1.9.19';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -978,6 +978,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
     let studioRequest = null;
     const mangaPayloadSettings = new WeakMap();
     const mangaPayloadRequests = new WeakMap();
+    const mangaPayloadCompiledText = new WeakSet();
     mangaProtocol.matchesPayloadRequest = (payload, request) => !!request && mangaPayloadRequests.get(payload) === request;
 
     function captureMangaRenderSettings() {
@@ -992,6 +993,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         if (!store.enabled && !studioMatch && forceManga !== true) return payload;
         if (!payload.parameters) return payload;
         mangaPayloadSettings.set(payload, store);
+        if (textCompiled || (studioMatch && studioRequest.compiled.textCompiled)) mangaPayloadCompiledText.add(payload);
         const params = payload.parameters;
         // v1.1 assembles its own quality/UC library explicitly. Disable NAI's
         // implicit presets so they cannot reintroduce comic/text exclusions.
@@ -1019,7 +1021,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         const negative = store.style === 'custom' ? store.customNegative || '' : style.negative;
         const mono = store.style === 'monochrome';
         const gutter = (GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed).tag;
-        const recoverLegacyHeaders = !(textCompiled || (studioMatch && studioRequest.compiled.textCompiled));
+        const recoverLegacyHeaders = !mangaPayloadCompiledText.has(payload);
         const addStyle = value => sanitizeMangaPositivePrompt(joinMangaCaptions([
             positive && !String(value || '').includes(positive) ? positive : '', gutter, value
         ], recoverLegacyHeaders), recoverLegacyHeaders);
@@ -3196,6 +3198,52 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         return owner;
     }
 
+    function updateStudioVisualCaption(owner, field, value) {
+        if (!Array.isArray(owner.bubbles)) { owner[field] = value; return; }
+        const previous = mangaCaptionParts(owner[field], owner.bubbles, owner.character_id || 'panel');
+        const next = splitMangaText(value, false);
+        const headers = [];
+        const keyFor = (mapping, tag) => Object.keys(mapping).find(key => mapping[key] === tag);
+        // Only the visual prefix contains editable protocol. The Text tail is opaque.
+        filterMangaTags(next.visual, new Set(), tag => {
+            const type = tag.match(/^(BubbleType|SFX)\s*[:：]\s*(.*)$/i);
+            if (type) {
+                const key = keyFor(MANGA_BUBBLE_TYPES, type[2]);
+                if (key) headers.push({ type: key });
+            } else if (headers.length) {
+                const position = keyFor(MANGA_BUBBLE_POSITIONS, tag);
+                const layout = tag.match(/^Layout\s*[:：]\s*(縦書き|横書き)$/i);
+                if (position) headers.at(-1).position = position;
+                if (layout) headers.at(-1).layout = layout[1] === '横書き' ? 'horizontal' : 'vertical';
+            }
+            return tag;
+        }, true);
+        const texts = next.text === previous.text ? owner.bubbles.map(b => b.text)
+            : owner.bubbles.length === 1 ? [next.text] : next.text.split(/\n[ \t]*\n/);
+        owner.bubbles = next.text ? texts.map((text, index) => ({
+            ...(owner.bubbles[index] || { type: 'speech', position: 'right-upper', layout: 'vertical' }),
+            ...headers[index], text
+        })) : [];
+        owner[field] = joinMangaCaptions([mangaCaptionParts(value, owner.bubbles, owner.character_id || 'panel')]);
+    }
+
+    function refreshStudioBubbleOwner(panel, preferredOwner) {
+        const owner = preferredOwner || (panel.characters || []).find(c => mangaCaptionParts(c.positive, c.bubbles, c.character_id).text) || panel;
+        const parsed = mangaCaptionParts(owner === panel ? panel.non_character : owner.positive, owner.bubbles, owner.character_id || 'panel');
+        const first = Array.isArray(owner.bubbles) ? owner.bubbles.find(b => b.text?.trim()) : null;
+        panel._bubbleOwner = owner === panel ? 'panel' : owner.character_id;
+        panel.bubbleText = parsed.text;
+        panel.bubbleType = first?.type || 'speech';
+        panel.bubbleLayout = first?.layout || 'vertical';
+        if (!first) {
+            if (/SFX\s*[:：]/i.test(parsed.visual)) panel.bubbleType = 'sfx';
+            else for (const [type, tag] of Object.entries(MANGA_BUBBLE_TYPES)) {
+                if (parsed.visual.includes(tag)) { panel.bubbleType = type; break; }
+            }
+            if (/Layout\s*[:：]\s*横書き/i.test(parsed.visual)) panel.bubbleLayout = 'horizontal';
+        }
+    }
+
     function studioDirectorPrompt(store, task, ec = getSdtStore().enhancedContext, isToolMode = false) {
         return buildMangaSystemPrompt({ ...store, antiHijack: store.studio?.antiHijack ?? store.antiHijack }) + `
 【工作台任务】${task}${ec === 'v_manga_185' ? '\n输入 mangaCanvas 是本页实际画布像素与方向，按文字和主动作共同需要分配画格空间；调整格大小和对白分泡，保留关键问答。' : ''}
@@ -4109,11 +4157,15 @@ ${isToolMode
                 });
                 card.querySelector('.rbq-manga-people')?.addEventListener('toggle', e => { p._editorOpen = e.target.open; });
                 card.querySelector('.rbq-manga-non-character')?.addEventListener('input', e => {
-                    p.non_character = e.target.value; delete p.bubbles;
+                    updateStudioVisualCaption(p, 'non_character', e.target.value);
                     if (p._bubbleOwner === 'panel') {
-                        p.bubbleText = splitMangaText(e.target.value).text;
+                        refreshStudioBubbleOwner(p, p);
                         const input = card.querySelector('.mw-bubble-text-in');
                         if (input) input.value = p.bubbleText;
+                        const typeInput = card.querySelector('.mw-bubble-type-sel');
+                        if (typeInput) typeInput.value = p.bubbleType;
+                        const layoutInput = card.querySelector('.mw-bubble-dir-sel');
+                        if (layoutInput) layoutInput.value = p.bubbleLayout;
                     }
                     updatePromptPreview(); save();
                 });
@@ -4121,22 +4173,26 @@ ${isToolMode
                     const personIndex = Number(row.dataset.person);
                     row.querySelectorAll('[data-field]').forEach(input => input.addEventListener('input', e => {
                         const previousId = p.characters[personIndex].character_id;
-                        p.characters[personIndex][input.dataset.field] = e.target.value;
+                        if (input.dataset.field === 'positive') updateStudioVisualCaption(p.characters[personIndex], 'positive', e.target.value);
+                        else p.characters[personIndex][input.dataset.field] = e.target.value;
                         if (input.dataset.field === 'character_id' && p._bubbleOwner === previousId) p._bubbleOwner = e.target.value;
-                        if (input.dataset.field === 'positive') delete p.characters[personIndex].bubbles;
                         if (input.dataset.field === 'positive' && (p._bubbleOwner === p.characters[personIndex].character_id || (!p._bubbleOwner && personIndex === 0))) {
-                            const parsed = splitMangaText(e.target.value || '');
-                            if (parsed.text !== undefined && parsed.text !== p.bubbleText) {
-                                p.bubbleText = parsed.text;
-                                const bubbleIn = card.querySelector('.mw-bubble-text-in');
-                                if (bubbleIn) bubbleIn.value = p.bubbleText;
-                            }
+                            const person = p.characters[personIndex];
+                            refreshStudioBubbleOwner(p, person);
+                            const bubbleIn = card.querySelector('.mw-bubble-text-in');
+                            if (bubbleIn) bubbleIn.value = p.bubbleText;
+                            const typeInput = card.querySelector('.mw-bubble-type-sel');
+                            if (typeInput) typeInput.value = p.bubbleType;
+                            const layoutInput = card.querySelector('.mw-bubble-dir-sel');
+                            if (layoutInput) layoutInput.value = p.bubbleLayout;
                         }
                         updatePromptPreview(); save();
                     }));
                     row.querySelector('.rbq-manga-remove-person')?.addEventListener('click', () => {
-                        if (p._bubbleOwner === p.characters[personIndex].character_id) { p._bubbleOwner = undefined; p.bubbleText = ''; }
-                        p.characters.splice(personIndex, 1); renderPanelCards(); updatePromptPreview(); save();
+                        const removedOwner = p._bubbleOwner === p.characters[personIndex].character_id;
+                        p.characters.splice(personIndex, 1);
+                        if (removedOwner) refreshStudioBubbleOwner(p);
+                        renderPanelCards(); updatePromptPreview(); save();
                     });
                 });
                 card.querySelector('.rbq-manga-add-person')?.addEventListener('click', () => {
@@ -4390,9 +4446,10 @@ ${isToolMode
             const origHtml = btnBatchAi.innerHTML;
             btnBatchAi.disabled = true;
             btnBatchAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 批量解析中...';
+            const targetPanels = [...studio.panels];
             try {
                 const results = await callLlmBatchSentenceExpander(
-                    studio.panels,
+                    targetPanels,
                     store.grammar,
                     store.language,
                     (msg) => {
@@ -4400,10 +4457,13 @@ ${isToolMode
                     }
                 );
                 if (Array.isArray(results) && results.length > 0) {
+                    const layoutChanged = studio.panels.length !== targetPanels.length
+                        || studio.panels.some((panel, i) => panel !== targetPanels[i]);
                     results.forEach((item, i) => {
-                        const targetPanel = studio.panels[i];
-                        if (targetPanel && item) {
+                        const targetPanel = targetPanels[i];
+                        if (targetPanel && studio.panels.includes(targetPanel) && item) {
                             Object.assign(targetPanel, item);
+                            if (layoutChanged) targetPanel.position = '';
                         }
                     });
                     renderPanelCards();

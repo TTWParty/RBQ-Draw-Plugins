@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.28';
+    const VERSION = '2.2.29';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -635,7 +635,8 @@
     function saveProfile(name, data, scope = dossierScope) {
         if (!name || isJunkCharacterName(name)) return;
         const bucket = ensureProfileBucket();
-        const profileData = { ...data, displayName: data.displayName || name, updatedAt: Date.now() };
+        // Editor fields are a partial profile; keep each chat's independent temporal history.
+        const profileData = { ...bucket[name], ...data, displayName: data.displayName || name, updatedAt: Date.now() };
         if (!profileData.createdAt) profileData.createdAt = Date.now();
         if (!Array.isArray(profileData.wardrobe)) profileData.wardrobe = [];
         bucket[name] = profileData;
@@ -648,7 +649,10 @@
                     if (chatDict && typeof chatDict === 'object' && chatDict !== bucket) {
                         if (chatDict[name] || (data.displayName && chatDict[data.displayName])) {
                             const targetKey = chatDict[name] ? name : data.displayName;
-                            chatDict[targetKey] = JSON.parse(JSON.stringify(profileData));
+                            const existing = chatDict[targetKey];
+                            chatDict[targetKey] = JSON.parse(JSON.stringify({ ...existing, ...data,
+                                displayName: data.displayName || name, updatedAt: profileData.updatedAt,
+                                createdAt: existing.createdAt || profileData.createdAt }));
                         }
                     }
                 }
@@ -687,10 +691,11 @@
         if (scope === 'all') {
             // 全局删除：遍历 sdt.characterProfiles 下所有历史会话桶彻底清理
             if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
-                for (const chatDict of Object.values(sdt.characterProfiles)) {
+                for (const [chatKey, chatDict] of Object.entries(sdt.characterProfiles)) {
                     if (chatDict && typeof chatDict === 'object') {
                         for (const [k, v] of Object.entries(chatDict)) {
                             if (isMatch(k, v)) {
+                                RBQ.api.forgetMangaCharacterMemory?.(k, chatKey);
                                 delete chatDict[k];
                                 deleted = true;
                             }
@@ -705,21 +710,24 @@
             if (bucket && typeof bucket === 'object') {
                 for (const [k, v] of Object.entries(bucket)) {
                     if (isMatch(k, v)) {
+                        RBQ.api.forgetMangaCharacterMemory?.(k, ck);
                         delete bucket[k];
                         deleted = true;
                     }
                 }
             }
             if (bucket && bucket[name]) {
+                RBQ.api.forgetMangaCharacterMemory?.(name, ck);
                 delete bucket[name];
                 deleted = true;
             }
             // 容错兜底：若在当前会话桶未命中，尝试从所有会话桶中查找并删除匹配项
             if (!deleted && sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
-                for (const chatDict of Object.values(sdt.characterProfiles)) {
+                for (const [chatKey, chatDict] of Object.entries(sdt.characterProfiles)) {
                     if (chatDict && typeof chatDict === 'object') {
                         for (const [k, v] of Object.entries(chatDict)) {
                             if (isMatch(k, v)) {
+                                RBQ.api.forgetMangaCharacterMemory?.(k, chatKey);
                                 delete chatDict[k];
                                 deleted = true;
                                 break;

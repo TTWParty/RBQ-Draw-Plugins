@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.10';
+    const PLUGIN_VERSION = '6.5.11';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3196,14 +3196,14 @@ ${activeRegistrySection}`;
         const profiles = getCharacterProfiles();
         const canonical = getCanonicalCharName(name);
         if (profiles[canonical]) {
-            clearMangaRenderCache(canonical);
+            forgetMangaCharacterMemory(canonical);
             delete profiles[canonical];
             save();
             return;
         }
         const key = String(name || '').trim().toLowerCase();
         if (key && profiles[key]) {
-            clearMangaRenderCache(key);
+            forgetMangaCharacterMemory(key);
             delete profiles[key];
             save();
         }
@@ -3213,7 +3213,7 @@ ${activeRegistrySection}`;
         const store = getStore();
         const chatKey = getChatKey();
         if (store.characterProfiles?.[chatKey]) {
-            clearMangaRenderCache();
+            forgetMangaCharacterMemory();
             store.characterProfiles[chatKey] = {};
         }
         save();
@@ -6710,13 +6710,22 @@ ${getCharacterMemoryTagSpecification()}
         }
     }
 
-    function clearMangaRenderCache(name) {
+    function clearMangaRenderCache(name, targetChatKey = getChatKey()) {
         const cache = getStore().mangaRenderCache;
-        const chatKey = JSON.stringify(getChatKey());
+        const chatKey = JSON.stringify(targetChatKey);
         if (!cache?.chats?.[chatKey]) return;
         if (name) cache.chats[chatKey] = cache.chats[chatKey].filter(row => getCanonicalCharName(row.name).toLowerCase() !== getCanonicalCharName(name).toLowerCase());
         else delete cache.chats[chatKey];
     }
+    // Explicit deletion invalidates requests captured before the user removed this memory.
+    // Normal learning does not advance this epoch, so concurrent ordinary parses remain valid.
+    function forgetMangaCharacterMemory(name, targetChatKey = getChatKey()) {
+        clearMangaRenderCache(name, targetChatKey);
+        const epochs = captureMangaRequestContext.memoryEpochs ||= {};
+        const key = JSON.stringify(targetChatKey);
+        epochs[key] = (epochs[key] || 0) + 1;
+    }
+    RBQ.api.forgetMangaCharacterMemory = forgetMangaCharacterMemory;
     RBQ.api.captureMangaRenderCacheContext = () => captureMangaRequestContext(null, -1);
     RBQ.api.saveMangaRenderCache = saveMangaRenderCache;
 
@@ -6752,6 +6761,7 @@ ${getCharacterMemoryTagSpecification()}
         const references = getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [];
         const renderSettings = isMangaRequest() ? getMangaProtocol().captureRenderSettings?.() : undefined;
         return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
+            memoryEpoch: captureMangaRequestContext.memoryEpochs?.[JSON.stringify(getChatKey())] || 0,
             manga: isMangaRequest(), renderSettings,
             messageVersion: getMangaMessageVersion(messageId),
             currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
@@ -6763,6 +6773,12 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function assertMangaRequestContext(context) {
+        if (context?.memoryEnabled !== false && context?.memoryEpoch !== undefined
+            && context.memoryEpoch !== (captureMangaRequestContext.memoryEpochs?.[JSON.stringify(context.chatKey)] || 0)) {
+            const error = new Error('角色记忆已被删除或清空，已停止旧请求回填，请重新解析');
+            error.name = 'AbortError';
+            throw error;
+        }
         if (typeof context?.manga === 'boolean' && context.manga !== isMangaRequest()) {
             const error = new Error('漫画模式已切换，已停止旧请求回填与角色记忆写入，请重新解析');
             error.name = 'AbortError';
@@ -6779,6 +6795,37 @@ ${getCharacterMemoryTagSpecification()}
             error.name = 'AbortError';
             throw error;
         }
+    }
+
+    // Rebase only temporal records. Cached pages already own their drawing snapshots.
+    function rebaseMangaStateHistory(history, replacement) {
+        const ordered = history.filter(entry => entry && Number.isInteger(entry.messageId) && entry.before && entry.after)
+            .sort((a, b) => a.messageId - b.messageId);
+        const previous = ordered.find(entry => entry.messageId === replacement.messageId);
+        const later = ordered.filter(entry => entry.messageId > replacement.messageId);
+        const result = ordered.filter(entry => entry.messageId < replacement.messageId).concat(replacement);
+        const applyChanges = (state, from, to, explicitFields = []) => {
+            const next = { ...state };
+            const fields = new Set([...Object.keys(from || {}), ...Object.keys(to || {}), ...explicitFields]);
+            for (const field of fields) {
+                if (from?.[field] === to?.[field] && !explicitFields.includes(field)) continue;
+                if (Object.hasOwn(to || {}, field)) next[field] = to[field];
+                else delete next[field];
+            }
+            return next;
+        };
+        let oldState = previous?.after || later[0]?.before || replacement.before;
+        let newState = replacement.after;
+        for (const entry of later) {
+            // A change between floors may be a manual wardrobe selection; retain that override.
+            const before = applyChanges(newState, oldState, entry.before);
+            const after = applyChanges(before, entry.before, entry.after,
+                Array.isArray(entry.explicitFields) ? entry.explicitFields : []);
+            result.push({ ...entry, before, after });
+            oldState = entry.after;
+            newState = after;
+        }
+        return result;
     }
 
     // Learn once per response, after all pages compile. Never infer persistent traits from shot captions.
@@ -6805,8 +6852,16 @@ ${getCharacterMemoryTagSpecification()}
                         if (drawingName) drawingNames.set(getCanonicalCharName(drawingName).toLowerCase(), name);
                         if (person._mangaAppearance) {
                             const prior = snapshots.get(key);
+                            const precedingAppearance = prior?.after || person._mangaInitialAppearance || {};
                             snapshots.set(key, { before: prior?.before || person._mangaInitialAppearance,
                                 after: person._mangaAppearance,
+                                explicitFields: [...new Set([...(prior?.explicitFields || []),
+                                    ...['outfit', 'outfitSet', 'hair_style', 'hair_length', 'hair_color', 'render_base', 'render_base_source']
+                                        .filter(field => precedingAppearance[field] !== person._mangaAppearance[field]),
+                                    ...['hair_style', 'hair_length', 'hair_color', 'outfit'].filter(field => typeof person.state?.[field] === 'string'
+                                        && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(person.state[field])),
+                                    ...(typeof person.state?.outfit === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(person.state.outfit) ? ['outfitSet'] : []),
+                                    ...(cleanField(person.state?.base) ? ['render_base', 'render_base_source'] : [])])],
                                 nameTag: prior?.nameTag || getCharacterNameTag(name, person.name_tag),
                                 explicitOutfit: prior?.explicitOutfit || !!cleanField(person.outfit) || (typeof person.state?.outfit === 'string'
                                     && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(person.state.outfit)) });
@@ -6837,6 +6892,9 @@ ${getCharacterMemoryTagSpecification()}
         }
         for (const row of updates.values()) {
             const profile = getCharacterProfile(row.name);
+            const previousHistory = Array.isArray(profile?.mangaStateHistory) ? profile.mangaStateHistory : [];
+            const previousLatest = [...previousHistory].filter(entry => entry?.after).sort((a, b) => a.messageId - b.messageId).at(-1);
+            const timelineOwnsOutfit = previousLatest && profile.currentOutfit === previousLatest.after.outfit;
             const nameTag = getCharacterNameTag(row.nameTag || row.name, profile?.nameTag || row.nameTag);
             const namedBase = ensureCharacterNameTag(row.name, profile?.baseTags || row.base, nameTag);
             const base = namedBase !== profile?.baseTags ? namedBase : '';
@@ -6885,10 +6943,24 @@ ${getCharacterMemoryTagSpecification()}
             }
             if (hasMessageId && (snapshot || row.outfit)) {
                 const history = Array.isArray(saved.mangaStateHistory) ? saved.mangaStateHistory : [];
-                saved.mangaStateHistory = history.filter(e => e.messageId !== messageId);
-                saved.mangaStateHistory.push({ messageId, messageVersion: context?.messageVersion ?? getMangaMessageVersion(messageId), before, after });
-                saved.mangaStateHistory.sort((a, b) => a.messageId - b.messageId);
-                if (!older) saved.mangaOutfitMessageId = messageId;
+                saved.mangaStateHistory = rebaseMangaStateHistory(history, {
+                    messageId, messageVersion: context?.messageVersion ?? getMangaMessageVersion(messageId), before, after,
+                    explicitFields: snapshot?.explicitFields || []
+                });
+                const latest = saved.mangaStateHistory.at(-1);
+                saved.mangaOutfitMessageId = latest.messageId;
+                if (timelineOwnsOutfit && latest.after.outfitSet && saved.currentOutfit !== latest.after.outfit) {
+                    saved.currentOutfit = latest.after.outfit || '';
+                    let active = saved.wardrobe.find(outfit => outfit.outfit === saved.currentOutfit);
+                    if (!active) {
+                        active = { id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                            name: saved.currentOutfit ? deriveOutfitName(row.name, saved.currentOutfit) : '无衣物（剧情状态）',
+                            outfit: saved.currentOutfit, triggers: [], createdAt: Date.now() };
+                        saved.wardrobe.push(active);
+                    }
+                    saved.currentOutfitId = active.id;
+                    refreshCharacterProfileListUi();
+                }
                 save();
             }
         }
@@ -9591,6 +9663,16 @@ SCHEMA:
         wrapper.dataset.rbqSdtCharData = JSON.stringify(segment?.characters || []);
         wrapper.dataset.rbqSdtManga = segment?.mangaPage ? '1' : '';
         wrapper.dataset.rbqSdtMangaCoords = segment?.mangaUseCoords ? '1' : '';
+        if (segment?.mangaPage) {
+            wrapper.dataset.rbqSdtMangaTextCompiled = segment.mangaTextCompiled === true
+                || (typeof segment.mangaPage === 'object' && segment.mangaPage !== null) ? '1' : '';
+            const renderSettings = segment.mangaRenderSettings || RBQ.api.mangaProtocol?.captureRenderSettings?.();
+            if (renderSettings) wrapper.dataset.rbqSdtMangaRenderSettings = JSON.stringify(renderSettings);
+            else delete wrapper.dataset.rbqSdtMangaRenderSettings;
+        } else {
+            delete wrapper.dataset.rbqSdtMangaTextCompiled;
+            delete wrapper.dataset.rbqSdtMangaRenderSettings;
+        }
         const negative = getSegmentNegative(segment);
         if (negative !== undefined) wrapper.dataset.rbqSdtNegative = negative;
         else delete wrapper.dataset.rbqSdtNegative;
@@ -10022,7 +10104,9 @@ SCHEMA:
             multiChar: !!result.multiChar,
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
-            ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords, ...(result.mangaRenderSettings ? { mangaRenderSettings: { ...result.mangaRenderSettings } } : {}) } : {}),
+            ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords,
+                ...(result.mangaTextCompiled === true ? { mangaTextCompiled: true } : {}),
+                ...(result.mangaRenderSettings ? { mangaRenderSettings: { ...result.mangaRenderSettings } } : {}) } : {}),
             anchor: result.anchor || { type: 'bottom' },
             reason: String(result.reason || '').slice(0, 500),
             thinkContent: String(result.thinkContent || '').slice(0, 1000),
@@ -12116,7 +12200,11 @@ SCHEMA:
             setWrapperLoading(wrapper, 'tagger 已完成，正在调用 RBQ 生图...');
             setGenerateButtonState(wrapper, true, '生成中...', true);
             const segment = { characters: [], mangaPage: wrapper.dataset.rbqSdtManga === '1',
-                mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1', negativePrompt: wrapper.dataset.rbqSdtNegative };
+                mangaUseCoords: wrapper.dataset.rbqSdtMangaCoords === '1', negativePrompt: wrapper.dataset.rbqSdtNegative,
+                mangaTextCompiled: wrapper.dataset.rbqSdtMangaTextCompiled === '1' };
+            if (segment.mangaPage && wrapper.dataset.rbqSdtMangaRenderSettings) {
+                segment.mangaRenderSettings = JSON.parse(wrapper.dataset.rbqSdtMangaRenderSettings);
+            }
             const charDataJson = wrapper?.dataset?.rbqSdtCharData;
             if (charDataJson) segment.characters = JSON.parse(charDataJson);
             const image = await generateSdtImage(segment, finalPrompt, 'smart-draw-trigger', { messageId }, (progressText) => {
@@ -15625,6 +15713,8 @@ SCHEMA:
                             label: labelText,
                             characters: Array.isArray(seg.characters) ? seg.characters : (Array.isArray(sdt.characters) ? sdt.characters : []),
                             mangaPage: seg.mangaPage, mangaUseCoords: !!seg.mangaUseCoords,
+                            mangaTextCompiled: seg.mangaTextCompiled === true,
+                            mangaRenderSettings: seg.mangaRenderSettings ? { ...seg.mangaRenderSettings } : undefined,
                             prompt: promptText,
                             negative: String(seg.negative || sdt.negative || '').trim(),
                             negativePrompt: getSegmentNegative(seg) ?? getSegmentNegative(sdt),
@@ -15685,6 +15775,8 @@ SCHEMA:
                                 label: sec?.title || '剧情分镜',
                                 characters: Array.isArray(sdt.characters) ? sdt.characters : [],
                                 mangaPage: sdt.mangaPage, mangaUseCoords: !!sdt.mangaUseCoords,
+                                mangaTextCompiled: sdt.mangaTextCompiled === true,
+                                mangaRenderSettings: sdt.mangaRenderSettings ? { ...sdt.mangaRenderSettings } : undefined,
                                 prompt: promptText,
                                 negative: String(sdt.negative || '').trim(),
                                 negativePrompt: getSegmentNegative(sdt),

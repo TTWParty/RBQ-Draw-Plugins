@@ -9,9 +9,10 @@
             console.warn('[Smart Draw Trigger] Previous cleanup error:', e);
         }
     }
+    const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.11';
+    const PLUGIN_VERSION = '6.5.14';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2524,6 +2525,17 @@ Zimage 擅长理解复杂的英文长句和语境。
     let floatingObserver = null;
     let handleMessageRender = null;
     let handleChatChanged = null;
+    let handleGenerationStopped = null;
+    function scheduleSdtLifecycle(callback, delay) {
+        if (onSdtNaiPayload.disposed) return null;
+        const timers = scheduleSdtLifecycle.timers ||= new Set();
+        const id = setTimeout(() => {
+            timers.delete(id);
+            if (!onSdtNaiPayload.disposed) callback();
+        }, delay);
+        timers.add(id);
+        return id;
+    }
     function isTaggerApiConfigured() {
         const store = getStore();
         if (store.provider === 'custom') {
@@ -2538,6 +2550,7 @@ Zimage 擅长理解复杂的英文长句和语境。
     let autoRunPendingId = null;
 
     function scheduleAutoRun(messageId = null) {
+        if (onSdtNaiPayload.disposed) return;
         const store = getStore();
         if (!store.enabled || !store.autoRunTagger) return;
         const targetId = messageId != null ? Number(messageId) : getLatestMessageId();
@@ -2560,6 +2573,7 @@ Zimage 擅长理解复杂的英文长句和语境。
     }
 
     async function triggerAutoRunForMessage(targetId) {
+        if (onSdtNaiPayload.disposed) return;
         const store = getStore();
         if (!store.enabled || !store.autoRunTagger) return;
         if (!isTaggerApiConfigured()) {
@@ -6773,6 +6787,11 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function assertMangaRequestContext(context) {
+        if (typeof onSdtNaiPayload === 'function' && onSdtNaiPayload.disposed) {
+            const error = new Error('智能生图插件已卸载或重新加载，已停止旧请求回填与角色记忆写入');
+            error.name = 'AbortError';
+            throw error;
+        }
         if (context?.memoryEnabled !== false && context?.memoryEpoch !== undefined
             && context.memoryEpoch !== (captureMangaRequestContext.memoryEpochs?.[JSON.stringify(context.chatKey)] || 0)) {
             const error = new Error('角色记忆已被删除或清空，已停止旧请求回填，请重新解析');
@@ -7550,7 +7569,7 @@ ${getCharacterMemoryTagSpecification()}
         const requestContext = segResult?.mangaPage ? captureMangaRequestContext() : null;
         const segJson = JSON.stringify(segResult || {});
         const systemPrompt = segResult?.mangaPage
-            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit、本格动作 positive 与逐泡文字 bubbles，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
+            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit、' + (getMangaProtocol().usesStructuredBubbles?.() !== false ? '本格动作 positive 与逐泡文字 bubbles' : '包含本格动作、气泡说明及末尾 Text: 的 positive/non_character') + '，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
             : `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
@@ -8370,7 +8389,8 @@ SCHEMA:
                     }
                 });
             }
-            if (updatedSeg.mangaPage) {
+            if (updatedSeg.mangaPage && typeof updatedSeg.mangaPage === 'object'
+                && Array.isArray(updatedSeg.mangaPage.panels)) {
                 updatedSeg.mangaPage.position_mode = updatedSeg.mangaUseCoords ? 'manual' : 'auto';
                 for (const panel of updatedSeg.mangaPage.panels) {
                     for (const person of panel.characters) {
@@ -8378,6 +8398,9 @@ SCHEMA:
                         if (current) {
                             const original = segResult.characters?.find(c => c.panelId === panel.id && c.characterId === person.character_id);
                             if (current.caption !== original?.caption) delete person.bubbles;
+                            // Full captions are already compiled drawing snapshots.
+                            // Their Text tail remains literal after a textarea edit.
+                            person._mangaTextLiteral = true;
                             person.positive = current.caption;
                             person.negative = current.uc || '';
                             person.center = sdtParseCoord(current.center);
@@ -9472,6 +9495,18 @@ SCHEMA:
 
         // 1. Direct memory map lookup
         if (url && sdtSegmentMap.has(url)) return sdtSegmentMap.get(url);
+        // Different pages can share the same base caption. A saved image ID
+        // owns its character snapshot even when its temporary display URL changed.
+        const savedRecord = (current.cacheId || url) && typeof findSdtImageCardRecord === 'function'
+            ? findSdtImageCardRecord(current) : null;
+        if (savedRecord) {
+            const wrapper = [...document.querySelectorAll('.st-scene-trigger-inline-wrap')]
+                .find(card => card.dataset.rbqSdtExternalId === savedRecord.id);
+            const segResult = JSON.parse(JSON.stringify(savedRecord.segment));
+            const segData = { segResult, wrapper: wrapper || null, validLorebooks: [], finalPrompt: getFinalPrompt(segResult) };
+            if (url) sdtSegmentMap.set(url, segData);
+            return segData;
+        }
         if (prompt && sdtSegmentMap.has(prompt)) return sdtSegmentMap.get(prompt);
 
         // 2. Search chat DOM wrappers for matching image src or prompt
@@ -9493,6 +9528,29 @@ SCHEMA:
                 const p = (w.dataset.prompt || '').trim();
                 return p === prompt || (p && prompt.includes(p)) || (p && p.includes(prompt));
             });
+        }
+
+        // Maps are per instance. Recover the saved drawing snapshot after reload before guessing from profile names.
+        let savedSegment = null;
+        if (matchedWrapper?.dataset?.rbqSdtManga === '1') {
+            try {
+                savedSegment = matchedWrapper.dataset.rbqSdtSegmentSnapshot
+                    ? JSON.parse(matchedWrapper.dataset.rbqSdtSegmentSnapshot)
+                    : { mangaPage: true, scene: matchedWrapper.dataset.rbqSdtFinalPrompt || matchedWrapper.dataset.prompt,
+                        characters: JSON.parse(matchedWrapper.dataset.rbqSdtCharData || '[]'),
+                        mangaUseCoords: matchedWrapper.dataset.rbqSdtMangaCoords === '1',
+                        mangaTextCompiled: matchedWrapper.dataset.rbqSdtMangaTextCompiled === '1',
+                        mangaRenderSettings: JSON.parse(matchedWrapper.dataset.rbqSdtMangaRenderSettings || '{}'),
+                        negativePrompt: matchedWrapper.dataset.rbqSdtNegative };
+            } catch (_) {}
+        }
+        savedSegment ||= typeof findSdtImageCardRecord === 'function' ? findSdtImageCardRecord(current)?.segment : null;
+        if (savedSegment?.mangaPage) {
+            const segData = { segResult: JSON.parse(JSON.stringify(savedSegment)), wrapper: matchedWrapper,
+                validLorebooks: [], finalPrompt: getFinalPrompt(savedSegment) };
+            if (url) sdtSegmentMap.set(url, segData);
+            if (prompt) sdtSegmentMap.set(prompt, segData);
+            return segData;
         }
 
         const segKey = matchedWrapper?.dataset?.rbqSdtSegmentKey;
@@ -9572,7 +9630,8 @@ SCHEMA:
     }
 
 
-    window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
+    function onSdtViewerRendered(event) {
+        if (onSdtNaiPayload.disposed) return;
         document.querySelectorAll('.rbq-sdt-coord-modal-overlay, #rbq-sdt-hit-viewer-modal, #rbq-sdt-card-outfit-modal, #rbq-sdt-refiner-modal, #rbq-sdt-manual-tag-modal, #rbq-sdt-tagger-debug-modal').forEach(el => {
             if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
         });
@@ -9594,13 +9653,16 @@ SCHEMA:
         } else {
             bottomBar.querySelectorAll('.rbq-sdt-viewer-badge').forEach(el => el.remove());
         }
-    });
+    }
+    window.addEventListener('st-scene-trigger:viewer-rendered', onSdtViewerRendered);
 
-    window.addEventListener('st-scene-trigger:viewer-closed', () => {
+    function onSdtViewerClosed() {
+        if (onSdtNaiPayload.disposed) return;
         document.querySelectorAll('.rbq-sdt-coord-modal-overlay, #rbq-sdt-hit-viewer-modal, #rbq-sdt-card-outfit-modal, #rbq-sdt-refiner-modal, #rbq-sdt-manual-tag-modal, #rbq-sdt-tagger-debug-modal').forEach(el => {
             if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
         });
-    });
+    }
+    window.addEventListener('st-scene-trigger:viewer-closed', onSdtViewerClosed);
 
     function getFinalPrompt(obj) {
         if (!obj) return '';
@@ -9683,6 +9745,7 @@ SCHEMA:
         wrapper.dataset.prompt = prompt;
         wrapper.dataset.rbqSdtFinalPrompt = prompt;
         cacheWrapperCharacterData(wrapper, segment);
+        if (wrapper.dataset.rbqSdtExternalId) persistSdtImageCardRecord(wrapper, segment, prompt);
         const baseKey = wrapper.dataset.rbqSdtBaseKey;
         if (!baseKey) return;
         const segmentKey = wrapper.dataset.rbqSdtSegmentKey || baseKey;
@@ -9742,6 +9805,7 @@ SCHEMA:
 
     let legacyImageQueue = Promise.resolve();
     function generateSdtImage(segment, prompt, reason, meta = {}, onProgress = null) {
+        if (onSdtNaiPayload.disposed) return Promise.reject(new Error('智能生图插件已卸载，请刷新后重试'));
         const data = buildNaiCharData(segment);
         if (RBQ.api.generationContextVersion >= 1) {
             return RBQ.api.generateImage(prompt, reason, { ...meta, sdtCharacterData: data }, onProgress);
@@ -9749,6 +9813,7 @@ SCHEMA:
         // Old hosts have no request context. Serialize SDT submissions rather than
         // letting queued/reference-image preprocessing overwrite a shared slot.
         const run = legacyImageQueue.then(async () => {
+            if (onSdtNaiPayload.disposed) throw new Error('智能生图插件已卸载，请刷新后重试');
             pendingNaiCharData = data ? { ...data, prompt } : null;
             const pending = pendingNaiCharData;
             try { return await RBQ.api.generateImage(prompt, reason, meta, onProgress); }
@@ -9759,7 +9824,8 @@ SCHEMA:
     }
 
     /* ── NAI V4 payload hook: inject char_captions directly ── */
-    RBQ.on('buildNaiV4Payload', (payload, context) => {
+    function onSdtNaiPayload(payload, context) {
+        if (onSdtNaiPayload.disposed) return payload;
         const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
         if (!data || (data.prompt && !String(payload.input || '').includes(data.prompt)
             && !RBQ.api.mangaProtocol?.matchesPayloadRequest?.(payload, data))
@@ -9805,10 +9871,12 @@ SCHEMA:
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
         if (!context) pendingNaiCharData = null; // legacy callers only
         return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true, characters.map(c => c.name), renderSettings, !!textCompiled) : payload;
-    });
+    }
+    RBQ.on('buildNaiV4Payload', onSdtNaiPayload);
 
     /* ── ComfyUI payload hook: inject char placeholders ── */
-    RBQ.on('buildComfyUiWorkflow', (payload, context) => {
+    function onSdtComfyWorkflow(payload, context) {
+        if (onSdtComfyWorkflow.disposed) return payload;
         const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
         if (!data || !data.enabled) return payload;
         const { characters } = data;
@@ -9836,7 +9904,8 @@ SCHEMA:
         
         if (!context) pendingNaiCharData = null;
         return payload;
-    });
+    }
+    RBQ.on('buildComfyUiWorkflow', onSdtComfyWorkflow);
 
     function materializeResultCards(messageId, trigger, result, key) {
         const container = RBQ.api.getMessageTextContainer(messageId);
@@ -10551,7 +10620,7 @@ SCHEMA:
         if (store.injectCharacterCard && isMangaRequest(store)) {
             systemPrompt += `\n\n【漫画角色卡信息参考指令】
 当输入含 characterCardInfo 或 characterCardInfo_base64 时，读取未建档角色的 description 与 characterBookEntries，作为身份、外貌和默认衣着的依据，优先于模型常识；未知不猜，已有不漏，包含已明确的国籍/族裔/面相等特征。
-按普通模式将完整身份外貌写入 panels[].characters[].base，完整当前衣着写入 outfit，不按景别裁剪；positive 只写本格位置、动作、表情与视线，人物对白/心声逐泡写入该人物 bubbles[].text，不写入 positive。开启角色记忆时直接从 base/outfit 建档，character_memory 可省略。`;
+按普通模式将完整身份外貌写入 panels[].characters[].base，完整当前衣着写入 outfit，不按景别裁剪；${getMangaProtocol().usesStructuredBubbles?.() !== false ? 'positive 只写本格位置、动作、表情与视线，人物对白/心声逐泡写入该人物 bubbles[].text，不写入 positive。' : 'positive 先写本格位置、动作、表情、视线与气泡类型/位置/Layout，末尾唯一 Text: 后只写本人对白/心声；旁白/拟音/真正画外声放所属 non_character，不输出 bubbles。'}开启角色记忆时直接从 base/outfit 建档，character_memory 可省略。`;
         } else if (store.injectCharacterCard && hasCardInfo) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }
@@ -12190,6 +12259,7 @@ SCHEMA:
     }
 
     async function runImageGenerationForWrapper(wrapper, messageId, baseKey, segmentKey = '') {
+        if (onSdtNaiPayload.disposed) return;
         const finalPrompt = String(wrapper?.dataset?.rbqSdtFinalPrompt || wrapper?.dataset?.prompt || '').trim();
         if (!finalPrompt || finalPrompt === '[Smart Draw]') {
             toastr.warning('当前还没有可用 prompt，请先解析 tag', PLUGIN_NAME);
@@ -12211,18 +12281,21 @@ SCHEMA:
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
+            if (onSdtNaiPayload.disposed) return;
             RBQ.api.renderInlineGeneratedImage(wrapper, image);
+            if (wrapper.dataset.rbqSdtExternalId) persistSdtImageCardRecord(wrapper, segment, finalPrompt, image);
             const effectiveSegKey = segmentKey || wrapper?.dataset?.rbqSdtSegmentKey || baseKey;
             if (baseKey && effectiveSegKey) markSegmentAutoGenerated(baseKey, effectiveSegKey, image, messageId);
             // Don't re-show tagger button — it lives on the bottom re-parse card only
             setGenerateButtonState(wrapper, true, getRegenLabel(wrapper), false);
             setWrapperStage(wrapper, 'generated');
         } catch (error) {
+            if (onSdtNaiPayload.disposed) return;
             toastr.error(error.message || String(error), PLUGIN_NAME);
             setGenerateButtonState(wrapper, true, '🎨 生成图片', false);
             setWrapperStage(wrapper, 'error');
         } finally {
-            clearWrapperLoading(wrapper);
+            if (!onSdtNaiPayload.disposed) clearWrapperLoading(wrapper);
         }
     }
 
@@ -12255,6 +12328,133 @@ SCHEMA:
                 event.stopPropagation();
                 await runImageGenerationForWrapper(wrapper, messageId, baseKey, segmentKey || wrapper.dataset.rbqSdtSegmentKey || '');
             });
+        }
+    }
+
+    /** Attach a generated external page without flattening its character/settings snapshot into the host prompt. */
+    function bindSdtImageCard(wrapper, segment, prompt = getFinalPrompt(segment)) {
+        if (onSdtNaiPayload.disposed) return wrapper;
+        if (!(wrapper instanceof HTMLElement) || !segment || !prompt) return wrapper;
+        const snapshot = JSON.parse(JSON.stringify(segment));
+        snapshot.scene = prompt;
+        snapshot.prompt = prompt;
+        wrapper.dataset.prompt = prompt;
+        wrapper.dataset.rbqSdtFinalPrompt = prompt;
+        wrapper.dataset.rbqSdtIsResult = '1';
+        wrapper.dataset.rbqSdtSegmentSnapshot = JSON.stringify(snapshot);
+        cacheWrapperCharacterData(wrapper, snapshot);
+        const hostButton = wrapper.querySelector('.st-scene-trigger-generate:not(.rbq-sdt-run-image)')
+            || wrapper.querySelector('.st-scene-trigger-generate');
+        if (hostButton instanceof HTMLElement) hostButton.style.setProperty('display', 'none', 'important');
+        const redrawButton = setGenerateButtonState(wrapper, true, '🔄 漫画工作台', false) || ensureRenderGenerateButton(wrapper);
+        if (redrawButton instanceof HTMLButtonElement && wrapper.dataset.rbqSdtExternalBound !== '1') {
+            wrapper.dataset.rbqSdtExternalBound = '1';
+            redrawButton.addEventListener('click', async event => {
+                event.preventDefault();
+                event.stopPropagation();
+                // A card can outlive a plugin reload; dispatch through the installed instance.
+                await RBQ.api.redrawSdtImageCard?.(wrapper);
+            });
+        }
+        setWrapperStage(wrapper, 'generated');
+        renderCardBadges(wrapper, snapshot);
+        return wrapper;
+    }
+
+    function getSdtImageCardRecords(messageId) {
+        const value = RBQ.api.getMessageExtra?.(messageId, 'rbq_manga_studio_images')
+            || RBQ.api.getContext?.()?.chat?.[Number(messageId)]?.extra?.rbq_manga_studio_images;
+        return Array.isArray(value) ? value : [];
+    }
+
+    function findSdtImageCardRecord(current) {
+        const chat = RBQ.api.getContext?.()?.chat || [];
+        const messageId = Number(current?.messageId);
+        const records = (Number.isFinite(messageId) && current?.messageId !== null && current?.messageId !== undefined)
+            ? getSdtImageCardRecords(messageId) : chat.flatMap((_message, index) => getSdtImageCardRecords(index));
+        const cacheId = current?.cacheId;
+        const url = current?.displayUrl || current?.url;
+        const prompt = String(current?.prompt || '').trim();
+        return records.find(record => record?.segment?.mangaPage && (
+            cacheId ? record.image?.cacheId === cacheId : url
+                ? [record.image?.url, record.image?.displayUrl, record.image?.serverUrl, record.image?.serverOriginalUrl].includes(url)
+                : prompt && record.prompt === prompt));
+    }
+
+    function persistSdtImageCardRecord(wrapper, segment, prompt, image = null, initialize = false) {
+        if (onSdtNaiPayload.disposed) return;
+        const id = wrapper?.dataset?.rbqSdtExternalId;
+        const messageId = Number(wrapper?.dataset?.messageId);
+        if (!id || !Number.isFinite(messageId) || wrapper.dataset.rbqSdtExternalChat !== getChatKey()) return;
+        const records = getSdtImageCardRecords(messageId);
+        const previous = records.find(record => record?.id === id);
+        if (!previous && !initialize) return; // A deleted/reindexed message no longer owns this card.
+        const snapshot = JSON.parse(JSON.stringify(segment));
+        snapshot.scene = prompt; snapshot.prompt = prompt;
+        const record = { ...previous, id, prompt, segment: snapshot, image: image ? JSON.parse(JSON.stringify(image)) : previous?.image,
+            createdAt: previous?.createdAt || Date.now() };
+        const next = records.filter(item => item?.id !== id).concat(record);
+        wrapper.dataset.rbqSdtSegmentSnapshot = JSON.stringify(snapshot);
+        if (typeof RBQ.api.setMessageExtra === 'function') RBQ.api.setMessageExtra(messageId, 'rbq_manga_studio_images', next);
+        else {
+            const message = RBQ.api.getContext?.()?.chat?.[messageId];
+            if (message) {
+                (message.extra ||= {}).rbq_manga_studio_images = next;
+                RBQ.api.saveChatDebounced?.();
+            }
+        }
+    }
+
+    function createSdtImageCard({ messageId, segment, prompt = getFinalPrompt(segment), image, id = `manga-studio:${Date.now()}:${Math.random().toString(36).slice(2)}`, persist = true }) {
+        if (onSdtNaiPayload.disposed) return null;
+        const container = RBQ.api.getMessageTextContainer?.(messageId);
+        if (!(container instanceof HTMLElement) || !segment?.mangaPage || !prompt) return null;
+        const wrapper = RBQ.api.createPromptCard({ messageId, prompt, id, label: 'manga-studio' });
+        if (!(wrapper instanceof HTMLElement)) return null;
+        wrapper.dataset.rbqSdtExternalId = id;
+        wrapper.dataset.rbqSdtExternalChat = getChatKey();
+        // External pages have their own saved records; host history and ordinary SDT cache must not replace them.
+        wrapper.dataset.rbqSdtKey = id;
+        bindSdtImageCard(wrapper, segment, prompt);
+        container.append(wrapper);
+        if (image) {
+            RBQ.api.renderInlineGeneratedImage(wrapper, image);
+            renderCardBadges(wrapper, JSON.parse(wrapper.dataset.rbqSdtSegmentSnapshot));
+        }
+        if (persist) persistSdtImageCardRecord(wrapper, segment, prompt, image, true);
+        return wrapper;
+    }
+
+    async function restoreSdtImageCards(messageId) {
+        if (onSdtNaiPayload.disposed) return;
+        const records = getSdtImageCardRecords(messageId);
+        const container = RBQ.api.getMessageTextContainer?.(messageId);
+        if (!(container instanceof HTMLElement) || !records.length) return;
+        const chatKey = getChatKey();
+        for (const record of records) {
+            if (!record?.id || !record.segment?.mangaPage || !record.prompt || !record.image) continue;
+            const existing = [...container.querySelectorAll('[data-rbq-sdt-external-id]')].find(card => card.dataset.rbqSdtExternalId === record.id);
+            if (existing) {
+                if (existing.dataset.rbqSdtExternalBound !== '1') bindSdtImageCard(existing, record.segment, record.prompt);
+                else {
+                    let snapshot = record.segment;
+                    try { snapshot = JSON.parse(existing.dataset.rbqSdtSegmentSnapshot || 'null') || snapshot; } catch (_) {}
+                    renderCardBadges(existing, snapshot);
+                }
+                continue;
+            }
+            // Mount before resolving the cached image URL, so overlapping scans cannot duplicate this card.
+            const wrapper = createSdtImageCard({ messageId, ...record, image: null, persist: false });
+            if (!wrapper) continue;
+            let image = { ...record.image };
+            if (image.cacheId && typeof RBQ.api.ensureHistoryItemDisplayUrl === 'function') {
+                const url = await RBQ.api.ensureHistoryItemDisplayUrl(image).catch(() => '');
+                if (url) image.url = url;
+            }
+            if (onSdtNaiPayload.disposed) return;
+            if (getChatKey() !== chatKey || !wrapper.isConnected) continue;
+            RBQ.api.renderInlineGeneratedImage(wrapper, image);
+            renderCardBadges(wrapper, JSON.parse(wrapper.dataset.rbqSdtSegmentSnapshot));
         }
     }
 
@@ -12440,9 +12640,12 @@ SCHEMA:
     let lastChatKey = null;
 
     async function processMessage(messageId, options = {}) {
+        if (onSdtNaiPayload.disposed) return;
         const { allowHistorical = false, force = false } = options;
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
+        await restoreSdtImageCards(id);
+        if (onSdtNaiPayload.disposed) return;
         // 关键流式守卫：无论是否 force，只要该楼层正在流式输出或处于「思考中......」，严禁介入！
         if (isMessageCurrentlyStreaming(id)) {
             debugInfo(`⏳ skipping processMessage for #${id} — streaming / thinking is active`);
@@ -12667,6 +12870,7 @@ SCHEMA:
     }
 
     function scheduleProcess(messageId, options = {}) {
+        if (onSdtNaiPayload.disposed) return;
         const id = Number(messageId);
         if (!Number.isFinite(id)) return;
         // 如果当前消息正在流式生成或在思考中，严禁提前介入渲染与解析，静待流式结束后由 startStreamingWatcher 统一调度
@@ -12751,6 +12955,7 @@ SCHEMA:
     }
 
     function scanAllVisible(force = false) {
+        if (onSdtNaiPayload.disposed) return;
         document.querySelectorAll('.mes[mesid]').forEach(element => {
             scheduleProcess(Number(element.getAttribute('mesid')), { allowHistorical: true, force: !!force });
         });
@@ -12759,6 +12964,7 @@ SCHEMA:
     }
 
     function scanLatestVisible() {
+        if (onSdtNaiPayload.disposed) return;
         const latest = getLatestMessageId();
         if (latest != null) scheduleProcess(latest, { force: true, allowHistorical: true });
     }
@@ -13696,6 +13902,7 @@ SCHEMA:
     }
 
     function ensureSettingsPanel() {
+        if (onSdtNaiPayload.disposed) return null;
         const rail = document.querySelector('.st-scene-trigger-tab-rail');
         const content = document.querySelector('.st-scene-trigger-modal-content');
         if (!(rail instanceof HTMLElement) || !(content instanceof HTMLElement)) return null;
@@ -14897,17 +15104,20 @@ SCHEMA:
     }
 
     function waitForPanel() {
+        if (onSdtNaiPayload.disposed) return;
         const panel = ensureSettingsPanel();
         if (panel) return renderSettings(panel);
-        setTimeout(waitForPanel, 400);
+        scheduleSdtLifecycle(waitForPanel, 400);
     }
 
     function observeMessages() {
+        if (onSdtNaiPayload.disposed) return;
         if (bodyObserver) {
             try { bodyObserver.disconnect(); } catch (_e) {}
             bodyObserver = null;
         }
         const observer = new MutationObserver((mutations) => {
+            if (onSdtNaiPayload.disposed) return;
             for (const mutation of mutations) {
                 // 关键隔离：卡片内部的任何 DOM 变动（图片渲染、加载动画、隐私模式操作栏替换、徽章更新等）
                 // 均属于插件自发 UI 行为，严禁将其视作正文文本变动，杜绝反复清空 processedKeys 导致按钮跳动与卡片重构！
@@ -14976,6 +15186,7 @@ SCHEMA:
             const es = RBQ.api.eventSource;
             const et = RBQ.api.event_types;
             handleMessageRender = (id) => {
+                if (onSdtNaiPayload.disposed) return;
                 const mesId = Number(id);
                 if (Number.isFinite(mesId)) {
                     for (const pk of processedKeys) {
@@ -14991,12 +15202,21 @@ SCHEMA:
                 }
             };
             handleChatChanged = () => {
+                if (onSdtNaiPayload.disposed) return;
                 captureMangaRequestContext.epoch = (captureMangaRequestContext.epoch || 0) + 1;
                 lastChatKey = getChatKey();
                 processedKeys.clear();
                 document.querySelectorAll(`.${CARD_CLASS}`).forEach(el => { el._taggerAbort?.abort(); el.remove(); });
                 refreshCharacterProfileListUi();
-                setTimeout(() => scanAllVisible(true), 200);
+                scheduleSdtLifecycle(() => scanAllVisible(true), 200);
+            };
+            handleGenerationStopped = () => {
+                if (onSdtNaiPayload.disposed) return;
+                const latest = getLatestMessageId();
+                if (latest != null) {
+                    scheduleProcess(latest, { force: true });
+                    scheduleAutoRun(latest);
+                }
             };
             try {
                 if (et.CHARACTER_MESSAGE_RENDERED) es.on(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
@@ -15004,13 +15224,7 @@ SCHEMA:
                 if (et.USER_MESSAGE_RENDERED) es.on(et.USER_MESSAGE_RENDERED, handleMessageRender);
                 if (et.MESSAGE_RECEIVED) es.on(et.MESSAGE_RECEIVED, handleMessageRender);
                 if (et.GENERATION_STOPPED) {
-                    es.on(et.GENERATION_STOPPED, () => {
-                        const latest = getLatestMessageId();
-                        if (latest != null) {
-                            scheduleProcess(latest, { force: true });
-                            scheduleAutoRun(latest);
-                        }
-                    });
+                    es.on(et.GENERATION_STOPPED, handleGenerationStopped);
                 }
                 if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, handleChatChanged);
             } catch (e) {
@@ -15018,10 +15232,10 @@ SCHEMA:
             }
         }
 
-        setTimeout(scanLatestVisible, 250);
+        scheduleSdtLifecycle(scanLatestVisible, 250);
         // Delayed full scan to restore all cached cards (including images) on page reload
-        setTimeout(() => scanAllVisible(true), 1200);
-        setTimeout(() => scanAllVisible(false), 3000);
+        scheduleSdtLifecycle(() => scanAllVisible(true), 1200);
+        scheduleSdtLifecycle(() => scanAllVisible(false), 3000);
         startStreamingWatcher();
     }
 
@@ -15627,6 +15841,28 @@ SCHEMA:
             if (msg.extra?.rbq_image && typeof msg.extra.rbq_image === 'object') hostExtras.push(msg.extra.rbq_image);
             const consumedHostExtras = new Set();
 
+            // Generated Studio pages retain independent characters/settings in
+            // message extras; prefer them over the host's flat image records.
+            for (const record of Array.isArray(msg.extra?.rbq_manga_studio_images) ? msg.extra.rbq_manga_studio_images : []) {
+                const seg = record?.segment, image = record?.image;
+                if (!seg?.mangaPage || !record.prompt || !image || !(image.cacheId || image.url || image.displayUrl)) continue;
+                const imgKey = image.cacheId || image.url || image.displayUrl;
+                if (seenIdentifiers.has(imgKey)) continue;
+                seenIdentifiers.add(imgKey);
+                for (const hostImage of hostExtras) {
+                    if (image.cacheId ? hostImage?.cacheId === image.cacheId : (hostImage?.url || hostImage?.displayUrl) === imgKey) consumedHostExtras.add(hostImage);
+                }
+                const norm = normalizePromptKey(record.prompt);
+                if (norm) seenPromptsInMessage.add(norm);
+                items.push({ ...JSON.parse(JSON.stringify(seg)), id: record.id, externalId: record.id,
+                    messageId: mesId, senderName, isUser, timeText: sendDate, panelIndex: 0,
+                    anchorText: cleanDialogueForComic(seg.anchor?.text || ''), sceneText: cleanDialogueForComic(seg.scene || '', 100),
+                    label: seg.label || '漫画工作台', prompt: record.prompt,
+                    url: image.url || image.displayUrl || '', displayUrl: image.displayUrl || image.url || '',
+                    cacheId: image.cacheId || '', imageResult: { ...image }, isPending: false,
+                    hasGenerateButton: true, source: 'manga-studio', externalChatKey: getChatKey() });
+            }
+
             // 1. Core SDT backpack: message.extra.rbq_sdt
             const sdt = msg.extra?.rbq_sdt;
             if (sdt && typeof sdt === 'object') {
@@ -16106,6 +16342,7 @@ SCHEMA:
     }
 
     async function runDrawerPanelGeneration(item, btnEl) {
+        if (onSdtNaiPayload.disposed) return;
         if (!item || !item.prompt) {
             toastr.warning('当前分镜没有可用 prompt，无法生图', PLUGIN_NAME);
             return;
@@ -16126,6 +16363,8 @@ SCHEMA:
                 }
             );
 
+            if (onSdtNaiPayload.disposed) return;
+
             if (!image) throw new Error('生图未返回有效图片结果');
 
             // 3. Mark state as generated
@@ -16134,6 +16373,11 @@ SCHEMA:
             item.cacheId = image.cacheId || '';
             item.isPending = false;
             item.imageResult = image;
+            if (item.externalId) {
+                const saved = getSdtImageCardRecords(item.messageId).find(record => record?.id === item.externalId);
+                persistSdtImageCardRecord({ dataset: { rbqSdtExternalId: item.externalId,
+                    messageId: String(item.messageId), rbqSdtExternalChat: item.externalChatKey } }, saved?.segment || item, item.prompt, image);
+            }
 
             if (item.baseKey && item.segKey) {
                 markSegmentAutoGenerated(item.baseKey, item.segKey, image, item.messageId);
@@ -16144,7 +16388,9 @@ SCHEMA:
                 ? RBQ.api.getMessageTextContainer(item.messageId)
                 : null;
             if (textContainer instanceof HTMLElement) {
-                const segCard = (item.segKey ? textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(item.segKey)}"]`) : null) ||
+                const segCard = (item.externalId ? [...textContainer.querySelectorAll('[data-rbq-sdt-external-id]')]
+                                    .find(card => card.dataset.rbqSdtExternalId === item.externalId) : null) ||
+                                (item.segKey ? textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-segment-key="${CSS.escape(item.segKey)}"]`) : null) ||
                                 (item.baseKey ? textContainer.querySelector(`.${CARD_CLASS}[data-rbq-sdt-base-key="${CSS.escape(item.baseKey)}"]`) : null);
                 if (segCard) {
                     RBQ.api.renderInlineGeneratedImage(segCard, image);
@@ -16583,6 +16829,7 @@ SCHEMA:
 
     // Watch for floating ball appearance and inject button
     function watchForFloatingBall() {
+        if (onSdtNaiPayload.disposed) return;
         if (floatingObserver) {
             try { floatingObserver.disconnect(); } catch (_e) {}
             floatingObserver = null;
@@ -16592,6 +16839,7 @@ SCHEMA:
         if (s.comicDrawerFloatingEnabled !== false) injectFloatingComicDrawerButton();
         // 仅监听主扩展生命周期事件精准注入，不再暴力监听整个 body 树
         const reinjectFloating = () => {
+            if (onSdtNaiPayload.disposed) return;
             const curStore = getStore();
             if (curStore.manualDrawEnabled) injectFloatingManualButton();
             else removeFloatingManualButton();
@@ -16604,13 +16852,19 @@ SCHEMA:
             RBQ.api.eventSource.on(RBQ.api.event_types.CHAT_CHANGED, reinjectFloating);
         }
         // 延迟重试兜底：主扩展悬浮球在插件之后挂载
-        setTimeout(reinjectFloating, 2000);
-        setTimeout(reinjectFloating, 5000);
+        scheduleSdtLifecycle(reinjectFloating, 2000);
+        scheduleSdtLifecycle(reinjectFloating, 5000);
         // 提供 disconnect() 接口以兼容 cleanupInstance
         floatingObserver = {
             disconnect() {
                 window.removeEventListener('st-scene-trigger:image-generated', reinjectFloating);
                 document.removeEventListener('rbq-tab-switched', reinjectFloating);
+                const es = RBQ?.api?.eventSource;
+                const event = RBQ?.api?.event_types?.CHAT_CHANGED;
+                if (es && event) {
+                    if (typeof es.removeListener === 'function') es.removeListener(event, reinjectFloating);
+                    else if (typeof es.off === 'function') es.off(event, reinjectFloating);
+                }
             }
         };
     }
@@ -16764,6 +17018,10 @@ SCHEMA:
     RBQ.api.openSegmentManualTagModal = openSegmentManualTagModal;
     RBQ.api.prepareNaiCharData = prepareNaiCharData;
     RBQ.api.generateSdtImage = generateSdtImage;
+    RBQ.api.bindSdtImageCard = bindSdtImageCard;
+    RBQ.api.createSdtImageCard = createSdtImageCard;
+    RBQ.api.redrawSdtImageCard = wrapper => runImageGenerationForWrapper(wrapper, wrapper?.dataset?.messageId, '', '');
+    RBQ.api.restoreSdtImageCards = restoreSdtImageCards;
     RBQ.api.getPendingSdtImageData = () => pendingNaiCharData;
     RBQ.api.renderTaggerDebugInfo = renderTaggerDebugInfo;
     RBQ.api.buildSdtMessages = (systemPrompt, userContent, customStore = null) => {
@@ -16811,6 +17069,28 @@ SCHEMA:
     };
 
     function cleanupInstance() {
+        if (cleanupInstance.disposed) return;
+        cleanupInstance.disposed = true;
+        onSdtNaiPayload.disposed = onSdtComfyWorkflow.disposed = true;
+        RBQ.off?.('buildNaiV4Payload', onSdtNaiPayload);
+        RBQ.off?.('buildComfyUiWorkflow', onSdtComfyWorkflow);
+        window.removeEventListener('st-scene-trigger:viewer-rendered', onSdtViewerRendered);
+        window.removeEventListener('st-scene-trigger:viewer-closed', onSdtViewerClosed);
+        if (autoRunTimer) clearTimeout(autoRunTimer);
+        autoRunTimer = null;
+        autoRunPendingId = null;
+        for (const timer of pendingTimers.values()) clearTimeout(timer);
+        pendingTimers.clear();
+        for (const timer of (typeof scheduleSdtLifecycle === 'function' ? scheduleSdtLifecycle.timers : null) || []) clearTimeout(timer);
+        if (typeof scheduleSdtLifecycle === 'function') scheduleSdtLifecycle.timers?.clear();
+        pendingNaiCharData = null;
+        for (const { key, value, previous, existed } of cleanupInstance.apiExports || []) {
+            if (RBQ.api[key] !== value) continue;
+            if (existed) RBQ.api[key] = previous;
+            else delete RBQ.api[key];
+        }
+        if (window.openStoryboardDrawer === openStoryboardDrawer) delete window.openStoryboardDrawer;
+        if (window.__rbqSdtCleanup === cleanupInstance) delete window.__rbqSdtCleanup;
         console.info(`[${PLUGIN_NAME}] 正在执行实例清理...`);
         if (streamingWatcherTimer) {
             clearInterval(streamingWatcherTimer);
@@ -16842,10 +17122,12 @@ SCHEMA:
                 if (et.CHARACTER_MESSAGE_RENDERED) unbind(et.CHARACTER_MESSAGE_RENDERED, handleMessageRender);
                 if (et.MESSAGE_UPDATED) unbind(et.MESSAGE_UPDATED, handleMessageRender);
                 if (et.USER_MESSAGE_RENDERED) unbind(et.USER_MESSAGE_RENDERED, handleMessageRender);
+                if (et.MESSAGE_RECEIVED) unbind(et.MESSAGE_RECEIVED, handleMessageRender);
             }
             if (handleChatChanged && et.CHAT_CHANGED) {
                 unbind(et.CHAT_CHANGED, handleChatChanged);
             }
+            if (typeof handleGenerationStopped === 'function' && et.GENERATION_STOPPED) unbind(et.GENERATION_STOPPED, handleGenerationStopped);
         }
         removeFloatingManualButton();
         removeFloatingComicDrawerButton();
@@ -16861,6 +17143,7 @@ SCHEMA:
         if (typeof RBQ?.ui?.unregisterTestAction === 'function') {
             RBQ.ui.unregisterTestAction('sdt-smart-generate');
             RBQ.ui.unregisterTestAction('sdt-parse-tags');
+            RBQ.ui.unregisterTestAction('sdt-smart-test');
         }
     }
 
@@ -17168,6 +17451,9 @@ SCHEMA:
     window.openStoryboardDrawer = openStoryboardDrawer;
 
     window.__rbqSdtCleanup = cleanupInstance;
+    cleanupInstance.apiExports = Object.entries(RBQ.api)
+        .filter(([key, value]) => sdtPreviousApi[key] !== value)
+        .map(([key, value]) => ({ key, value, previous: sdtPreviousApi[key], existed: Object.hasOwn(sdtPreviousApi, key) }));
     if (RBQ?.registerCleanup) {
         RBQ.registerCleanup(PLUGIN_ID, cleanupInstance);
     }

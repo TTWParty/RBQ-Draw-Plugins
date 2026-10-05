@@ -51,6 +51,42 @@ test('single silent page and multi-person repeated appearances retain original s
     const old=original.parseV83ImageProtocol(JSON.stringify(input)),current=manga.compileMangaPage(input);
     assert.equal(old.ok,true);assert.equal(current.base,old.base.prompt);assert.equal(current.characters.length,0);
 });
+test('legacy dialogue mode retains the original bubble direction, shape, grouping and layout rules', () => {
+    const previousMode = settings._mangaMode.dialogueMode;
+    settings._mangaMode.dialogueMode = 'legacy';
+    const current = RBQ.api.mangaProtocol.systemPrompt();
+    const shapes = preset.prompts.find(p => p.identifier === 'bubble_adaptive').content;
+    const text = preset.prompts.find(p => p.identifier === 'dialogue_rules').content;
+    for (const token of ['本格画面坐标', '镜头一变', '破線吹き出し', '波打つ吹き出し',
+        '四角い吹き出し', 'しっぽなしの楕円吹き出し', '連結吹き出し', '一条尾巴']) {
+        assert.ok(shapes.includes(token), 'original rule: ' + token);
+        assert.ok(current.includes(token), 'legacy rule: ' + token);
+    }
+    for (const token of ['*……*', '【……】', '{……}', '右→左', 'Layout', '一个空行']) {
+        assert.ok(text.includes(token), 'original contract: ' + token);
+        assert.ok(current.includes(token), 'legacy contract: ' + token);
+    }
+    assert.match(current, /不(?:写|描述)切口怎么挖/);
+    assert.ok(current.includes('缩小组内间距'));
+    settings._mangaMode.dialogueMode = previousMode;
+});
+test('new legacy Text tails preserve literal protocol examples like the original compiler', () => {
+    const input = fixture();
+    input.panels = [input.panels[0]];
+    input.page.base = 'comic, 1 panel';
+    input.page.non_character = 'BubbleType: ナレーション枠, Layout: 横書き\nText: SFX: 擬音, Text: 这是页眉中的示例。';
+    input.panels[0].non_character = '';
+    const example = 'BubbleType: 通常吹き出し, Layout: 縦書き, Text: 这是字段示例。\n\n下一句。';
+    input.panels[0].characters.forEach(c => {
+        c.positive = 'girl, standing, BubbleType: 通常吹き出し, 右上, Layout: 縦書き\nText: ' + example;
+    });
+    const old = original.parseV83ImageProtocol(JSON.stringify(input));
+    assert.equal(old.ok, true);
+    const resolved = RBQ.api.mangaProtocol.resolveAppearances([input], [], [], [], { dialogueMode: 'legacy', style: 'soft_color' })[0];
+    const current = manga.compileMangaPage(resolved);
+    assert.equal(captionView(current.base).text, captionView(old.base.prompt).text);
+    assert.deepEqual(clone(current.characters.map(c => captionView(c.caption).text)), clone(old.characters.map(c => captionView(c.positive).text)));
+});
 if (process.argv[3]) {
     const hostSource=fs.readFileSync(process.argv[3],'utf8');
     test('real host payload builder forwards each request context and preserves selected model/parameters', () => {

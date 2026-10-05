@@ -8,7 +8,7 @@ const sdtSource = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-tr
 const mangaPlanningPresets = ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'];
 const settings = {
     currentMode: 'nai',
-    _mangaMode: { enabled: true, style: 'monochrome', grammar: 'cinema', gutter: 'bleed', language: 'zh-hans', autoSpread: true, antiHijack: true,
+    _mangaMode: { enabled: true, style: 'monochrome', grammar: 'cinema', gutter: 'bleed', language: 'zh-hans', dialogueMode: 'structured', autoSpread: true, antiHijack: true,
         studio: { ratio: '832x1216', panels: [], panelCountMode: 'auto', useChatChars: false } },
     _smartDrawTrigger: { _mangaActive: true, enhancedContext: 'v_manga', multiCharOutput: true, multiCharUseCoords: false }
 };
@@ -1628,6 +1628,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         generatedRequest = sdtHook(payload(prompt, [{ char_caption: 'stale host person' }])); return { url: 'test.png' };
     } } };
     const drawer = vm.createContext({ RBQ: drawerApi, window: { RBQ: drawerApi }, getStore: () => ({}),
+        onSdtNaiPayload: sdt.onSdtNaiPayload,
         getFinalPrompt: sdt.getFinalPrompt, getSegmentNegative: sdt.getSegmentNegative,
         generateSdtImage: (segment, prompt, reason, meta, progress) => {
             sdt.prepareNaiCharData(segment);

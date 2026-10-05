@@ -130,9 +130,10 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         assert.match(promptJson, /绝不能只建主动方而漏掉受动方/);
         assert.match(promptJson, /【分级判定准则与 Danbooru 客观转译/);
         assert.match(promptJson, /严禁将亲密\/侵犯剧情擅自篡改为废墟战斗/);
-        assert.match(promptJson, /【漫画台词灵魂与对白气泡生成铁律/);
-        assert.match(promptJson, /严禁生成全篇无任何台词气泡的死寂默片/);
-        assert.match(promptJson, /破除过度禁言限制/);
+        assert.doesNotMatch(promptJson, /任何没有原文依据的文字都不要编造/);
+        assert.doesNotMatch(promptJson, /无台词的静默格不添空白气泡/);
+        assert.doesNotMatch(promptJson, /静默格不添字/);
+        assert.doesNotMatch(promptJson, /禁止凭空补字/);
         assert.match(promptJson, /只输出一个 JSON 对象/);
 
         const promptTool = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', true);

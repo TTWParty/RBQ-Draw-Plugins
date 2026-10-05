@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.8';
+    const PLUGIN_VERSION = '6.5.9';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7457,7 +7457,7 @@ ${getCharacterMemoryTagSpecification()}
         const requestContext = segResult?.mangaPage ? captureMangaRequestContext() : null;
         const segJson = JSON.stringify(segResult || {});
         const systemPrompt = segResult?.mangaPage
-            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit 与本格动作对白 positive，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
+            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit、本格动作 positive 与逐泡文字 bubbles，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
             : `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
@@ -8283,6 +8283,8 @@ SCHEMA:
                     for (const person of panel.characters) {
                         const current = updatedSeg.characters.find(c => c.panelId === panel.id && c.characterId === person.character_id);
                         if (current) {
+                            const original = segResult.characters?.find(c => c.panelId === panel.id && c.characterId === person.character_id);
+                            if (current.caption !== original?.caption) delete person.bubbles;
                             person.positive = current.caption;
                             person.negative = current.uc || '';
                             person.center = sdtParseCoord(current.center);
@@ -9608,7 +9610,8 @@ SCHEMA:
     function buildNaiCharData(segmentResult) {
         if (segmentResult?.mangaPage || (isMangaRequest() && Array.isArray(segmentResult?.characters))) {
             return {
-                manga: true, useCoords: !!segmentResult.mangaUseCoords, negative: getSegmentNegative(segmentResult),
+                manga: true, textCompiled: segmentResult.mangaTextCompiled === true || (typeof segmentResult.mangaPage === 'object' && segmentResult.mangaPage !== null),
+                useCoords: !!segmentResult.mangaUseCoords, negative: getSegmentNegative(segmentResult),
                 renderSettings: { ...(segmentResult.mangaRenderSettings || RBQ.api.mangaProtocol?.captureRenderSettings?.()) },
                 characters: (segmentResult.characters || []).map(c => ({ name: c.name || c._rawName, caption: c.caption,
                     center: typeof c.center === 'object' && c.center ? { ...c.center } : c.center, uc: c.uc || '' }))
@@ -9658,7 +9661,7 @@ SCHEMA:
         if (!data || (data.prompt && !String(payload.input || '').includes(data.prompt)
             && !RBQ.api.mangaProtocol?.matchesPayloadRequest?.(payload, data))
             || (!data.manga && !data.enabled)) return payload;
-        const { characters, manga, useCoords, negative, renderSettings } = data;
+        const { characters, manga, useCoords, negative, renderSettings, textCompiled } = data;
         if (!characters.length && !manga) return payload;
 
         const charCaptions = characters.map(c => ({
@@ -9698,7 +9701,7 @@ SCHEMA:
 
         debugInfo(`NAI V4 多角色直注: ${characters.length} 个角色, base="${baseCaptionFinal.slice(0, 80)}..."`);
         if (!context) pendingNaiCharData = null; // legacy callers only
-        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true, characters.map(c => c.name), renderSettings) : payload;
+        return manga && RBQ.api.mangaProtocol ? RBQ.api.mangaProtocol.enhancePayload(payload, true, characters.map(c => c.name), renderSettings, !!textCompiled) : payload;
     });
 
     /* ── ComfyUI payload hook: inject char placeholders ── */

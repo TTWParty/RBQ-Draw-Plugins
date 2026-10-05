@@ -134,9 +134,8 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         assert.doesNotMatch(promptJson, /无台词的静默格不添空白气泡/);
         assert.doesNotMatch(promptJson, /静默格不添字/);
         assert.doesNotMatch(promptJson, /禁止凭空补字/);
-        assert.match(promptJson, /bubbleType（speech \| thought \| screaming \| caption \| sfx）/);
-        assert.match(promptJson, /bubbleText/);
-        assert.match(promptJson, /bubbleLayout/);
+        assert.match(promptJson, /bubbles（本格旁白\/拟音\/画外文字数组）/);
+        assert.match(promptJson, /characters\[\]\.bubbles/);
         assert.match(promptJson, /只输出一个 JSON 对象/);
 
         const promptTool = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', true);

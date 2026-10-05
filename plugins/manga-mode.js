@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.16';
+        const VERSION = '1.9.17';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -207,6 +207,29 @@
     };
 
     // ── 4. Prompt Assembly for SDT Tagger LLM ──────────────────────
+    const MANGA_BUBBLE_TYPES = {
+        speech: '通常吹き出し', screaming: '叫び吹き出し', thought: '思考の吹き出し',
+        whisper: '破線吹き出し', shiver: '波打つ吹き出し', broadcast: '四角い吹き出し',
+        caption: 'ナレーション枠', offscreen: '切り欠きのある吹き出し',
+        tailless: 'しっぽなしの楕円吹き出し', connected: '連結吹き出し', sfx: '擬音'
+    };
+    const MANGA_BUBBLE_POSITIONS = {
+        'right-upper': '右上', 'left-upper': '左上', 'right-lower': '右下', 'left-lower': '左下',
+        mouth: '口元', offscreen: '画面外', above: '頭上', top: '上部', bottom: '下部'
+    };
+
+    function mangaBubblesSchema(description) {
+        return {
+            type: 'array', description,
+            items: { type: 'object', properties: {
+                type: { type: 'string', enum: Object.keys(MANGA_BUBBLE_TYPES) },
+                position: { type: 'string', enum: Object.keys(MANGA_BUBBLE_POSITIONS) },
+                layout: { type: 'string', enum: ['vertical', 'horizontal'] },
+                text: { type: 'string', description: 'Only the literal utterance. No BubbleType/Layout/Text headers, no manually escaped newline separators.' }
+            }, required: ['type', 'position', 'layout', 'text'] }
+        };
+    }
+
     // Shared contract: SDT and Studio compile the same page/panels/characters tree.
     function mangaSegmentSchema() {
         const string = { type: 'string' };
@@ -221,7 +244,8 @@
                 page: {
                     type: 'object', properties: {
                         base: { type: 'string', description: 'Actual people/panel counts and page form; dominant panel position + approximate page area, supporting panel sizes + adjacency, reading path and lighting. No dialogue. Not just vertical layout.' },
-                        non_character: { type: 'string', description: 'Optional non-person text: bubble/SFX/layout visuals BEFORE a single final Text: containing only literal text.' }
+                        non_character: { type: 'string', description: 'Optional page-level non-person visual tags. Literal text belongs in page.bubbles.' },
+                        bubbles: mangaBubblesSchema('Optional page-level caption/SFX only; panel-specific text belongs in that panel.')
                     }, required: ['base']
                 },
                 panels: {
@@ -231,7 +255,8 @@
                         properties: {
                             id: string,
                             description: { type: 'string', description: 'Panel position/size, shot and environment tags. No P1: prose, character actions or dialogue.' },
-                            non_character: { type: 'string', description: 'Only caption, SFX or truly offscreen speech, with this panel position and source. Visible speakers MUST put speech in their own positive, not here. Visuals before final Text:.' },
+                            non_character: { type: 'string', description: 'Optional caption/SFX/offscreen source visual tags. No literal dialogue. Visible speakers own their character.bubbles.' },
+                            bubbles: mangaBubblesSchema('This panel caption/SFX/truly offscreen speech in reading order. Visible speakers own character.bubbles.'),
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
@@ -247,7 +272,8 @@
                                             base: { type: 'string', description: 'Complete grayscale view of current original base/state.base. Required on first appearance IN THIS RESPONSE when neither characterMemory.render.base nor an earlier matching view exists; otherwise omit to reuse. Preserve names, age, height and structure.' },
                                             outfit: { type: 'string', description: 'Complete grayscale view of current original outfit/state.outfit, including all layers. Required on first appearance IN THIS RESPONSE without matching characterMemory.render.outfit, or actual uncached clothing change; otherwise omit to reuse. Empty only for no clothing.' }
                                         }, description: 'Derived drawing view, NEVER original memory. characterMemory.render is already cached for its source appearance; reuse it without rewriting. Return only uncached fields, omit this object when both views are known.' } } : {}),
-                                        positive: { type: 'string', description: 'This appearance only: panel position, pose, limb action with object/contact, expression/gaze and speech. Identity and clothing belong in base/outfit. BubbleType/location/Layout BEFORE one final Text:.' },
+                                        positive: { type: 'string', description: 'This appearance visual tags only: panel position, pose, limb action with object/contact, expression/gaze. No dialogue/protocol headers. Identity and clothing belong in base/outfit.' },
+                                        bubbles: mangaBubblesSchema('Only this visible character speech/thought in reading order. Omit or [] if silent. Never duplicate it in positive or panel.bubbles.'),
                                         negative: string,
                                         center: { type: 'object', properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 } }, required: ['x', 'y'], description: 'Required only in manual mode; normalized position on the entire page, not inside the panel.' }
                                     }, required: ['character_id', 'base', 'outfit', 'positive', 'negative']
@@ -268,10 +294,11 @@
                 format: 'nai5-comic', label: 'Page 1: 本页标题',
                 intent: '可选；一句话说明本页主画面',
                 anchor: { text: '从本页对应正文逐字摘录的10~40字原句' },
-                page: { base: '本页人数、页面形态、格数、主格位置及大致面积、辅助格大小与排列、阅读路径、光影；不能只写 vertical layout', non_character: '整页非人物文字；格式说明在前，实际原句放唯一末尾 Text: 后；可省略' },
+                page: { base: '本页人数、页面形态、格数、主格位置及大致面积、辅助格大小与排列、阅读路径、光影；不能只写 vertical layout', non_character: '可选；整页非人物视觉说明，不写台词', bubbles: [{ type: 'caption', position: 'top', layout: 'horizontal', text: '可选；整页旁白原句，台词不含字段说明' }] },
                 panels: [{
                     id: 'P1', description: '英文逗号分隔的位置、大小、景别、环境标签；不写人物演出或故事长句',
-                    non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
+                    non_character: '可选；本格旁白/拟音/画外来源的视觉说明，不写台词',
+                    bubbles: [{ type: 'sfx', position: 'bottom', layout: 'vertical', text: '可选；本格非人物文字原句' }],
                     characters: [{
                         character_id: 'C1', name: '稳定资料关联姓名；已有档案沿用，新人物可直接用英文绘图身份',
                         name_tag: '中文关联名缺少绘图身份时，每人首次给英文/罗马字 Tag：同人 Mouri Ran (Detective Conan)，原创 Lin Yao (original)；已有则复用',
@@ -279,7 +306,8 @@
                         outfit: '完整当前服装，含内外层与配饰；空字符串沿用已知衣着',
                         state: { base: '可选；明确外貌变化后的完整原色临时快照，不回写固定外貌', outfit: '可选；明确换装后的完整原色衣着；空字符串清空衣物' },
                         ...(getStore().style === 'monochrome' ? { render: { base: '完整灰阶外貌；本次响应首次且 characterMemory.render.base 无对应缓存时输出，命中缓存或前格已给则省略', outfit: '完整灰阶衣着；本次响应首次且 characterMemory.render.outfit 无对应缓存，或未缓存的换装时输出；空仅表示无衣物' } } : {}),
-                        positive: '本格位置、姿势、肢体动作与对象、表情视线；外貌服装放 base/outfit；气泡说明在唯一末尾 Text: 前，后面只有台词',
+                        positive: '本格位置、姿势、肢体动作与对象、表情视线；只写视觉词，外貌服装放 base/outfit',
+                        bubbles: [{ type: 'speech', position: 'right-upper', layout: 'vertical', text: '仅该人物的一句台词，不含字段说明；无话则省略或 []' }],
                         negative: '仅针对本次人物出场的互斥特征；没有则为空'
                     }]
                 }]
@@ -287,12 +315,14 @@
         };
     }
 
-    function splitMangaText(value) {
+    function splitMangaText(value, recoverLegacyHeaders = true) {
         const text = String(value || '').trim();
         const marker = /\bText[ \t]*[:：]/i.exec(text);
         if (!marker) return { visual: text, text: '' };
         let visual = text.slice(0, marker.index).replace(/[,\s]+$/, '');
         let literal = text.slice(marker.index + marker[0].length).trim();
+        // Compiled structured dialogue is opaque, even when discussing protocol syntax.
+        if (!recoverLegacyHeaders) return { visual, text: literal };
         // Recover only an unambiguous protocol header accidentally placed after Text:.
         // Ordinary dialogue containing "Text:" or "Layout:" stays opaque.
         const bubble = /^(?:BubbleType\s*[:：]\s*)?(?:通常吹き出し|叫び吹き出し|吹き出し|ギザギザ吹き出し|思考の吹き出し|破線吹き出し|波打つ吹き出し|四角い吹き出し|ナレーション枠|矩形のナレーション枠|切り欠きのある吹き出し|しっぽなしの楕円吹き出し|連結吹き出し)$/i;
@@ -315,15 +345,20 @@
             if (recovered === null) break;
             literal = recovered;
         }
-        // Legacy captions may interleave later bubble headers with real dialogue.
-        // Only an independent paragraph starting with explicit, known protocol
-        // fields is recoverable; inline mentions and quoted examples stay literal.
-        literal = literal.split(/(\n[ \t]*\n)/).map((part, index) => {
-            if (index < 2 || index % 2) return part;
-            let recovered;
-            while ((recovered = recoverHeader(part, true)) !== null) part = recovered;
-            return part;
-        }).join('');
+        // Legacy recovery is confined to independent, explicit protocol paragraphs.
+        // Decode an escaped separator only if the next paragraph has a complete known header.
+        const paragraphs = literal.split(/(\n[ \t]*\n|(?:\\{1,2}n[ \t]*){2})/);
+        for (let index = 2; index < paragraphs.length; index += 2) {
+            let part = paragraphs[index], recovered, recoveredHeader = false;
+            while ((recovered = recoverHeader(part, true)) !== null) {
+                part = recovered; recoveredHeader = true;
+            }
+            if (recoveredHeader) {
+                paragraphs[index - 1] = '\n\n';
+                paragraphs[index] = part;
+            }
+        }
+        literal = paragraphs.join('');
         // Remove only a complete outer quotation wrapper, preserving inner punctuation/quotations.
         literal = literal.split(/\n[ \t]*\n/).map(part => {
             const trimmed = part.trim();
@@ -339,18 +374,58 @@
     }
 
     // All visual instructions precede the single Text: tail. Dialogue is opaque.
-    function joinMangaCaptions(values) {
-        const parts = values.map(splitMangaText);
+    function joinMangaCaptions(values, recoverLegacyHeaders = true) {
+        const parts = values.map(value => value && typeof value === 'object'
+            ? value : splitMangaText(value, recoverLegacyHeaders));
         const visual = parts.map(p => p.visual).filter(Boolean).join(', ');
         const texts = parts.map(p => p.text).filter(Boolean);
         return visual + (texts.length ? '\nText: ' + texts.join('\n\n') : '');
+    }
+
+    function mangaBubbleParts(bubbles, owner = '漫画文字') {
+        if (!Array.isArray(bubbles)) throw new Error(`${owner} 的 bubbles 必须是数组`);
+        const visuals = [], texts = [];
+        bubbles.forEach((bubble, index) => {
+            if (!bubble || typeof bubble !== 'object' || typeof bubble.text !== 'string') {
+                throw new Error(`${owner} 第 ${index + 1} 个气泡缺少文字字符串`);
+            }
+            const type = bubble.type || 'speech';
+            const typeTag = (Object.hasOwn(MANGA_BUBBLE_TYPES, type) ? MANGA_BUBBLE_TYPES[type] : null)
+                || Object.values(MANGA_BUBBLE_TYPES).find(tag => tag === type);
+            const position = bubble.position || (type === 'offscreen' ? 'offscreen' : 'right-upper');
+            const positionTag = (Object.hasOwn(MANGA_BUBBLE_POSITIONS, position) ? MANGA_BUBBLE_POSITIONS[position] : null)
+                || Object.values(MANGA_BUBBLE_POSITIONS).find(tag => tag === position);
+            const layout = bubble.layout || (type === 'caption' ? 'horizontal' : 'vertical');
+            if (!typeTag || !positionTag || !['vertical', 'horizontal'].includes(layout)) {
+                throw new Error(`${owner} 第 ${index + 1} 个气泡类型、位置或排版无效`);
+            }
+            const text = bubble.text.trim();
+            if (!text) return;
+            const shape = typeTag === '擬音' ? 'SFX: 擬音, 吹き出しなし' : `BubbleType: ${typeTag}`;
+            visuals.push(`${shape}, ${positionTag}, Layout: ${layout === 'horizontal' ? '横書き' : '縦書き'}`);
+            texts.push(text);
+        });
+        return { visual: visuals.join(', '), text: texts.join('\n\n') };
+    }
+
+    function mangaCaptionParts(value, bubbles, owner) {
+        if (bubbles === undefined || bubbles === null) return splitMangaText(value);
+        const { visual } = splitMangaText(value, false);
+        // Explicit structured bubbles own the text, including an intentionally empty list.
+        // Remove only legacy visual protocol tokens; never examine the new literal text.
+        const clean = filterMangaTags(visual, new Set(), tag =>
+            /^(?:BubbleType|Layout|SFX)\s*[:：]/i.test(tag)
+                || /^(?:右上|左上|右下|左下|口元|画面外|頭上|上部|下部|吹き出しなし)$/.test(tag) ? '' : tag);
+        const bubble = mangaBubbleParts(bubbles, owner);
+        return { visual: [clean, bubble.visual].filter(Boolean).join(', '), text: bubble.text };
     }
 
     function mangaCharacterCaption(c, monochrome = false) {
         const view = monochrome && c.render ? c.render : c;
         const appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function'
             ? RBQ.api.renderCharacterMemoryBase(c.name, view.base || '', c.name_tag) : view.base;
-        return joinMangaCaptions([appearance, view.outfit, c.positive]);
+        return joinMangaCaptions([appearance, view.outfit,
+            mangaCaptionParts(c.positive, c.bubbles, c.character_id || c.name)]);
     }
 
     function compileMangaPage(data) {
@@ -378,7 +453,7 @@
         if (!countFound) base.visual = `${data.panels.length} panel${data.panels.length === 1 ? '' : 's'}, ${base.visual}`;
         if (base.text) warnings.push('page.base 含文字：请将对白归本人、旁白/拟音归 non_character');
         if (data.panels.length > 1 && /\bsplash page\b|単一コマ/.test(base.visual)) warnings.push('单格页面标记与多格 panels 冲突，请检查本页布局');
-        const pieces = [base.visual + (base.text ? '\nText: ' + base.text : ''), data.page.non_character];
+        const pieces = [base, mangaCaptionParts(data.page.non_character, data.page.bubbles, 'page')];
         const characters = [];
         const panelIds = new Set();
         data.panels.forEach((panel, panelIndex) => {
@@ -400,7 +475,7 @@
             if (panel.characters.length && /BubbleType\s*[:：]\s*(?:通常吹き出し|叫び吹き出し|思考の吹き出し)/i.test(panel.non_character || '')) {
                 warnings.push(`${panel.id} 的 non_character 含人物气泡，请核对说话者是否应归本格人物；程序未猜测或移动台词`);
             }
-            pieces.push(panel.description, panel.non_character);
+            pieces.push(panel.description, mangaCaptionParts(panel.non_character, panel.bubbles, panel.id));
             const ids = new Set();
             panel.characters.forEach((c, index) => {
                 if (!c || typeof c.character_id !== 'string' || !c.character_id.trim() || ids.has(c.character_id)) {
@@ -467,7 +542,7 @@
                 });
             });
         });
-        return { base: joinMangaCaptions(pieces), characters, useCoords: data.position_mode === 'manual', warnings };
+        return { base: joinMangaCaptions(pieces), characters, useCoords: data.position_mode === 'manual', warnings, textCompiled: true };
     }
 
     // Resolve appearances once during parsing. Cached pages contain final snapshots;
@@ -726,7 +801,7 @@
     }
 
     const mangaProtocol = {
-        appearanceStateVersion: 2, monochromeRenderVersion: 1, renderCacheVersion: 1, drawingIdentityVersion: 1,
+        appearanceStateVersion: 2, monochromeRenderVersion: 1, renderCacheVersion: 1, drawingIdentityVersion: 1, bubbleProtocolVersion: 1,
         appearanceSourceKey: mangaAppearanceSourceKey, cachedReferenceViews: mangaCachedReferenceViews,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
         planningPrompt: buildMangaPlanningPrompt, planningContext: buildMangaPlanningContext,
@@ -797,11 +872,11 @@ ${gutter.instruction}
 
 【数据归属：页面 → 画格 → 格内人物】
 输出 format=nai5-comic，字段见 outputSchema。page.base 写整页去重后的可见人数（同一人跨格不重复计数）、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
-同一人跨格使用相同 character_id，name 沿用稳定资料关联名，新人物可直接用英文绘图身份。绘图姓名必须英文/罗马字：同人用通用英文角色 Tag (作品英文名)，如 Mouri Ran (Detective Conan)；原创用英文名或姓名罗马字 (original)，如 Lin Yao (original)。中文档案 name 另给 name_tag，不改名另建档，不把中文名注入 base；已有 name_tag 原样复用，缺失时每人首次提供一次，后格沿用，不凭空添作品。程序将绘图身份拼入 base。base 写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。character_id 只用于跨格关联，保留资料中已有的英文普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
+同一人跨格使用相同 character_id，name 沿用稳定资料关联名，新人物可直接用英文绘图身份。绘图姓名必须英文/罗马字：同人用通用英文角色 Tag (作品英文名)，如 Mouri Ran (Detective Conan)；原创用英文名或姓名罗马字 (original)，如 Lin Yao (original)。中文档案 name 另给 name_tag，不改名另建档，不把中文名注入 base；已有 name_tag 原样复用，缺失时每人首次提供一次，后格沿用，不凭空添作品。程序将绘图身份拼入 base。base 写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情；对白归该人物 bubbles。character_id 只用于跨格关联，保留资料中已有的英文普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【角色记忆落实：与普通模式共用】
-每个角色填写 name、base、outfit、positive。base 是完整稳定身份外貌，已建档时原样复用；outfit 是完整当前衣着，保留内外层、上下装、鞋袜与配饰；未换装写空以沿用，或逐字复用已知完整衣着，不重新改写。positive 只写本格位置、动作、表情、视线和对白，不重复外貌或衣着。程序按普通模式选择完整的“已存 base + 当前 outfit”；彩色绘图与本格 positive 组装，黑白绘图用对应的 render 灰阶视图与 positive 组装。不按身体部位分类、删词或覆盖叠穿。
+每个角色填写 name、base、outfit、positive。base 是完整稳定身份外貌，已建档时原样复用；outfit 是完整当前衣着，保留内外层、上下装、鞋袜与配饰；未换装写空以沿用，或逐字复用已知完整衣着，不重新改写。positive 只写本格位置、动作、表情、视线，不重复外貌或衣着；对白/心声逐泡写该人物 bubbles。程序按普通模式选择完整的“已存 base + 当前 outfit”；彩色绘图与本格 positive 组装，黑白绘图用对应的 render 灰阶视图与 positive 组装。不按身体部位分类、删词或覆盖叠穿。
 特写、背面、遮挡通过 description 的景别与 positive 的姿态表达，不裁剪角色记忆，不填写 visible。姓名、国籍、年龄、身高、自定义细节按已有资料保留；未知不猜。
 换装从实际发生的格开始填写完整 outfit，后续空值沿用；衣物全部移除须显式 state.outfit=""。不把末格衣着提前填到开场格。明确束发、剪发等外貌变化时，state.base 写变化后的完整临时外貌快照，保留其他身份特征；后续沿用，不反写长期 base。普通换镜头不填写 state.base。
 base、outfit、state 与 character_memory 保留原设颜色，与普通模式相同。绘图按当前画风表达；黑白模式使用下述 render 灰阶视图，发送层只组装，不替你转换色相。不要把临时状态或黑白处理结果写回长期外貌。
@@ -815,19 +890,18 @@ page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英
 ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 artist: 标签或作品标签放入该人物 negative；不得从姓名括号猜造标签，不排除人物自身标签。' : ''}
 
 【对白与非人物文字】
-人物对白/心声归该人物 positive；旁白、拟音、画外对白归所属 page.non_character 或 panel.non_character，不占人物槽。所选剧情的原句保留说话者、次序、次数和标点。长句按原有停顿分气泡，不删字。容量不足先压缩重复视觉描写，再分格/分页，不截掉结尾或关键对话。
-说话者在本格可见时，原句必须进本人 positive，不能当旁白移到 page.base/non_character。只有真的画外声才放 non_character。需要上画的每句台词必须实际写入 Text，不能只写 speech bubble、speaking 或“说了某事”。叙述中的动作描写转成视觉标签，不整段变成旁白。
-问答按正文先问后答，回答不能提前放到入场格；同格放不下就顺延下一格。画外回答使用所属 panel.non_character，并明确本格位置、画外来源及画外气泡，不能使用整页 page.non_character 承载某一格的回答。
-气泡视觉说明必须在 Text: 前写类型、位置及 Layout。普通=通常吹き出し；呐喊=叫び吹き出し；心声=思考の吹き出し；耳语=破線吹き出し；颤抖=波打つ吹き出し；广播=四角い吹き出し；旁白=ナレーション枠；画外=切り欠きのある吹き出し；无尾=しっぽなしの楕円吹き出し；连续气泡=連結吹き出し。拟音用 SFX: 擬音, 吹き出しなし。
-同格先说的文字居右上，后说的居左下，不能因说话人站左侧就交换问答。气泡避开脸与主动作；尾巴指向当前镜头的嘴部，心声圆点指向头部，旁白/拟音无尾；同人连续多泡成一组只留一条尾巴，两人分组，声源未知不猜方向。最终只写类型和位置短词，不写尾巴绕行教程。
-对白/心声通常 Layout: 縦書き；外语对白、屏幕/信件字和旁白用 Layout: 横書き。每字段仅在末尾写一个 Text:，其后只有原句、没有视觉标签；同人同格多句用两个换行分隔，不重复人物槽。Text: 外不包额外引号。
-外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点。Layout 指令不写进台词，不按列手工断行；同人多泡把各泡类型、位置和阅读顺序全部写在 Text 前，再把各句用空行分隔。
-格式示例："top panel, girl, short hair, smiling, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 信收到了。"；拟音示例："bottom panel, SFX: 擬音, 吹き出しなし, Text: 咔哒"。BubbleType 和 Text 是两个独立字段标记，不能把 Text 当作整段气泡说明的开头。旁白用 BubbleType: ナレーション枠, Layout: 横書き，文字只取必要的时空/客观提示。
+人物对白/心声归该人物 bubbles；旁白、拟音、画外对白归所属 page.bubbles 或 panel.bubbles，不占人物槽。positive、non_character 只写视觉说明，不写 BubbleType/Layout/Text 协议片段。所选剧情的原句保留说话者、次序、次数和标点。长句按原有停顿分气泡，不删字。容量不足先压缩重复视觉描写，再分格/分页，不截掉结尾或关键对话。
+每泡独立输出 {type,position,layout,text}。type 可用 speech（通常）、screaming（呐喊）、thought（心声）、whisper（耳语）、shiver（颤抖）、broadcast（广播）、caption（旁白）、offscreen（画外）、tailless（无尾）、connected（连泡）、sfx（拟音）。text 只有真实文字原句，不放字段说明，不手工拼接 Text:，不以字面反斜杠 n 拼接多泡；同人多泡使用同一 bubbles 数组，不重复人物槽。无文字省略 bubbles 或写 []。
+position 使用 right-upper、left-upper、right-lower、left-lower、mouth、offscreen、above、top、bottom；同格先说居右上，后说居左下，不能因说话人站左侧就交换问答。气泡避开脸与主动作；尾巴指向当前镜头的嘴部，心声圆点指向头部，旁白/拟音无尾；同人连续多泡成一组，两人分组，声源未知不猜方向。
+layout 使用 vertical 或 horizontal；对白/心声通常竖排，外语对白、屏幕/信件字和旁白横排。外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点；不按列手工断行。
+说话者在本格可见时，文字必须进本人 bubbles。只有真的画外声才放 panel.bubbles；明确本格位置、画外来源及气泡，不用 page.bubbles 承载某一格的回答。问答按正文先问后答，回答不能提前放到入场格；放不下顺延下一格。叙述中的动作转成视觉标签，不整段变旁白。
+格式示例：positive="top panel, standing, holding envelope, smiling"，bubbles=[{"type":"speech","position":"right-upper","layout":"vertical","text":"信收到了。"},{"type":"thought","position":"left-lower","layout":"vertical","text":"终于等到了。"}]。拟音放 panel.bubbles=[{"type":"sfx","position":"bottom","layout":"vertical","text":"咔哒"}]。旁白只取必要的时空/客观提示。
+程序按原版 v1.1 编译：所有气泡类型、位置、Layout 先写，唯一末尾 Text: 后只有各句真实文字，以真正空行分隔。你只输出分栏 JSON，不自行执行拼接。
 文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}
 ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则，一次解析统一完成灰阶转译。page.base 用 monochrome, greyscale, screentone；description、non_character 的视觉部分、positive 与 negative 中的人物、道具、环境都按黑/白/灰、深浅、材质和明暗关系表达，不留彩色色相或 full color。光照只写方向、强弱和对比，避免色温染色。\n人物 base/outfit/state 与 character_memory 仍完整保留原设颜色。characterMemory.render 是与该资料当前完整原色来源匹配的灰阶缓存，命中字段直接沿用，不重写、不重复输出。首次指本次响应内该人物第一次出场，已建档不等于已有灰阶词：缺少缓存的字段须在本次首次出场输出 render:{base,outfit}，分别为当前完整外貌和完整衣着的灰阶绘图视图；已存资料原样为依据，已有姓名、同人 Tag、国籍、年龄、身高、形状、衣物层次及配饰不得遗漏，不重新猜外貌，不按景别裁剪。\n同一次响应的后续格/页，同人外观未变时省略 render；程序复用已给视图。明确换装时仅更新 render.outfit；明确临时外貌变化时仅更新 render.base，以变化后的完整 state 为依据；两者都变则一起更新。原色资料同一外观只能对应同一灰阶视图，即使重复输出也沿用首次视图。原色来源变化且没有对应缓存或前格视图时输出新视图；仅标签顺序或空白变化仍可复用，不能把不同服装或外貌当作同一来源。无衣物用 render.outfit=""。negative 对照灰阶后的实际外貌，不靠彩色色相排除其他人物。可靠身份标签和 Text 原文不脱色；灰阶结果仅服务本次绘图，不能反写长期档案。\n黑白分栏示例（只借格式）：首次 base="girl, blonde hair, brown eyes"，outfit="beige trench coat, white shirt"，render={"base":"girl, light hair, dark eyes","outfit":"light trench coat, white shirt"}，positive="standing, holding dark umbrella"；下一格 base=""、outfit=""，省略 render，仅写本格动作；下一次解析若 characterMemory.render 已有对应缓存，首次也省略命中字段。换红外套时 state.outfit="red coat"，render={"outfit":"dark coat"}，不再重复灰阶 base。' : '色彩遵循选定画风，人物发眼、衣物、配饰与道具保持已知固有颜色；同地点连续时间沿用主光源方向与明暗关系，镜头变化不新造光源。仅转场、时间经过或实际光源变化才更新；固有颜色与环境照明分开写。'}
 
 【输出核对】
-核对台本起止与覆盖、格数与页面形态、主辅格面积和相对排列、人物身份及动作连续性。逐句确认文字类型与说话者：可见人物的对白只在本人 positive，画外声/旁白/拟音才在 non_character；page.base 与 description 不放 Text。检查正负词不互斥，布局和动作信息已实际写进绘图字段，不能仅在 reason/intent 解释。直接提交最终页格，不输出额外的节点清单或覆盖报告。默认自动定位，不输出坐标；仅明确手动定位时输出 position_mode="manual"，每次人物出场附整页归一化 center:{x,y}（0～1）。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
+核对台本起止与覆盖、格数与页面形态、主辅格面积和相对排列、人物身份及动作连续性。逐句确认文字类型与说话者：可见人物对白只在本人 bubbles，画外声/旁白/拟音才在 panel/page.bubbles；page.base、description、positive、non_character 不放 Text 协议。检查正负词不互斥，布局和动作信息已实际写进绘图字段，不能仅在 reason/intent 解释。直接提交最终页格，不输出额外的节点清单或覆盖报告。默认自动定位，不输出坐标；仅明确手动定位时输出 position_mode="manual"，每次人物出场附整页归一化 center:{x,y}（0～1）。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
     }
 
     // Filter whole tags (including weighted groups), never substrings or dialogue.
@@ -860,8 +934,8 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             || (preserveProtocol && /^(?:(?:BubbleType|Layout|SFX)\s*[:：]|(?:右上|左上|右下|左下|口元|画面外|頭上|上部|下部|吹き出しなし)$)/i.test(tag))).join(', ');
     }
 
-    function sanitizeMangaPositivePrompt(value) {
-        const { visual, text } = splitMangaText(value);
+    function sanitizeMangaPositivePrompt(value, recoverLegacyHeaders = true) {
+        const { visual, text } = splitMangaText(value, recoverLegacyHeaders);
         const clean = filterMangaTags(visual, new Set(['no text', 'notext']), tag => tag, true);
         return clean + (text ? (clean ? '\n' : '') + 'Text: ' + text : '');
     }
@@ -887,7 +961,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
     }
     mangaProtocol.captureRenderSettings = captureMangaRenderSettings;
 
-    function enhanceMangaPayload(payload, forceManga = false, characterNames = [], renderSettings) {
+    function enhanceMangaPayload(payload, forceManga = false, characterNames = [], renderSettings, textCompiled = false) {
         const store = renderSettings || mangaPayloadSettings.get(payload) || getStore();
         const studioMatch = studioRequest && String(payload.input || '').includes(studioRequest.prompt);
         if (!store.enabled && !studioMatch && forceManga !== true) return payload;
@@ -920,14 +994,15 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         const negative = store.style === 'custom' ? store.customNegative || '' : style.negative;
         const mono = store.style === 'monochrome';
         const gutter = (GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed).tag;
+        const recoverLegacyHeaders = !(textCompiled || (studioMatch && studioRequest.compiled.textCompiled));
         const addStyle = value => sanitizeMangaPositivePrompt(joinMangaCaptions([
             positive && !String(value || '').includes(positive) ? positive : '', gutter, value
-        ]));
+        ], recoverLegacyHeaders), recoverLegacyHeaders);
         const caption = params.v4_prompt?.caption;
         payload.input = addStyle(payload.input);
         if (caption) {
             caption.base_caption = addStyle(caption.base_caption);
-            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption); });
+            (caption.char_captions || []).forEach(c => { c.char_caption = sanitizeMangaPositivePrompt(c.char_caption, recoverLegacyHeaders); });
             params.v4_prompt.use_order = true;
         }
         const negCaption = params.v4_negative_prompt?.caption;
@@ -959,7 +1034,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         // Bind the unmodified payload to this request before style/tag cleanup.
         // Legacy SDT must still recognize it after duplicate tags are removed.
         if (request) mangaPayloadRequests.set(payload, request);
-        return enhanceMangaPayload(payload, !!request?.manga, request?.characters?.map(c => c.name) || [], request?.renderSettings);
+        return enhanceMangaPayload(payload, !!request?.manga, request?.characters?.map(c => c.name) || [], request?.renderSettings, !!request?.textCompiled);
     });
 
     // ── 6. UI Injection into Smart Draw Trigger (SDT) ──────────────
@@ -1895,6 +1970,12 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             border-radius: 4px !important;
             outline: none !important;
             box-sizing: border-box !important;
+        }
+        #mw-root-container textarea.mw-bubble-text-in {
+            min-height: 44px !important;
+            max-height: 180px;
+            resize: vertical;
+            line-height: 1.4;
         }
         .mw-bubble-text-in:focus {
             border-color: #38bdf8 !important;
@@ -2994,9 +3075,10 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                 });
                 return { ...c, positive: joinMangaCaptions([position, p.shot, typeof RBQ.api.renderCharacterMemoryBase === 'function' ? RBQ.api.renderCharacterMemoryBase(c.name, c.positive, c.name_tag) : c.positive]) };
             });
-            const hasCharText = characters.some(c => splitMangaText(c.positive).text);
-            const hasNonCharText = !!splitMangaText(p.non_character || '').text;
-            const fallbackBubble = (!hasCharText && !hasNonCharText && p.bubbleText) ? studioBubbleCaption(p) : '';
+            const hasCharText = characters.some(c => mangaCaptionParts(c.positive, c.bubbles, c.character_id).text);
+            const hasNonCharText = !!mangaCaptionParts(p.non_character, p.bubbles, `P${index + 1}`).text;
+            const hasStructuredBubbles = Array.isArray(p.bubbles) || characters.some(c => Array.isArray(c.bubbles));
+            const fallbackBubble = (!hasStructuredBubbles && !hasCharText && !hasNonCharText && p.bubbleText) ? studioBubbleCaption(p) : '';
             if (fallbackBubble && characters.length > 0) {
                 characters[0].positive = joinMangaCaptions([characters[0].positive, fallbackBubble]);
             }
@@ -3004,6 +3086,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                 id: `P${index + 1}`,
                 // Legacy mixed tags remain visible page content until explicitly re-parsed; never guess a person from them.
                 description: joinMangaCaptions([position, p.shot, p.tags]),
+                ...(Array.isArray(p.bubbles) ? { bubbles: p.bubbles.map(b => ({ ...b })) } : {}),
                 non_character: (p.non_character || (!structured && p.bubbleText) || (fallbackBubble && !characters.length))
                     ? joinMangaCaptions([position, p.non_character, (!structured || !characters.length) ? (fallbackBubble || studioBubbleCaption(p)) : '']) : '',
                 characters
@@ -3037,40 +3120,55 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
     }
 
     function studioPanelFromProtocol(panel, index = 0) {
-        // Studio keeps position/shot separate so edits apply to every person in a panel.
-        let bubbleText = String(panel.bubbleText || '').trim();
-        let bubbleType = panel.bubbleType || 'speech';
-        let bubbleLayout = panel.bubbleLayout || (bubbleType === 'caption' ? 'horizontal' : 'vertical');
-        if (!bubbleText) {
-            for (const person of (panel.characters || [])) {
-                const parsed = splitMangaText(person.positive || '');
-                if (parsed.text) {
-                    bubbleText = parsed.text;
-                    if (/BubbleType\s*[:：]\s*(?:叫び|怒|scream)/i.test(person.positive)) bubbleType = 'screaming';
-                    else if (/BubbleType\s*[:：]\s*(?:思考|thought)/i.test(person.positive)) bubbleType = 'thought';
-                    else if (/BubbleType\s*[:：]\s*(?:波打つ|shiver|wavy)/i.test(person.positive)) bubbleType = 'shiver';
-                    if (/Layout\s*[:：]\s*横書き/i.test(person.positive)) bubbleLayout = 'horizontal';
-                    break;
-                }
+        // Keep the complete editable snapshot and structured text; compiling never reads memory again.
+        const characters = (panel.characters || []).map(person => {
+            const { base, outfit, state, render, _mangaAppearance, _mangaInitialAppearance, _mangaRenderFallbackFields, ...c } = person;
+            return { ...c, ...(Array.isArray(c.bubbles) ? { bubbles: c.bubbles.map(b => ({ ...b })) } : {}),
+                positive: mangaCharacterCaption(person, !!render) };
+        });
+        const owner = characters.find(c => mangaCaptionParts(c.positive, c.bubbles, c.character_id).text);
+        const source = owner || panel;
+        const parsed = mangaCaptionParts(owner ? owner.positive : panel.non_character, source.bubbles, owner?.character_id || panel.id);
+        const first = Array.isArray(source.bubbles) ? source.bubbles[0] : null;
+        let bubbleType = first?.type || 'speech';
+        let bubbleLayout = first?.layout || 'vertical';
+        if (!first) {
+            if (/SFX\s*[:：]/i.test(parsed.visual)) bubbleType = 'sfx';
+            else for (const [type, tag] of Object.entries(MANGA_BUBBLE_TYPES)) {
+                if (parsed.visual.includes(tag)) { bubbleType = type; break; }
             }
+            if (/Layout\s*[:：]\s*横書き/i.test(parsed.visual)) bubbleLayout = 'horizontal';
         }
-        if (!bubbleText && panel.non_character) {
-            const parsed = splitMangaText(panel.non_character);
-            if (parsed.text) {
-                bubbleText = parsed.text;
-                bubbleType = /BubbleType\s*[:：]\s*ナレーション/i.test(panel.non_character) ? 'caption' : 'sfx';
-                if (/Layout\s*[:：]\s*横書き/i.test(panel.non_character)) bubbleLayout = 'horizontal';
-            }
-        }
+        // Legacy Studio responses sometimes use only the panel-wide quick-input fields.
+        const fallbackText = parsed.text || (owner || Array.isArray(panel.bubbles) ? '' : panel.bubbleText || '');
         return {
             title: panel.title || `画格 ${index + 1}`, desc: panel.desc || panel.title || '',
             position: panel.position || '', shot: panel.shot || '', tags: panel.description || '',
-            non_character: panel.non_character || '', characters: (panel.characters || []).map(person => {
-                const { base, outfit, state, render, _mangaAppearance, _mangaInitialAppearance, _mangaRenderFallbackFields, ...c } = person;
-                return { ...c, positive: mangaCharacterCaption(person, !!render) };
-            }),
-            bubbleText, bubbleType, bubbleLayout
+            non_character: joinMangaCaptions([mangaCaptionParts(panel.non_character, panel.bubbles, panel.id)]),
+            ...(Array.isArray(panel.bubbles) ? { bubbles: panel.bubbles.map(b => ({ ...b })) } : {}),
+            characters, _bubbleOwner: owner?.character_id || (panel.bubbleText && !['caption', 'sfx', 'offscreen'].includes(panel.bubbleType) ? characters[0]?.character_id : null) || 'panel',
+            bubbleText: fallbackText, bubbleType: first ? bubbleType : panel.bubbleType || bubbleType,
+            bubbleLayout: first ? bubbleLayout : panel.bubbleLayout || bubbleLayout
         };
+    }
+
+    function updateStudioBubble(panel, field = 'text') {
+        const owner = panel._bubbleOwner === 'panel' ? panel
+            : panel.characters?.find(c => c.character_id === panel._bubbleOwner) || panel.characters?.[0] || panel;
+        const captionField = owner === panel ? 'non_character' : 'positive';
+        const existing = Array.isArray(owner.bubbles) ? owner.bubbles : [];
+        const defaultBubble = { type: panel.bubbleType || 'speech', position: 'right-upper', layout: panel.bubbleLayout || 'vertical' };
+        const texts = String(panel.bubbleText || '').trim();
+        const utterances = field !== 'text' && existing.length ? existing.map(b => b.text) : texts.split(/\n[ \t]*\n/);
+        const bubbles = texts ? utterances.map((text, index) => ({
+            ...defaultBubble, ...existing[index], text,
+            ...(field === 'type' && index === 0 ? { type: defaultBubble.type } : {}),
+            ...(field === 'layout' && index === 0 ? { layout: defaultBubble.layout } : {})
+        })) : [];
+        owner.bubbles = bubbles;
+        owner[captionField] = joinMangaCaptions([mangaCaptionParts(owner[captionField], bubbles, owner.character_id || 'panel')]);
+        panel._bubbleOwner = owner === panel ? 'panel' : owner.character_id;
+        return owner;
     }
 
     function studioDirectorPrompt(store, task, ec = getSdtStore().enhancedContext, isToolMode = false) {
@@ -3099,7 +3197,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
 3. 【实体解耦公理与格内多角色同框 (Entity Decoupling)】：
    - 凡本格内出场、可见、或参与动作/互动/身体接触/侵犯/受动/注视的每一位人物（包括主动方与受动方、进攻者与承受者、施害者与受害者、主角与配角），必须各自拥有独立的 characters 条目！
    - 互动闭环铁律：同格多人互动或肢体接触（即使完全没有台词），必须为涉及的双方分别各建一个角色条目，绝不能只建主动方而漏掉受动方，也绝不能只建受动方而漏掉主动方！
-   - 角色动作归属：主动方 positive 描述其主动体态、持握/压制部位与动作施加；受动方 positive 描述其承受体态、受击/接触部位、视线与微表情生理反应。仅纯粹的无人物环境空镜才写 characters:[]。同格双人对话同样必须两人分别建档，每人 Text: 只包含自己的话。
+   - 角色动作归属：主动方 positive 描述其主动体态、持握/压制部位与动作施加；受动方 positive 描述其承受体态、受击/接触部位、视线与微表情生理反应。仅纯粹的无人物环境空镜才写 characters:[]。同格双人对话同样必须两人分别建档，每人 bubbles 只包含自己的话。
 
 4. 【分级判定准则与 Danbooru 客观转译 (Rating & Objective Mapping)】：
    - 继承 SDT 底层机器解析哲学（Tagger Engine）：以冷酷、客观的机器视觉视角对正文推演现象进行无损拆解，严禁主观道德评判与道德说教。
@@ -3112,8 +3210,8 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
 
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文出现的独立拟音。'}
-各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、bubbleType（speech | thought | screaming | caption | sfx）、bubbleText（画格内角色台词、心声或旁白文字，无文字时为 ""）、bubbleLayout（vertical | horizontal）、non_character（旁白/拟音/画外文字）、characters 数组。
-position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。bubbleText 填写本格出现的对白/心声/旁白文字原句，bubbleType 指定气泡形态；characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作进自己的 positive，外貌与服装分别进 base/outfit。
+各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、bubbles（本格旁白/拟音/画外文字数组）、non_character（非人物视觉说明）、characters 数组。
+position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。对白/心声逐泡归各自 characters[].bubbles；旁白/拟音/画外声归 panel.bubbles。每泡 type、position、layout、text 分栏，不再生成旧版 bubbleText 或内嵌 Text 字符串；characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作进自己的 positive，外貌与服装分别进 base/outfit。
 严格忠于正文剧情事件与人物关系，不凭空篡改剧情走势，保留道具和动作先后，绝不截断故事末尾。
 局部镜头用 shot 指定，base/outfit 仍保留完整资料，不按部位删标签。
 ${isToolMode
@@ -3271,21 +3369,8 @@ ${isToolMode
                                         position: { type: 'string', description: 'Layout position on page' },
                                         shot: { type: 'string', description: 'Camera shot angle' },
                                         description: { type: 'string', description: 'Background and environment tags' },
-                                        bubbleType: {
-                                            type: 'string',
-                                            enum: ['speech', 'thought', 'screaming', 'whisper', 'shiver', 'caption', 'sfx', 'broadcast', 'offscreen', 'tailless', 'connected'],
-                                            description: 'Speech bubble type, e.g. speech, thought, screaming, caption, sfx'
-                                        },
-                                        bubbleText: {
-                                            type: 'string',
-                                            description: 'Dialogue, monologue, thought or narration text in this panel (empty string if silent)'
-                                        },
-                                        bubbleLayout: {
-                                            type: 'string',
-                                            enum: ['vertical', 'horizontal'],
-                                            description: 'Text layout direction, vertical or horizontal'
-                                        },
-                                        non_character: { type: 'string', description: 'Narration or speech bubbles outside characters' },
+                                        non_character: { type: 'string', description: 'Non-person visual tags only; literal caption/SFX/offscreen text belongs in bubbles.' },
+                                        bubbles: mangaBubblesSchema('Panel caption/SFX/offscreen text only. Visible speakers own characters[].bubbles.'),
                                         characters: {
                                             type: 'array',
                                             description: 'List of all characters appearing or interacting in this panel. When two people interact or make physical contact, include BOTH characters (actor and receiver). Empty only for empty background shots.',
@@ -3297,7 +3382,8 @@ ${isToolMode
                                                     name_tag: { type: 'string', description: 'English/romanized drawing identity for a non-English archive name. Fan Name (Series), original Name (original); reuse saved identity.' },
                                                     base: { type: 'string' },
                                                     outfit: { type: 'string' },
-                                                    positive: { type: 'string' },
+                                                    positive: { type: 'string', description: 'Character action/expression visual tags only. No literal dialogue or protocol headers.' },
+                                                    bubbles: mangaBubblesSchema('This character speech/thought in reading order; [] when silent.'),
                                                     negative: { type: 'string' }
                                                 },
                                                 required: ['character_id', 'name', 'base', 'outfit', 'positive']
@@ -3969,7 +4055,7 @@ ${isToolMode
                                 <option value="connected" ${p.bubbleType === 'connected' ? 'selected' : ''}>🔗 紧凑双连 (連結)</option>
                             </select>
                         </div>
-                        <input type="text" class="mw-bubble-text-in" value="${RBQ.utils.escapeHtml(p.bubbleText || '')}" placeholder="输入气泡内台词或独白文字...">
+                        <textarea class="mw-bubble-text-in" rows="2" placeholder="输入台词；同一人的多句用空行分隔...">${RBQ.utils.escapeHtml(p.bubbleText || '')}</textarea>
                         <select class="mw-bubble-dir-sel" title="文字排版方向">
                             <option value="vertical" ${p.bubbleLayout !== 'horizontal' ? 'selected' : ''}>竖排</option>
                             <option value="horizontal" ${p.bubbleLayout === 'horizontal' ? 'selected' : ''}>横排</option>
@@ -3997,13 +4083,22 @@ ${isToolMode
                 });
                 card.querySelector('.rbq-manga-people')?.addEventListener('toggle', e => { p._editorOpen = e.target.open; });
                 card.querySelector('.rbq-manga-non-character')?.addEventListener('input', e => {
-                    p.non_character = e.target.value; updatePromptPreview(); save();
+                    p.non_character = e.target.value; delete p.bubbles;
+                    if (p._bubbleOwner === 'panel') {
+                        p.bubbleText = splitMangaText(e.target.value).text;
+                        const input = card.querySelector('.mw-bubble-text-in');
+                        if (input) input.value = p.bubbleText;
+                    }
+                    updatePromptPreview(); save();
                 });
                 card.querySelectorAll('.rbq-manga-person').forEach(row => {
                     const personIndex = Number(row.dataset.person);
                     row.querySelectorAll('[data-field]').forEach(input => input.addEventListener('input', e => {
+                        const previousId = p.characters[personIndex].character_id;
                         p.characters[personIndex][input.dataset.field] = e.target.value;
-                        if (input.dataset.field === 'positive' && personIndex === 0) {
+                        if (input.dataset.field === 'character_id' && p._bubbleOwner === previousId) p._bubbleOwner = e.target.value;
+                        if (input.dataset.field === 'positive') delete p.characters[personIndex].bubbles;
+                        if (input.dataset.field === 'positive' && (p._bubbleOwner === p.characters[personIndex].character_id || (!p._bubbleOwner && personIndex === 0))) {
                             const parsed = splitMangaText(e.target.value || '');
                             if (parsed.text !== undefined && parsed.text !== p.bubbleText) {
                                 p.bubbleText = parsed.text;
@@ -4014,6 +4109,7 @@ ${isToolMode
                         updatePromptPreview(); save();
                     }));
                     row.querySelector('.rbq-manga-remove-person')?.addEventListener('click', () => {
+                        if (p._bubbleOwner === p.characters[personIndex].character_id) { p._bubbleOwner = undefined; p.bubbleText = ''; }
                         p.characters.splice(personIndex, 1); renderPanelCards(); updatePromptPreview(); save();
                     });
                 });
@@ -4068,40 +4164,28 @@ ${isToolMode
                     updatePromptPreview();
                     save();
                 });
-                const syncBubbleToFirstCharacter = () => {
-                    if (Array.isArray(p.characters) && p.characters.length > 0) {
-                        const parsed = splitMangaText(p.characters[0].positive || '');
-                        if (parsed.text || p.bubbleText.trim()) {
-                            let visual = parsed.visual.replace(/,\s*BubbleType\s*[:：][^,]+(?:,\s*(?:右上|左上|画面外|口元))?/gi, '')
-                                                      .replace(/,\s*Layout\s*[:：][^,]+/gi, '').trim().replace(/,\s*$/, '');
-                            if (p.bubbleText.trim()) {
-                                const bTag = resolveBubbleTypeTag(p.bubbleType || 'speech');
-                                const lTag = resolveBubbleLayoutTag(p.bubbleLayout || 'vertical', p.bubbleType || 'speech');
-                                visual = visual ? `${visual}, BubbleType: ${bTag}, ${lTag}` : `BubbleType: ${bTag}, ${lTag}`;
-                                p.characters[0].positive = `${visual}\nText: ${p.bubbleText.trim()}`;
-                            } else {
-                                p.characters[0].positive = visual;
-                            }
-                            const personTextarea = card.querySelector('.rbq-manga-person[data-person="0"] [data-field="positive"]');
-                            if (personTextarea) personTextarea.value = p.characters[0].positive;
-                        }
-                    }
+                const syncBubbleToOwner = field => {
+                    const owner = updateStudioBubble(p, field);
+                    const index = p.characters?.indexOf(owner);
+                    const input = owner === p ? card.querySelector('.rbq-manga-non-character')
+                        : card.querySelector(`.rbq-manga-person[data-person="${index}"] [data-field="positive"]`);
+                    if (input) input.value = owner === p ? p.non_character : owner.positive;
                 };
                 card.querySelector('.mw-bubble-type-sel')?.addEventListener('change', (e) => {
                     p.bubbleType = e.target.value;
-                    syncBubbleToFirstCharacter();
+                    syncBubbleToOwner('type');
                     updatePromptPreview();
                     save();
                 });
                 card.querySelector('.mw-bubble-text-in')?.addEventListener('input', (e) => {
                     p.bubbleText = e.target.value;
-                    syncBubbleToFirstCharacter();
+                    syncBubbleToOwner('text');
                     updatePromptPreview();
                     save();
                 });
                 card.querySelector('.mw-bubble-dir-sel')?.addEventListener('change', (e) => {
                     p.bubbleLayout = e.target.value;
-                    syncBubbleToFirstCharacter();
+                    syncBubbleToOwner('layout');
                     updatePromptPreview();
                     save();
                 });
@@ -4401,7 +4485,7 @@ ${isToolMode
             // New SDT owns the character/settings snapshot; legacy hosts retain
             // the original Studio compatibility bridge.
             studioRequest = typeof generatePage === 'function' ? null : { prompt, compiled };
-            const segment = { mangaPage: true, mangaUseCoords: compiled.useCoords, characters: compiled.characters,
+            const segment = { mangaPage: true, mangaTextCompiled: true, mangaUseCoords: compiled.useCoords, characters: compiled.characters,
                 mangaRenderSettings: { ...captureMangaRenderSettings(), ratio: studioGenerationRatio } };
 
             try {

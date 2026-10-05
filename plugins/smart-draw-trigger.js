@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.7';
+    const PLUGIN_VERSION = '6.5.8';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -9655,7 +9655,8 @@ SCHEMA:
     /* ── NAI V4 payload hook: inject char_captions directly ── */
     RBQ.on('buildNaiV4Payload', (payload, context) => {
         const data = context ? context.meta?.sdtCharacterData : pendingNaiCharData;
-        if (!data || (data.prompt && !String(payload.input || '').includes(data.prompt))
+        if (!data || (data.prompt && !String(payload.input || '').includes(data.prompt)
+            && !RBQ.api.mangaProtocol?.matchesPayloadRequest?.(payload, data))
             || (!data.manga && !data.enabled)) return payload;
         const { characters, manga, useCoords, negative, renderSettings } = data;
         if (!characters.length && !manga) return payload;

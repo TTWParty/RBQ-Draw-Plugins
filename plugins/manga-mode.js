@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.10';
+        const VERSION = '1.9.11';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -878,6 +878,8 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
     let studioGenerationRatio = null;
     let studioRequest = null;
     const mangaPayloadSettings = new WeakMap();
+    const mangaPayloadRequests = new WeakMap();
+    mangaProtocol.matchesPayloadRequest = (payload, request) => !!request && mangaPayloadRequests.get(payload) === request;
 
     function captureMangaRenderSettings() {
         const { enabled, style, customPositive, customNegative, gutter, autoSpread } = getStore();
@@ -954,6 +956,9 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
     RBQ.on('buildNaiV4Payload', (payload, context) => {
         const pending = context ? context.meta?.sdtCharacterData : RBQ.api.getPendingSdtImageData?.();
         const request = pending && (!pending.prompt || String(payload.input || '').includes(pending.prompt)) ? pending : null;
+        // Bind the unmodified payload to this request before style/tag cleanup.
+        // Legacy SDT must still recognize it after duplicate tags are removed.
+        if (request) mangaPayloadRequests.set(payload, request);
         return enhanceMangaPayload(payload, !!request?.manga, request?.characters?.map(c => c.name) || [], request?.renderSettings);
     });
 
@@ -3146,6 +3151,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
     }
 
     async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false) {
+        const studioTarget = store.studio;
         store = { ...store, studio: { ...store.studio } };
         const config = getSdtStore();
         const baseUrl = String(config.openaiBaseUrl || '').trim().replace(/\/+$/, '');
@@ -3311,13 +3317,22 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             err.rawOutput = `【模型原始返回正文 (Raw Output)】:\n${rawReply}\n\n【解析得到的 JSON 数据】:\n${JSON.stringify(data, null, 2)}\n\n【期望画格数】: ${expectedCount || '自动规划 (1~5 格)'}\n【实际画格数】: ${Array.isArray(data.panels) ? data.panels.length : 0}`;
             throw err;
         }
-        store.studio._lastDebug = { isError: false, rawOutput: rawReply, messages, data };
         const rawPage = { format: 'nai5-comic', page: { base: 'comic' }, panels: data.panels };
         // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
-        const page = resolveMangaAppearances([rawPage], (editingSnapshots || !useChatChars) ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
-        compileMangaPage(page);
-        if (cacheContext) RBQ.api.saveMangaRenderCache?.([page], cacheContext);
-        return page.panels.map(studioPanelFromProtocol);
+        let panels;
+        try {
+            const page = resolveMangaAppearances([rawPage], (editingSnapshots || !useChatChars) ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
+            compileMangaPage(page);
+            panels = page.panels.map(studioPanelFromProtocol);
+            if (cacheContext) RBQ.api.saveMangaRenderCache?.([page], cacheContext);
+        } catch (error) {
+            error.rawOutput ||= `【模型原始返回正文 (Raw Output)】:\n${rawReply}\n\n【解析得到的 JSON 数据】:\n${JSON.stringify(data, null, 2)}`;
+            throw error;
+        }
+        // Settings are snapshotted for the request, but the UI reads diagnostics
+        // from its original Studio instance, not that temporary snapshot.
+        studioTarget._lastDebug = { isError: false, rawOutput: rawReply, messages, data };
+        return panels;
     }
 
     async function callLlmStoryboardParser(storyText, grammar, language, panelCountMode = 'auto', onProgress) {

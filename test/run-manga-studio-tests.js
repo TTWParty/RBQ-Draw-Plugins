@@ -130,11 +130,17 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         assert.match(promptJson, /绝不能只建主动方而漏掉受动方/);
         assert.match(promptJson, /【分级判定准则与 Danbooru 客观转译/);
         assert.match(promptJson, /严禁将亲密\/侵犯剧情擅自篡改为废墟战斗/);
+        assert.match(promptJson, /【漫画台词灵魂与对白气泡生成铁律/);
+        assert.match(promptJson, /严禁生成全篇无任何台词气泡的死寂默片/);
+        assert.match(promptJson, /破除过度禁言限制/);
         assert.match(promptJson, /只输出一个 JSON 对象/);
 
         const promptTool = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', true);
         assert.match(promptTool, /必须调用 generate_manga_storyboard 工具提交你的漫画分镜规划数据/);
         assert.doesNotMatch(promptTool, /只输出一个 JSON 对象/);
+
+        const extracted = manga.studioPanelFromProtocol(scene().panels[0]);
+        assert.equal(extracted.bubbleText, '谢谢。');
     });
     console.log(`\n${passed} Studio diagnostics and payload tests passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

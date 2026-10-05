@@ -122,6 +122,10 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         const promptJson = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', false);
         assert.match(promptJson, /【画格叙事递进与时间流逝/);
         assert.match(promptJson, /自适应拆解为 2 至 4 格/);
+        assert.match(promptJson, /选材覆盖与叙事闭环铁律/);
+        assert.match(promptJson, /主格法则 \(Hero Panel\)/);
+        assert.match(promptJson, /【动作表达保真与严禁抽象概括/);
+        assert.match(promptJson, /严禁在 desc 中将具体动作抽象化为模糊概括/);
         assert.match(promptJson, /【实体解耦公理与格内多角色同框/);
         assert.match(promptJson, /绝不能只建主动方而漏掉受动方/);
         assert.match(promptJson, /【分级判定准则与 Danbooru 客观转译/);

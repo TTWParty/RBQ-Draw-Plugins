@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.9';
+        const VERSION = '1.9.10';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -235,7 +235,8 @@
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
-                                        character_id: string, name: { type: 'string', description: 'Full drawing identity: known name (original) for original characters, confirmed Name (Series) for fan characters. Reuse established identity across panels; never replace with a panel ID.' },
+                                        character_id: string, name: { type: 'string', description: 'Stable archive name; reuse saved name exactly. New names may be English drawing identities. Never a panel ID.' },
+                                        name_tag: { type: 'string', description: 'English/romanized drawing identity: fan Name (Series), original Name (original). Provide once when archive name is non-English and saved name_tag is missing; otherwise reuse it. Never a Chinese drawing tag.' },
                                         base: { type: 'string', description: 'Full stable appearance tags, same as ordinary character memory. Program injects the full name identity; preserve identity tags already in saved base. Reuse saved base exactly; no shot-based cropping. No clothes or dialogue.' },
                                         outfit: { type: 'string', description: 'Full current outfit including all layers/accessories. Empty reuses known outfit; return complete clothing on first appearance or actual change.' },
                                         state: { type: 'object', properties: {
@@ -272,7 +273,8 @@
                     id: 'P1', description: '英文逗号分隔的位置、大小、景别、环境标签；不写人物演出或故事长句',
                     non_character: '本格旁白、拟音、画外声的视觉说明和末尾 Text:；可省略',
                     characters: [{
-                        character_id: 'C1', name: '完整绘图身份：原创 Name (original)，同人已确认的 Name (Series)；跨格同名，程序拼入外貌',
+                        character_id: 'C1', name: '稳定资料关联姓名；已有档案沿用，新人物可直接用英文绘图身份',
+                        name_tag: '中文关联名缺少绘图身份时，每人首次给英文/罗马字 Tag：同人 Mouri Ran (Detective Conan)，原创 Lin Yao (original)；已有则复用',
                         base: '与普通模式一致的完整固定外貌；已有档案原样复用，不按镜头裁剪',
                         outfit: '完整当前服装，含内外层与配饰；空字符串沿用已知衣着',
                         state: { base: '可选；明确外貌变化后的完整原色临时快照，不回写固定外貌', outfit: '可选；明确换装后的完整原色衣着；空字符串清空衣物' },
@@ -347,7 +349,7 @@
     function mangaCharacterCaption(c, monochrome = false) {
         const view = monochrome && c.render ? c.render : c;
         const appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function'
-            ? RBQ.api.renderCharacterMemoryBase(c.name, view.base || '') : view.base;
+            ? RBQ.api.renderCharacterMemoryBase(c.name, view.base || '', c.name_tag) : view.base;
         return joinMangaCaptions([appearance, view.outfit, c.positive]);
     }
 
@@ -409,7 +411,7 @@
                 if (typeof c.positive !== 'string' || !c.positive.trim() || typeof c.negative !== 'string') {
                     throw new Error(`${panel.id} 的第 ${index + 1} 位人物缺少身份、正负词或重复出场`);
                 }
-                for (const field of ['name', 'base', 'outfit']) {
+                for (const field of ['name', 'name_tag', 'base', 'outfit']) {
                     if (Object.hasOwn(c, field)) {
                         if (c[field] === null) c[field] = '';
                         if (typeof c[field] !== 'string') {
@@ -495,16 +497,17 @@
         return references.map(row => {
             const result = { ...row };
             delete result.render;
-            const stableBase = RBQ.api.ensureCharacterNameTag(row.name, row.base || '');
+            const withName = base => RBQ.api.ensureCharacterNameTag(row.name, base, row.name_tag);
+            const stableBase = withName(row.base || '');
             const temporaryBase = row.state?.render_base;
             const sourceBase = temporaryBase && (!row.state.render_base_source
-                || mangaAppearanceSourceKey(RBQ.api.ensureCharacterNameTag(row.name, row.state.render_base_source)) === mangaAppearanceSourceKey(stableBase))
-                ? RBQ.api.ensureCharacterNameTag(row.name, temporaryBase) : stableBase;
+                || mangaAppearanceSourceKey(withName(row.state.render_base_source)) === mangaAppearanceSourceKey(stableBase))
+                ? withName(temporaryBase) : stableBase;
             const sourceOutfit = typeof row.state?.outfit === 'string' && row.state.outfitSet !== false ? row.state.outfit : row.outfit || '';
             for (const [field, source] of [['base', sourceBase], ['outfit', sourceOutfit]]) {
                 const match = cacheRows.find(entry => mangaIdentityKey(entry?.name) === mangaIdentityKey(row.name)
-                    && entry.field === field && mangaAppearanceSourceKey(entry.source) === mangaAppearanceSourceKey(source));
-                if (source && match?.value) (result.render ||= {})[field] = match.value;
+                    && entry.field === field && mangaAppearanceSourceKey(field === 'base' ? withName(entry.source) : entry.source) === mangaAppearanceSourceKey(source));
+                if (source && match?.value) (result.render ||= {})[field] = field === 'base' ? withName(match.value) : match.value;
             }
             return result;
         });
@@ -514,6 +517,36 @@
         pages.forEach(compileMangaPage);
         const result = JSON.parse(JSON.stringify(pages));
         const monochrome = renderSettings.style === 'monochrome';
+        const nameTags = new Map();
+        const getNameTag = (name, tag) => RBQ.api.getCharacterNameTag?.(name, tag) || '';
+        for (const row of references) {
+            const tag = row.name_tag ? getNameTag(row.name, row.name_tag) : '';
+            if (tag) nameTags.set(mangaIdentityKey(row.name), tag);
+        }
+        // A trusted saved drawing name is an alias of its existing archive, never a new person.
+        for (const page of result) for (const panel of page.panels) for (const c of panel.characters) {
+            const reference = references.find(row => row.name_tag && mangaIdentityKey(row.name_tag) === mangaIdentityKey(c.name));
+            if (reference) {
+                c.name_tag = getNameTag(c.name, reference.name_tag);
+                c.name = reference.name;
+            }
+        }
+        const memoryRows = (Array.isArray(newMemory) ? newMemory : []).filter(row => row && typeof row === 'object' && !Array.isArray(row)).map(row => {
+            const reference = [...references, ...result.flatMap(page => page.panels.flatMap(panel => panel.characters))]
+                .find(ref => ref.name_tag && mangaIdentityKey(ref.name_tag) === mangaIdentityKey(row.name));
+            return reference ? { ...row, name: reference.name } : row;
+        });
+        for (const row of [...memoryRows, ...result.flatMap(page => page.panels.flatMap(panel => panel.characters))]) {
+            const key = mangaIdentityKey(row.name);
+            const savedTag = nameTags.get(key);
+            const tag = savedTag ? getNameTag(row.name_tag || row.name, savedTag) : getNameTag(row.name, row.name_tag);
+            if (key && tag) nameTags.set(key, tag);
+        }
+        for (const row of references) {
+            const key = mangaIdentityKey(row.name);
+            const tag = getNameTag(row.name);
+            if (key && tag && !nameTags.has(key)) nameTags.set(key, tag);
+        }
         const drawingViews = new Map();
         const pendingViews = [];
         for (const page of result) {
@@ -526,14 +559,14 @@
         const seen = new Set();
         const withName = (name, base) => {
             if (typeof RBQ.api.ensureCharacterNameTag !== 'function') throw new Error('请更新智能生图插件至 6.4.2 或更高以完整保留角色名');
-            return RBQ.api.ensureCharacterNameTag(name, base);
+            return RBQ.api.ensureCharacterNameTag(name, base, nameTags.get(mangaIdentityKey(name)));
         };
         const clean = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
         const knownBase = (name, value) => clean(value) ? withName(name, clean(value)) : '';
         const addView = (key, name, field, source, value) => {
             if (!clean(source) || !clean(value) || !['base', 'outfit'].includes(field)) return;
             const views = drawingViews.get(key) || { base: new Map(), outfit: new Map() };
-            const sourceKey = mangaAppearanceSourceKey(source);
+            const sourceKey = mangaAppearanceSourceKey(field === 'base' ? withName(name, source) : source);
             if (!views[field].has(sourceKey)) views[field].set(sourceKey, field === 'base' ? withName(name, clean(value)) : clean(value));
             drawingViews.set(key, views);
         };
@@ -565,7 +598,7 @@
                 addView(key, row.name, 'outfit', state.outfit, row.render.outfit);
             }
         }
-        for (const row of Array.isArray(newMemory) ? newMemory : []) {
+        for (const row of memoryRows) {
             const name = mangaIdentityKey(row?.name);
             if (!name || /^(?:[cp]\d+|unknown|unnamed|路人|匿名|无名|__proto__|constructor|prototype)$/.test(name)) continue;
             const key = `name:${name}`;
@@ -586,6 +619,9 @@
         for (const page of result) for (const panel of page.panels) for (const c of panel.characters) {
             const knownNames = declaredNames.get(c.character_id);
             if (!c.name?.trim() && knownNames?.size === 1) c.name = knownNames.values().next().value;
+            const nameTag = nameTags.get(mangaIdentityKey(c.name));
+            if (nameTag) c.name_tag = nameTag;
+            else delete c.name_tag;
             delete c._mangaAppearance;
             delete c._mangaInitialAppearance;
             delete c._mangaRenderFallbackFields;
@@ -602,6 +638,7 @@
             }
             if (!state) continue;
             if (!seen.has(key)) {
+                if (!anonymous && !nameTag && !getNameTag(c.name)) warnings.push(`${panel.id}/${c.name} 未提供英文或罗马字 name_tag，未自动补入中文姓名；已有外貌保留，请重新解析补充绘图身份`);
                 const opening = initial.get(key);
                 opening.base ||= knownBase(c.name, c.base);
                 if (!opening.outfitSet && clean(c.outfit)) {
@@ -759,7 +796,7 @@ ${gutter.instruction}
 
 【数据归属：页面 → 画格 → 格内人物】
 输出 format=nai5-comic，字段见 outputSchema。page.base 写整页去重后的可见人数（同一人跨格不重复计数）、页面形态、格数、具体布局与光影。panels[].description 写本格环境与构图；panels[].characters 为本格每位可见人物各建一次出场，可有0人、1人或多人。空镜写 characters:[]，不建立假人物。
-同一人跨格使用相同 character_id，name 填完整绘图身份（原创 Name (original)，同人已确认的 Name (Series)，优先沿用已有英文身份，未知译名/作品不猜），程序自动拼入 base。base 写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。name 同时用于绘图与资料关联，character_id 只用于跨格关联，保留资料中已有的普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
+同一人跨格使用相同 character_id，name 沿用稳定资料关联名，新人物可直接用英文绘图身份。绘图姓名必须英文/罗马字：同人用通用英文角色 Tag (作品英文名)，如 Mouri Ran (Detective Conan)；原创用英文名或姓名罗马字 (original)，如 Lin Yao (original)。中文档案 name 另给 name_tag，不改名另建档，不把中文名注入 base；已有 name_tag 原样复用，缺失时每人首次提供一次，后格沿用，不凭空添作品。程序将绘图身份拼入 base。base 写无数字主体词 boy/girl/other 和稳定外貌，outfit 写完整当前服装；positive 只写本格动作、持物、表情与对白。character_id 只用于跨格关联，保留资料中已有的英文普通姓名和可靠同人角色标签；完整外貌保留已知发长、发型结构、刘海和识别细节，不能只剩发色。特写裁切通过镜头表达，不删 base/outfit。
 可见的回答者、配角和背影同样需要人物条目，不能只在 description 写“一群弟子”就省掉实际说话者；匿名配角可以出镜说话而不建立长期记忆。页面人数统计所有实际可见人物，不只统计主角。
 按准确姓名匹配角色卡、世界书与记忆；未知不猜，已有明确身份、外貌不漏。稳定外貌与当前状态分开：逐格追踪左右手持物、物件开合/破损、持续接触、服装及发型变化；从变化发生的格起沿用，裁切和换镜头不自动复原。道具固定结构、场景地标、门窗方向保持一致，只有剧情依据才改变；环境锚点写在 description，不复制到每个人物槽。比喻只转译实际可见的本体。
 【角色记忆落实：与普通模式共用】
@@ -768,7 +805,7 @@ ${gutter.instruction}
 换装从实际发生的格开始填写完整 outfit，后续空值沿用；衣物全部移除须显式 state.outfit=""。不把末格衣着提前填到开场格。明确束发、剪发等外貌变化时，state.base 写变化后的完整临时外貌快照，保留其他身份特征；后续沿用，不反写长期 base。普通换镜头不填写 state.base。
 base、outfit、state 与 character_memory 保留原设颜色，与普通模式相同。绘图按当前画风表达；黑白模式使用下述 render 灰阶视图，发送层只组装，不替你转换色相。不要把临时状态或黑白处理结果写回长期外貌。
 【视觉词与动作表达】
-page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。name 填稳定姓名并保留已有姓名标签，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
+page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。name 填稳定关联姓名，英文绘图身份用 name 或 name_tag，保留已有英文姓名标签，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
 每个人物按 base/outfit/positive 分栏；positive 依次写本格位置 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
 同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
 机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。outfit 保留完整衣物和配饰；特写用明确景别控制画面，背位动作不写看不见的正脸表演。默认不加权；确需突出/弱化已写明的焦点时用闭合的 1.2::短词组:: / 0.6::短词组::，强度不设配额。不加权整段、编号或 Text；权重不能补救漏写、错人或冲突，不用全局负权排除需要的漫画元素。
@@ -2949,7 +2986,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                     else if (/^(?:\d+)?others?$/i.test(tag)) seen.get(c.character_id).add('other');
                     return tag;
                 });
-                return { ...c, positive: joinMangaCaptions([position, p.shot, typeof RBQ.api.renderCharacterMemoryBase === 'function' ? RBQ.api.renderCharacterMemoryBase(c.name, c.positive) : c.positive]) };
+                return { ...c, positive: joinMangaCaptions([position, p.shot, typeof RBQ.api.renderCharacterMemoryBase === 'function' ? RBQ.api.renderCharacterMemoryBase(c.name, c.positive, c.name_tag) : c.positive]) };
             });
             return {
                 id: `P${index + 1}`,
@@ -3006,7 +3043,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文明确出现的独立拟音，禁止凭空补字。'}
 只输出一个 JSON 对象 {"panels":[...]}。各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
-position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作和对白进自己的 positive，外貌与服装分别进 base/outfit；没有人物时 characters=[]。
+position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作和对白进自己的 positive，外貌与服装分别进 base/outfit；没有人物时 characters=[]。
 同格双人对话必须两个角色条目，每人 Text: 只包含自己的话；非人物文字不要建人物。任何没有原文依据的文字都不要编造。保留句子、人物、道具和动作先后，不截断故事末尾。
 局部镜头用 shot 指定，base/outfit 仍保留完整资料，不按部位删标签。`;
     }
@@ -3165,6 +3202,7 @@ position 单独写位置，description/positive 不重复画格位置；系统�
                                                 properties: {
                                                     character_id: { type: 'string' },
                                                     name: { type: 'string' },
+                                                    name_tag: { type: 'string', description: 'English/romanized drawing identity for a non-English archive name. Fan Name (Series), original Name (original); reuse saved identity.' },
                                                     base: { type: 'string' },
                                                     outfit: { type: 'string' },
                                                     positive: { type: 'string' },

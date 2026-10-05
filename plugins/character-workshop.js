@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.27';
+    const VERSION = '2.2.28';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1912,6 +1912,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
 
         const draft = {
             displayName: origProfile?.displayName || editName || '',
+            nameTag: origProfile?.nameTag || '',
             baseTags: origProfile?.baseTags || '',
             previousBaseTags: origProfile?.previousBaseTags,
             currentOutfit: origProfile?.currentOutfit || '',
@@ -2108,6 +2109,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             const updated = imported || getProfile(charName);
                             if (updated) {
                                 draft.displayName = updated.displayName || charName;
+                                draft.nameTag = updated.nameTag || draft.nameTag;
                                 draft.baseTags = updated.baseTags || draft.baseTags;
                                 draft.previousBaseTags = updated.previousBaseTags;
                                 draft.currentOutfit = updated.currentOutfit || draft.currentOutfit;
@@ -2172,6 +2174,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
 
                 saveProfile(name, {
                     displayName: name,
+                    nameTag: draft.nameTag,
                     baseTags: draft.baseTags,
                     previousBaseTags: draft.previousBaseTags,
                     currentOutfit: draft.currentOutfit,

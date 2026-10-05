@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.6';
+    const PLUGIN_VERSION = '6.5.7';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2810,7 +2810,8 @@ base 按七维逐项检查，已明确的特征不得遗漏：
 ④ 发色、发长、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例及有辨识度的体态；⑦ 肤色、永久身体标记及幻想种族特征。
 依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等已有数值如 35 years old、180cm height 原样保留，可同时补对应的已知年龄阶段和体型；不能以视觉化为由删掉明确数值。
 outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
-base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。name 是用于绘图和资料关联的完整身份：原创用已知姓名 (original)，同人用已确认的通用姓名 (作品)，优先复用已有英文身份，不猜未知译名或作品。新外貌 base 不必重复 name，程序会自动拼入并保存；已存 base 含有的普通姓名、角色 Tag、original 或作品后缀原样保留。可脱卸配饰归 outfit，永久生理特征归 base。`;
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。绘图姓名必须使用英文/罗马字：同人用通用英文角色 Tag (作品英文名)，如 Mouri Ran (Detective Conan)；原创用已知英文名或姓名罗马字 (original)，如 Lin Yao (original)。不能把中文姓名当绘图 Tag，不把姓名意译为人物属性，不凭空添加作品。
+name 用于资料关联，已有档案沿用其 name，不改名另建档。中文关联名另给 name_tag="英文/罗马字绘图身份"；新人物可直接用完整英文 name。已有 name_tag 原样复用，仅首次/旧档缺失时每人提供一次，后格沿用。程序将绘图身份拼入 base 并保存，base 不必重复填写姓名。已存英文普通姓名、角色 Tag、original 或作品后缀保留；旧档精确中文姓名词由确认的 name_tag 替换，其余外貌原样复用。可脱卸配饰归 outfit，永久生理特征归 base。`;
     }
 
     function buildCharacterMemoryPromptModule(store, messageId) {
@@ -2820,9 +2821,9 @@ base 不含衣物、动作、表情、手持物、构图、画风或对白；out
         if (isMangaRequest(store)) {
             const references = getMangaMemoryReferences(messageId);
             return `【漫画角色记忆】
-以下为本聊天已保存的人物资料。name 使用稳定姓名，与各格 characters.name 一致；同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
+以下为本聊天已保存的人物资料。name 使用稳定关联姓名，与各格 characters.name 一致；绘图身份用英文 name 或 name_tag，同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
 各格 base/outfit 与普通模式共用建档和复用原则；不另发请求。character_memory 为兼容字段，可省略或写 []；需要补充独立长期资料时每人最多一项 {name,base,initial_outfit,outfit}。
-base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；完整身份填写 name，程序自动拼入 base；已有 base 中的姓名和角色标签原样复用。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
+base 仅写可长期复用的身份/外貌标签，依据角色卡、世界书、正文和既有记忆；英文绘图身份填写 name 或 name_tag，程序自动拼入 base；已有 base 中的英文姓名和角色标签原样复用。旧中文档案只补英文 name_tag，不重做外貌。未知外貌不猜，不为补齐档案发明永久特征；已有非空 base 不重写。资料不受本格裁切限制，也不受黑白画风影响，已知发色瞳色保留；本楼临时束发、湿发等状态按格用于绘图，不改写固定外貌。
 initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已知服装，不能用楼末换装结果代替；已知则可省略。
 兼容字段 character_memory[].outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。格内 characters[].outfit 始终对应当前格，不能套用末格状态。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
@@ -2840,6 +2841,7 @@ ${getCharacterMemoryTagSpecification()}
                     ? `\n    - 可选衣柜: ${p.wardrobe.map(w => `${w.name} (${w.outfit})`).slice(0, 5).join(' | ')}`
                     : '';
                 return `  * 角色「${name}」:
+    - name_tag (英文绘图身份): ${p.nameTag || '(按命名模板补充，不改档案姓名)'}
     - base (固定外貌DNA · 跨图绝对锁定): ${base || '(首次登场提炼)'}
     - outfit (当前服装签名 · 随换装剧情演进): ${outfit || '(根据剧情即时提炼)'}${wardrobe}`;
             }).join('\n');
@@ -2862,6 +2864,7 @@ ${listText}
                     const base = String(p.baseTags || '').trim();
                     const outfit = String(p.currentOutfit || '').trim();
                     return `  * 已知全局角色资产「${name}」:
+    - name_tag (英文绘图身份): ${p.nameTag || '(按命名模板补充，不改档案姓名)'}
     - base (固定外貌DNA): ${base || '(首次登场提炼)'}
     - outfit (典型服装): ${outfit || '(剧情提炼)'}`;
                 }).join('\n');
@@ -2886,7 +2889,7 @@ ${globalListText}
    - 命名标准：
      * 同人角色：2::Name (Series)::（例如 2::Cartethyia (Wuthering Waves)::、2::Raiden Shogun (Genshin Impact)::）
      * 同人官方皮肤：2::Name (Series) (skin name)::
-     * 原创角色：Name (original)（例如 Mira (original)、师尊 (original)）
+     * 原创角色：英文/罗马字 Name (original)（例如 Mira (original)、Shi Zun (original)）；中文资料关联名另用英文 name_tag，不直接注入绘图。
      * 次要配角/路人：faceless male / faceless female 或简要外貌，禁止喧宾夺主。
    - 7 维外貌公式（写在 base 字段，纯净无临时服装与临时动作）：
      ① 性别：girl / boy（严禁带数字如 1girl，防人数干扰）
@@ -2920,6 +2923,7 @@ ${globalListText}
    - 多角色交互：使用 source#action / target#action / mutual#action 明确互动施受关系。
    - 空间连续坐标：center 统一采用连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或网格 C3。
 
+资料 name 沿用已存档案的关联姓名，不能改名另建档。绘图身份必须为英文/罗马字；中文关联名在首次或旧档缺失时另给 name_tag。同人用通用英文角色 Tag (作品英文名)，原创用英文名或姓名罗马字 (original)，例如 Mouri Ran (Detective Conan)、Lin Yao (original)。已有 name_tag 原样复用，后续分镜沿用；只补绘图姓名，不重做固定外貌。
 ${activeRegistrySection}`;
     }
 
@@ -3024,7 +3028,8 @@ ${activeRegistrySection}`;
         const lowerCanon = canonical.toLowerCase();
         for (const [k, p] of Object.entries(profiles)) {
             const pCanon = getCanonicalCharName(p.displayName || k);
-            if (k.toLowerCase() === lowerCanon || pCanon.toLowerCase() === lowerCanon) {
+            const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase();
+            if (k.toLowerCase() === lowerCanon || pCanon.toLowerCase() === lowerCanon || (tagCanon && tagCanon === lowerCanon)) {
                 return p;
             }
         }
@@ -3094,6 +3099,7 @@ ${activeRegistrySection}`;
         const canonical = getCanonicalCharName(rawName);
 
         let existing = getCharacterProfile(canonical);
+        const nameTag = getCharacterNameTag(rawName, options.nameTag);
         if (existing) {
             // Only an explicit card re-extraction may replace learned identity.
             // Keep the plot's current clothing when importing the card's default outfit.
@@ -3105,6 +3111,7 @@ ${activeRegistrySection}`;
                 existing.baseTags = baseTags;
             }
             if (avatarUrl) existing.avatarUrl = avatarUrl;
+            if (nameTag && (!existing.nameTag || options.replaceBase)) existing.nameTag = nameTag;
             if (!Array.isArray(existing.wardrobe)) existing.wardrobe = [];
 
             // Auto-archive new plot outfit to wardrobe if distinct
@@ -3139,6 +3146,7 @@ ${activeRegistrySection}`;
             }
             profiles[canonical] = {
                 displayName: canonical,
+                nameTag,
                 baseTags: baseTags || '',
                 currentOutfit: outfitTags || '',
                 avatarUrl: avatarUrl || '',
@@ -3282,12 +3290,14 @@ ${activeRegistrySection}`;
      * Merge character memory with LLM output.
      * @returns {string} Final merged caption for char_caption
      */
-    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags) {
+    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, nameTag = '') {
         const store = getStore();
         const chatKey = getChatKey();
         const isJunk = isJunkCharacterName(name);
         const cleanName = isJunk ? '' : String(name || '').trim();
-        const weightedName = cleanName ? weightCharacterName(cleanName) : '';
+        const profile = cleanName && store.characterMemoryEnabled ? getCharacterProfile(cleanName) : null;
+        const drawingName = getCharacterNameTag(nameTag || cleanName, profile?.nameTag || nameTag);
+        const weightedName = weightCharacterName(drawingName);
         if (isMangaRequest(store)) {
             return [llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
         }
@@ -3301,20 +3311,23 @@ ${activeRegistrySection}`;
             return [appearanceTags, allLlmTags].filter(Boolean).join(', ');
         }
 
-        const profile = getCharacterProfile(cleanName);
         let finalBase, finalOutfit;
 
         if (profile) {
             // Use stored base (immutable), update outfit from LLM
             ({ base: finalBase, outfit: finalOutfit } = resolveCharacterMemoryFields(profile, llmBase, llmOutfit));
-            if (llmOutfit) updateCharacterProfile(cleanName, null, llmOutfit, null, true);
+            const namedBase = ensureCharacterNameTag(profile.displayName || cleanName, finalBase, drawingName);
+            const repaired = namedBase !== finalBase;
+            finalBase = namedBase;
+            if (llmOutfit || repaired || (drawingName && !profile.nameTag)) updateCharacterProfile(cleanName,
+                repaired ? finalBase : null, llmOutfit, null, true, { replaceBase: repaired, nameTag: drawingName });
             debugInfo(`角色记忆复用「${cleanName}」: storedBase="${finalBase.slice(0, 40)}..."`);
         } else {
             // First time: learn from LLM and store (store clean name, not weighted)
-            finalBase = ensureCharacterNameTag(cleanName, llmBase) || cleanName;
+            finalBase = ensureCharacterNameTag(cleanName, llmBase, drawingName);
             finalOutfit = llmOutfit || '';
             if (finalBase && cleanName) {
-                updateCharacterProfile(cleanName, finalBase, finalOutfit, null, true);
+                updateCharacterProfile(cleanName, finalBase, finalOutfit, null, true, { nameTag: drawingName });
             } else if (!finalBase && cleanName) {
                 debugInfo(`⚠️ 角色「${cleanName}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
             }
@@ -3322,7 +3335,7 @@ ${activeRegistrySection}`;
 
         // Build weighted base for NAI: apply name weight + memory base
         // For 同人 characters with stored memory, re-apply name weight to the stored base
-        const displayBase = renderCharacterMemoryBase(cleanName, finalBase);
+        const displayBase = renderCharacterMemoryBase(cleanName, finalBase, drawingName);
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
         const wrappedBase = (['v40_worldbook_97_opt', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
@@ -3501,11 +3514,11 @@ ${activeRegistrySection}`;
                     role: 'system',
                     content: `你是角色视觉资料提炼助手。读取角色卡与世界书，仅提取当前指定角色的固定外貌和默认衣着，不混入其他角色。
 ${getCharacterMemoryTagSpecification()}
-只提取有依据的资料；服装未知写空字符串。身份 name 与普通模式一致：原创使用已知姓名 (original)，同人使用已确认的通用姓名 (作品)，已有英文身份优先复用，不猜作品；无法确认译名时保留已知姓名。仅输出纯 JSON：{"name":"完整绘图身份", "base":"英文外貌标签", "outfit":"英文标签"}，不输出解释或 Markdown。`
+只提取有依据的资料；服装未知写空字符串。name 保留指定角色的资料关联姓名；name_tag 按上述模板输出同人通用英文身份或原创英文/罗马字身份。仅输出纯 JSON：{"name":"资料关联姓名", "name_tag":"英文/罗马字绘图身份", "base":"英文外貌标签", "outfit":"英文标签"}，不输出解释或 Markdown。`
                 },
                 {
                     role: 'user',
-                    content: `角色名称: ${name}\n\n${contextText}`
+                    content: `角色名称: ${name}\n已有绘图姓名: ${getCharacterProfile(name)?.nameTag || ''}\n\n${contextText}`
                 }
             ];
 
@@ -3560,7 +3573,11 @@ ${getCharacterMemoryTagSpecification()}
             const avatarUrl = char.avatar ? `/characters/${char.avatar}` : null;
 
             assertMangaRequestContext(requestContext);
-            updateCharacterProfile(cleanCharName, ensureCharacterNameTag(typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : name, extractedBase), extractedOutfit, avatarUrl, true, { replaceBase: true, preserveOutfit: true });
+            const nameTag = getCharacterNameTag('', parsed.name_tag) || getCharacterNameTag(parsed.name)
+                || getCharacterNameTag(name, getCharacterProfile(cleanCharName)?.nameTag);
+            if (!nameTag) throw new Error('模型未返回英文/罗马字绘图姓名 name_tag，原有角色记忆未改动');
+            updateCharacterProfile(cleanCharName, ensureCharacterNameTag(cleanCharName, extractedBase, nameTag), extractedOutfit, avatarUrl, true,
+                { replaceBase: true, preserveOutfit: true, nameTag });
             toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
             return getCharacterProfile(cleanCharName);
         } catch (err) {
@@ -6491,15 +6508,41 @@ ${getCharacterMemoryTagSpecification()}
         return isMangaRequest(store) ? (isMangaContextPreset(store.enhancedContext) ? store.enhancedContext : 'v_manga') : store.enhancedContext;
     }
 
-    // Keep the supplied identity in every learned base. Never guess translations or source works.
-    function ensureCharacterNameTag(name, base) {
+    // Archive lookup/display names and NAI identities can differ. Translation belongs to the Tagger.
+    function getCharacterNameTag(name, nameTag = '') {
+        const clean = value => typeof value === 'string'
+            ? value.trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1') : '';
+        const valid = value => value && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul},，\n\r]/u.test(value)
+            && !isJunkCharacterName(value)
+            && !/^(?:[CP]\d+|character\s*\d+|unknown|unnamed|__proto__|constructor|prototype)$/i.test(getCanonicalCharName(value));
+        const supplied = clean(nameTag);
+        const fallback = clean(name);
+        if (valid(supplied)) {
+            // A saved bare name cannot suppress its explicitly supplied original suffix.
+            if (valid(fallback) && getCanonicalCharName(supplied) === supplied
+                && getCanonicalCharName(fallback).toLowerCase() === supplied.toLowerCase()) return fallback;
+            return supplied;
+        }
+        return valid(fallback) ? fallback : '';
+    }
+
+    function ensureCharacterNameTag(name, base, nameTag = '') {
         const value = typeof base === 'string' ? base : '';
-        const identity = String(name || '').trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1');
+        const identity = getCharacterNameTag(name, nameTag);
         const canonical = getCanonicalCharName(identity);
         if (!canonical || isJunkCharacterName(canonical)
             || /^(?:[CP]\d+|character\s*\d+|角色\s*\d+|路人|匿名|无名|unknown|unnamed|__proto__|constructor|prototype)$/i.test(canonical)) return value;
         const key = canonical.toLowerCase().replace(/_/g, ' ');
         const tokens = value.split(/[,，\n]/);
+        // Repair only the exact old archive-name token when a drawing identity is supplied.
+        // Do not translate names, classify appearance tags or remove arbitrary non-Latin text.
+        const oldKey = getCanonicalCharName(name).toLowerCase().replace(/_/g, ' ');
+        if (!getCharacterNameTag(name) && oldKey) {
+            for (let i = tokens.length - 1; i >= 0; i--) {
+                const plain = tokens[i].trim().replace(/^[{]+|[}]+$/g, '').trim();
+                if (getCanonicalCharName(plain).toLowerCase().replace(/_/g, ' ') === oldKey) tokens.splice(i, 1);
+            }
+        }
         const index = tokens.findIndex(tag => {
             const plain = tag.trim().replace(/^[{]+|[}]+$/g, '').trim();
             return getCanonicalCharName(plain).toLowerCase().replace(/_/g, ' ') === key;
@@ -6510,16 +6553,16 @@ ${getCharacterMemoryTagSpecification()}
                 tokens[index] = tokens[index].replace(tokens[index].trim(), identity);
                 return tokens.join(',');
             }
-            return value;
+            return tokens.join(',');
         }
-        return [identity, value].filter(Boolean).join(', ');
+        return [identity, tokens.join(',').trim()].filter(Boolean).join(', ');
     }
     // Apply ordinary character-name weighting only to visual identity tags, never dialogue or memory.
-    function renderCharacterMemoryBase(name, base) {
+    function renderCharacterMemoryBase(name, base, nameTag = '') {
         const value = String(base || '');
         const textAt = value.search(/\bText[ \t]*[:：]/i);
         const visual = textAt < 0 ? value : value.slice(0, textAt);
-        const key = getCanonicalCharName(name).toLowerCase().replace(/_/g, ' ');
+        const key = getCanonicalCharName(getCharacterNameTag(name, nameTag)).toLowerCase().replace(/_/g, ' ');
         const rendered = visual.replace(/(^|[,，\n])([ \t]*)([^,，\n]+)/g, (all, sep, space, tag) => {
             if (!key || getCanonicalCharName(tag.trim()).toLowerCase().replace(/_/g, ' ') !== key) return all;
             return sep + space + weightCharacterName(tag.trim()) + (tag.match(/\s+$/)?.[0] || '');
@@ -6527,6 +6570,7 @@ ${getCharacterMemoryTagSpecification()}
         return rendered + (textAt < 0 ? '' : value.slice(textAt));
     }
     RBQ.api.ensureCharacterNameTag = ensureCharacterNameTag;
+    RBQ.api.getCharacterNameTag = getCharacterNameTag;
     RBQ.api.renderCharacterMemoryBase = renderCharacterMemoryBase;
 
     // Ordinary images and manga share the same immutable-base/current-outfit selection.
@@ -6549,6 +6593,7 @@ ${getCharacterMemoryTagSpecification()}
             type: 'array', description: 'Only when character memory is enabled: one update per named visible person; [] if unchanged. Not render captions.',
             items: { type: 'object', properties: {
                 name: { type: 'string', description: 'Stable name matching panels[].characters[].name, never a panel/character ID' },
+                name_tag: { type: 'string', description: 'English/romanized drawing identity: fan Name (Series), original Name (original). Optional when name is already English or saved name_tag exists; provide once for a missing identity, never a Chinese drawing tag.' },
                 initial_outfit: { type: 'string', description: 'New/empty-outfit profiles only: complete known clothing at story START, before later changes. Optional; never fill with final changed outfit.' },
                 base: { type: 'string', description: 'Comma-separated English identity/appearance tags per the seven-aspect memory specification, including explicitly established nationality/ethnicity and facial traits; without counts (girl, not 1girl). Empty if already known. No clothing/shot/action/dialogue/style.' },
                 outfit: { type: 'string', description: 'Comma-separated English tags for complete known clothing at final appearance: color, known material, garment, length/state and details. Only initial clothing or explicit change; empty preserves saved clothing.' }
@@ -6559,7 +6604,7 @@ ${getCharacterMemoryTagSpecification()}
     function getMangaOutputSchema(store = getStore()) {
         const schema = getMangaProtocol().outputSchema();
         if (store.characterMemoryEnabled) {
-            schema.character_memory = [{ name: '与格内人物一致的稳定姓名', initial_outfit: '可选，新人物进入本楼时的完整已知服装，不是末格服装', base: '按七维规格提炼的英文逗号标签，保留已知国籍/族裔/面相等身份外貌，无人数、衣物或动作；已有则为空', outfit: '按颜色/已知材质/款式/长度与状态逐件列出的英文逗号标签；首次或明确换装才更新，否则为空' }];
+            schema.character_memory = [{ name: '与格内人物一致的稳定关联姓名', name_tag: '中文关联名缺少绘图身份时，每人一次提供英文/罗马字 Tag；已有则沿用', initial_outfit: '可选，新人物进入本楼时的完整已知服装，不是末格服装', base: '按七维规格提炼的英文逗号标签，保留已知国籍/族裔/面相等身份外貌，无人数、衣物或动作；已有则为空', outfit: '按颜色/已知材质/款式/长度与状态逐件列出的英文逗号标签；首次或明确换装才更新，否则为空' }];
         }
         return schema;
     }
@@ -6679,7 +6724,7 @@ ${getCharacterMemoryTagSpecification()}
                 state.outfit = p.currentOutfit || '';
                 state.outfitSet = true;
             }
-            return { name: p.displayName || name, base: p.baseTags || '',
+            return { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
                 outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
         });
         const rows = getMangaRenderCacheRows();
@@ -6731,6 +6776,7 @@ ${getCharacterMemoryTagSpecification()}
         };
         const cleanField = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
         const visible = new Map();
+        const drawingNames = new Map();
         const snapshots = new Map();
         for (const segment of segments) {
             for (const panel of segment.mangaPage?.panels || []) {
@@ -6739,10 +6785,13 @@ ${getCharacterMemoryTagSpecification()}
                     if (name) {
                         const key = getCanonicalCharName(name).toLowerCase();
                         visible.set(key, name);
+                        const drawingName = getCharacterNameTag(name, person.name_tag);
+                        if (drawingName) drawingNames.set(getCanonicalCharName(drawingName).toLowerCase(), name);
                         if (person._mangaAppearance) {
                             const prior = snapshots.get(key);
                             snapshots.set(key, { before: prior?.before || person._mangaInitialAppearance,
                                 after: person._mangaAppearance,
+                                nameTag: prior?.nameTag || getCharacterNameTag(name, person.name_tag),
                                 explicitOutfit: prior?.explicitOutfit || !!cleanField(person.outfit) || (typeof person.state?.outfit === 'string'
                                     && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(person.state.outfit)) });
                         }
@@ -6752,10 +6801,12 @@ ${getCharacterMemoryTagSpecification()}
         }
         const updates = new Map();
         for (const row of Array.isArray(source.character_memory) ? source.character_memory : []) {
-            const key = getCanonicalCharName(validName(row?.name)).toLowerCase();
-            const name = visible.get(key);
+            const rowKey = getCanonicalCharName(validName(row?.name)).toLowerCase();
+            const name = visible.get(rowKey) || drawingNames.get(rowKey);
             if (!name) continue;
+            const key = getCanonicalCharName(name).toLowerCase();
             const next = updates.get(key) || { name, base: '', outfit: '' };
+            next.nameTag ||= getCharacterNameTag(name, row.name_tag);
             next.base ||= cleanField(row.base);
             next.outfit = cleanField(row.outfit) || next.outfit;
             updates.set(key, next);
@@ -6765,11 +6816,13 @@ ${getCharacterMemoryTagSpecification()}
         for (const [key, snapshot] of snapshots) {
             const update = updates.get(key) || { name: visible.get(key), base: '', outfit: '' };
             update.base ||= snapshot.before?.base || snapshot.after?.base || '';
+            update.nameTag ||= snapshot.nameTag;
             updates.set(key, update);
         }
         for (const row of updates.values()) {
             const profile = getCharacterProfile(row.name);
-            const namedBase = ensureCharacterNameTag(row.name, profile?.baseTags || row.base);
+            const nameTag = getCharacterNameTag(row.nameTag || row.name, profile?.nameTag || row.nameTag);
+            const namedBase = ensureCharacterNameTag(row.name, profile?.baseTags || row.base, nameTag);
             const base = namedBase !== profile?.baseTags ? namedBase : '';
             const snapshot = snapshots.get(getCanonicalCharName(row.name).toLowerCase());
             const stateFields = value => {
@@ -6790,7 +6843,8 @@ ${getCharacterMemoryTagSpecification()}
                 && profile.currentOutfit !== requestedOutfits[getCanonicalCharName(row.name).toLowerCase()];
             const preserveCurrent = older || changedDuringRequest;
             const outfit = preserveCurrent ? '' : finalOutfit;
-            if (base || (outfit && outfit !== profile?.currentOutfit)) updateCharacterProfile(row.name, base, outfit, null, true, { replaceBase: !!profile?.baseTags && !!base });
+            if (base || (outfit && outfit !== profile?.currentOutfit) || (nameTag && !profile?.nameTag)) updateCharacterProfile(row.name, base, outfit, null, true,
+                { replaceBase: !!profile?.baseTags && !!base, nameTag });
             const saved = getCharacterProfile(row.name);
             if (!saved) continue;
             if (!Array.isArray(saved.wardrobe)) saved.wardrobe = [];
@@ -7025,11 +7079,12 @@ ${getCharacterMemoryTagSpecification()}
                     }
 
                     // Merge character memory with LLM output
-                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags);
+                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, char?.name_tag);
 
                     return {
                         index: charIndex + 1,
                         name: name,
+                        name_tag: getCharacterNameTag(name, getCharacterProfile(name)?.nameTag || char?.name_tag),
                         base: llmBase,
                         outfit: llmOutfit,
                         action: llmAction,
@@ -10277,7 +10332,7 @@ SCHEMA:
                         anchor: { text: 'string exact copy from currentMessage (该画面所在段落10~40字逐字原文)' },
                         scene: 'string danbooru tags, NO quality tags, NO character tags',
                         characters: [
-                            { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
+                            { name: 'string stable archive name', name_tag: 'optional English/romanized drawing identity for a non-English name; reuse saved name_tag', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
                         ]
                     },
                     {
@@ -10285,7 +10340,7 @@ SCHEMA:
                         anchor: { text: 'string exact copy from currentMessage (后续画面所在段落逐字原文)' },
                         scene: 'string tags',
                         characters: [
-                            { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
+                            { name: 'string stable archive name', name_tag: 'optional English/romanized drawing identity for a non-English name; reuse saved name_tag', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
                         ]
                     }
                 ] : [
@@ -10294,7 +10349,7 @@ SCHEMA:
                         anchor: { text: 'string exact copy from currentMessage (10~40字逐字原文)' },
                         scene: 'string danbooru tags, NO quality tags, NO character tags',
                         characters: [
-                            { name: 'string', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
+                            { name: 'string stable archive name', name_tag: 'optional English/romanized drawing identity for a non-English name; reuse saved name_tag', base: 'string fixed appearance', outfit: 'string current clothing', action: 'string current pose/expression', center: 'string e.g. C3', uc: 'string negative' }
                         ]
                     }
                 ]
@@ -10351,6 +10406,7 @@ SCHEMA:
                 .filter(([k, p]) => p && !isJunkCharacterName(k) && (p.baseTags || p.currentOutfit))
                 .map(([k, p]) => ({
                     name: p.displayName || k,
+                    name_tag: p.nameTag || '',
                     base: p.baseTags || '',
                     outfit: p.currentOutfit || '',
                     wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
@@ -10571,6 +10627,7 @@ SCHEMA:
                                         type: 'object',
                                         properties: {
                                             name: { type: 'string' },
+                                            name_tag: { type: 'string', description: 'English/romanized drawing identity for a non-English archive name. Fan Name (Series), original Name (original); reuse saved identity.' },
                                             base: { type: 'string' },
                                             outfit: { type: 'string' },
                                             action: { type: 'string' },
@@ -10715,40 +10772,24 @@ SCHEMA:
             }
         }
 
-        // 2. 如果请求带有 tools 且报错 400/500，尝试 tool 降级
+        // 2. 如果请求带有 tools 且报错 400/500，尝试 auto 协商；若仍失败直接报错提示 API 不支持 tools
         if (!response.ok && (response.status === 400 || response.status === 500) && currentBody.tools) {
-            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP ${response.status}，怀疑接口不支持当前 tool_choice，尝试转为 auto 重试...`);
+            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP ${response.status}，怀疑接口不支持指定 tool_choice，尝试转为 auto 重试...`);
             const retryBody = { ...currentBody, tool_choice: 'auto' };
-            response = await customFetch(url, {
+            const autoRes = await customFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(retryBody),
             });
-            if (!response.ok && (response.status === 400 || response.status === 500)) {
-                console.warn(`[${PLUGIN_NAME}] API 依然返回 HTTP ${response.status}，判定代理端点不支持 Gemini 工具调用，正在自动剥离 tools 并退回 json_object 模式...`);
-                const noToolsBody = { ...currentBody };
-                delete noToolsBody.tools;
-                delete noToolsBody.tool_choice;
-                const activeToolName = currentBody.tools?.[0]?.function?.name || 'generate_draw_spec';
-                noToolsBody.messages = (currentBody.messages || [])
-                    .filter(m => !m.content?.includes(activeToolName) && !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
-                    .map(m => ({ ...m }));
-                noToolsBody.stream = false;
-                noToolsBody.response_format = { type: 'json_object' };
-                response = await customFetch(url, {
-                    ...fetchOptions,
-                    body: JSON.stringify(noToolsBody),
-                });
-                currentBody = noToolsBody;
-                if (!response.ok && response.status === 400) {
-                    console.warn(`[${PLUGIN_NAME}] 剥离 tools 后仍返回 HTTP 400，怀疑接口不支持 response_format，正在剥离 response_format 重试...`);
-                    delete currentBody.response_format;
-                    response = await customFetch(url, {
-                        ...fetchOptions,
-                        body: JSON.stringify(currentBody),
-                    });
-                }
-            } else {
+            if (autoRes.ok) {
+                response = autoRes;
                 currentBody = retryBody;
+            } else {
+                let errText = '';
+                try { errText = await autoRes.text(); } catch (_) {}
+                const err = new Error(`大模型接口不支持工具调用 (Tool Call / Function Calling)。请在设置中关闭「🛡️ 工具调用抗外审 (Tool Call)」开关，或更换支持 Tool Calling 的中转渠道。(HTTP ${autoRes.status})`);
+                err.status = autoRes.status;
+                err.rawOutput = `【错误】: 当前 API 接口不支持工具调用 (Tool Call / Function Calling)\n【HTTP 状态码】: ${autoRes.status}\n【服务端返回报文】:\n${errText || '（无响应体）'}\n\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审 (Tool Call)」以改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                throw err;
             }
         }
 
@@ -11017,197 +11058,38 @@ SCHEMA:
                         throw err;
                     }
 
-                    console.warn(`[${PLUGIN_NAME}] ⚠️ 当前代理返回了空流式内容（未透传工具调用）。正在自动剥离 tools 并尝试纯文本/标准 JSON 模式重试...`);
-                    
-                    // 彻底清理 messages 中的工具调用指令，避免模型被 "严禁输出正文" 规则抑制
-                    const fallbackMessages = reqBody.messages
-                        .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
-                        .map(m => ({ ...m }));
-
-                    fallbackMessages.push({
-                        role: 'system',
-                        content: '\n\n[输出指令]: 请直接以纯文本输出最终 JSON 对象，包含 shouldDraw、reason、segments 字段。严禁调用任何外部工具，直接输出 JSON。'
-                    });
-
-                    const noToolsBody = {
-                        model: modelName,
-                        temperature: 0.2,
-                        stream: true,
-                        messages: fallbackMessages,
-                        ...buildThinkingParams(store),
-                    };
-
-                    const fallbackRes = await smartFetch(url, {
-                        method: 'POST',
-                        signal,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
-                        },
-                        body: JSON.stringify(noToolsBody),
-                    });
-                    if (!fallbackRes.ok) throw new Error(`tagger 降级重试请求失败: HTTP ${fallbackRes.status} ${await fallbackRes.text()}`);
-                    
-                    const fallbackCt = fallbackRes.headers.get('content-type') || '';
-                    let fallbackContent = '';
-                    let fallbackReasoning = '';
-                    let fallbackFinishReason = '';
-
-                    const isFallbackStream = (fallbackCt.includes('text/event-stream') || noToolsBody.stream === true) && fallbackRes.body && typeof fallbackRes.body.getReader === 'function';
-
-                    if (isFallbackStream) {
-                        const fallbackReader = fallbackRes.body.getReader();
-                        const fallbackDecoder = new TextDecoder();
-                        let fallbackBuffer = '';
-                        let fallbackRawText = '';
-                        while (true) {
-                            const { done, value } = await fallbackReader.read();
-                            if (value) {
-                                const chunkText = fallbackDecoder.decode(value, { stream: !done });
-                                fallbackBuffer += chunkText;
-                                fallbackRawText += chunkText;
-                            }
-                            const lines = fallbackBuffer.split('\n');
-                            fallbackBuffer = lines.pop() || '';
-                            for (const line of lines) {
-                                const trimmed = line.trim();
-                                if (!trimmed || !trimmed.startsWith('data:')) continue;
-                                const dataStr = trimmed.slice(5).trim();
-                                if (dataStr === '[DONE]') continue;
-                                try {
-                                    const c = JSON.parse(dataStr);
-                                    const choice = c.choices?.[0];
-                                    const delta = choice?.delta || choice?.message;
-                                    const text = delta?.content || delta?.text || '';
-                                    if (text) fallbackContent += text;
-                                    const reasoning = delta?.reasoning_content || delta?.thought || delta?.reasoning || '';
-                                    if (reasoning) fallbackReasoning += reasoning;
-
-                                    const candidate = c.candidates?.[0];
-                                    if (Array.isArray(candidate?.content?.parts)) {
-                                        for (const p of candidate.content.parts) {
-                                            if (p.thought === true || p.thought) {
-                                                if (typeof p.thought === 'string') fallbackReasoning += p.thought;
-                                                else if (p.text) fallbackReasoning += p.text;
-                                            } else if (p.text) {
-                                                fallbackContent += p.text;
-                                            }
-                                        }
-                                    }
-
-                                    const fr = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
-                                    if (fr) fallbackFinishReason = String(fr);
-                                } catch (_e) {}
-                            }
-                            if (done) break;
-                        }
-                        if (fallbackBuffer && fallbackBuffer.trim()) {
-                            const trimmed = fallbackBuffer.trim();
-                            if (trimmed.startsWith('data:')) {
-                                try {
-                                    const c = JSON.parse(trimmed.slice(5).trim());
-                                    const text = c.choices?.[0]?.delta?.content || c.choices?.[0]?.message?.content || '';
-                                    if (text) fallbackContent += text;
-                                } catch (_e) {}
-                            }
-                        }
-                        // 容错：如果全行都不带 data: 前缀，尝试直接解析缓冲区或完整响应
-                        if (!fallbackContent && fallbackRawText.trim()) {
-                            try {
-                                const parsedDirect = JSON.parse(fallbackRawText.trim());
-                                fallbackContent = parsedDirect.choices?.[0]?.message?.content || parsedDirect.choices?.[0]?.text || '';
-                                fallbackReasoning = parsedDirect.choices?.[0]?.message?.reasoning_content || '';
-                                fallbackFinishReason = String(parsedDirect.choices?.[0]?.finish_reason || '');
-                            } catch (_e) {}
-                        }
-                    } else {
-                        const fbJson = await safeReadJsonResponse(fallbackRes);
-                        fallbackContent = fbJson.choices?.[0]?.message?.content
-                            || fbJson.choices?.[0]?.text
-                            || (Array.isArray(fbJson.candidates?.[0]?.content?.parts) ? fbJson.candidates[0].content.parts.map(p => p.text).join('') : '')
-                            || '';
-                        fallbackReasoning = fbJson.choices?.[0]?.message?.reasoning_content || '';
-                        fallbackFinishReason = String(fbJson.choices?.[0]?.finish_reason || fbJson.candidates?.[0]?.finishReason || '');
-                    }
-
-                    if (!fallbackContent.trim() && fallbackReasoning.trim()) {
-                        fallbackContent = fallbackReasoning.trim();
-                    }
-
-                    if (!fallbackContent.trim()) {
-                        console.warn(`[${PLUGIN_NAME}] 降级流式仍未获得正文，尝试以非流式纯文本发起最终兜底请求...`);
-                        try {
-                            const finalNonStreamBody = {
-                                model: modelName,
-                                temperature: 0.2,
-                                stream: false,
-                                messages: fallbackMessages,
-                                ...buildThinkingParams(store),
-                            };
-                            const finalRes = await smartFetch(url, {
-                                method: 'POST',
-                                signal,
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
-                                },
-                                body: JSON.stringify(finalNonStreamBody),
-                            });
-                            if (finalRes.ok) {
-                                const finalJson = await safeReadJsonResponse(finalRes);
-                                fallbackContent = finalJson.choices?.[0]?.message?.content
-                                    || finalJson.choices?.[0]?.text
-                                    || (Array.isArray(finalJson.candidates?.[0]?.content?.parts) ? finalJson.candidates[0].content.parts.map(p => p.text).join('') : '')
-                                    || '';
-                                fallbackReasoning = finalJson.choices?.[0]?.message?.reasoning_content || '';
-                                fallbackFinishReason = String(finalJson.choices?.[0]?.finish_reason || finalJson.candidates?.[0]?.finishReason || fallbackFinishReason);
-                                if (!fallbackContent.trim() && fallbackReasoning.trim()) {
-                                    fallbackContent = fallbackReasoning.trim();
-                                }
-                            }
-                        } catch (_err) {}
-                    }
-
-                    if (!fallbackContent.trim()) {
-                        const frLower = fallbackFinishReason.toLowerCase();
-                        if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
-                            const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
-                            if (store.lorebookWafRetry && !retryWithoutLorebook && hasLorebookAttached) {
-                                console.warn(`[${PLUGIN_NAME}] ⚠️ 降级重试依然命中前置安全审核 (${fallbackFinishReason})。正在自动剥离世界书发起自愈重试...`);
-                                toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
-                                assertMangaRequestContext(requestContext);
-                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
-                            }
-                            const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查 (${fallbackFinishReason})。请尝试精简剧情敏感词，或在设置中开启「开启破限」。`);
-                            err.debugInfo = {
-                                reason: `大模型触发前置安全策略熔断 (${fallbackFinishReason})`,
-                                model: modelName,
-                                llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
-                                chunks: sseState.rawDebugChunks,
-                            };
-                            throw err;
-                        }
-                        if (frLower === 'length' || frLower === 'max_tokens') {
-                            const err = new Error('Tagger 模型输出达到最大 Token 限制 (MAX_TOKENS) 提前截断。请尝试减少上下文条数。');
-                            err.debugInfo = {
-                                reason: `大模型输出达到最大 Token 限制截断 (${fallbackFinishReason})`,
-                                model: modelName,
-                                llmOutput: fallbackContent || '(未获得完整输出)',
-                                chunks: sseState.rawDebugChunks,
-                            };
-                            throw err;
-                        }
-                        const err = new Error('tagger 降级重试完成，但模型未输出任何内容（可能被代理静默拦截或安全策略熔断）。建议检查代理日志或开启破限。');
+                    if (reqBody.tools) {
+                        const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
                         err.debugInfo = {
-                            reason: '降级重试依然未获得任何有效正文',
+                            reason: '大模型未透传 Tool Call 参数',
                             model: modelName,
                             llmOutput: '(空)',
                             chunks: sseState.rawDebugChunks,
                         };
+                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
                         throw err;
                     }
-                    json = { choices: [{ message: { content: fallbackContent, reasoning_content: fallbackReasoning } }] };
+
+                    const err = new Error('大模型未输出任何内容（可能被代理静默拦截或发生网络异常）。建议检查代理日志或在设置中切换模型。');
+                    err.debugInfo = {
+                        reason: '未获得任何有效正文',
+                        model: modelName,
+                        llmOutput: '(空)',
+                        chunks: sseState.rawDebugChunks,
+                    };
+                    throw err;
                 } else {
+                    if (reqBody.tools && !sseState.accumulatedArgs) {
+                        const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                        err.debugInfo = {
+                            reason: '大模型未透传 Tool Call 参数',
+                            model: modelName,
+                            llmOutput: sseState.accumulatedContent || '(空)',
+                            chunks: sseState.rawDebugChunks,
+                        };
+                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                        throw err;
+                    }
                     json = {
                         choices: [{
                             message: {
@@ -11223,8 +11105,24 @@ SCHEMA:
             json = await safeReadJsonResponse(response);
         }
 
-        logTaggerPayload('tagger raw response', json);
         assertMangaRequestContext(requestContext);
+
+        if (reqBody.tools && !json?.shouldDraw) {
+            const choice = json?.choices?.[0];
+            const hasTool = !!(choice?.message?.tool_calls?.length || choice?.message?.function_call || json?.candidates?.[0]?.content?.parts?.some(p => p.functionCall));
+            if (!hasTool) {
+                const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                err.debugInfo = {
+                    reason: '大模型未透传 Tool Call 参数',
+                    model: modelName,
+                    llmOutput: choice?.message?.content || '(空)',
+                };
+                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${choice?.message?.content || JSON.stringify(json, null, 2)}\n\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                throw err;
+            }
+        }
+
+        logTaggerPayload('tagger raw response', json);
         const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
         if (retryWithoutLorebook) {
@@ -11423,6 +11321,14 @@ SCHEMA:
                     rawReply = choice?.message?.content || choice?.text || (Array.isArray(json.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts.map(p => p.text).join('') : '') || '';
                 }
                 reasoning = choice?.message?.reasoning_content || '';
+            }
+        }
+
+        if (useToolCall) {
+            if (!isToolCall || !rawReply) {
+                const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。\n\n【服务端原始响应】:\n${rawReply || rawOutput || '（空）'}`;
+                throw err;
             }
         }
 

@@ -840,12 +840,25 @@ test('manga and ordinary memory use the same field resolver and preserve complet
     assert.equal(manga.compileMangaPage(page).characters[0].caption, expected.base + ', ' + outfit + ', holding book');
 });
 
-test('first-time manga identity includes the supplied name when the model returns only appearance', () => withMemory(() => {
-    const base = 'girl, brown hair, blue eyes';
+test('first-time manga keeps the Chinese profile key and learns the separately supplied English identity', () => withMemory(() => {
+    const base = 'japanese, girl, 17 years old, 168cm height, brown hair, blue eyes';
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰',name_tag:'mouri ran',base,outfit:'white shirt'}])]},[],{content:story,messageId:1});
+    const profile = sdt.getCharacterProfile('毛利兰');
+    assert.equal(profile.displayName, '毛利兰');
+    assert.equal(profile.nameTag, 'mouri ran');
+    assert.equal(sdt.getCharacterProfile('mouri ran'), profile, 'saved drawing identity aliases its Chinese archive');
+    assert.equal(profile.baseTags, 'mouri ran, ' + base);
+    assert.equal(profile.currentOutfit, 'white shirt');
+    assert.equal(result.mangaPage.panels[0].characters[0].base, 'mouri ran, ' + base);
+    assert.match(result.characters[0].caption,/mouri ran/);
+    assert.doesNotMatch(result.characters[0].caption,/毛利兰/);
+}));
+test('a Chinese lookup name without a drawing identity never creates a Chinese base tag', () => withMemory(() => {
+    const base = 'japanese, girl, 17 years old, 168cm height, brown hair, blue eyes';
     const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰',base,outfit:'white shirt'}])]},[],{content:story,messageId:1});
-    assert.equal(sdt.getCharacterProfile('毛利兰').baseTags, '毛利兰, ' + base);
-    assert.equal(result.mangaPage.panels[0].characters[0].base, '毛利兰, ' + base);
-    assert.match(result.characters[0].caption,/^毛利兰, girl/);
+    assert.equal(sdt.getCharacterProfile('毛利兰').baseTags, base);
+    assert.equal(result.mangaPage.panels[0].characters[0].base, base);
+    assert.doesNotMatch(result.characters[0].caption,/毛利兰/);
 }));
 test('existing nameless memory is repaired additively without replacing appearance or clothing', () => withMemory(() => {
     sdt.updateCharacterProfile('Mina','girl, custom exact trait','white shirt');
@@ -855,14 +868,28 @@ test('existing nameless memory is repaired additively without replacing appearan
     assert.match(result.characters[0].caption,/^Mina, girl, custom exact trait/);
     assert.doesNotMatch(result.characters[0].caption,/wrong appearance/);
 }));
-test('name fallback preserves supplied canonical tags, avoids duplicates and never invents an alias', () => {
+test('drawing-name fallback preserves English names and never prepends a Chinese lookup name', () => {
     assert.equal(sdt.ensureCharacterNameTag('Mina','Mina, girl'),'Mina, girl');
     assert.equal(sdt.ensureCharacterNameTag('Mina','2::Mina::, girl'),'2::Mina::, girl');
-    assert.equal(sdt.ensureCharacterNameTag('毛利兰','mouri ran, girl'),'毛利兰, mouri ran, girl');
+    assert.equal(sdt.ensureCharacterNameTag('毛利兰','mouri ran, girl'),'mouri ran, girl');
+    assert.equal(sdt.ensureCharacterNameTag('毛利兰','girl'),'girl');
+    assert.equal(sdt.ensureCharacterNameTag('毛利兰','毛利兰, girl'),'毛利兰, girl', 'unconfirmed existing text is not globally deleted');
     assert.equal(sdt.ensureCharacterNameTag('C1','girl'),'girl');
     assert.equal(sdt.ensureCharacterNameTag('路人','girl'),'girl');
     assert.equal(sdt.ensureCharacterNameTag('Mina',''),'Mina');
     assert.equal(sdt.ensureCharacterNameTag('Ann','Anna, girl'),'Ann, Anna, girl');
+});
+test('a confirmed drawing identity replaces only the exact old lookup-name token', () => {
+    const base = '毛利兰, japanese, 17 years old, 168cm height, custom 毛利兰纹样, blue eyes';
+    assert.equal(sdt.ensureCharacterNameTag('毛利兰',base,'mouri ran'), 'mouri ran, japanese, 17 years old, 168cm height, custom 毛利兰纹样, blue eyes');
+    assert.equal(sdt.ensureCharacterNameTag('毛利兰','mouri ran, 毛利兰, girl','mouri ran'), 'mouri ran, girl');
+    assert.equal(sdt.ensureCharacterNameTag('神谷美咲','girl, black hair','kamiya misaki (original)'), 'kamiya misaki (original), girl, black hair');
+    assert.equal(sdt.getCharacterNameTag('毛利兰','mouri ran'), 'mouri ran');
+    assert.equal(sdt.getCharacterNameTag('神谷美咲','kamiya misaki (original)'), 'kamiya misaki (original)');
+    assert.equal(sdt.getCharacterNameTag('Mina'), 'Mina');
+    for (const invalid of ['毛利兰', '毛利蘭', 'モウリラン', 'mouri ran, girl', 'Text: mouri ran', 'C1']) {
+        assert.equal(sdt.getCharacterNameTag('毛利兰', invalid), '', invalid);
+    }
 });
 
 test('ordinary and manga first-time learning share the same missing-name fallback', () => withMemory(() => {
@@ -879,6 +906,43 @@ test('ordinary and manga first-time learning share the same missing-name fallbac
         assert.equal(sdt.getCharacterProfile('Mina').baseTags,ordinaryBase);
     } finally {sdt.mergeCharacterCaption = merge; sdt.weightCharacterName = weight;}
 }));
+test('ordinary and manga share English name tags while retaining a Chinese memory key', () => withMemory(() => {
+    const merge = sdt.mergeCharacterCaption, weight = sdt.weightCharacterName;
+    const base = 'japanese, girl, 35 years old, 180cm height, custom exact trait';
+    const outfit = 'red coat, white shirt, custom clasp';
+    try {
+        vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function mergeCharacterCaption('), sdtSource.indexOf('    function collectCharacterCardInfo(')), sdt);
+        settings._smartDrawTrigger._mangaActive = false; settings._smartDrawTrigger.enhancedContext = 'off';
+        const ordinary = sdt.mergeCharacterCaption('神谷美咲',base,outfit,'standing','','kamiya misaki (original)');
+        const ordinaryBase = sdt.getCharacterProfile('神谷美咲').baseTags;
+        assert.equal(sdt.getCharacterProfile('神谷美咲').nameTag, 'kamiya misaki (original)');
+        memoryChat = 'fresh-manga-romanized-name';
+        settings._smartDrawTrigger._mangaActive = true; settings._smartDrawTrigger.enhancedContext = 'v_manga';
+        const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'神谷美咲',name_tag:'kamiya misaki (original)',base,outfit}])]},[],{content:story});
+        assert.equal(result.characters[0].caption,ordinary);
+        assert.equal(sdt.getCharacterProfile('神谷美咲').baseTags,ordinaryBase);
+        assert.equal(sdt.getCharacterProfile('神谷美咲').nameTag, 'kamiya misaki (original)');
+        assert.doesNotMatch(ordinary, /神谷美咲/);
+    } finally {sdt.mergeCharacterCaption = merge; sdt.weightCharacterName = weight;}
+}));
+test('ordinary structured responses pass the English identity through learning and later reuse', () => withMemory(() => {
+    const merge = sdt.mergeCharacterCaption, weight = sdt.weightCharacterName;
+    const response = {shouldDraw:true,segments:[{scene:'classroom',characters:[{
+        name:'毛利兰',name_tag:'mouri ran',base:'japanese, girl, 17 years old, 168cm height, blue eyes',outfit:'white shirt',action:'holding book'
+    }]}]};
+    try {
+        vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function mergeCharacterCaption('), sdtSource.indexOf('    function collectCharacterCardInfo(')), sdt);
+        settings._smartDrawTrigger._mangaActive = false; settings._smartDrawTrigger.enhancedContext = 'off';
+        const first = sdt.normalizeTaggerResult(response,[]);
+        assert.equal(sdt.getCharacterProfile('毛利兰').nameTag,'mouri ran');
+        assert.match(first.characters[0].caption,/mouri ran.*17 years old, 168cm height/);
+        assert.doesNotMatch(first.characters[0].caption,/毛利兰/);
+        response.segments[0].characters[0].base = 'wrong guessed face';
+        delete response.segments[0].characters[0].name_tag;
+        const next = sdt.normalizeTaggerResult(response,[]);
+        assert.equal(next.characters[0].caption,first.characters[0].caption);
+    } finally {sdt.mergeCharacterCaption = merge; sdt.weightCharacterName = weight;}
+}));
 test('canonical fan tag survives memory, temporary appearance and final monochrome payload', () => withMemory(() => {
     const base = 'mouri ran, girl, brown hair, blue eyes';
     const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([
@@ -888,11 +952,102 @@ test('canonical fan tag survives memory, temporary appearance and final monochro
     assert.match(sdt.getCharacterProfile('毛利兰').baseTags,/mouri ran/);
     for (const c of result.characters) {
         assert.equal(c.caption.split('mouri ran').length-1,1);
+        assert.doesNotMatch(c.caption,/毛利兰/);
         const final = mangaHook(payload('comic',[{char_caption:c.caption}]));
         assert.match(final.parameters.v4_prompt.caption.char_captions[0].char_caption,/mouri ran/);
     }
     const next = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰'}])]},[],{content:story,messageId:2});
     assert.match(next.characters[0].caption,/mouri ran.*ponytail/);
+}));
+test('one identity tag is reused across pages, temporary appearance and later memory references', () => withMemory(() => {
+    const base = 'japanese, girl, 35 years old, 180cm height, long black hair, blue eyes';
+    const response = {shouldDraw:true,segments:[
+        appearancePage([{name:'神谷美咲',name_tag:'kamiya misaki (original)',base,outfit:'red coat'}, {name:'神谷美咲',state:{base:base.replace('long black hair','short black hair')}}]),
+        appearancePage([{name:'神谷美咲'}])
+    ]};
+    const result = sdt.normalizeTaggerResult(response,[],{content:story,messageId:1});
+    assert.equal(sdt.getCharacterProfile('神谷美咲').nameTag,'kamiya misaki (original)');
+    assert.equal(sdt.getCharacterProfile('神谷美咲').baseTags,'kamiya misaki (original), ' + base);
+    assert.equal(sdt.getMangaMemoryReferences(2)[0].name_tag,'kamiya misaki (original)');
+    for (const segment of result.segments) for (const c of segment.characters) {
+        assert.equal(c.caption.split('kamiya misaki (original)').length - 1, 1);
+        assert.doesNotMatch(c.caption,/神谷美咲/);
+        assert.ok(c.caption.includes('35 years old, 180cm height'));
+    }
+    assert.match(result.segments[1].characters[0].caption,/short black hair/);
+    const next = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'神谷美咲',name_tag:'incorrect alternate identity',base:'wrong appearance'}])]},[],{content:story,messageId:2});
+    assert.match(next.characters[0].caption,/kamiya misaki \(original\).*short black hair/);
+    assert.doesNotMatch(next.characters[0].caption,/incorrect alternate identity|wrong appearance|神谷美咲/);
+    const alias = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'kamiya misaki (original)'}])]},[],{content:story,messageId:3});
+    assert.equal(alias.mangaPage.panels[0].characters[0].name,'神谷美咲');
+    assert.match(alias.characters[0].caption,/kamiya misaki \(original\).*short black hair/);
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()),['神谷美咲']);
+}));
+test('a complete original suffix upgrades a bare English identity in the same archive without later downgrade', () => withMemory(() => {
+    sdt.updateCharacterProfile('Mina','Mina, girl','white shirt');
+    assert.equal(sdt.getCharacterProfile('Mina').nameTag,'Mina');
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'Mina (original)'}])]},[],{content:story,messageId:1});
+    const profile = sdt.getCharacterProfile('Mina');
+    assert.equal(profile.nameTag,'Mina (original)');
+    assert.equal(profile.baseTags,'Mina (original), girl');
+    assert.equal(profile.currentOutfit,'white shirt');
+    assert.match(result.characters[0].caption,/Mina \(original\), girl, white shirt/);
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()),['Mina']);
+    const next = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{}])]},[],{content:story,messageId:2});
+    assert.equal(next.characters[0].caption,result.characters[0].caption);
+    assert.equal(profile.nameTag,'Mina (original)');
+}));
+test('legacy Chinese identity is repaired without changing user appearance, clothes or unrelated tokens', () => withMemory(() => {
+    const base = '毛利兰, japanese, 17 years old, 168cm height, blue eyes, custom 毛利兰纹样';
+    const outfit = 'dark blue skirt, white shirt, custom exact clasp';
+    sdt.updateCharacterProfile('毛利兰',base,outfit);
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰',name_tag:'mouri ran',base:'wrong changed appearance'}])]},[],{content:story,messageId:1});
+    const profile = sdt.getCharacterProfile('毛利兰');
+    assert.equal(profile.baseTags,'mouri ran, japanese, 17 years old, 168cm height, blue eyes, custom 毛利兰纹样');
+    assert.equal(profile.previousBaseTags,base);
+    assert.equal(profile.currentOutfit,outfit);
+    assert.equal(profile.nameTag,'mouri ran');
+    assert.doesNotMatch(result.characters[0].caption,/wrong changed appearance/);
+    assert.ok(result.characters[0].caption.includes('custom 毛利兰纹样'));
+}));
+test('compatible memory metadata can supply the English identity without repeating it in every panel', () => withMemory(() => {
+    const base = 'japanese, girl, black hair, blue eyes';
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰',base,outfit:'white shirt'},{name:'毛利兰'}])],
+        character_memory:[{name:'毛利兰',name_tag:'mouri ran',base,outfit:'white shirt'}]},[],{content:story,messageId:1});
+    assert.equal(sdt.getCharacterProfile('毛利兰').nameTag,'mouri ran');
+    assert.ok(result.characters.every(c=>c.caption.includes('mouri ran') && !c.caption.includes('毛利兰')));
+}));
+test('memory metadata using the saved English alias updates the existing Chinese archive outfit', () => withMemory(() => {
+    const base = 'mouri ran, japanese, girl, blue eyes';
+    sdt.updateCharacterProfile('毛利兰',base,'white shirt',null,true,{nameTag:'mouri ran'});
+    const legacy = appearancePage([{name:'毛利兰',positive:'standing'}]);
+    delete legacy.panels[0].characters[0].base;
+    delete legacy.panels[0].characters[0].outfit;
+    sdt.normalizeTaggerResult({shouldDraw:true,segments:[legacy],character_memory:[{name:'mouri ran',base:'wrong guessed appearance',outfit:'blue coat'}]},[],{content:story,messageId:1});
+    const profile = sdt.getCharacterProfile('毛利兰');
+    assert.equal(profile.baseTags,base);
+    assert.equal(profile.currentOutfit,'blue coat');
+    assert.equal(profile.nameTag,'mouri ran');
+    assert.ok(profile.wardrobe.some(w=>w.outfit==='blue coat'));
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()),['毛利兰']);
+}));
+test('opening clothes supplied under an English memory alias resolve to the visible Chinese archive', () => withMemory(() => {
+    const base = 'mouri ran, japanese, girl, blue eyes';
+    sdt.updateCharacterProfile('毛利兰',base,'',null,true,{nameTag:'mouri ran'});
+    const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([{name:'毛利兰'}])],
+        character_memory:[{name:'mouri ran',base:'wrong guessed appearance',initial_outfit:'white shirt',outfit:''}]},[],{content:story,messageId:1});
+    assert.equal(result.mangaPage.panels[0].characters[0].outfit,'white shirt');
+    assert.match(result.characters[0].caption,/mouri ran.*white shirt/);
+    assert.equal(sdt.getCharacterProfile('毛利兰').currentOutfit,'white shirt');
+    assert.equal(sdt.getCharacterProfile('毛利兰').baseTags,base);
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()),['毛利兰']);
+}));
+test('manga schemas expose a separate optional drawing identity beside the stable lookup name', () => withMemory(() => {
+    const slot = sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters.properties.segments.items.properties.panels.items.properties.characters.items;
+    assert.equal(slot.properties.name_tag.type,'string');
+    assert.ok(!slot.required.includes('name_tag'));
+    assert.equal(sdt.getDrawSpecTool(settings._smartDrawTrigger).function.parameters.properties.character_memory.items.properties.name_tag.type,'string');
+    assert.equal(typeof sdt.getMangaOutputSchema().character_memory[0].name_tag,'string');
 }));
 test('adding a missing name does not invalidate an existing temporary appearance source', () => withMemory(() => {
     sdt.updateCharacterProfile('Mina','girl, long hair','white shirt');
@@ -1559,11 +1714,57 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
         assert.equal(created.wardrobe.length, 1);
         assert.equal(created.previousBaseTags, undefined);
         console.log('PASS OpenAI card import uses the same specification and initializes default clothing for a new profile'); passed++;
+
+        const namedCard = {name:'毛利兰',description:'日本籍，17岁，168厘米，棕色短发、蓝色眼睛，平时穿白衬衫。',avatar:'ran.png'};
+        RBQ.api.getContext = () => ({characterId:0,characters:[namedCard]});
+        Object.assign(settings._smartDrawTrigger,{provider:'custom',customUrl:'https://test.invalid/tagger'});
+        sdt.updateCharacterProfile('毛利兰','毛利兰, japanese, girl, blue eyes','navy coat, black trousers',null,true,{nameTag:'mouri ran (detective conan)'});
+        const namedWardrobe = JSON.stringify(sdt.getCharacterProfile('毛利兰').wardrobe);
+        const namedExtracted = {name:'毛利兰',name_tag:'mouri ran (detective conan)',base:'japanese, girl, 17 years old, 168cm height, short brown hair, blue eyes',outfit:'white shirt'};
+        importCalls = 0;
+        sdt.smartFetch = async (_url, options) => {
+            importCalls++;
+            assert.ok(JSON.parse(options.body).messages[1].content.includes('已有绘图姓名: mouri ran (detective conan)'));
+            return importResponse(namedExtracted);
+        };
+        const namedImported = await sdt.importCharacterFromCurrentCard();
+        assert.equal(importCalls,1);
+        assert.equal(namedImported.displayName,'毛利兰');
+        assert.equal(namedImported.nameTag,'mouri ran (detective conan)');
+        assert.equal(namedImported.baseTags,'mouri ran (detective conan), ' + namedExtracted.base);
+        assert.equal(namedImported.currentOutfit,'navy coat, black trousers');
+        assert.equal(JSON.stringify(namedImported.wardrobe),namedWardrobe);
+        assert.equal(sdt.getCharacterProfile('mouri ran (detective conan)'),namedImported);
+        console.log('PASS card extraction separates Chinese archive name and explicit English identity while preserving the wardrobe'); passed++;
+
+        importCalls = 0;
+        const withoutTag = {...namedExtracted,base:namedExtracted.base + ', ahoge'};
+        delete withoutTag.name_tag;
+        sdt.smartFetch = async () => {importCalls++;return importResponse(withoutTag);};
+        const reusedIdentity = await sdt.importCharacterFromCurrentCard();
+        assert.equal(importCalls,1);
+        assert.equal(reusedIdentity.nameTag,'mouri ran (detective conan)');
+        assert.equal(reusedIdentity.baseTags,'mouri ran (detective conan), ' + withoutTag.base);
+        assert.equal(JSON.stringify(reusedIdentity.wardrobe),namedWardrobe);
+        assert.equal(reusedIdentity.currentOutfit,'navy coat, black trousers');
+        console.log('PASS card extraction reuses an existing English identity when the model omits name_tag'); passed++;
+
+        const untouchedBeforeMissingIdentity = JSON.stringify(sdt.getCharacterProfiles());
+        const unknownCard = {name:'新角色',description:'成年女性，黑色长发、棕色眼睛，穿白衬衫。'};
+        RBQ.api.getContext = () => ({characterId:0,characters:[unknownCard]});
+        importCalls = 0;
+        sdt.smartFetch = async () => {importCalls++;return importResponse({name:'新角色',base:'girl, black hair, brown eyes',outfit:'white shirt'});};
+        assert.equal(await sdt.importCharacterFromCurrentCard(),false);
+        assert.equal(importCalls,1);
+        assert.equal(sdt.getCharacterProfile('新角色'),null);
+        assert.equal(JSON.stringify(sdt.getCharacterProfiles()),untouchedBeforeMissingIdentity);
+        assert.ok(notices.some(text=>text.includes('name_tag')));
+        console.log('PASS a new Chinese card without an English drawing identity fails extraction without saving incomplete memory'); passed++;
     } finally { settings._smartDrawTrigger = priorSettings; RBQ.api.getContext = priorContext; }
 
     const workshopSource = fs.readFileSync(path.join(__dirname, '../plugins/character-workshop.js'), 'utf8');
     let importHandler, rendered = 0, workshopResult = false;
-    const workshopDraft = { displayName: 'Ami', baseTags: 'unsaved hair edit', wardrobe: [] };
+    const workshopDraft = { displayName: 'Ami', nameTag:'Ami (original)', baseTags: 'unsaved hair edit', wardrobe: [] };
     const workshopButton = { disabled: false, innerHTML: 'Import' };
     const workshopApi = { api: { importCharacterFromCurrentCard: async () => workshopResult } };
     const workshop = vm.createContext({
@@ -1575,14 +1776,45 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     vm.runInContext(workshopSource.slice(workshopSource.indexOf("            mask.querySelector('#cw-ce-import-card')?.addEventListener"), workshopSource.indexOf('            // Test solo portrait with Perspective')), workshop);
     await importHandler({ currentTarget: workshopButton });
     assert.equal(workshopDraft.baseTags, 'unsaved hair edit');
+    assert.equal(workshopDraft.nameTag, 'Ami (original)');
     assert.equal(rendered, 0); assert.equal(workshopButton.disabled, false);
-    workshopResult = { displayName: 'Ami', baseTags: extracted.base, previousBaseTags: 'girl, silver hair', currentOutfit: 'navy coat', wardrobe: [{ id: 'w1', outfit: 'navy coat' }] };
+    workshopResult = { displayName: 'Ami', nameTag:'Ami (Example Series)', baseTags: extracted.base, previousBaseTags: 'girl, silver hair', currentOutfit: 'navy coat', wardrobe: [{ id: 'w1', outfit: 'navy coat' }] };
     await importHandler({ currentTarget: workshopButton });
     assert.equal(workshopDraft.baseTags, extracted.base);
     assert.equal(workshopDraft.previousBaseTags, 'girl, silver hair');
     assert.equal(workshopDraft.currentOutfit, 'navy coat');
+    assert.equal(workshopDraft.nameTag, 'Ami (Example Series)');
     assert.equal(rendered, 1); assert.equal(workshopButton.innerHTML, 'Import');
     console.log('PASS workshop keeps unsaved draft on failure and loads the returned profile and backup on success'); passed++;
+
+    let workshopSaveHandler, savedWorkshopProfile, workshopRemoved = 0, savedWorkshopName;
+    const editableProfile = {displayName:'毛利兰',nameTag:'mouri ran (detective conan)',baseTags:'mouri ran (detective conan), japanese, girl, blue eyes',
+        currentOutfit:'white shirt',currentOutfitId:'w1',wardrobe:[{id:'w1',name:'日常服装',outfit:'white shirt'}]};
+    const editableBefore = JSON.stringify(editableProfile);
+    const workshopEditor = vm.createContext({
+        editName:'毛利兰',getProfile:()=>editableProfile,activeWIdx:0,dossierScope:'chat',PLUGIN_NAME:'Workshop',
+        mask:{querySelector:selector=>selector==='#cw-ce-save' ? {addEventListener:(_event,fn)=>{workshopSaveHandler=fn;}} :
+            selector==='#cw-ce-wname' ? {value:'日常服装'} : selector==='#cw-ce-wtags' ? {value:'white shirt'} : null,
+            remove:()=>{workshopRemoved++;}},
+        saveProfile:(name,profile,scope)=>{savedWorkshopProfile={name,profile:json(profile),scope};},
+        deleteProfile:()=>{throw new Error('unchanged Chinese archive name must not be deleted');},
+        onSaved:name=>{savedWorkshopName=name;},toastr:{success(){},warning:text=>{throw new Error(text);}}
+    });
+    const draftStart = workshopSource.indexOf('        const isEdit = !!editName;');
+    vm.runInContext(workshopSource.slice(draftStart,workshopSource.indexOf('        let activeWIdx = 0;',draftStart)),workshopEditor);
+    assert.equal(vm.runInContext('draft.nameTag',workshopEditor),'mouri ran (detective conan)');
+    const saveStart = workshopSource.indexOf("            mask.querySelector('#cw-ce-save')?.addEventListener");
+    vm.runInContext(workshopSource.slice(saveStart,workshopSource.indexOf('            syncChips();',saveStart)),workshopEditor);
+    workshopSaveHandler();
+    assert.equal(savedWorkshopProfile.name,'毛利兰');
+    assert.equal(savedWorkshopProfile.profile.nameTag,'mouri ran (detective conan)');
+    assert.equal(savedWorkshopProfile.profile.baseTags,editableProfile.baseTags);
+    assert.equal(savedWorkshopProfile.profile.currentOutfit,'white shirt');
+    assert.equal(savedWorkshopProfile.scope,'chat');
+    assert.equal(JSON.stringify(editableProfile),editableBefore);
+    assert.equal(savedWorkshopName,'毛利兰');
+    assert.equal(workshopRemoved,1);
+    console.log('PASS workshop editor loads and saves the separate drawing identity without renaming or dropping archive fields'); passed++;
 
     settings._smartDrawTrigger.openaiBaseUrl = 'https://test.invalid/v1';
     settings._smartDrawTrigger.openaiModel = 'test';

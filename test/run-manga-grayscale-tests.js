@@ -322,6 +322,115 @@ test('fan and ordinary names, custom tags, exact facts and weights survive model
     for (const tag of ['mouri ran', 'korean', '35 years old', '180cm height', 'custom facial mark', 'layered custom clasp']) assert.ok(caption.includes(tag));
     assert.match(caption, /1.2::girl/); assert.match(caption, /Text: blonde hair（原文）$/);
 });
+test('gray views reuse the confirmed English identity while keeping Chinese reference keys', () => {
+    const raw = [page([{ ...first(), name:'神谷美咲', name_tag:'incorrect guessed identity' }, {name:'神谷美咲'}]), page([{name:'神谷美咲'}])];
+    const before = JSON.stringify(raw);
+    const refs = [{name:'神谷美咲',name_tag:'kamiya misaki (original)',base:originalBase,outfit:originalOutfit,render:first().render}];
+    const pages = resolve(raw,refs);
+    for (const p of pages) {
+        const captions = compile(p);
+        for (const [index,panel] of p.panels.entries()) {
+            const c = panel.characters[0], caption = captions[index];
+            assert.equal(c.name,'神谷美咲');
+            assert.equal(c.name_tag,'kamiya misaki (original)');
+            assert.equal(c.base,'kamiya misaki (original), ' + originalBase);
+            assert.equal(c.render.base,'kamiya misaki (original), ' + grayBase);
+            assert.match(caption,/kamiya misaki \(original\)/);
+            assert.doesNotMatch(caption,/神谷美咲|incorrect guessed identity|long blonde hair/);
+        }
+    }
+    assert.equal(JSON.stringify(raw),before);
+});
+test('Chinese-keyed identity persists through gray cache reload and temporary appearance without recoloring memory', () => {
+    reset();
+    const firstPerson = {...first(),name:'神谷美咲',name_tag:'kamiya misaki (original)'};
+    const changedBase = originalBase.replace('long blonde hair','short red hair');
+    const changedGray = grayBase.replace('long light grey hair','short dark hair');
+    const result = parse([firstPerson,{name:'神谷美咲',state:{base:changedBase},render:{base:changedGray}},{name:'神谷美咲'}]);
+    const profile = sdt.getCharacterProfile('神谷美咲');
+    assert.equal(profile.displayName,'神谷美咲');
+    assert.equal(profile.nameTag,'kamiya misaki (original)');
+    assert.equal(profile.baseTags,'kamiya misaki (original), ' + originalBase);
+    assert.equal(profile.currentOutfit,originalOutfit);
+    assert.equal(sdt.getMangaRenderCacheRows().length,3);
+    const lastCaption = result.characters.at(-1).caption;
+    assert.match(lastCaption,/kamiya misaki \(original\).*short dark hair/);
+    assert.doesNotMatch(lastCaption,/神谷美咲|long light grey hair|short red hair/);
+    settings._smartDrawTrigger = clone(settings._smartDrawTrigger);
+    const references = sdt.getMangaMemoryReferences(2);
+    assert.equal(references[0].name,'神谷美咲');
+    assert.equal(references[0].name_tag,'kamiya misaki (original)');
+    assert.match(references[0].render.base,/short dark hair/);
+    const next = parse([{name:'神谷美咲',name_tag:'another guessed identity'}],2);
+    assert.equal(next.characters[0].caption,lastCaption);
+    assert.equal(next.renderWarnings,undefined);
+    assert.equal(sdt.getMangaRenderCacheRows().length,3);
+    assert.equal(sdt.getCharacterProfile('神谷美咲').baseTags,profile.baseTags);
+    assert.doesNotMatch(JSON.stringify(sdt.getCharacterProfile('神谷美咲')),/light grey hair|short dark hair|another guessed identity/);
+    reset();
+});
+test('confirmed English identity repairs legacy Chinese tokens without discarding matching gray or temporary views', () => {
+    for (const temporary of [false,true]) {
+        reset();
+        const oldBase = '毛利兰, ' + originalBase, oldGray = '毛利兰, ' + grayBase;
+        const people = [{name:'毛利兰',base:oldBase,outfit:originalOutfit,render:{base:oldGray,outfit:grayOutfit}}];
+        if (temporary) people.push({name:'毛利兰',state:{base:oldBase.replace('long blonde hair','short red hair')},
+            render:{base:oldGray.replace('long light grey hair','short dark hair')}});
+        parse(people);
+        assert.equal(sdt.getCharacterProfile('毛利兰').baseTags,oldBase);
+        const repaired = parse([{name:'毛利兰',name_tag:'mouri ran'}],2);
+        const profile = sdt.getCharacterProfile('毛利兰');
+        assert.equal(profile.nameTag,'mouri ran');
+        assert.equal(profile.baseTags,'mouri ran, ' + originalBase);
+        assert.equal(profile.previousBaseTags,oldBase);
+        assert.equal(profile.currentOutfit,originalOutfit);
+        assert.equal(repaired.renderWarnings,undefined);
+        assert.match(repaired.characters[0].caption,/mouri ran/);
+        assert.match(repaired.characters[0].caption,temporary ? /short dark hair/ : /long light grey hair/);
+        assert.ok(repaired.characters[0].caption.includes(grayOutfit));
+        assert.doesNotMatch(repaired.characters[0].caption,/毛利兰|long blonde hair|short red hair/);
+        settings._smartDrawTrigger = clone(settings._smartDrawTrigger);
+        const next = parse([{name:'毛利兰'}],3);
+        assert.equal(next.characters[0].caption,repaired.characters[0].caption);
+        assert.equal(next.renderWarnings,undefined);
+    }
+    reset();
+});
+test('English alias metadata supplies opening clothes to the Chinese-keyed gray appearance', () => {
+    const refs = [{name:'毛利兰',name_tag:'mouri ran',base:originalBase,outfit:''}];
+    const p = page([{name:'毛利兰',render:first().render}]);
+    const [resolved] = RBQ.api.mangaProtocol.resolveAppearances([p],refs,
+        [{name:'mouri ran',initial_outfit:originalOutfit,outfit:''}],[],{style:'monochrome'},[]);
+    const c = resolved.panels[0].characters[0];
+    assert.equal(c.name,'毛利兰');
+    assert.equal(c.name_tag,'mouri ran');
+    assert.equal(c.outfit,originalOutfit);
+    assert.equal(c.render.outfit,grayOutfit);
+    assert.match(compile(resolved)[0],/mouri ran.*light grey hair/);
+    assert.doesNotMatch(compile(resolved)[0],/毛利兰|blonde hair|beige trench/);
+    assert.deepEqual(clone(manga.compileMangaPage(resolved).warnings),[]);
+});
+test('bare English identity upgrades its original suffix while retaining matching gray cache', () => {
+    reset();
+    parse([{...first(),name:'Mina'}]);
+    const bareBase = sdt.getCharacterProfile('Mina').baseTags;
+    assert.equal(sdt.getCharacterProfile('Mina').nameTag,'Mina');
+    const result = parse([{name:'Mina (original)'}],2);
+    const profile = sdt.getCharacterProfile('Mina');
+    assert.equal(profile.nameTag,'Mina (original)');
+    assert.equal(profile.baseTags,'Mina (original), ' + originalBase);
+    assert.equal(profile.previousBaseTags,bareBase);
+    assert.equal(profile.currentOutfit,originalOutfit);
+    assert.match(result.characters[0].caption,/Mina \(original\).*long light grey hair/);
+    assert.ok(result.characters[0].caption.includes(grayOutfit));
+    assert.equal(result.renderWarnings,undefined);
+    assert.deepEqual(Object.keys(sdt.getCharacterProfiles()),['Mina']);
+    settings._smartDrawTrigger = clone(settings._smartDrawTrigger);
+    const next = parse([{name:'Mina'}],3);
+    assert.equal(next.characters[0].caption,result.characters[0].caption);
+    assert.equal(sdt.getCharacterProfile('Mina').nameTag,'Mina (original)');
+    reset();
+});
 test('color and custom modes ignore stray gray views and retain the full original captions', () => {
     for (const style of ['soft_color', 'custom']) {
         const [p] = resolve([page([first(), {}])], [], style);

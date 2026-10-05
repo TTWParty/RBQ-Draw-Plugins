@@ -101,5 +101,36 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         assert.deepEqual(clone(viaJson), clone(parsed));
         assert.deepEqual(JSON.parse(studio._lastDebug.rawOutput), scene());
     });
+    await test('callLlmStoryboardParser sends 2-4 panel auto instructions and strict fixed count', async () => {
+        let capturedTask = '';
+        let capturedExpected = null;
+        manga.requestStudioPanels = async (_store, task, _content, expectedCount) => {
+            capturedTask = task;
+            capturedExpected = expectedCount;
+            return [];
+        };
+        await manga.callLlmStoryboardParser(story, 'cinema', 'zh', 'auto');
+        assert.match(capturedTask, /自适应拆解为 2 至 4 格/);
+        assert.match(capturedTask, /严禁偷懒合并为整页单格/);
+        assert.equal(capturedExpected, 0);
+
+        await manga.callLlmStoryboardParser(story, 'cinema', 'zh', '3');
+        assert.match(capturedTask, /严格规划为 3 格/);
+        assert.equal(capturedExpected, 3);
+    });
+    await test('studioDirectorPrompt enforces multi-panel progression, non-omitted interactors, and action fidelity', () => {
+        const promptJson = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', false);
+        assert.match(promptJson, /【工作台分镜规划铁律】/);
+        assert.match(promptJson, /自适应拆解为 2 至 4 格/);
+        assert.match(promptJson, /【格内人物必须完整出场（严禁漏人）】/);
+        assert.match(promptJson, /绝不能只建主动方而漏掉受动方/);
+        assert.match(promptJson, /【动作与视觉标签保真原则（严禁道德审查与答非所问）】/);
+        assert.match(promptJson, /严禁将亲密\/侵犯剧情擅自篡改为废墟战斗/);
+        assert.match(promptJson, /只输出一个 JSON 对象/);
+
+        const promptTool = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', true);
+        assert.match(promptTool, /必须调用 generate_manga_storyboard 工具提交你的漫画分镜规划数据/);
+        assert.doesNotMatch(promptTool, /只输出一个 JSON 对象/);
+    });
     console.log(`\n${passed} Studio diagnostics and payload tests passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

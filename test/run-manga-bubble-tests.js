@@ -197,6 +197,114 @@ test('shared schemas and model instructions separate literal speech from visual 
     assert.match(prompt, /不自行执行拼接/);
     assert.doesNotMatch(manga.studioDirectorPrompt(settings._mangaMode, '普通剧情'), /各格使用[^\n]*bubbleType[^\n]*bubbleText/);
 });
+test('new SDT response schemas require explicit panel and speaker text decisions while page text stays optional', () => {
+    for (const memoryEnabled of [false, true]) {
+        const schema = sdt.getDrawSpecTool({ ...settings._smartDrawTrigger, characterMemoryEnabled: memoryEnabled })
+            .function.parameters.properties.segments.items;
+        const panel = schema.properties.panels.items, person = panel.properties.characters.items;
+        assert.ok(panel.required.includes('bubbles'));
+        assert.ok(person.required.includes('bubbles'));
+        assert.ok(!schema.properties.page.required.includes('bubbles'));
+        for (const owner of [panel, person]) {
+            assert.equal(owner.properties.bubbles.type, 'array');
+            assert.ok(!owner.properties.bubbles.minItems, 'a deliberate silent appearance must remain valid');
+            assert.doesNotMatch(owner.properties.bubbles.description, /\bomit\b/i);
+        }
+    }
+});
+test('shared instructions make existing utterances actual bubble text and allow deliberate silence', () => {
+    const prompt = dialogueSection(manga.buildMangaSystemPrompt(settings._mangaMode), '【对白与非人物文字】');
+    assert.match(prompt, /字段分工/);
+    assert.match(prompt, /不是整页禁止文字/);
+    assert.match(prompt, /每句[^。\n]*必须[^。\n]*bubbles\[\]\.text/);
+    assert.match(prompt, /不能只写[^。\n]*speaking[^。\n]*speech bubble/);
+    assert.match(prompt, /desc\/reason/);
+    assert.match(prompt, /每个 panel 和 character 都显式输出 bubbles/);
+    assert.match(prompt, /静默人物[^。\n]*画格写 \[\]/);
+    assert.doesNotMatch(prompt, /无文字省略 bubbles/);
+});
+test('final SDT prompts assign dialogue to bubbles with every character card and memory configuration', () => {
+    for (const injectCharacterCard of [false, true]) for (const characterMemoryEnabled of [false, true]) {
+        const store = { ...settings._smartDrawTrigger, injectCharacterCard, characterMemoryEnabled };
+        const prompt = sdt.getSystemPromptWithPresets(store, injectCharacterCard);
+        assert.ok(!/positive 只写本格位置、动作、表情与对白/.test(prompt), 'final SDT prompt must not send dialogue to positive');
+        assert.match(dialogueSection(prompt, '【对白与非人物文字】'), /每句[^。\n]*必须[^。\n]*bubbles\[\]\.text/);
+        if (injectCharacterCard) {
+            const cardRule = dialogueSection(prompt, '【漫画角色卡信息参考指令】');
+            assert.match(cardRule, /positive[^。\n]*(?:视觉|位置)[^。\n]*(?:对白|心声)[^。\n]*bubbles/);
+        }
+    }
+});
+test('response recovery clones legacy text conflicts without changing manual empty-array semantics', () => {
+    const page = legacyEmptyBubblePage(), before = JSON.stringify(page);
+    const manual = manga.compileMangaPage(page);
+    assert.doesNotMatch(manual.base, /Text:|BubbleType:|Layout:/);
+    for (const c of manual.characters) assert.doesNotMatch(c.caption, /Text:|BubbleType:|Layout:/);
+    const recovered = RBQ.api.mangaProtocol.recoverResponseText([page]);
+    assert.equal(JSON.stringify(page), before);
+    assert.notEqual(recovered[0], page);
+    assert.equal(recovered[0].page.bubbles, undefined);
+    assert.equal(recovered[0].panels[0].bubbles, undefined);
+    for (const c of recovered[0].panels[0].characters) assert.equal(c.bubbles, undefined);
+    assert.ok(recovered[0]._mangaTextWarnings.length > 0);
+    const compiled = manga.compileMangaPage(recovered[0]);
+    assert.equal(literal(compiled.base), '放学后\n\n咔哒');
+    assert.equal(literal(compiled.characters[0].caption), '信收到了吗？\n\n请告诉我。');
+    assert.equal(literal(compiled.characters[1].caption), '收到了，谢谢。');
+    assert.ok(compiled.warnings.length > 0);
+});
+test('response recovery keeps nonempty structured bubbles authoritative and deliberate silence empty', () => {
+    const page = pageFixture();
+    page.panels[0].bubbles = [];
+    page.panels[0].characters[0].positive += ', BubbleType: 通常吹き出し, Text: 旧台词';
+    page.panels[0].characters[0].bubbles = [bubble('结构化新句')];
+    page.panels[0].characters[1].bubbles = [];
+    const before = JSON.stringify(page), recovered = RBQ.api.mangaProtocol.recoverResponseText([page])[0];
+    assert.equal(JSON.stringify(page), before);
+    assert.deepEqual(clone(recovered.panels[0].characters[0].bubbles), [bubble('结构化新句')]);
+    assert.deepEqual(clone(recovered.panels[0].characters[1].bubbles), []);
+    assert.deepEqual(clone(recovered.panels[0].bubbles), []);
+    const compiled = manga.compileMangaPage(recovered);
+    assert.equal(literal(compiled.characters[0].caption), '结构化新句');
+    assert.doesNotMatch(compiled.characters[0].caption, /旧台词/);
+    assert.doesNotMatch(compiled.characters[1].caption, /Text:|BubbleType:|Layout:/);
+    const normalized = sdt.normalizeTaggerResult({ shouldDraw: true, segments: [page] });
+    assert.equal(JSON.stringify(page), before);
+    const data = sdt.buildNaiCharData(normalized.segments[0]);
+    assert.equal(literal(data.characters[0].caption), '结构化新句');
+    assert.doesNotMatch(data.characters[1].caption, /Text:|BubbleType:|Layout:/);
+});
+
+function legacyEmptyBubblePage() {
+    const page = pageFixture();
+    page.page.non_character = 'BubbleType: ナレーション枠, 上部, Layout: 横書き, Text: 放学后';
+    page.page.bubbles = [];
+    page.panels[0].non_character = 'SFX: 擬音, 吹き出しなし, 下部, Layout: 縦書き, Text: 咔哒';
+    page.panels[0].bubbles = [];
+    page.panels[0].characters[0].positive = 'girl, standing, BubbleType: 通常吹き出し, 右上, Layout: 縦書き, Text: 信收到了吗？\n\nBubbleType: 通常吹き出し, 左下, Layout: 縦書き, Text: 请告诉我。';
+    page.panels[0].characters[1].positive = 'girl, smiling, BubbleType: 通常吹き出し, 左下, Layout: 縦書き, Text: 收到了，谢谢。';
+    for (const c of page.panels[0].characters) {
+        c.base = 'girl, short black hair'; c.outfit = 'white shirt'; c.bubbles = [];
+    }
+    return page;
+}
+
+function dialogueSection(prompt, heading) {
+    const at = prompt.indexOf(heading);
+    assert.notEqual(at, -1, 'missing dialogue instructions: ' + heading);
+    return prompt.slice(at + heading.length).trimStart().split(/\n\n|\n文字语言：/)[0];
+}
+
+function assertStudioResponseContract(messages, tool) {
+    const prompt = messages.filter(m => m.role === 'system').map(m => m.content).join('\n');
+    assert.match(dialogueSection(prompt, '【对白与非人物文字】'), /每句[^。\n]*必须[^。\n]*bubbles\[\]\.text/);
+    if (tool) {
+        const panel = tool.function.parameters.properties.panels.items;
+        assert.ok(panel.required.includes('bubbles'));
+        assert.ok(panel.properties.characters.items.required.includes('bubbles'));
+        assert.equal(panel.properties.bubbleText, undefined);
+    }
+}
 
 (async () => {
     Object.assign(settings._smartDrawTrigger, { openaiBaseUrl: 'https://test.invalid/v1', openaiModel: 'fixture', showTaggerDebug: true });
@@ -211,8 +319,10 @@ test('shared schemas and model instructions separate literal speech from visual 
     scene.panels[0].bubbles = [bubble('咔哒', 'sfx', 'bottom')];
     for (const toolMode of [true, false]) {
         let calls = 0;
-        if (toolMode) RBQ.api.callStructuredCompletion = async ({ tool }) => {
+        settings._smartDrawTrigger.toolCallMode = toolMode;
+        if (toolMode) RBQ.api.callStructuredCompletion = async ({ messages, tool }) => {
             calls++;
+            assertStudioResponseContract(messages, tool);
             const fields = tool.function.parameters.properties.panels.items.properties;
             assert.equal(fields.bubbles.type, 'array');
             assert.equal(fields.characters.items.properties.bubbles.type, 'array');
@@ -221,12 +331,14 @@ test('shared schemas and model instructions separate literal speech from visual 
         };
         else {
             delete RBQ.api.callStructuredCompletion;
-            manga.fetch = async () => {
+            manga.fetch = async (_url, options) => {
                 calls++;
+                assertStudioResponseContract(JSON.parse(options.body).messages);
                 return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: scene.panels }) } }] }) };
             };
         }
-        const panels = await manga.requestStudioPanels(settings._mangaMode, '一个普通对话画格', '她们说完话，关门离开。', 1);
+        const panels = await manga.requestStudioPanels(settings._mangaMode, '一个普通对话画格',
+            'Ami 说：“一起回家吧。别忘了信。”Mei 回答：“好。”她们关门离开，门响了一声“咔哒”。', 1);
         assert.equal(calls, 1);
         settings._mangaMode.studio.panels = panels;
         const compiled = manga.compileMangaPage(manga.buildStudioPage(settings._mangaMode));
@@ -249,6 +361,80 @@ test('shared schemas and model instructions separate literal speech from visual 
         }
         passed++;
         console.log('PASS Studio ' + (toolMode ? 'tool' : 'plain JSON') + ' analysis sends separated speech through contextual/legacy drawing in one model request');
+    }
+    for (const channel of ['direct object', 'plain JSON', 'tool']) for (const silent of [false, true]) {
+        const page = silent ? pageFixture() : legacyEmptyBubblePage();
+        if (silent) {
+            page.panels[0].bubbles = [];
+            for (const c of page.panels[0].characters) c.bubbles = [];
+        }
+        const raw = { shouldDraw: true, segments: [page] }, before = JSON.stringify(raw);
+        const response = channel === 'direct object' ? raw : channel === 'tool'
+            ? { choices: [{ message: { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(raw) } }] } }] }
+            : { choices: [{ message: { content: JSON.stringify(raw) } }] };
+        const responseBefore = JSON.stringify(response), normalized = sdt.normalizeTaggerResult(response);
+        assert.equal(JSON.stringify(raw), before);
+        assert.equal(JSON.stringify(response), responseBefore);
+        assert.equal(normalized.segments.length, 1);
+        const segment = normalized.segments[0];
+        if (!silent) assert.ok(segment.mangaWarnings.length > 0);
+        RBQ.api.generationContextVersion = 1;
+        let imageCalls = 0;
+        RBQ.api.generateImage = async (prompt, _reason, meta) => {
+            imageCalls++;
+            let result = payload(prompt);
+            for (const hook of [mangaHook, sdtHook]) result = hook(result, { meta });
+            if (silent) {
+                assert.doesNotMatch(result.input, /Text:|BubbleType:|Layout:/);
+                for (const c of result.parameters.v4_prompt.caption.char_captions) assert.doesNotMatch(c.char_caption, /Text:|BubbleType:|Layout:/);
+            } else {
+                assert.equal(literal(result.input), '放学后\n\n咔哒');
+                assert.equal(literal(result.parameters.v4_prompt.caption.char_captions[0].char_caption), '信收到了吗？\n\n请告诉我。');
+                assert.equal(literal(result.parameters.v4_prompt.caption.char_captions[1].char_caption), '收到了，谢谢。');
+            }
+            return { url: 'fixture.png' };
+        };
+        await sdt.generateSdtImage(segment, segment.scene, 'ordinary-dialogue-fixture');
+        assert.equal(imageCalls, 1);
+        passed++;
+        console.log('PASS chat SDT ' + channel + ' response ' + (silent ? 'keeps explicit silence' : 'recovers legacy questions, answers and multiple bubbles') + ' through the final NAI request');
+    }
+    for (const toolMode of [true, false]) for (const editing of [false, true]) {
+        const response = legacyEmptyBubblePage();
+        let calls = 0;
+        settings._smartDrawTrigger.toolCallMode = toolMode;
+        if (toolMode) RBQ.api.callStructuredCompletion = async ({ messages, tool }) => {
+            calls++;
+            assertStudioResponseContract(messages, tool);
+            return { rawReply: JSON.stringify({ panels: response.panels }) };
+        };
+        else {
+            delete RBQ.api.callStructuredCompletion;
+            manga.fetch = async (_url, options) => {
+                calls++;
+                assertStudioResponseContract(JSON.parse(options.body).messages);
+                return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: response.panels }) } }] }) };
+            };
+        }
+        const content = editing ? JSON.stringify(response.panels)
+            : 'Ami 问：“信收到了吗？请告诉我。”Mei 回答：“收到了，谢谢。”她们关门离开。';
+        const panels = await manga.requestStudioPanels(settings._mangaMode, '一个普通对话画格', content, 1, editing);
+        assert.equal(calls, 1);
+        settings._mangaMode.studio.panels = panels;
+        const compiled = manga.compileMangaPage(manga.buildStudioPage(settings._mangaMode));
+        if (editing) {
+            assert.doesNotMatch(compiled.base, /Text:|BubbleType:|Layout:/);
+            for (const c of compiled.characters) assert.doesNotMatch(c.caption, /Text:|BubbleType:|Layout:/);
+            assert.ok(panels[0].characters.every(c => Array.isArray(c.bubbles) && c.bubbles.length === 0));
+        } else {
+            assert.equal(literal(compiled.characters[0].caption), '信收到了吗？\n\n请告诉我。');
+            assert.equal(literal(compiled.characters[1].caption), '收到了，谢谢。');
+            assert.equal(literal(compiled.base), '咔哒');
+        }
+        passed++;
+        console.log('PASS Studio ' + (toolMode ? 'tool' : 'plain JSON') + ' '
+            + (editing ? 'preserves existing empty bubble arrays during editing' : 'recovers fresh legacy dialogue conflicts')
+            + ' in one model request');
     }
     console.log(`\n${passed} structured bubble tests passed; 0 live model/image calls.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

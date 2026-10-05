@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.9';
+    const PLUGIN_VERSION = '6.5.10';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6222,22 +6222,23 @@ ${getCharacterMemoryTagSpecification()}
         let str = String(text || '').trim();
         if (!str) return {};
 
-        // 1. Remove thinking blocks (including think_nya~ and os tags)
-        str = str.replace(/<think(?:_nya~?)?>[\s\S]*?<\/think(?:_nya~?)?>/gi, '')
-                 .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-                 .replace(/<os>[\s\S]*?<\/os>/gi, '')
-                 .trim();
-        if (!str) return {};
-
-        // 2. Remove markdown code blocks if wrapped
-        const mdMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        if (mdMatch) {
-            str = mdMatch[1].trim();
-        }
-
-        // 3. Direct JSON.parse
+        // Literal JSON wins: thought tags and code fences inside dialogue are data.
         try {
-            return JSON.parse(str);
+            const parsed = JSON.parse(str);
+            if (parsed && typeof parsed === 'object') return parsed;
+        } catch (_e) {}
+
+        // Remove reasoning only before the JSON, never from string values.
+        let leading;
+        while ((leading = str.match(/^[^{\[]*?<(think(?:_nya~?)?|thinking|os)>[\s\S]*?<\/\1>\s*/i))) {
+            str = str.slice(leading[0].length).trim();
+        }
+        if (!str) return {};
+        const fenced = str.match(/^```(?:json)?\s*([\s\S]*?)\s*```\s*$/i);
+        if (fenced) str = fenced[1].trim();
+        try {
+            const parsed = JSON.parse(str);
+            if (parsed && typeof parsed === 'object') return parsed;
         } catch (_e) {}
 
         // 4. Clean control characters inside string literals (raw unescaped newlines/tabs/carriage returns)
@@ -6278,7 +6279,21 @@ ${getCharacterMemoryTagSpecification()}
 
         // 5. Remove trailing commas before } or ]
         const removeTrailingCommas = (input) => {
-            return input.replace(/,\s*([}\]])/g, '$1');
+            let inString = false, escaped = false, out = '';
+            for (let i = 0; i < input.length; i++) {
+                const ch = input[i];
+                if (inString) {
+                    out += ch;
+                    if (escaped) escaped = false;
+                    else if (ch === '\\') escaped = true;
+                    else if (ch === '"') inString = false;
+                } else {
+                    if (ch === '"') inString = true;
+                    if (ch === ',' && /^\s*[}\]]/.test(input.slice(i + 1))) continue;
+                    out += ch;
+                }
+            }
+            return out;
         };
 
         // 6. Find balanced { ... }
@@ -7008,11 +7023,14 @@ ${getCharacterMemoryTagSpecification()}
                                     ? source.result.segments
                                     : (source?.segment && typeof source.segment === 'object' ? [source.segment] : [])))))));
         const hasMangaPages = rawSegmentsList.some(item => item?.format === 'nai5-comic');
-        const memoryEnabled = getStore().characterMemoryEnabled && mangaContext?.memoryEnabled !== false;
+        const memoryEnabled = typeof mangaContext?.memoryEnabled === 'boolean'
+            ? mangaContext.memoryEnabled : !!getStore().characterMemoryEnabled;
         const memoryReferences = hasMangaPages && memoryEnabled ? mangaContext?.references || getMangaMemoryReferences(mangaContext?.messageId) : [];
         const memoryWarnings = [];
+        const mangaProtocol = hasMangaPages ? getMangaProtocol() : null;
+        const inputSegments = mangaProtocol?.recoverResponseText ? mangaProtocol.recoverResponseText(rawSegmentsList) : rawSegmentsList;
         const resolvedSegments = hasMangaPages
-            ? getMangaProtocol().resolveAppearances(rawSegmentsList, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings, mangaContext?.renderSettings, mangaContext?.renderCache || [])
+            ? mangaProtocol.resolveAppearances(inputSegments, memoryReferences, memoryEnabled ? source.character_memory : [], memoryWarnings, mangaContext?.renderSettings, mangaContext?.renderCache || [])
             : rawSegmentsList;
         let segments = resolvedSegments.map((item, index) => {
                 if (item?.format === 'nai5-comic' || item?.page || item?.panels) {
@@ -10446,7 +10464,7 @@ SCHEMA:
         if (store.injectCharacterCard && isMangaRequest(store)) {
             systemPrompt += `\n\n【漫画角色卡信息参考指令】
 当输入含 characterCardInfo 或 characterCardInfo_base64 时，读取未建档角色的 description 与 characterBookEntries，作为身份、外貌和默认衣着的依据，优先于模型常识；未知不猜，已有不漏，包含已明确的国籍/族裔/面相等特征。
-按普通模式将完整身份外貌写入 panels[].characters[].base，完整当前衣着写入 outfit，不按景别裁剪；positive 只写本格位置、动作、表情与对白。开启角色记忆时直接从 base/outfit 建档，character_memory 可省略。`;
+按普通模式将完整身份外貌写入 panels[].characters[].base，完整当前衣着写入 outfit，不按景别裁剪；positive 只写本格位置、动作、表情与视线，人物对白/心声逐泡写入该人物 bubbles[].text，不写入 positive。开启角色记忆时直接从 base/outfit 建档，character_memory 可省略。`;
         } else if (store.injectCharacterCard && hasCardInfo) {
             systemPrompt += '\n\n【角色卡信息参考指令】\n当输入数据 payload 中包含 `characterCardInfo` 或 `characterCardInfo_base64` 字段时，请仔细阅读其中未建档角色的描述（description）和世界书条目（characterBookEntries）。在推断这些角色的外貌特征并输出 `base` 或 `outfit` 字段时，必须严格参考这些内容。角色卡和附带世界书的描述是该角色的权威定义，其优先级高于脑中常识。输出 `base` 字段时必须严格包含：性别(girl/boy，禁带数字)、族裔面相(caucasian/japanese/chinese/delicate_face 等，西方角色必须带 caucasian 或 western，日系角色带 japanese 或 delicate_face)、年龄段(adolescent/mature_female/teenager 等)、发型发色、瞳色眼型、胸型体态与肤色，严禁省略族裔与年龄！';
         }

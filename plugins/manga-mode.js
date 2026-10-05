@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.8';
+        const VERSION = '1.9.9';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -3133,70 +3133,129 @@ position 单独写位置，description/positive 不重复画格位置；系统�
             messages = [{ role: 'system', content: systemContent }, { role: 'user', content: userContent }];
         }
 
-        const reqBody = {
-            model,
-            temperature: 0.2,
-            messages,
-            response_format: { type: 'json_object' }
-        };
-
-        let response;
-        try {
-            response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
-                body: JSON.stringify(reqBody)
-            });
-            if (!response.ok && response.status === 400 && typeof response.clone === 'function') {
-                const errCloned = await response.clone().text().catch(() => '');
-                if (errCloned.toLowerCase().includes('response_format')) {
-                    delete reqBody.response_format;
-                    response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
-                        body: JSON.stringify(reqBody)
-                    });
-                }
-            }
-        } catch (netErr) {
-            const err = new Error(`漫画分镜接口连接失败: ${netErr.message || String(netErr)}；现有分镜已保留`);
-            err.rawOutput = `【网络请求异常】: ${netErr.message || String(netErr)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
-            throw err;
-        }
-
-        if (!response.ok) {
-            let errText = '';
-            if (typeof response.text === 'function') {
-                try { errText = await response.text(); } catch (_) {}
-            }
-            const err = new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
-            err.rawOutput = `【HTTP 状态码】: ${response.status}\n【服务端返回原始报文】:\n${errText || '（无响应体）'}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
-            throw err;
-        }
-
+        let rawReply = '';
         let rawText = '';
-        let result;
-        if (typeof response.text === 'function') {
-            try {
-                rawText = await response.text();
-                result = JSON.parse(rawText);
-            } catch (_) {
-                if (typeof response.json === 'function') {
-                    try { result = await response.json(); } catch (_e) {}
+
+        if (typeof RBQ?.api?.callStructuredCompletion === 'function') {
+            const mangaTool = {
+                type: 'function',
+                function: {
+                    name: 'generate_manga_storyboard',
+                    description: 'Submit the structured manga storyboard panels for this comic page.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            panels: {
+                                type: 'array',
+                                description: 'List of 1 to 5 panels planned for the comic page.',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        id: { type: 'string', description: 'Panel ID, e.g. P1, P2' },
+                                        title: { type: 'string', description: 'Panel title' },
+                                        desc: { type: 'string', description: 'Original narrative text beat' },
+                                        position: { type: 'string', description: 'Layout position on page' },
+                                        shot: { type: 'string', description: 'Camera shot angle' },
+                                        description: { type: 'string', description: 'Background and environment tags' },
+                                        non_character: { type: 'string', description: 'Narration or speech bubbles outside characters' },
+                                        characters: {
+                                            type: 'array',
+                                            items: {
+                                                type: 'object',
+                                                properties: {
+                                                    character_id: { type: 'string' },
+                                                    name: { type: 'string' },
+                                                    base: { type: 'string' },
+                                                    outfit: { type: 'string' },
+                                                    positive: { type: 'string' },
+                                                    negative: { type: 'string' }
+                                                },
+                                                required: ['character_id', 'name', 'base', 'outfit', 'positive']
+                                            }
+                                        }
+                                    },
+                                    required: ['id', 'description', 'characters']
+                                }
+                            }
+                        },
+                        required: ['panels']
+                    }
                 }
+            };
+
+            const completion = await RBQ.api.callStructuredCompletion({
+                messages,
+                tool: mangaTool,
+                temperature: 0.2,
+                customStore: config
+            });
+            rawReply = completion.rawReply || '';
+            rawText = completion.rawOutput || rawReply;
+        } else {
+            const reqBody = {
+                model,
+                temperature: 0.2,
+                messages,
+                response_format: { type: 'json_object' }
+            };
+
+            let response;
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
+                    body: JSON.stringify(reqBody)
+                });
+                if (!response.ok && response.status === 400 && typeof response.clone === 'function') {
+                    const errCloned = await response.clone().text().catch(() => '');
+                    if (errCloned.toLowerCase().includes('response_format')) {
+                        delete reqBody.response_format;
+                        response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
+                            body: JSON.stringify(reqBody)
+                        });
+                    }
+                }
+            } catch (netErr) {
+                const err = new Error(`漫画分镜接口连接失败: ${netErr.message || String(netErr)}；现有分镜已保留`);
+                err.rawOutput = `【网络请求异常】: ${netErr.message || String(netErr)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
+                throw err;
             }
-        } else if (typeof response.json === 'function') {
-            result = await response.json();
-            rawText = JSON.stringify(result);
-        }
 
-        if (result?.error) {
-            const err = new Error(`AI 模型接口返回错误: ${result.error.message || JSON.stringify(result.error)}；现有分镜已保留`);
-            err.rawOutput = `【服务端返回错误对象】:\n${JSON.stringify(result, null, 2)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
-            throw err;
-        }
+            if (!response.ok) {
+                let errText = '';
+                if (typeof response.text === 'function') {
+                    try { errText = await response.text(); } catch (_) {}
+                }
+                const err = new Error(`漫画分镜接口失败 (HTTP ${response.status})；现有分镜已保留`);
+                err.rawOutput = `【HTTP 状态码】: ${response.status}\n【服务端返回原始报文】:\n${errText || '（无响应体）'}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
+                throw err;
+            }
 
-        const rawReply = String(result?.choices?.[0]?.message?.content || '').trim();
+            let result;
+            if (typeof response.text === 'function') {
+                try {
+                    rawText = await response.text();
+                    result = JSON.parse(rawText);
+                } catch (_) {
+                    if (typeof response.json === 'function') {
+                        try { result = await response.json(); } catch (_e) {}
+                    }
+                }
+            } else if (typeof response.json === 'function') {
+                result = await response.json();
+                rawText = JSON.stringify(result);
+            }
+
+            if (result?.error) {
+                const err = new Error(`AI 模型接口返回错误: ${result.error.message || JSON.stringify(result.error)}；现有分镜已保留`);
+                err.rawOutput = `【服务端返回错误对象】:\n${JSON.stringify(result, null, 2)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
+                throw err;
+            }
+
+            rawReply = String(result?.choices?.[0]?.message?.content || '').trim();
+        }
         const data = extractStudioJson(rawReply);
         if (!data || typeof data !== 'object') {
             const preview = rawReply.replace(/<think[\s\S]*?<\/think>/gi, '').trim();

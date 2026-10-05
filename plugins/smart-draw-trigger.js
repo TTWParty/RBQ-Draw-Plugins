@@ -11,7 +11,7 @@
     }
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.5';
+    const PLUGIN_VERSION = '6.5.6';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -10657,9 +10657,9 @@ SCHEMA:
         return params;
     }
 
-    async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj) {
+    async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj, customFetch = smartFetch) {
         let currentBody = { ...reqBodyObj };
-        let response = await smartFetch(url, {
+        let response = await customFetch(url, {
             ...fetchOptions,
             body: JSON.stringify(currentBody),
         });
@@ -10682,7 +10682,7 @@ SCHEMA:
                 console.warn(`[${PLUGIN_NAME}] API 报错包含 reasoning 关键字，怀疑端点不支持 reasoning_effort，正在剥离重试...`);
                 const retryBody = { ...currentBody };
                 delete retryBody.reasoning_effort;
-                const r = await smartFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
+                const r = await customFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
                 if (r.ok || r.status !== 400) {
                     response = r;
                     currentBody = retryBody;
@@ -10694,7 +10694,7 @@ SCHEMA:
                 const retryBody = { ...currentBody };
                 delete retryBody.thinking;
                 delete retryBody.thinking_budget;
-                const r = await smartFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
+                const r = await customFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
                 if (r.ok || r.status !== 400) {
                     response = r;
                     currentBody = retryBody;
@@ -10707,7 +10707,7 @@ SCHEMA:
                 delete retryBody.reasoning_effort;
                 delete retryBody.thinking;
                 delete retryBody.thinking_budget;
-                const r = await smartFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
+                const r = await customFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
                 if (r.ok || r.status !== 400) {
                     response = r;
                     currentBody = retryBody;
@@ -10719,7 +10719,7 @@ SCHEMA:
         if (!response.ok && (response.status === 400 || response.status === 500) && currentBody.tools) {
             console.warn(`[${PLUGIN_NAME}] API 返回 HTTP ${response.status}，怀疑接口不支持当前 tool_choice，尝试转为 auto 重试...`);
             const retryBody = { ...currentBody, tool_choice: 'auto' };
-            response = await smartFetch(url, {
+            response = await customFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(retryBody),
             });
@@ -10728,12 +10728,13 @@ SCHEMA:
                 const noToolsBody = { ...currentBody };
                 delete noToolsBody.tools;
                 delete noToolsBody.tool_choice;
+                const activeToolName = currentBody.tools?.[0]?.function?.name || 'generate_draw_spec';
                 noToolsBody.messages = (currentBody.messages || [])
-                    .filter(m => !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
+                    .filter(m => !m.content?.includes(activeToolName) && !m.content?.includes('generate_draw_spec') && !m.content?.includes('DRAW_SPEC_TOOL_RULE'))
                     .map(m => ({ ...m }));
                 noToolsBody.stream = false;
                 noToolsBody.response_format = { type: 'json_object' };
-                response = await smartFetch(url, {
+                response = await customFetch(url, {
                     ...fetchOptions,
                     body: JSON.stringify(noToolsBody),
                 });
@@ -10741,7 +10742,7 @@ SCHEMA:
                 if (!response.ok && response.status === 400) {
                     console.warn(`[${PLUGIN_NAME}] 剥离 tools 后仍返回 HTTP 400，怀疑接口不支持 response_format，正在剥离 response_format 重试...`);
                     delete currentBody.response_format;
-                    response = await smartFetch(url, {
+                    response = await customFetch(url, {
                         ...fetchOptions,
                         body: JSON.stringify(currentBody),
                     });
@@ -10756,7 +10757,7 @@ SCHEMA:
             console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
             const retryBody = { ...currentBody };
             delete retryBody.response_format;
-            response = await smartFetch(url, {
+            response = await customFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(retryBody),
             });
@@ -11257,6 +11258,183 @@ SCHEMA:
         const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
         return normalized;
+    }
+
+    async function callStructuredCompletion({
+        messages,
+        tool = null,
+        temperature = 0.2,
+        signal = null,
+        customStore = null,
+        fetchFn = null
+    }) {
+        const store = customStore || getStore();
+        const url = normalizeBaseUrl(store.openaiBaseUrl);
+        if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
+        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+        if (!modelName) throw new Error('请先填写模型名称');
+        checkUrlSafety(url);
+
+        const myFetch = fetchFn || smartFetch;
+
+        const reqBody = {
+            model: modelName,
+            temperature,
+            stream: false,
+            messages: Array.isArray(messages) ? messages.map(m => ({ ...m })) : [],
+            ...buildThinkingParams(store),
+        };
+
+        const useToolCall = !!(store.toolCallMode && tool);
+        if (useToolCall) {
+            reqBody.tools = [tool];
+            reqBody.tool_choice = { type: 'function', function: { name: tool.function.name } };
+            reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
+        } else {
+            reqBody.response_format = { type: 'json_object' };
+            // 对 Gemini 模型，强制开启流式以避免 LiteLLM 500 Invalid non-streaming Gemini response 崩溃
+            if (modelName.toLowerCase().includes('gemini')) {
+                reqBody.stream = true;
+            }
+        }
+
+        let response = await callApiWithJsonFallback(url, {
+            method: 'POST',
+            signal,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+            },
+        }, reqBody, myFetch);
+
+        if (!response.ok) {
+            let errText = '';
+            try { errText = await response.text(); } catch (_) {}
+            const err = new Error(`大模型接口请求失败 (HTTP ${response.status})`);
+            err.status = response.status;
+            err.rawOutput = `【HTTP 状态码】: ${response.status}\n【服务端返回原始报文】:\n${errText || '（无响应体）'}\n\n【请求地址】: ${url}\n【模型】: ${modelName}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
+            throw err;
+        }
+
+        const ct = response.headers.get('content-type') || '';
+        const isSseStream = (ct.includes('text/event-stream') || reqBody.stream === true) && response.body && typeof response.body.getReader === 'function';
+
+        let rawReply = '';
+        let reasoning = '';
+        let rawOutput = '';
+        let isToolCall = false;
+        const toolName = tool?.function?.name || '';
+
+        if (isSseStream) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let sseBuffer = '';
+            let rawStreamText = '';
+            const sseState = {
+                accumulatedArgs: '',
+                accumulatedContent: '',
+                accumulatedReasoning: '',
+                hasSafetyBlock: false,
+                safetyReason: '',
+                rawDebugChunks: []
+            };
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (value) {
+                    const chunkText = decoder.decode(value, { stream: !done });
+                    sseBuffer += chunkText;
+                    rawStreamText += chunkText;
+                }
+                const lines = sseBuffer.split('\n');
+                sseBuffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    processSseLine(line, sseState);
+                }
+                if (done) break;
+            }
+
+            if (sseBuffer && sseBuffer.trim()) {
+                processSseLine(sseBuffer, sseState);
+            }
+
+            rawOutput = rawStreamText;
+
+            // 容错：如果流中未检测到 SSE 格式 (data:)，但实际上返回了完整的单体 JSON（例如反代未走流式包装）
+            if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.hasSafetyBlock && rawStreamText.trim()) {
+                const trimmedRaw = rawStreamText.trim();
+                if (trimmedRaw.startsWith('{') && trimmedRaw.endsWith('}')) {
+                    try {
+                        const parsedDirect = JSON.parse(trimmedRaw);
+                        if (parsedDirect && (parsedDirect.choices || parsedDirect.candidates || parsedDirect.error)) {
+                            if (parsedDirect.error) throw new Error(parsedDirect.error.message || JSON.stringify(parsedDirect.error));
+                            const choice = parsedDirect.choices?.[0];
+                            if (choice?.message?.tool_calls?.[0]?.function?.arguments) {
+                                isToolCall = true;
+                                rawReply = choice.message.tool_calls[0].function.arguments;
+                            } else {
+                                rawReply = choice?.message?.content || choice?.text || '';
+                            }
+                            reasoning = choice?.message?.reasoning_content || '';
+                        }
+                    } catch (_e) {}
+                }
+            }
+
+            if (!rawReply) {
+                if (sseState.accumulatedArgs) {
+                    isToolCall = true;
+                    rawReply = sseState.accumulatedArgs;
+                } else if (sseState.accumulatedContent) {
+                    rawReply = sseState.accumulatedContent;
+                } else if (sseState.accumulatedReasoning) {
+                    rawReply = sseState.accumulatedReasoning;
+                }
+                reasoning = sseState.accumulatedReasoning;
+
+                if (!rawReply && sseState.hasSafetyBlock) {
+                    const err = new Error(`大模型触发了官方前置内容安全审查 (${sseState.safetyReason || 'SAFETY'})`);
+                    err.rawOutput = `【前置安全审查熔断】: ${sseState.safetyReason || 'SAFETY'}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【调试信息】:\n${JSON.stringify(sseState.rawDebugChunks, null, 2)}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
+                    throw err;
+                }
+            }
+        } else {
+            // 非流式响应
+            const jsonText = await response.text();
+            rawOutput = jsonText;
+            let json;
+            try {
+                json = JSON.parse(jsonText);
+            } catch (_e) {
+                rawReply = jsonText;
+            }
+            if (json) {
+                if (json.error) {
+                    const err = new Error(`大模型返回错误: ${json.error.message || JSON.stringify(json.error)}`);
+                    err.rawOutput = `【服务端返回错误对象】:\n${JSON.stringify(json, null, 2)}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
+                    throw err;
+                }
+                const choice = json.choices?.[0];
+                if (choice?.message?.tool_calls?.[0]?.function?.arguments) {
+                    isToolCall = true;
+                    rawReply = choice.message.tool_calls[0].function.arguments;
+                } else {
+                    rawReply = choice?.message?.content || choice?.text || (Array.isArray(json.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts.map(p => p.text).join('') : '') || '';
+                }
+                reasoning = choice?.message?.reasoning_content || '';
+            }
+        }
+
+        return {
+            rawReply: String(rawReply || '').trim(),
+            rawOutput,
+            reasoning,
+            isToolCall,
+            toolName,
+            model: modelName,
+            endpoint: url
+        };
     }
 
     async function callTagger(messageId, trigger, { signal } = {}) {
@@ -16571,6 +16749,7 @@ SCHEMA:
             ? squashConsecutiveMessages(rawMessages)
             : rawMessages;
     };
+    RBQ.api.callStructuredCompletion = callStructuredCompletion;
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);

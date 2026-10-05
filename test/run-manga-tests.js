@@ -1627,8 +1627,24 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     };
     await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
     settings._smartDrawTrigger.geminiJailbreak = false;
-    delete RBQ.api.buildSdtMessages;
     console.log('PASS Studio inherits SDT jailbreak wrapper when enabled'); passed++;
+    let structuredCompletionCalled = false;
+    RBQ.api.callStructuredCompletion = async ({ messages, tool, temperature, customStore }) => {
+        structuredCompletionCalled = true;
+        assert.equal(tool.function.name, 'generate_manga_storyboard');
+        assert.equal(Array.isArray(messages), true);
+        return {
+            rawReply: JSON.stringify({ panels: [fixture().panels[0]] }),
+            rawOutput: 'stream-debug-trace',
+            isToolCall: true,
+            toolName: 'generate_manga_storyboard'
+        };
+    };
+    const structuredResult = await manga.requestStudioPanels({ ...settings._mangaMode, style: 'soft_color' }, 'one panel', 'story', 1);
+    assert.equal(structuredCompletionCalled, true);
+    assert.equal(structuredResult.length, 1);
+    delete RBQ.api.callStructuredCompletion;
+    console.log('PASS Studio routes directly to RBQ.api.callStructuredCompletion with tool definition when available'); passed++;
     const studioReferences = { characterCardInfo: testCard, characterMemory: [{ name: 'Mei', base: 'girl, short blonde hair, brown eyes', outfit: 'white shirt' }] };
     RBQ.api.collectMangaReferenceData = content => { assert.equal(content, 'story'); return studioReferences; };
     // Studio defaults to independent mode (useChatChars: false): references must NOT leak into LLM input

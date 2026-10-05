@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.15';
+        const VERSION = '1.9.16';
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -3038,18 +3038,20 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
 
     function studioPanelFromProtocol(panel, index = 0) {
         // Studio keeps position/shot separate so edits apply to every person in a panel.
-        let bubbleText = '';
-        let bubbleType = 'speech';
-        let bubbleLayout = 'vertical';
-        for (const person of (panel.characters || [])) {
-            const parsed = splitMangaText(person.positive || '');
-            if (parsed.text) {
-                bubbleText = parsed.text;
-                if (/BubbleType\s*[:：]\s*(?:叫び|怒|scream)/i.test(person.positive)) bubbleType = 'screaming';
-                else if (/BubbleType\s*[:：]\s*(?:思考|thought)/i.test(person.positive)) bubbleType = 'thought';
-                else if (/BubbleType\s*[:：]\s*(?:波打つ|shiver|wavy)/i.test(person.positive)) bubbleType = 'shiver';
-                if (/Layout\s*[:：]\s*横書き/i.test(person.positive)) bubbleLayout = 'horizontal';
-                break;
+        let bubbleText = String(panel.bubbleText || '').trim();
+        let bubbleType = panel.bubbleType || 'speech';
+        let bubbleLayout = panel.bubbleLayout || (bubbleType === 'caption' ? 'horizontal' : 'vertical');
+        if (!bubbleText) {
+            for (const person of (panel.characters || [])) {
+                const parsed = splitMangaText(person.positive || '');
+                if (parsed.text) {
+                    bubbleText = parsed.text;
+                    if (/BubbleType\s*[:：]\s*(?:叫び|怒|scream)/i.test(person.positive)) bubbleType = 'screaming';
+                    else if (/BubbleType\s*[:：]\s*(?:思考|thought)/i.test(person.positive)) bubbleType = 'thought';
+                    else if (/BubbleType\s*[:：]\s*(?:波打つ|shiver|wavy)/i.test(person.positive)) bubbleType = 'shiver';
+                    if (/Layout\s*[:：]\s*横書き/i.test(person.positive)) bubbleLayout = 'horizontal';
+                    break;
+                }
             }
         }
         if (!bubbleText && panel.non_character) {
@@ -3110,8 +3112,8 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
 
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先，完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文出现的独立拟音。'}
-各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（旁白/拟音/画外文字）、characters 数组。
-position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作和对白进自己的 positive，外貌与服装分别进 base/outfit。
+各格使用 id、title、desc（本格剧情原句）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、bubbleType（speech | thought | screaming | caption | sfx）、bubbleText（画格内角色台词、心声或旁白文字，无文字时为 ""）、bubbleLayout（vertical | horizontal）、non_character（旁白/拟音/画外文字）、characters 数组。
+position 单独写位置，description/positive 不重复画格位置；系统会统一附加 position 和 shot。bubbleText 填写本格出现的对白/心声/旁白文字原句，bubbleType 指定气泡形态；characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名；黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。character_id 跨格同人保持一致。description 不含人物动作，人物动作进自己的 positive，外貌与服装分别进 base/outfit。
 严格忠于正文剧情事件与人物关系，不凭空篡改剧情走势，保留道具和动作先后，绝不截断故事末尾。
 局部镜头用 shot 指定，base/outfit 仍保留完整资料，不按部位删标签。
 ${isToolMode
@@ -3269,6 +3271,20 @@ ${isToolMode
                                         position: { type: 'string', description: 'Layout position on page' },
                                         shot: { type: 'string', description: 'Camera shot angle' },
                                         description: { type: 'string', description: 'Background and environment tags' },
+                                        bubbleType: {
+                                            type: 'string',
+                                            enum: ['speech', 'thought', 'screaming', 'whisper', 'shiver', 'caption', 'sfx', 'broadcast', 'offscreen', 'tailless', 'connected'],
+                                            description: 'Speech bubble type, e.g. speech, thought, screaming, caption, sfx'
+                                        },
+                                        bubbleText: {
+                                            type: 'string',
+                                            description: 'Dialogue, monologue, thought or narration text in this panel (empty string if silent)'
+                                        },
+                                        bubbleLayout: {
+                                            type: 'string',
+                                            enum: ['vertical', 'horizontal'],
+                                            description: 'Text layout direction, vertical or horizontal'
+                                        },
                                         non_character: { type: 'string', description: 'Narration or speech bubbles outside characters' },
                                         characters: {
                                             type: 'array',

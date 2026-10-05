@@ -134,6 +134,9 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         assert.doesNotMatch(promptJson, /无台词的静默格不添空白气泡/);
         assert.doesNotMatch(promptJson, /静默格不添字/);
         assert.doesNotMatch(promptJson, /禁止凭空补字/);
+        assert.match(promptJson, /bubbleType（speech \| thought \| screaming \| caption \| sfx）/);
+        assert.match(promptJson, /bubbleText/);
+        assert.match(promptJson, /bubbleLayout/);
         assert.match(promptJson, /只输出一个 JSON 对象/);
 
         const promptTool = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', true);
@@ -142,6 +145,16 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
 
         const extracted = manga.studioPanelFromProtocol(scene().panels[0]);
         assert.equal(extracted.bubbleText, '谢谢。');
+
+        const directPanel = manga.studioPanelFromProtocol({
+            id: 'P3',
+            bubbleType: 'screaming',
+            bubbleText: '放开我！',
+            bubbleLayout: 'vertical'
+        });
+        assert.equal(directPanel.bubbleText, '放开我！');
+        assert.equal(directPanel.bubbleType, 'screaming');
+        assert.equal(directPanel.bubbleLayout, 'vertical');
     });
     console.log(`\n${passed} Studio diagnostics and payload tests passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -120,11 +120,11 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
     });
     await test('studioDirectorPrompt enforces multi-panel progression, non-omitted interactors, and action fidelity', () => {
         const promptJson = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', false);
-        assert.match(promptJson, /【工作台分镜规划铁律】/);
+        assert.match(promptJson, /【画格叙事递进与时间流逝/);
         assert.match(promptJson, /自适应拆解为 2 至 4 格/);
-        assert.match(promptJson, /【格内人物必须完整出场（严禁漏人）】/);
+        assert.match(promptJson, /【实体解耦公理与格内多角色同框/);
         assert.match(promptJson, /绝不能只建主动方而漏掉受动方/);
-        assert.match(promptJson, /【动作与视觉标签保真原则（严禁道德审查与答非所问）】/);
+        assert.match(promptJson, /【分级判定准则与 Danbooru 客观转译/);
         assert.match(promptJson, /严禁将亲密\/侵犯剧情擅自篡改为废墟战斗/);
         assert.match(promptJson, /只输出一个 JSON 对象/);
 

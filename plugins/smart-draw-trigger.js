@@ -6956,7 +6956,10 @@ ${getCharacterMemoryTagSpecification()}
         const rawContent = data?.choices?.[0]?.message?.content
             ?? data?.choices?.[0]?.text
             ?? data?.choices?.[0]?.delta?.content
-            ?? data?.content;
+            ?? data?.content
+            ?? (Array.isArray(data?.candidates?.[0]?.content?.parts)
+                ? data.candidates[0].content.parts.filter(part => !part?.thought && typeof part?.text === 'string')
+                    .map(part => part.text).join('') : undefined);
 
         const decodeUnicodeEscapes = (input) => {
             if (typeof input !== 'string') return input;
@@ -11245,6 +11248,28 @@ SCHEMA:
         let rawOutput = '';
         let isToolCall = false;
         const toolName = tool?.function?.name || '';
+        // Some compatible endpoints return a complete legacy/native message even
+        // when stream=true. Use the same envelope decoding for both body paths.
+        const unwrapCompletion = json => {
+            const choice = json?.choices?.[0];
+            const message = choice?.message || choice?.delta || {};
+            const parts = Array.isArray(json?.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts : [];
+            const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+            const call = calls.find(entry => entry?.function?.name === toolName) || calls[0];
+            const nativeCalls = parts.filter(part => part?.functionCall).map(part => part.functionCall);
+            const nativeCall = nativeCalls.find(entry => entry?.name === toolName) || nativeCalls[0];
+            const args = call?.function?.arguments ?? message.function_call?.arguments ?? nativeCall?.args;
+            const hasArgs = typeof args === 'string' || (args !== null && typeof args === 'object');
+            const content = message.content ?? choice?.text ?? json?.content
+                ?? parts.filter(part => !part?.thought && typeof part?.text === 'string').map(part => part.text).join('');
+            const reply = hasArgs ? args : content;
+            return {
+                rawReply: typeof reply === 'string' ? reply : reply && typeof reply === 'object' ? JSON.stringify(reply) : '',
+                isToolCall: hasArgs,
+                reasoning: message.reasoning_content || choice?.reasoning_content
+                    || parts.filter(part => part?.thought).map(part => typeof part.thought === 'string' ? part.thought : part.text || '').join('')
+            };
+        };
 
         if (isSseStream) {
             const reader = response.body.getReader();
@@ -11290,14 +11315,7 @@ SCHEMA:
                         const parsedDirect = JSON.parse(trimmedRaw);
                         if (parsedDirect && (parsedDirect.choices || parsedDirect.candidates || parsedDirect.error)) {
                             if (parsedDirect.error) throw new Error(parsedDirect.error.message || JSON.stringify(parsedDirect.error));
-                            const choice = parsedDirect.choices?.[0];
-                            if (choice?.message?.tool_calls?.[0]?.function?.arguments) {
-                                isToolCall = true;
-                                rawReply = choice.message.tool_calls[0].function.arguments;
-                            } else {
-                                rawReply = choice?.message?.content || choice?.text || '';
-                            }
-                            reasoning = choice?.message?.reasoning_content || '';
+                            ({ rawReply, reasoning, isToolCall } = unwrapCompletion(parsedDirect));
                         }
                     } catch (_e) {}
                 }
@@ -11336,14 +11354,7 @@ SCHEMA:
                     err.rawOutput = `【服务端返回错误对象】:\n${JSON.stringify(json, null, 2)}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
                     throw err;
                 }
-                const choice = json.choices?.[0];
-                if (choice?.message?.tool_calls?.[0]?.function?.arguments) {
-                    isToolCall = true;
-                    rawReply = choice.message.tool_calls[0].function.arguments;
-                } else {
-                    rawReply = choice?.message?.content || choice?.text || (Array.isArray(json.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts.map(p => p.text).join('') : '') || '';
-                }
-                reasoning = choice?.message?.reasoning_content || '';
+                ({ rawReply, reasoning, isToolCall } = unwrapCompletion(json));
             }
         }
 

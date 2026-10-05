@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.14';
+    const PLUGIN_VERSION = '6.5.15';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6363,7 +6363,11 @@ ${getCharacterMemoryTagSpecification()}
         const trimmed = String(line || '').trim();
         if (!trimmed || !trimmed.startsWith('data:')) return;
         const dataStr = trimmed.slice(5).trim();
-        if (!dataStr || dataStr === '[DONE]') return;
+        if (!dataStr) return;
+        if (dataStr === '[DONE]') {
+            state.streamComplete = true;
+            return;
+        }
         try {
             const chunk = JSON.parse(dataStr);
             if (state.rawDebugChunks && state.rawDebugChunks.length < 5) {
@@ -6453,8 +6457,63 @@ ${getCharacterMemoryTagSpecification()}
             if (delta?.reasoning) {
                 state.accumulatedReasoning += delta.reasoning;
             }
+            // A terminal event can contain the last text/tool delta. Consume it
+            // before stopping; a relay need not close its HTTP body immediately.
+            if (finishReason && !/^(?:finish_reason_)?unspecified$/i.test(String(finishReason))) {
+                state.streamComplete = true;
+            }
         } catch (err) {
             if (err.message?.includes('SSE 流返回错误')) throw err;
+        }
+    }
+
+    async function readSseCompletion(response, signal) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        const sseState = {
+            accumulatedArgs: '', accumulatedContent: '', accumulatedReasoning: '',
+            hasSafetyBlock: false, safetyReason: '', rawDebugChunks: [], streamComplete: false
+        };
+        let sseBuffer = '', rawStreamText = '', reachedEof = false, onAbort;
+        const abortError = () => signal?.reason && typeof signal.reason.message === 'string'
+            ? signal.reason : Object.assign(new Error('大模型请求已取消'), { name: 'AbortError' });
+        try {
+            if (signal?.aborted) throw abortError();
+            const aborted = signal ? new Promise((_, reject) => {
+                onAbort = () => reject(abortError());
+                signal.addEventListener('abort', onAbort, { once: true });
+            }) : null;
+            while (!sseState.streamComplete) {
+                // Also interrupt transports whose pending reader.read() does not
+                // reject when the original fetch signal is aborted.
+                const pendingRead = reader.read();
+                const { done, value } = await (aborted ? Promise.race([pendingRead, aborted]) : pendingRead);
+                if (value) {
+                    const chunkText = decoder.decode(value, { stream: !done });
+                    sseBuffer += chunkText;
+                    rawStreamText += chunkText;
+                }
+                const lines = sseBuffer.split('\n');
+                sseBuffer = lines.pop() || '';
+                for (const line of lines) {
+                    processSseLine(line, sseState);
+                    if (sseState.streamComplete) break;
+                }
+                if (done) {
+                    reachedEof = true;
+                    if (!sseState.streamComplete && sseBuffer.trim()) processSseLine(sseBuffer, sseState);
+                    break;
+                }
+            }
+            return { sseState, rawStreamText };
+        } finally {
+            if (onAbort) signal.removeEventListener('abort', onAbort);
+            if (!reachedEof) {
+                // Some relay cancellation promises never settle. Cleanup must
+                // not hold a completed response or cancellation hostage.
+                try { Promise.resolve(reader.cancel?.()).catch(() => {}); } catch (_) {}
+            }
+            try { reader.releaseLock?.(); } catch (_) {}
         }
     }
 
@@ -11151,38 +11210,7 @@ SCHEMA:
         const isSseStream = (ct.includes('text/event-stream') || reqBody.stream === true) && response.body && typeof response.body.getReader === 'function';
 
         if (isSseStream) {
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let sseBuffer = '';
-            let rawStreamText = '';
-            const sseState = {
-                accumulatedArgs: '',
-                accumulatedContent: '',
-                accumulatedReasoning: '',
-                hasSafetyBlock: false,
-                safetyReason: '',
-                rawDebugChunks: []
-            };
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (value) {
-                    const chunkText = decoder.decode(value, { stream: !done });
-                    sseBuffer += chunkText;
-                    rawStreamText += chunkText;
-                }
-                const lines = sseBuffer.split('\n');
-                sseBuffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    processSseLine(line, sseState);
-                }
-                if (done) break;
-            }
-
-            if (sseBuffer && sseBuffer.trim()) {
-                processSseLine(sseBuffer, sseState);
-            }
+            const { sseState, rawStreamText } = await readSseCompletion(response, signal);
 
             // 容错：如果流中未检测到 SSE 格式 (data:)，但实际上返回了完整的单体 JSON（例如反代未走流式包装）
             if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.hasSafetyBlock && rawStreamText.trim()) {
@@ -11425,38 +11453,7 @@ SCHEMA:
         };
 
         if (isSseStream) {
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let sseBuffer = '';
-            let rawStreamText = '';
-            const sseState = {
-                accumulatedArgs: '',
-                accumulatedContent: '',
-                accumulatedReasoning: '',
-                hasSafetyBlock: false,
-                safetyReason: '',
-                rawDebugChunks: []
-            };
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (value) {
-                    const chunkText = decoder.decode(value, { stream: !done });
-                    sseBuffer += chunkText;
-                    rawStreamText += chunkText;
-                }
-                const lines = sseBuffer.split('\n');
-                sseBuffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    processSseLine(line, sseState);
-                }
-                if (done) break;
-            }
-
-            if (sseBuffer && sseBuffer.trim()) {
-                processSseLine(sseBuffer, sseState);
-            }
+            const { sseState, rawStreamText } = await readSseCompletion(response, signal);
 
             rawOutput = rawStreamText;
 

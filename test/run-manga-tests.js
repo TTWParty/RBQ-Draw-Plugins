@@ -15,7 +15,7 @@ const settings = {
 const hooks = [];
 const RBQ = { api: { getSettings: () => settings, saveSettings: () => {} }, on: (event, callback) => { if (event === 'buildNaiV4Payload') hooks.push(callback); } };
 const silentConsole = { info() {}, warn() {}, log() {}, error() {} };
-const manga = vm.createContext({ RBQ, console: silentConsole, toastr: { info() {} } });
+const manga = vm.createContext({ RBQ, AbortController, setTimeout, clearTimeout, console: silentConsole, toastr: { info() {} } });
 vm.runInContext(mangaSource.slice(mangaSource.indexOf('const PLUGIN_ID'), mangaSource.indexOf('    // ── 6. UI Injection')) + `
     Object.assign(globalThis, { compileMangaPage, sanitizeMangaPositivePrompt, sanitizeMangaNegativePrompt, buildMangaSystemPrompt,
         setStudioRequest(value, ratio = '832x1216') { studioRequest = value; studioGenerationRatio = ratio; } });`, manga);

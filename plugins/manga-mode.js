@@ -6,11 +6,16 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.22';
+        const VERSION = '1.9.23';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
         let disposed = false;
+        const STUDIO_REQUEST_TIMEOUT_MS = 180000;
+        const studioParsingControllers = new Set();
+        const studioPanelParsingRequests = new WeakMap();
+        const studioStoryboardParsingRequests = new WeakMap();
+        const studioBatchParsingRequests = new WeakMap();
 
         // ── 1. Storage & State Management ──────────────────────────────
     function getStore() {
@@ -3223,7 +3228,6 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         const seen = new Map();
         const panels = studio.panels.map((p, index) => {
             const position = p.position || defaultPanelPosition(index, count, store.grammar);
-            const structured = Array.isArray(p.characters);
             const characters = (p.characters || []).map(c => {
                 if (!seen.has(c.character_id)) seen.set(c.character_id, new Set());
                 // Use explicit subject tags from all appearances, never an action's target or dialogue.
@@ -3239,8 +3243,11 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             const hasNonCharText = !!mangaCaptionParts(p.non_character, p.bubbles, `P${index + 1}`, p._mangaTextLiteral !== true).text;
             const hasStructuredBubbles = Array.isArray(p.bubbles) || characters.some(c => Array.isArray(c.bubbles));
             const fallbackBubble = (!hasStructuredBubbles && !hasCharText && !hasNonCharText && p.bubbleText) ? studioBubbleCaption(p) : '';
-            if (fallbackBubble && characters.length > 0) {
-                characters[0].positive = joinMangaCaptions([characters[0].positive, fallbackBubble]);
+            const fallbackPerson = p._bubbleOwner === 'panel' ? null
+                : characters.find(c => c.character_id === p._bubbleOwner)
+                    || (!['caption', 'sfx', 'offscreen'].includes(p.bubbleType) ? characters[0] : null);
+            if (fallbackBubble && fallbackPerson) {
+                fallbackPerson.positive = joinMangaCaptions([fallbackPerson.positive, fallbackBubble]);
             }
             return {
                 id: `P${index + 1}`,
@@ -3248,8 +3255,10 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                 // Legacy mixed tags remain visible page content until explicitly re-parsed; never guess a person from them.
                 description: joinMangaCaptions([position, p.shot, p.tags]),
                 ...(Array.isArray(p.bubbles) ? { bubbles: p.bubbles.map(b => ({ ...b })) } : {}),
-                non_character: (p.non_character || (!structured && p.bubbleText) || (fallbackBubble && !characters.length))
-                    ? joinMangaCaptions([position, p.non_character, (!structured || !characters.length) ? (fallbackBubble || studioBubbleCaption(p)) : ''], p._mangaTextLiteral !== true) : '',
+                // The quick composer mirrors existing text; only an otherwise
+                // absent legacy utterance is a fallback, with its original owner.
+                non_character: (p.non_character || (fallbackBubble && !fallbackPerson))
+                    ? joinMangaCaptions([position, p.non_character, !fallbackPerson ? fallbackBubble : ''], p._mangaTextLiteral !== true) : '',
                 characters
             };
         });
@@ -3313,7 +3322,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         const owner = characters.find(c => mangaCaptionParts(c.positive, c.bubbles, c.character_id, c._mangaTextLiteral !== true).text);
         const source = owner || panel;
         const parsed = mangaCaptionParts(owner ? owner.positive : panel.non_character, source.bubbles, owner?.character_id || panel.id, source._mangaTextLiteral !== true);
-        const first = Array.isArray(source.bubbles) ? source.bubbles[0] : null;
+        const first = Array.isArray(source.bubbles) ? source.bubbles.find(b => b.text?.trim()) : null;
         const legacy = studioFirstLegacyBubble(parsed.visual);
         const bubbleType = first?.type || legacy.type;
         const bubbleLayout = first?.layout || legacy.layout;
@@ -3366,7 +3375,9 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             panel._bubbleOwner = owner === panel ? 'panel' : owner.character_id;
             return owner;
         }
-        const existing = Array.isArray(owner.bubbles) ? owner.bubbles : [];
+        // Compilation skips empty bubbles. Match editable utterances to the
+        // same active records so an empty placeholder cannot shift metadata.
+        const existing = owner.bubbles.filter(b => b.text?.trim());
         const defaultBubble = { type: panel.bubbleType || 'speech', position: 'right-upper', layout: panel.bubbleLayout || 'vertical' };
         const utterances = field !== 'text' && existing.length ? existing.map(b => b.text) : texts.split(/\n[ \t]*\n/);
         const bubbles = texts ? utterances.map((text, index) => ({
@@ -3402,10 +3413,11 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             }
             return tag;
         }, true);
-        const texts = next.text === previous.text ? owner.bubbles.map(b => b.text)
-            : owner.bubbles.length === 1 ? [next.text] : next.text.split(/\n[ \t]*\n/);
+        const existing = owner.bubbles.filter(b => b.text?.trim());
+        const texts = next.text === previous.text ? existing.map(b => b.text)
+            : existing.length === 1 ? [next.text] : next.text.split(/\n[ \t]*\n/);
         owner.bubbles = next.text ? texts.map((text, index) => ({
-            ...(owner.bubbles[index] || { type: 'speech', position: 'right-upper', layout: 'vertical' }),
+            ...(existing[index] || { type: 'speech', position: 'right-upper', layout: 'vertical' }),
             ...headers[index], text
         })) : [];
         owner[field] = joinMangaCaptions([mangaCaptionParts(value, owner.bubbles, owner.character_id || 'panel')]);
@@ -3576,8 +3588,69 @@ ${isToolMode
         return null;
     }
 
-    async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false) {
+    function studioAbortError(message = '漫画分镜解析已停止；现有分镜已保留') {
+        const error = new Error(message);
+        error.name = 'AbortError';
+        return error;
+    }
+
+    function bindStudioParsingButton(button, requests, owner, text) {
+        const controller = requests.get(owner);
+        if (!button || !controller) return;
+        controller._mangaButtons ||= new Map();
+        if (!controller._mangaButtons.has(button)) controller._mangaButtons.set(button, button.innerHTML);
+        button._mangaParserAbort = controller;
+        button.disabled = false;
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + text + '（点击停止）';
+    }
+
+    function finishStudioParsingButtons(requests, owner, controller) {
+        if (requests.get(owner) !== controller) return;
+        requests.delete(owner);
+        for (const [button, html] of controller._mangaButtons || []) {
+            if (!disposed && button._mangaParserAbort === controller) {
+                delete button._mangaParserAbort;
+                button.disabled = false;
+                button.innerHTML = html;
+            }
+        }
+        controller._mangaButtons?.clear();
+    }
+
+    function assertStudioRequestActive(signal) {
         if (disposed) throw new Error('漫画插件已卸载或重新加载，本次分镜请求已取消');
+        if (signal?.aborted) throw signal.reason || studioAbortError();
+    }
+
+    async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false, signal = null) {
+        assertStudioRequestActive(signal);
+        const controller = new AbortController();
+        const forwardAbort = () => controller.abort(signal.reason || studioAbortError());
+        signal?.addEventListener('abort', forwardAbort, { once: true });
+        let rejectAbort;
+        const aborted = new Promise((_, reject) => {
+            rejectAbort = () => reject(controller.signal.reason || studioAbortError());
+            controller.signal.addEventListener('abort', rejectAbort, { once: true });
+        });
+        const timeout = setTimeout(() => {
+            const error = new Error('漫画分镜请求超过 180 秒，已停止等待；现有分镜已保留，请检查接口响应');
+            error.name = 'TimeoutError';
+            controller.abort(error);
+        }, STUDIO_REQUEST_TIMEOUT_MS);
+        studioParsingControllers.add(controller);
+        try {
+            // Settle even when a third-party transport ignores AbortSignal.
+            return await Promise.race([performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, controller.signal), aborted]);
+        } finally {
+            clearTimeout(timeout);
+            signal?.removeEventListener('abort', forwardAbort);
+            controller.signal.removeEventListener('abort', rejectAbort);
+            studioParsingControllers.delete(controller);
+        }
+    }
+
+    async function performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, signal) {
+        assertStudioRequestActive(signal);
         const studioTarget = store.studio;
         store = { ...store, studio: { ...store.studio } };
         const config = getSdtStore();
@@ -3663,7 +3736,8 @@ ${isToolMode
                 messages,
                 tool: mangaTool,
                 temperature: 0.2,
-                customStore: config
+                customStore: config,
+                signal
             });
             rawReply = completion.rawReply || '';
             rawText = completion.rawOutput || rawReply;
@@ -3679,22 +3753,25 @@ ${isToolMode
             try {
                 response = await fetch(endpoint, {
                     method: 'POST',
+                    signal,
                     headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
                     body: JSON.stringify(reqBody)
                 });
                 if (!response.ok && response.status === 400 && typeof response.clone === 'function') {
                     const errCloned = await response.clone().text().catch(() => '');
                     if (errCloned.toLowerCase().includes('response_format')) {
-                        if (disposed) throw new Error('漫画插件已卸载或重新加载，本次分镜请求已取消');
+                        assertStudioRequestActive(signal);
                         delete reqBody.response_format;
                         response = await fetch(endpoint, {
                             method: 'POST',
+                            signal,
                             headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
                             body: JSON.stringify(reqBody)
                         });
                     }
                 }
             } catch (netErr) {
+                assertStudioRequestActive(signal);
                 const err = new Error(`漫画分镜接口连接失败: ${netErr.message || String(netErr)}；现有分镜已保留`);
                 err.rawOutput = `【网络请求异常】: ${netErr.message || String(netErr)}\n\n【请求地址】: ${endpoint}\n【模型】: ${model}\n\n【请求体消息】:\n${JSON.stringify(messages, null, 2)}`;
                 throw err;
@@ -3733,7 +3810,7 @@ ${isToolMode
 
             rawReply = String(result?.choices?.[0]?.message?.content || '').trim();
         }
-        if (disposed) throw new Error('漫画插件已卸载或重新加载，本次分镜请求已取消');
+        assertStudioRequestActive(signal);
         const data = extractStudioJson(rawReply);
         if (!data || typeof data !== 'object') {
             const preview = rawReply.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
@@ -3769,7 +3846,7 @@ ${isToolMode
         return panels;
     }
 
-    async function callLlmStoryboardParser(storyText, grammar, language, panelCountMode = 'auto', onProgress) {
+    async function callLlmStoryboardParser(storyText, grammar, language, panelCountMode = 'auto', onProgress, signal = null) {
         const store = { ...getStore(), grammar, language };
         if (grammar === '4koma' && panelCountMode !== 'auto' && Number(panelCountMode) !== 4) {
             throw new Error('经典四格请选择自动规划或4格；其他格数请切换分镜文法');
@@ -3779,20 +3856,20 @@ ${isToolMode
         const taskText = fixed
             ? `本页明确要求严格规划为 ${fixed} 格连贯漫画画格（P1~P${fixed}），将输入的剧情始末与动作镜头完整推进分配到各格中，禁止增减画格数量。`
             : '按正文时间轴完整覆盖『起因铺垫入场 → 核心高潮冲击 (主格) → 最终结局与生理反应余波』，自适应拆解为 2 至 4 格具有节奏递进感的连贯漫画画格（包含起因、核心动作与结局的三阶段情节默认规划为 3~4 格，确保核心高潮与收尾特写均有独立画格，严禁画格全部耗费在铺垫而斩断高潮与结局，严禁偷懒合并为整页单格）；逐格规划明确的镜头景别、视角切换与动作递进，绝不概括模糊动作，完整覆盖剧情。';
-        return requestStudioPanels(store, taskText, storyText, fixed);
+        return requestStudioPanels(store, taskText, storyText, fixed, false, signal);
     }
 
-    async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0) {
+    async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0, signal = null) {
         const result = await requestStudioPanels({ ...getStore(), grammar, language },
             '只返回正在编辑的一个画格；不因整页文法扩写其他格。参照已有角色身份，保持同一 character_id；不要复述其他格事件。',
-            JSON.stringify({ currentMessage: sentence, currentShot, currentIndex, otherPanels: allPanels }), 1, true);
+            JSON.stringify({ currentMessage: sentence, currentShot, currentIndex, otherPanels: allPanels }), 1, true, signal);
         return result[0];
     }
 
-    async function callLlmBatchSentenceExpander(panels, grammar, language, onProgress) {
+    async function callLlmBatchSentenceExpander(panels, grammar, language, onProgress, signal = null) {
         if (grammar === '4koma' && panels.length !== 4) throw new Error('经典四格需要4个画格；请调整格数或切换文法');
         if (onProgress) onProgress('正在核对逐格人物、对白和连续状态...');
-        return requestStudioPanels({ ...getStore(), grammar, language }, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属。`, JSON.stringify(panels), panels.length, true);
+        return requestStudioPanels({ ...getStore(), grammar, language }, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属。`, JSON.stringify(panels), panels.length, true, signal);
     }
 
     function renderStudioCharacterFields(panel) {
@@ -4399,18 +4476,24 @@ ${isToolMode
                     renderPanelCards(); updatePromptPreview(); save();
                 });
                 const btnSingleAi = card.querySelector('.mw-panel-ai-single');
+                bindStudioParsingButton(btnSingleAi, studioPanelParsingRequests, p, '生成中');
                 btnSingleAi?.addEventListener('click', async () => {
                     if (disposed) return;
+                    const running = studioPanelParsingRequests.get(p);
+                    if (running) {
+                        running.abort(studioAbortError());
+                        return;
+                    }
                     const sentence = (p.desc || p.title || '').trim();
                     if (!sentence) {
                         return toastr.warning('请先在本格输入剧情句子（例如：夕阳下少女红着脸低头）', PLUGIN_NAME);
                     }
-                    const origHtml = btnSingleAi.innerHTML;
-                    btnSingleAi.disabled = true;
-                    btnSingleAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...';
+                    const controller = new AbortController();
+                    studioPanelParsingRequests.set(p, controller);
+                    bindStudioParsingButton(btnSingleAi, studioPanelParsingRequests, p, '生成中');
                     try {
-                        const expanded = await callLlmSingleSentenceExpander(sentence, p.shot, store.grammar, store.language, studio.panels, idx);
-                        if (disposed) return;
+                        const expanded = await callLlmSingleSentenceExpander(sentence, p.shot, store.grammar, store.language, studio.panels, idx, controller.signal);
+                        if (disposed || controller.signal.aborted || !studio.panels.includes(p) || studioPanelParsingRequests.get(p) !== controller) return;
                         if (expanded) {
                             Object.assign(p, expanded);
                             renderPanelCards();
@@ -4420,13 +4503,11 @@ ${isToolMode
                         }
                     } catch (err) {
                         if (disposed) return;
+                        if (err.name === 'AbortError') return toastr.info('本格解析已停止，原分镜已保留', PLUGIN_NAME);
                         console.error('[Manga Studio] Single Panel AI error:', err);
                         toastr.error('本格生成失败: ' + (err.message || String(err)), PLUGIN_NAME);
                     } finally {
-                        if (!disposed) {
-                            btnSingleAi.disabled = false;
-                            btnSingleAi.innerHTML = origHtml;
-                        }
+                        finishStudioParsingButtons(studioPanelParsingRequests, p, controller);
                     }
                 });
                 card.querySelector('.mw-panel-shot-sel')?.addEventListener('change', (e) => {
@@ -4589,16 +4670,22 @@ ${isToolMode
 
         // AI Storyboard breakdown
         const btnAi = container.querySelector('#mw-btn-ai-storyboard');
+        bindStudioParsingButton(btnAi, studioStoryboardParsingRequests, studio, '正在解析分镜');
         btnAi?.addEventListener('click', async () => {
             if (disposed) return;
+            const running = studioStoryboardParsingRequests.get(studio);
+            if (running) {
+                running.abort(studioAbortError());
+                return;
+            }
             const storyText = (storyInputEl?.value || studio.storyText || '').trim();
             if (!storyText) {
                 return toastr.warning('请先输入剧情故事或点击「提取当前对话」', PLUGIN_NAME);
             }
             clearStudioDebugBox(container);
-            const origHtml = btnAi.innerHTML;
-            btnAi.disabled = true;
-            btnAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在解析分镜与镜头机位...';
+            const controller = new AbortController();
+            studioStoryboardParsingRequests.set(studio, controller);
+            bindStudioParsingButton(btnAi, studioStoryboardParsingRequests, studio, '正在解析分镜');
             try {
                 const parsedPanels = await callLlmStoryboardParser(
                     storyText,
@@ -4606,10 +4693,11 @@ ${isToolMode
                     store.language,
                     studio.panelCountMode || 'auto',
                     (status) => {
-                        if (!disposed) btnAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${status}`;
-                    }
+                        if (!disposed) btnAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${status}（点击停止）`;
+                    },
+                    controller.signal
                 );
-                if (disposed) return;
+                if (disposed || controller.signal.aborted) return;
                 if (Array.isArray(parsedPanels) && parsedPanels.length > 0) {
                     studio.panels = parsedPanels;
                     renderPanelCards();
@@ -4627,6 +4715,7 @@ ${isToolMode
                 }
             } catch (err) {
                 if (disposed) return;
+                if (err.name === 'AbortError') return toastr.info('分镜解析已停止，原分镜已保留', PLUGIN_NAME);
                 console.error('[Manga Studio] AI Storyboard Error:', err);
                 const rawTrace = err.rawOutput || `【错误诊断】: ${err.message || String(err)}\n\n【JavaScript 异常调用栈 (Stack Trace)】:\n${err.stack || ''}`;
                 renderStudioDebugBox(container, {
@@ -4637,25 +4726,28 @@ ${isToolMode
                 });
                 toastr.error('分镜解析出现异常，详情见下方诊断面板', PLUGIN_NAME);
             } finally {
-                if (!disposed) {
-                    btnAi.disabled = false;
-                    btnAi.innerHTML = origHtml;
-                }
+                finishStudioParsingButtons(studioStoryboardParsingRequests, studio, controller);
             }
         });
 
         // Batch AI generate for all panels
         const btnBatchAi = container.querySelector('#mw-btn-ai-batch');
+        bindStudioParsingButton(btnBatchAi, studioBatchParsingRequests, studio, '批量解析中');
         btnBatchAi?.addEventListener('click', async () => {
             if (disposed) return;
+            const running = studioBatchParsingRequests.get(studio);
+            if (running) {
+                running.abort(studioAbortError());
+                return;
+            }
             const hasAnyDesc = studio.panels.some(p => (p.desc || p.title || '').trim());
             if (!hasAnyDesc) {
                 return toastr.warning('请先在画格中填写剧情句子', PLUGIN_NAME);
             }
             clearStudioDebugBox(container);
-            const origHtml = btnBatchAi.innerHTML;
-            btnBatchAi.disabled = true;
-            btnBatchAi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 批量解析中...';
+            const controller = new AbortController();
+            studioBatchParsingRequests.set(studio, controller);
+            bindStudioParsingButton(btnBatchAi, studioBatchParsingRequests, studio, '批量解析中');
             const targetPanels = [...studio.panels];
             try {
                 const results = await callLlmBatchSentenceExpander(
@@ -4663,10 +4755,11 @@ ${isToolMode
                     store.grammar,
                     store.language,
                     (msg) => {
-                        if (!disposed) btnBatchAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${msg}`;
-                    }
+                        if (!disposed) btnBatchAi.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${msg}（点击停止）`;
+                    },
+                    controller.signal
                 );
-                if (disposed) return;
+                if (disposed || controller.signal.aborted) return;
                 if (Array.isArray(results) && results.length > 0) {
                     const layoutChanged = studio.panels.length !== targetPanels.length
                         || studio.panels.some((panel, i) => panel !== targetPanels[i]);
@@ -4692,6 +4785,7 @@ ${isToolMode
                 }
             } catch (err) {
                 if (disposed) return;
+                if (err.name === 'AbortError') return toastr.info('批量解析已停止，原分镜已保留', PLUGIN_NAME);
                 console.error('[Manga Studio] Batch AI error:', err);
                 const rawTrace = err.rawOutput || `【错误诊断】: ${err.message || String(err)}\n\n【JavaScript 异常调用栈 (Stack Trace)】:\n${err.stack || ''}`;
                 renderStudioDebugBox(container, {
@@ -4702,10 +4796,7 @@ ${isToolMode
                 });
                 toastr.error('批量生成失败，详情见下方诊断面板', PLUGIN_NAME);
             } finally {
-                if (!disposed) {
-                    btnBatchAi.disabled = false;
-                    btnBatchAi.innerHTML = origHtml;
-                }
+                finishStudioParsingButtons(studioBatchParsingRequests, studio, controller);
             }
         });
 
@@ -5014,6 +5105,10 @@ ${isToolMode
     function cleanup({ preserveEnabled = false } = {}) {
         if (disposed) return;
         disposed = true;
+        for (const controller of studioParsingControllers) {
+            controller.abort(studioAbortError('漫画插件已卸载或重新加载，本次分镜请求已取消'));
+        }
+        studioParsingControllers.clear();
         RBQ.off?.('buildNaiV4Payload', onMangaPayload);
         if (RBQ.api.mangaProtocol === mangaProtocol) delete RBQ.api.mangaProtocol;
         if (mountPollTimer) {

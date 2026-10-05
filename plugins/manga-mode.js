@@ -494,6 +494,7 @@
     }
 
     function mangaCachedReferenceViews(references, cacheRows = []) {
+        if (typeof RBQ.api.getCharacterNameTag !== 'function') throw new Error('请更新智能生图插件至 6.5.7 或更高并刷新酒馆，以区分档案姓名与英文绘图身份');
         return references.map(row => {
             const result = { ...row };
             delete result.render;
@@ -558,7 +559,7 @@
         const initial = new Map();
         const seen = new Set();
         const withName = (name, base) => {
-            if (typeof RBQ.api.ensureCharacterNameTag !== 'function') throw new Error('请更新智能生图插件至 6.4.2 或更高以完整保留角色名');
+            if (typeof RBQ.api.ensureCharacterNameTag !== 'function' || typeof RBQ.api.getCharacterNameTag !== 'function') throw new Error('请更新智能生图插件至 6.5.7 或更高并刷新酒馆，以区分档案姓名与英文绘图身份');
             return RBQ.api.ensureCharacterNameTag(name, base, nameTags.get(mangaIdentityKey(name)));
         };
         const clean = value => typeof value === 'string' && !/\b(?:Text|BubbleType|Layout|SFX)\s*[:：]/i.test(value) ? value.trim() : '';
@@ -725,7 +726,7 @@
     }
 
     const mangaProtocol = {
-        appearanceStateVersion: 2, monochromeRenderVersion: 1, renderCacheVersion: 1,
+        appearanceStateVersion: 2, monochromeRenderVersion: 1, renderCacheVersion: 1, drawingIdentityVersion: 1,
         appearanceSourceKey: mangaAppearanceSourceKey, cachedReferenceViews: mangaCachedReferenceViews,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema,
         planningPrompt: buildMangaPlanningPrompt, planningContext: buildMangaPlanningContext,

@@ -6585,6 +6585,7 @@ ${getCharacterMemoryTagSpecification()}
         if (!protocol) throw new Error('请启用漫画模式插件后再使用漫画分镜');
         if (!protocol.planningPrompt || !protocol.resolveAppearances || protocol.appearanceStateVersion !== 2) throw new Error('请更新漫画模式插件至 1.8.0 或更高并刷新酒馆');
         if (protocol.monochromeRenderVersion !== 1) throw new Error('请更新漫画模式插件至 1.9.0 或更高以使用独立灰阶绘图视图，并刷新酒馆');
+        if (protocol.drawingIdentityVersion !== 1) throw new Error('请更新漫画模式插件至 1.9.10 或更高并刷新酒馆，以区分档案姓名与英文绘图身份');
         return protocol;
     }
 

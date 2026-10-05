@@ -943,6 +943,21 @@ test('ordinary structured responses pass the English identity through learning a
         assert.equal(next.characters[0].caption,first.characters[0].caption);
     } finally {sdt.mergeCharacterCaption = merge; sdt.weightCharacterName = weight;}
 }));
+test('mixed plugin versions cannot silently restore Chinese drawing-name injection', () => {
+    const api = RBQ.api.getCharacterNameTag, protocol = RBQ.api.mangaProtocol;
+    const identityVersion = protocol.drawingIdentityVersion;
+    try {
+        delete RBQ.api.getCharacterNameTag;
+        assert.throws(() => protocol.resolveAppearances([appearancePage([{name:'毛利兰',base:'girl'}])]), /6\.5\.7/);
+        assert.throws(() => protocol.cachedReferenceViews([], []), /6\.5\.7/);
+        RBQ.api.getCharacterNameTag = api;
+        delete protocol.drawingIdentityVersion;
+        assert.throws(() => sdt.getMangaProtocol(), /1\.9\.10/);
+    } finally {
+        RBQ.api.getCharacterNameTag = api;
+        protocol.drawingIdentityVersion = identityVersion;
+    }
+});
 test('canonical fan tag survives memory, temporary appearance and final monochrome payload', () => withMemory(() => {
     const base = 'mouri ran, girl, brown hair, blue eyes';
     const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[appearancePage([

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.16';
+    const PLUGIN_VERSION = '6.5.17';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7708,7 +7708,12 @@ SCHEMA:
         }
 
         if (segResult?.mangaPage) {
-            const page = getMangaProtocol().resolveAppearances([{ ...parsed, anchor: segResult.anchor }], [], [], [], requestContext?.renderSettings)[0];
+            const protocol = getMangaProtocol();
+            const refinedPages = [{ ...parsed, anchor: segResult.anchor }];
+            if (typeof protocol.validateResponseBubbles === 'function') {
+                protocol.validateResponseBubbles(refinedPages, [segResult.mangaPage]);
+            }
+            const page = protocol.resolveAppearances(refinedPages, [], [], [], requestContext?.renderSettings)[0];
             return { ...normalizeMangaSegment(page), mangaRenderSettings: requestContext?.renderSettings, ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
         }
 
@@ -7874,6 +7879,7 @@ SCHEMA:
 
         const submitBtn = modal.querySelector('#rbq-sdt-refiner-submit');
         const inputEl = modal.querySelector('#rbq-sdt-refine-input');
+        const originalSubmitHtml = submitBtn?.innerHTML || '';
 
         submitBtn?.addEventListener('click', async () => {
             const userInstructions = String(inputEl?.value || '').trim();
@@ -7948,7 +7954,15 @@ SCHEMA:
                 if (viewerImg) viewerImg.style.opacity = '1';
                 console.error(`[${PLUGIN_NAME}] AI 调整此图失败:`, err);
                 toastr.error(`AI 调整生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
-                if (wrapper) renderCardBadges(wrapper, segResult);
+                const diagnostic = { isError: true, shouldDraw: false, reason: err.message || String(err), rawOutput: err.rawOutput || '' };
+                if (wrapper) {
+                    renderCardBadges(wrapper, segResult);
+                    renderTaggerDebugInfo(wrapper, diagnostic);
+                } else if (err.rawOutput) {
+                    openTaggerDebugModal(diagnostic, null);
+                }
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalSubmitHtml;
             }
         });
 
@@ -8880,6 +8894,23 @@ SCHEMA:
         }
     }
 
+    function getTaggerDebugReason(result) {
+        const reason = String(result?.reason || result?.thinkContent || '').trim();
+        const collected = Array.isArray(result?.mangaWarnings) ? [...result.mangaWarnings] : [];
+        if (result?.mangaPage && typeof result.mangaPage === 'object' && result.mangaPage.format === 'nai5-comic') {
+            try {
+                // Older snapshots may predate ownership diagnostics. Recompile a copy
+                // for current warnings without changing saved captions or drawing state.
+                const compiled = RBQ.api.mangaProtocol?.compile?.(JSON.parse(JSON.stringify(result.mangaPage)));
+                if (Array.isArray(compiled?.warnings)) collected.push(...compiled.warnings);
+            } catch (error) {
+                collected.push(`漫画缓存提示：${error.message || String(error)}`);
+            }
+        }
+        const warnings = [...new Set(collected.filter(warning => typeof warning === 'string').map(warning => warning.trim()).filter(Boolean))];
+        return [reason, ...warnings.filter(warning => !reason.includes(warning))].filter(Boolean).join('\n');
+    }
+
     function renderTaggerDebugInfo(wrapper, result) {
         if (!(wrapper instanceof HTMLElement)) return;
         const store = getStore();
@@ -8890,7 +8921,7 @@ SCHEMA:
 
         const isError = !!result?.isError;
         const defaultReason = isError ? 'Tagger 请求或解析过程发生异常' : '日常闲聊/独白/无视觉变化，模型判定无需生图';
-        const reason = String(result?.reason || result?.thinkContent || '').trim() || defaultReason;
+        const reason = getTaggerDebugReason(result) || defaultReason;
         const rawOutput = String(result?.rawOutput || '').trim();
 
         // 如果是报错状态，或者用户开启了调试模式，则直接展示详情框
@@ -9039,7 +9070,7 @@ SCHEMA:
         const existing = document.getElementById('rbq-sdt-tagger-debug-modal');
         if (existing) existing.remove();
 
-        const reason = String(segResult?.reason || segResult?.thinkContent || '').trim() || '(无显式判定原因)';
+        const reason = getTaggerDebugReason(segResult) || '(无显式判定原因)';
         const rawOutput = String(segResult?.rawOutput || '').trim();
 
         const modal = document.createElement('div');
@@ -10054,7 +10085,7 @@ SCHEMA:
                 // Pass the individual segment so charData/label are per-segment
                 const segResult = {
                     ...seg,
-                    reason: seg.reason || '',
+                    reason: getTaggerDebugReason(seg),
                     ...(seg.mangaPage ? { rawOutput: result.rawOutput || '' } : {}),
                     matchedLorebooks: result.matchedLorebooks || [],
                 };
@@ -10234,6 +10265,7 @@ SCHEMA:
             scene: String(result.scene || ''),
             characters: Array.isArray(result.characters) ? result.characters : [],
             ...(result.mangaPage ? { mangaPage: result.mangaPage, mangaUseCoords: result.mangaUseCoords,
+                ...(Array.isArray(result.mangaWarnings) ? { mangaWarnings: [...result.mangaWarnings] } : {}),
                 ...(result.mangaTextCompiled === true ? { mangaTextCompiled: true } : {}),
                 ...(result.mangaRenderSettings ? { mangaRenderSettings: { ...result.mangaRenderSettings } } : {}) } : {}),
             anchor: result.anchor || { type: 'bottom' },
@@ -12615,18 +12647,26 @@ SCHEMA:
                 ensureTaggerButtonState(wrapper, '⚠️ 解析失败（点击重试）');
                 setGenerateButtonState(wrapper, false);
                 setWrapperStage(wrapper, 'error');
-                let formattedDebugTrace = '';
+                let formattedDebugTrace = `【错误信息】: ${error.message || String(error)}\n`;
                 if (error.debugInfo) {
-                    formattedDebugTrace += `【拦截状态】: ${error.debugInfo.reason || '大模型未响应'}\n`;
+                    formattedDebugTrace += `【拦截状态】: ${error.debugInfo.reason || '请求或解析失败'}\n`;
                     formattedDebugTrace += `【目标模型】: ${error.debugInfo.model || '未知'}\n`;
-                    formattedDebugTrace += `【大模型原始正文】: ${error.debugInfo.llmOutput || '(空)'}\n`;
+                    if (error.debugInfo.llmOutput) {
+                        formattedDebugTrace += `【大模型原始正文】: ${error.debugInfo.llmOutput}\n`;
+                    }
                     if (Array.isArray(error.debugInfo.chunks) && error.debugInfo.chunks.length > 0) {
                         formattedDebugTrace += `\n【服务端原始响应报文 (Raw Chunks)】:\n${JSON.stringify(error.debugInfo.chunks, null, 2)}\n`;
                     }
-                    formattedDebugTrace += `\n【JavaScript 异常调用栈 (Stack Trace)】:\n${error.stack || ''}`;
-                } else {
-                    formattedDebugTrace = `【错误信息】: ${error.message || String(error)}\n\n【说明】: 该错误由接口或网络异常触发，服务端未返回有效大模型正文。\n\n【JavaScript 异常调用栈 (Stack Trace)】:\n${error.stack || ''}`;
                 }
+                // Response validation can fail after receiving complete model output.
+                // Preserve that trace alongside transport diagnostics for inspection.
+                if (error.rawOutput) {
+                    const rawOutput = typeof error.rawOutput === 'string' ? error.rawOutput : JSON.stringify(error.rawOutput, null, 2);
+                    formattedDebugTrace += `\n【原始输出 (Raw Output)】:\n${rawOutput}\n`;
+                } else if (!error.debugInfo) {
+                    formattedDebugTrace += '\n【说明】: 未记录原始输出；请检查接口配置或调试日志。\n';
+                }
+                formattedDebugTrace += `\n【JavaScript 异常调用栈 (Stack Trace)】:\n${error.stack || ''}`;
 
                 renderTaggerDebugInfo(wrapper, {
                     isError: true,

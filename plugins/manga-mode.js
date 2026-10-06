@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.38';
+        const VERSION = '1.9.39';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -1180,9 +1180,12 @@
 人物 positive 依次写出：本格格位 → 朝向与姿态 → 肢体左右手分工 → 核心交互行为 → 表情视线 → 即时反馈。明确左右手分工（left hand... / right hand...），不模糊写 both hands；真正握住写 holding/gripping，悬空靠近写 reaching toward。视线紧扣互动目标（facing another, eye_contact、向下注视 looking down、仰头 head back, looking up 等），单格不可见部位不写，严禁机械全员 looking at viewer。
 4. 【同人本感官分镜与分级标定】：
 核心互动设立主客体全貌大画格；在大格边角紧贴嵌入极近特写切入小格 (Insert Cut-in)，收束视觉焦点至敏感接触部位或失神神态；边框可顺应身体曲线动态斜切 (Body Contour Framing)。落实标准体位术语（missionary, cowgirl, doggystyle, mating press 等）、可见体液附着、衣物脱卸边界（写清褪到身体哪一截、遮挡何处，杜绝穿裤做或凭空全裸）、器官零件明确、骨盆挂载与人体工学支撑（器官长在剥出的胯部/骨盆上，着力点与高低差清晰，特写保留锚定肢体防吞人）。纯拟声词通过 SFX 注入生动日漫拟音。
-5. 【克制精准微权与逐槽负面词】：
+5. 【断头/死伤/挂墙骨盆/残躯铁律（严防异化长头/钉墙浮发）】：凡人物斩首、身首异处、挂墙肉便器/截断骨盆(severed pelvis/buttocks protruding from wall)、断肢或死尸：
+① 首选环境静物法（画质最高）：严禁为其单独开辟 characters 槽位！AI扩散模型会将独立人物槽判定为完整活人导致肉块或木板墙上无端长出头发马尾。必须将其作为画格 description 与 non_character 的环境静物呈现（如 inside public toilet, severed female pelvis with plump buttocks protruding from wooden frame on plywood wall）；
+② 人物槽降级规则：若必须开辟人物槽，严禁在 page.base 中计入 1girl/1boy！其 state.base 必须强制覆写为纯躯干/骨盆（如 state: { base: "severed female pelvis, fair smooth skin, headless, armless, legless, no hair" }），彻底剥离发型/发色/面孔，且该人物 negative 必须强制写入 1.6::head, face, hair, ponytail, eyes, mouth::, head_attached，坚决杜绝扩散模型在肉块或墙壁上无端滋生头发！
+6. 【克制精准微权与逐槽负面词】：
 遵循精准微权法则：默认使用不加权的清晰视觉词！先写对人物、动作、道具及归属，只对确需突出的核心视觉焦点使用 1.15::短词组:: 微权，次要元素适度弱化（0.6::tag::），绝不机械统一加权。每位人物 negative 逐一对照本页其他人物排除适用且互斥的具体特征，不排除自身正确特征，没有适用项填空字符串。
-6. 【画布容量自适应】：
+7. 【画布容量自适应】：
 参考 mangaCanvas 像素与方向，根据人物数与对白量合理定格。拥挤时在自然停顿处拆页，空洞时合页，绝不硬删关键对白与剧情结尾。reason 简述选材与分页，intent 简述本页核心爆点。`,
         v_manga_150: `漫画分页依据正文事件、文字量与画格容量；相邻事件可同页，单格页可只含一个决定性瞬间。按 page/panels/characters 嵌套协议输出，每格人物数量与画格数无关。核对台本覆盖、空间位置、人物状态和文字归属。`,
         v_manga_161: `【漫画前情与本楼规划】
@@ -1257,6 +1260,7 @@
 - 互动大格与特写切入：核心互动设立主客体完整大画格；在大格边角紧贴嵌入局部特写切入小格 (Insert Cut-in)，收束焦点至敏感接触部位或失神神态；边框可顺应身体线条作动态斜切 (Body Contour Framing)。
 - 密集拟音字：碰撞声、水声与娇喘通过格级 SFX 或 non_character 在格内生动展现。
 - 分级与人体工学：情欲神态（潮红、失神、咬唇）；标准体位术语（missionary, cowgirl, doggystyle, mating press 等）；体液交互（爱液、汗、精液写可见附着面与状态）；衣物脱卸边界（写清褪到身体哪一截、遮挡何处，杜绝穿裤做或凭空全裸）；可见器官零件（区域不等于零件，可见时明确写出部位）；骨盆挂载与人体工学（器官长在剥出的胯部/骨盆上，接触路径、高低差、着力支撑点清晰，特写保留锚定肢体防吞人）。
+- 残躯/挂墙骨盆/断头铁律：凡斩首、身首异处、挂墙肉便器/截断骨盆(severed pelvis/buttocks protruding from wall)、断肢残躯：首选作为画格 description 与 non_character 环境静物呈现，严禁开独立人物槽防异化长头浮发；若必须入槽，强制剥离发貌（纯躯干/骨盆），并在 negative 写入 1.6::head, face, hair, ponytail, eyes, mouth::, head_attached。
 5. 【页面容量自适应】：
 依据事件量、对白量与画格容量自适应确定页数与格数。长剧情在自然停顿处分页，不为了凑页数而删减情节与台词尾句。reason 简述选材与分页，页数以 segments 实际数量为准。`;
 
@@ -1273,8 +1277,9 @@ page.base 落实既定整页形态、实际人数/格数、布局与共用光照
 默认使用不加权的清晰视觉词！先写对人物、动作、道具及归属，只对确需突出的核心视觉焦点使用 1.15::短词组::（例如 1.15::holding key in right hand::）；次要元素适度弱化（0.6::tag::）；绝不机械统一加权，不给整段或普通词滥加 1.3/1.4 等破坏扩散模型的极端高权。
 4. 【逐槽角色负面词（UC 互斥比较）】：
 每位可见人物的 characters[].negative 只对应本格中的该人物出场槽位。以本页所有其他不同人物为依据逐一比较，将适用且互斥的具体特征（如对方独有发型结构、眼镜、独有衣着款式）写入 negative。重复项合并，不排除自身正确特征，没有适用项填空字符串。
-5. 【镜头可见性与解剖过滤】：
-单格不可见部位不写。局部特写（lower_body, close-up 等）正面标明部位，negative 对应排除画外部位（如 head, face）；半身特写 negative 排除 lower body, legs；背身机位 (from_behind) negative 排除 face, front view。复杂空间演出可用简短英文短词组修饰，不写整段英语记叙文长散句。`;
+5. 【镜头可见性与解剖过滤（残躯防浮发铁律）】：
+单格不可见部位不写。局部特写（lower_body, close-up 等）正面标明部位，negative 对应排除画外部位（如 head, face）；半身特写 negative 排除 lower body, legs；背身机位 (from_behind) negative 排除 face, front view。
+凡断肢、斩首、挂墙肉便器/截断骨盆 (severed pelvis protruding from wall)：优先归入 description 环境静物，若入人物槽则 base 仅留纯躯干骨盆，并在 negative 强力排除 1.6::head, face, hair, ponytail, eyes, mouth::, head_attached，杜绝墙面长头浮发。复杂空间演出可用简短英文短词组修饰，不写整段英语记叙文长散句。`;
 
     function resolveMangaPromptPreset(ec = 'v_manga') {
         if (ec === 'v_manga_layered_v1') return {

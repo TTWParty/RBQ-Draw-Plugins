@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.37';
+        const VERSION = '1.9.38';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -1171,21 +1171,19 @@
     // Historical planning texts; the existing SDT context selector chooses the variant.
     const MANGA_PLANNING_PROMPTS = {
         v_manga_v5: `【漫画 5.0 商业大师导演规划（Universal Director v5.0 白皮书标准）】
-一次完成全文选材、分页、分镜与绘图词，直接输出最终 JSON。严格遵循商业日漫与同人本工业级导演规范：
-1. 【剧作节拍与黄金主格统治律】：通读 currentMessage，按正文时间线提炼关键事件与反应，保留完整问答与因果。每页必须有且仅有 1 个【黄金主格 (Hero Panel)】占据全页 45%～65% 面积，承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载铺垫前摇或局部反应。严禁机械平分均分。视线动线遵循日漫反 Z 字（右上起手 → 左侧/中段大主格 → 右下/左下终末收束）。
-2. 【动作生成流水线与肢体接触熔接（SDT V23 动作工程学规范）】：
-严格遵循 SDT V23 动作生成流水线：本格朝向/位置 → 基础姿势 → 肢体动作(手/臂+部位+细节) → 核心行为 → 表情与视线 → 状态 → 即时反馈微细节。
-① 【拆解与肢体解耦】：复合姿势拆为独立原子标签（如害羞拆为 shy, blush）；多肢体动作独立分配，避免模糊的 both hands，分别交代左右手或主次肢体（如 left hand..., right hand...）；真正接触写 holding/gripping，悬空接近写 reaching toward。
-② 【V23 权重律与排布】：核心动作动词及关键特征使用 1.1~1.4::tag:: 闭合加权，避免被高权角色外貌淹没；次要远景或遮挡用 0.1~0.9::tag::；标签按画面视觉占比及重要性降序排列，强关联 tag 紧密相邻。
-③ 【微细节优先级阶梯】：配额充裕时优先补充即时动态反馈（trembling, motion_lines, splash, sweat 等生理与物理反馈）用于锚定动作张力，其次补充主体特征，最后补充氛围。
-④ 【视点几何与视线解剖】：互动时严禁机械全员写 looking at viewer！视线必须紧扣互动目标（对峙 facing another, eye_contact；向下注视 looking down；仰头 head back, looking up；羞怯 averted gaze）；单格不可见部位绝对禁写。page.base 统领双人接触关系（grappling, physical contact, body contact, height difference），局部坐标重叠紧贴。
-3. 【断头/死伤/挂墙骨盆/残躯铁律（严防异化长头/钉墙浮发）】：凡人物斩首、身首异处、挂墙肉便器/截断骨盆(severed pelvis/buttocks protruding from wall)、断肢或死尸：
-① 【首选环境静物法（画质最高）】：严禁为其单独开辟 characters 槽位！AI扩散模型会将独立人物槽判定为完整活人导致肉块或木板墙上无端长出头发马尾。必须将其作为画格 description 与 non_character 的环境静物呈现（如 inside public toilet, severed female pelvis with plump buttocks protruding from wooden frame on plywood wall）；
-② 【人物槽降级规则】：若必须开辟人物槽，严禁在 page.base 中计入 1girl/1boy！其 state.base 必须强制覆写为纯躯干/骨盆（如 state: { base: "severed female pelvis, fair smooth skin, headless, armless, legless, no hair" }），彻底剥离发型/发色/面孔，且该人物 negative 必须强制写入 1.6::head, face, hair, ponytail, eyes, mouth::, head_attached，坚决杜绝扩散模型在肉块或墙壁上无端滋生头发！
-4. 【镜头景别阶梯与同人本闭环】：一页内严禁连续出现同级景别（如中景接中景），必须在全景 FS、中景 MS、特写 CU、极近特写 ECU 与插入细节 Cut-in 之间大开大合跳跃。同人感官互动严格落实三大视点闭环：见せコマ核心体位大主格（50%） -> 结合部极近微距 Cut-in（25%，macro close-up on physical contact points, intense skin contact） -> 阿黑颜面部破防特写（25%，ahegao tendency, rolling eyes, parted lips with drool, blush stickers, heart-shaped pupils）。
-5. 【视觉特效与拟声词注入】：动作高潮与爆点主动注入日漫特效层（集中线 focus lines, 速度线 speed lines, 手绘排线 cross-hatching, 纯墨黑块 solid black shadows, 网点 screentone）。纯拟声词使用 SFX: 擬音, 吹き出しなし 并注入纯正日文（战斗 ドカッ/ズバッ/ゴゴゴ；心理 ドクン/ゾクッ；感官 ヌプッ/ズブッ/クチュクチュ/パンパン/ビクンビクン）。
-6. 【符号化微表情与气泡归属】：表情直译日漫符号（blush stickers 羞耻斜线红晕, face darkened by shadows 绝望黑化, heart-shaped pupils 心瞳, popping veins 青筋, blank white eyes 白目）。气泡归属严格对齐：页级仅 caption/sfx；人物台词与心声必须挂在该人物 bubbles，绝不漏在格级；画外音归格级且 position=offscreen。
-7. 【画布容量自适应】：参考 mangaCanvas 像素与方向，根据人物数与对白量合理定格。拥挤时在自然停顿处拆页，空洞时合页，绝不硬删关键对白与剧情结尾。reason 简述选材与分页，intent 简述本页核心爆点。`,
+作为漫画分镜导演 [ROLE: COMIC-DIRECTOR]，剧情编剧负责因果动机，你负责视觉呈现与分镜编排。通读正文，一次完成选材、分页、分镜与绘图词，直接输出最终 JSON。
+1. 【台本转译全覆盖与原句落格】：
+从当前正文第一个画面到最后一个画面完整呈现，按顺序分配事件、行动与直接反应，保留因果动机与交互对象，绝不跳过开场铺垫，绝不漏掉结局收尾。合并重复修饰，过滤无意义寒暄。人物对白、内心独白与独立拟音逐句完整保留，较长原句按自然语流停顿拆入连续气泡。动作、姿态、表情、距离与环境优先落实为画面；比喻通感只取可见解剖/物理本体（如软热的肉团子 → 大きく柔らかい胸 / 豊かな胸；蛇一样的腰 → しなやかな腰），喻体食物/器物不进视觉槽。
+2. 【映画文法与画格非对称拓扑】：
+遵循日式漫画読み順（右至左、上至下），panels 数组即阅读顺序。每个格子必须不同大小！每页确立 1 个核心主要画格占据全页戏剧重心，承载核心动作爆发、关键互动或情绪转折；辅助格按铺垫与局部反应分配大小。在 page.base 明确主格位置、相对面积与各排各列布局，不能仅写 vertical layout。为每格指定本页内唯一可辨的位置称呼（右上小格、左侧纵长格、底部通栏主格），在布局、格内描述与人物词中保持一致。
+3. 【动作工程学与肢体解耦（SDT V23 规范）】：
+人物 positive 依次写出：本格格位 → 朝向与姿态 → 肢体左右手分工 → 核心交互行为 → 表情视线 → 即时反馈。明确左右手分工（left hand... / right hand...），不模糊写 both hands；真正握住写 holding/gripping，悬空靠近写 reaching toward。视线紧扣互动目标（facing another, eye_contact、向下注视 looking down、仰头 head back, looking up 等），单格不可见部位不写，严禁机械全员 looking at viewer。
+4. 【同人本感官分镜与分级标定】：
+核心互动设立主客体全貌大画格；在大格边角紧贴嵌入极近特写切入小格 (Insert Cut-in)，收束视觉焦点至敏感接触部位或失神神态；边框可顺应身体曲线动态斜切 (Body Contour Framing)。落实标准体位术语（missionary, cowgirl, doggystyle, mating press 等）、可见体液附着、衣物脱卸边界（写清褪到身体哪一截、遮挡何处，杜绝穿裤做或凭空全裸）、器官零件明确、骨盆挂载与人体工学支撑（器官长在剥出的胯部/骨盆上，着力点与高低差清晰，特写保留锚定肢体防吞人）。纯拟声词通过 SFX 注入生动日漫拟音。
+5. 【克制精准微权与逐槽负面词】：
+遵循精准微权法则：默认使用不加权的清晰视觉词！先写对人物、动作、道具及归属，只对确需突出的核心视觉焦点使用 1.15::短词组:: 微权，次要元素适度弱化（0.6::tag::），绝不机械统一加权。每位人物 negative 逐一对照本页其他人物排除适用且互斥的具体特征，不排除自身正确特征，没有适用项填空字符串。
+6. 【画布容量自适应】：
+参考 mangaCanvas 像素与方向，根据人物数与对白量合理定格。拥挤时在自然停顿处拆页，空洞时合页，绝不硬删关键对白与剧情结尾。reason 简述选材与分页，intent 简述本页核心爆点。`,
         v_manga_150: `漫画分页依据正文事件、文字量与画格容量；相邻事件可同页，单格页可只含一个决定性瞬间。按 page/panels/characters 嵌套协议输出，每格人物数量与画格数无关。核对台本覆盖、空间位置、人物状态和文字归属。`,
         v_manga_161: `【漫画前情与本楼规划】
 一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
@@ -1241,48 +1239,42 @@
     // New assemblies use these independent modules; historical prompts above
     // retain their original combined behavior and are never augmented with V23.
     const MANGA_LAYERED_STORY_PROMPT = `【正文漫画叙事与分镜导演规划】
-从本楼开端看到结尾，一次完成剧情选材、分页、分镜排版与台词声画规划，直接输出最终 JSON。
-1. 【剧情完整选材与起承转合律】：
-前情用于确认进入本楼时仍有效的身份、场景、衣着与持物。通读当前正文，严禁直接跳过前摇细节！完整保留剧情因果推进链条（前因铺垫 → 互动交锋 → 核心爆发 → 即时反应与收尾）。提炼本页唯一核心爆点 (Beat Peak)，合并重复修饰，过滤无意义寒暄，保留所有重要动作、转折与剧情实质。
-2. 【黄金主格 (Hero Panel 45%～65%) 绝对统治律与反 Z 动线】：
-- 面积预算：每页必须有且仅有 1 个【黄金主格】占据全页 45%～65% 面积，专门承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载铺垫前摇或局部反应。坚决杜绝机械平分均等画格！
-- 动线拓扑：通常一页规划 3～5 格（单格一枚絵亦合法）。按日漫反 Z 字动线引导视线（右上起手铺垫 → 左侧/中段大主格高潮 → 右下/左下终末收束）。在 page.base 中明确主格位置、相对面积与各排各列布局，不能仅写 vertical layout。
-3. 【专业镜头景别阶梯与互斥铁律】：
-一页内严禁连续出现同级景别（如严禁中景接中景）！镜头必须大开大合跳跃：
-- 远景/全景：交代空间环境、双方站位与体型差；
-- 中景：呈现肢体攻防、推拉交锋与动作发起；
-- 核心特写/微距：定格动作关键结合点、受力部位或肢体接触；
-- 面部特写：放大眼神焦点、咬牙、冷汗与情绪破防；
-结合仰拍 (low angle)、俯拍 (high angle) 或斜切构图 (dutch angle) 增强空间张力。
-4. 【台词与气泡完整收录铁律】：
-正文中出现的人物对话、内心独白 (thought)、情绪喊叫 (screaming)、颤抖低语 (whisper) 与旁白 (caption)，必须逐句完整分配给对应角色的 bubbles 数组，严禁删减遗漏！长句按自然停顿分泡，保持攻防节奏。
-5. 【日漫特效层与拟声词】：
-格级 description 与 page.base 中根据动作张力主动配置日漫视觉特效（集中线、速度流线、排线阴影、网点、纯墨黑块），拟音按日漫习惯通过 SFX 配置，强化画面动态声效。
-6. 【定格瞬间与出场条目】：
-每格选一个相容定格瞬间，动作参与者均在 characters 建立条目，位置与动作贯穿 description 与 positive。reason 简述选材与分页结论，页数以 segments 实际数量为准。`;
+作为漫画分镜导演 [ROLE: COMIC-DIRECTOR]，剧情编剧负责剧情因果动机，你负责视觉呈现与分镜编排。从本楼开端看到结尾，一次完成选材、分页、分镜与台词声画规划，直接输出最终 JSON。
+1. 【台本转译全覆盖与原句落格】：
+- 转译范围：完整呈现当前正文已写出的事件，从第一个画面开始到最后一个画面结束。按顺序分配事件、行动及其直接反应，保留因果动机、发起者与交互对象，绝不跳过开场铺垫，绝不漏掉结局收尾。合并重复修饰，过滤无意义寒暄。
+- 原句落格：人物对白、内心独白与独立拟音逐句完整保留，保留原句文字、标点、归属人物和顺序，绝不遗漏台词。
+- 对白自然拆分：只要不是一口气说出来的长句，必须按自然语流停顿拆入连续气泡，保持攻防节奏。
+- 叙述转画面：动作、姿态、表情、距离与环境优先落实为可见画面。比喻、通感、夸张只取实际可见的解剖与物理本体（如软热的肉团子 → 大きく柔らかい胸 / 豊かな胸；两团馒头 → 豊かな胸；蛇一样的腰 → しなやかな腰），喻体食物、器物或抽象词不进视觉槽。
+2. 【映画文法与画格拓扑（阅读顺序与主次布局）】：
+- 読み順：日式漫画阅读顺序（右至左、上至下），panels 数组即阅读顺序。
+- 每个格子必须不同大小：为每页确定一个核心主要画格作为面积与戏剧重心（承载核心动作爆发、关键互动或情绪转折），其余辅助格按信息量与铺垫需求分配大小，绝不机械平分均等画格。
+- 格位命名一致性：为每格确定一个本页内唯一可辨的「位置＋必要时的大小形状」称呼（如右上小格、左侧纵长格、底部通栏主格），在 page.base 布局、格内描述与人物词中保持一致。
+- 景别机位服务叙事：远景交代空间与站位，中景呈现互动与动作，近景/特写突出表情与细节；结合仰角、俯角或透视短缩增强张力，不为凑术语堆放同义机位。
+3. 【单格定格与持续状态追踪】：
+- 每格选取一个明确相容的定格时刻，参与动作的人物均在 characters 建立条目，动作和表情归各自 positive。
+- 持续状态追踪：持续追踪重要道具由谁持有、在左手还是右手、物品开合破损、衣物脱卸遮盖状态、以及人物之间持续的接触。换镜头和局部特写不等于物品消失或动作重置。
+4. 【同人本感官分镜与分级标定】：
+- 互动大格与特写切入：核心互动设立主客体完整大画格；在大格边角紧贴嵌入局部特写切入小格 (Insert Cut-in)，收束焦点至敏感接触部位或失神神态；边框可顺应身体线条作动态斜切 (Body Contour Framing)。
+- 密集拟音字：碰撞声、水声与娇喘通过格级 SFX 或 non_character 在格内生动展现。
+- 分级与人体工学：情欲神态（潮红、失神、咬唇）；标准体位术语（missionary, cowgirl, doggystyle, mating press 等）；体液交互（爱液、汗、精液写可见附着面与状态）；衣物脱卸边界（写清褪到身体哪一截、遮挡何处，杜绝穿裤做或凭空全裸）；可见器官零件（区域不等于零件，可见时明确写出部位）；骨盆挂载与人体工学（器官长在剥出的胯部/骨盆上，接触路径、高低差、着力支撑点清晰，特写保留锚定肢体防吞人）。
+5. 【页面容量自适应】：
+依据事件量、对白量与画格容量自适应确定页数与格数。长剧情在自然停顿处分页，不为了凑页数而删减情节与台词尾句。reason 简述选材与分页，页数以 segments 实际数量为准。`;
 
     const MANGA_LAYERED_PANEL_PROMPT = `将已经确定的画面写成英文绘图词，直接服务 NovelAI V5 / SD 扩散模型，不重新选材、增删页格、替换人物或改变台词。
 page.base 落实既定整页形态、实际人数/格数、布局与共用光照。普通页树的 panel.description 写本格位置、大小、已选景别/机位与背景环境；工作台提供 position/shot 字段时，格位大小与镜头分别写入二者，description 只写背景环境，由编译器附加格位和镜头。镜头不放人物动作字段。
-1. 【主力骨架（90%）：SDT V23 标准 Danbooru Tag 结构流水线】：
-画面与人物正面提示词以标准 Danbooru 英文标签为骨架，用英文逗号分隔。人物 positive 严格遵循 V23 8阶流水线：
-本格朝向/绝对位置 → 基础姿态 → 肢体左右手独立分工 → 核心交互行为 → 表情与视线 → 状态 → 即时反馈微细节。
-① 肢体独立解耦：明确两手分工（left hand... / right hand...），严禁模糊写 both hands；真正握住写 holding/gripping，悬空靠近写 reaching toward。
-② 核心动作闭合加权律：关键动作动词必须使用 1.2~1.4::短词组:: 闭合加权，激活模型强动势先验，杜绝平写被外貌淹没！
-③ 以果导因与即时反馈：激烈交互必须伴随反作用力痕迹（受力形变 flesh_indent；动势速度线；体液与汗水；颤抖脱力）反向锁死体位。
-④ 视线解剖对齐：严禁机械全员 looking at viewer！必须对准交互目标（facing another, eye_contact、向下注视 looking down、仰头 head back, looking up、羞耻回避 averted gaze）。
-2. 【服装部件拆解与动态穿戴状态】：
-严禁只写模糊的服装总称！必须拆解至部件级（上衣、内搭、领口、下装、配饰）。随剧情推进真实体现服装的动态损耗与穿着改变（衣衫不整、领口解开、衣物被拉扯或撩起、褶皱与破损）。
-3. 【日漫符号化微表情】：
-表情直译日漫符号（羞耻红晕斜线、绝望阴影黑化、心形瞳孔、青筋暴起、白目失神、眼角泛泪、咬唇隐忍等），精准表达角色心理变化。
-4. 【辅助修饰（10%）：V40 自然语言短词组紧密配合】：
-能用标签表达的坚决优先用标签；仅对标签无法涵盖的微妙空间质感或接触受力细节，可用简短自然语言短词组紧跟在其修饰的标签后。
-⛔ 严厉禁止写整段英语小说记叙文散句！
-5. 【镜头可见性与负面排除（V23 通用解剖过滤铁律）】：
-镜头看不见的部位绝对禁止写入正面词，并在 negative 中对应排除：
-- 局部特写/下半身（lower_body, buttocks_focus, close-up, cropped）：正面标明部位，negative 排除 head, face, hair, upper body；
-- 半身特写（upper_body / cowboy_shot）：negative 排除 lower body, legs, feet；
-- 背身机位（from_behind）：negative 排除 face, front view；
-人物 negative 只排除当前镜头易串入的他人互斥特征或镜头不应出现的部位，不排除自身正确特征。`;
+1. 【标签骨架与动作解耦（Danbooru 标签体系）】：
+画面与人物正面提示词以标准 Danbooru 英文标签为骨架，用英文逗号分隔。人物 positive 依次写出：本格格位 → 朝向与基础姿态 → 肢体左右手分工 → 核心交互行为 → 表情与视线 → 状态与即时反馈。
+① 肢体独立解耦：明确两手分工（left hand... / right hand...），不模糊写 both hands；真正握住写 holding/gripping，悬空靠近写 reaching toward。
+② 即时动态反馈：激烈互动伴随受力与动态反馈（motion_lines, sweat, trembling, blush stickers 等），锚定动作真实感。
+③ 视线解剖对齐：视线紧扣互动目标（facing another, eye_contact、向下注视 looking down、仰头 head back, looking up、羞耻回避 averted gaze），严禁机械全员 looking at viewer。
+2. 【角色独立出场与外观完整性】：
+每格每位可见人物在 characters[].positive 独立写出无数字的主体词 boy、girl 或 other，以及本镜头可见的完整外观、已生效变化、衣着、动作、景别和表情。同一角色跨格写当前镜头可见完整词，禁止以“同上”代替。衣服拆解至具体部件，体现动态穿戴与损耗状态（衣衫不整、领口解开、被拉扯撩起、褶皱等）。
+3. 【克制精准微权（Craft Weight 法则）】：
+默认使用不加权的清晰视觉词！先写对人物、动作、道具及归属，只对确需突出的核心视觉焦点使用 1.15::短词组::（例如 1.15::holding key in right hand::）；次要元素适度弱化（0.6::tag::）；绝不机械统一加权，不给整段或普通词滥加 1.3/1.4 等破坏扩散模型的极端高权。
+4. 【逐槽角色负面词（UC 互斥比较）】：
+每位可见人物的 characters[].negative 只对应本格中的该人物出场槽位。以本页所有其他不同人物为依据逐一比较，将适用且互斥的具体特征（如对方独有发型结构、眼镜、独有衣着款式）写入 negative。重复项合并，不排除自身正确特征，没有适用项填空字符串。
+5. 【镜头可见性与解剖过滤】：
+单格不可见部位不写。局部特写（lower_body, close-up 等）正面标明部位，negative 对应排除画外部位（如 head, face）；半身特写 negative 排除 lower body, legs；背身机位 (from_behind) negative 排除 face, front view。复杂空间演出可用简短英文短词组修饰，不写整段英语记叙文长散句。`;
 
     function resolveMangaPromptPreset(ec = 'v_manga') {
         if (ec === 'v_manga_layered_v1') return {

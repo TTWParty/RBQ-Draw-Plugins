@@ -127,101 +127,112 @@
 
 在生成漫画或插画时，最常遇到的挫败就是**“动作僵硬、四肢变形、两人各摆各的 Pose 假装在互动”**。很多时候并非大模型不懂剧情，而是分镜给出的提示词违背了 AI 扩散模型的物理受力与视觉注意力机制。本章深度融合 **SDT V23（国籍面相版）与 V40（全息分层优化版）** 中经过数万次实战沉淀的动作生成绝技，建立一套严密的动作工程体系。
 
-### 1. 动作崩坏与站桩失联的底层原因
-1. **注意力分散（Attention Split）**：在 Character Prompt 模式下，如果只在各自的角色槽写单独动词（A: `standing`, B: `punching`），扩散模型会将交叉注意力头分别分配到画布左右两侧，导致“两人中间隔着银河”的各摆各 Pose。
-2. **动词权重匮乏（Verb Starvation）**：扩散模型是基于名词/视觉实体训练的（发色、衣服、五官等名词先验极强）。如果动词使用 1.0 默认权重，动作信号会被强大的角色外观词直接吞噬淹没，导致人物退化为呆板的立绘站姿。
-3. **肢体模糊与手部粘连（Hand Confusion）**：只写 `both hands gripping`，AI 无法判断两只手的具体受力支点，极易生成黏在一起的肉团、或者凭空画出第 3 只手。
-4. **缺乏受力反作用与生理反馈（Missing Reaction & Strain）**：只有“动作”没有“痕迹”，AI 就会画成“手悬空贴在衣服表面”。真实的激烈互动必须靠肉体形变、皮肤凹陷、体液喷溅反向约束四肢。
+## 六、动作工程学与肢体交互指导规范（The Action & Limb Engineering Specification · 师承 SDT V23 系统方法论）
+
+> [!NOTE]
+> **方法论正本清源**：
+> SDT V23 预设之所以在生图动作表现上极度稳定，**绝非硬编码了某几个特定动作词汇，而是建立了一整套高度抽象、自洽、全题材通用的提示词工程学指导规范（Methodological Guidance）**。
+> 它的核心价值在于：**教 AI 按照工业级渲染逻辑去“装配”提示词，而非死记硬背散乱的词汇**。
 
 ---
 
-### 2. 肢体动作碎化与左右手独立分工铁律（The Two-Hand Independent Rule · SDT V23 核心法宝）
-严禁写泛泛的 `both hands` 或整句英语散文！必须将角色的身体动力学拆解为四个层级：
+### 1. SDT V23 核心指导体系：七大工程学法则
 
-```text
-[层级 1: 基础骨架与朝向] → 朝向 (facing_viewer / facing_another / from_side) + 基础姿势 (standing / sitting / kneeling / lying / straddling / leaning_forward)
-[层级 2: 躯干与脊椎张力] → arching back (弓背挺腰) / twisted torso (扭转躯干) / leaning over (倾覆压下)
-[层级 3: 左右手独立任务] → 明确两只手各自的部位与抓握目标：
-  - 左手 (Left Hand / One Hand): 抓握核心对象 (e.g., left hand grasping hair / one hand gripping wrist)
-  - 右手 (Right Hand / Other Hand): 支撑重心或施加第二动作 (e.g., right hand pressing against wall / other hand squeezing breast)
-[层级 4: 细微接触力道] → 真正握住写 holding / gripping；死死抠入写 fingers digging into [flesh/sheets]；悬空靠近写 reaching toward。
-```
+#### 法则一：Action 生成流水线装配律（The Sequencing Pipeline）
+V23 规定，角色的动作字段（positive / action）绝对不能随性拼凑，必须按照由宏观骨骼到微观细节的 **8 阶流水线顺序** 层层装配：
+
+$$\text{本格朝向/绝对位置} \longrightarrow \text{基础姿势} \longrightarrow \text{肢体分工(手/臂+部位+细节)} \longrightarrow \text{核心行为} \longrightarrow \text{表情与情绪} \longrightarrow \text{视线对齐} \longrightarrow \text{体表/生理状态} \longrightarrow \text{即时反馈微细节}$$
+
+- **宏观姿态锚定**：先确定 `facing_viewer / facing_another / from_side` 与 `standing / sitting / kneeling / leaning_forward`；
+- **肢体与核心动作**：再落入具体肢体动作与核心行为；
+- **神态与微细节收束**：最后收束于表情、视线与状态反馈。顺序倒置会导致模型注意力权重漂移。
 
 ---
 
-### 3. 核心交互动词 1.2~1.4 闭合加权律（The Action Weighting Law）
-在 NovelAI V5 / V4.5 中，**所有决定画面核心动势的关键动词必须赋予 `1.2~1.4::动作::` 闭合加权**！这是激活潜空间强动作先验的关键钥匙：
+#### 法则二：Tag 权重矩阵与排布律（Weight Hierarchy & Ordering）
+扩散模型对单纯的 1.0 动词响应度常被高权重的角色外观名词压制。V23 建立了通用的三层权重体系与排序指导：
 
-| 动作类型 | 必须加权的提示词结构 | 错误范例（严禁平写） |
+| 权重区间 | 功能定位 | 适用场景与指导要求 |
 | :--- | :--- | :--- |
-| **本番抽送 / 活塞运动** | `1.3::thrusting, vaginal penetration, slamming pelvis::` | `penetration`（会变成静止插着不动） |
-| **推倒 / 擒拿压制** | `1.3::pinning down, tackling, wrestling, pinning wrists::` | `holding her`（会变成普通牵手） |
-| **揉捏 / 抓握肉体** | `1.3::groping, squeezing breast, grabbing buttocks::` | `touching breast`（会变成浮空贴着） |
-| **深喉 / 强行口交** | `1.3::deepthroat, fellatio, forced oral, head forced down::` | `oral sex`（会变成普通微张嘴） |
-| **后背箍紧 / 勒抱** | `1.3::bear hug, full nelson, choking, arm lock::` | `hugging from behind`（会变成温和拥抱） |
+| **`1.1 ~ 2.0`** | **核心强调** | **核心动作动词**、关键穿搭、同人角色姓名、低频生僻 Tag |
+| **`0.1 ~ 0.9`** | **次要弱化** | 远景元素、被部分遮挡的肢体、弱化背景 |
+| **`-1.0 ~ -4.0`** | **反向排除** | 动态负权排除，代替生硬的 `no_xxx`（如 `-2::bra::`） |
+
+- **排序铁律**：**画面占比与重要性降序排列，强关联 Tag 必须紧密相邻**（如动作与受力对象相邻，发色与发型相邻）。
+- **动态调整因素**：依据画面视觉占比、特征显著度、动作幅度、累积状态与空间远近灵活微调。
 
 ---
 
-### 4. 肉体受力形变与即时生理/物理反馈系统（Flesh Indentation & Dynamic Feedback）
-AI 画画是“以果导因”的。想要手抓得紧、撞得狠，必须在提示词中加入**物理痕迹与生理反应**：
-
-1. **肉体受力形变（Flesh Deformation）**：
-   - 指尖陷进软肉：`flesh_indent, skin_indent, fingers_digging_into_flesh, deformed_flesh`
-   - 抓痕与巴掌红印：`red_marks, slap_marks, handprint_on_butt, bruised_skin`
-2. **冲击动线与肌肉紧绷（Motion & Tension）**：
-   - 冲撞速度线：`motion_lines, impact_lines, shockwave_lines`
-   - 肌肉抽搐与战栗：`trembling, spasms, tensed muscles, arched back, curled toes (脚趾蜷缩)`
-3. **体液、汗水与热度反馈（Fluids & Heat）**：
-   - 汗水与剧烈喘息：`sweat, steaming_body, heavy_breathing, flushed_skin`
-   - 体液喷溅与拉丝：`splashing_fluids, dripping_saliva, cum_overflow, leaking_fluids, stringy_saliva`
+#### 法则三：概念原子化拆解与肢体解耦（Tag Deconstruction & Limb Autonomy）
+- **复合概念拆解**：严禁直接写复合英文大词。必须将其拆解为 Danbooru 独立原子标签（如害羞拆为 `shy, blush`；月下拆为 `moonlit, night`；专名除外）。
+- **肢体独立解耦（两手分工）**：严禁写笼统的 `both hands`。双手各有任务时，分别交代左右手或主次肢体的具体职责（如一只手握持物品/抓握目标，另一只手支撑身体/防守）；真正握住写 `holding / gripping`，悬空伸出写 `reaching toward / reaching out`。
 
 ---
 
-### 5. 视线、表情与头部角度的解剖联动（Gaze & Facial Expression Coupling）
-严禁在互动场景中所有人盲目写 `looking_at_viewer`（机械看镜头）！视线必须严格与互动目标解剖绑定：
-- **两人对峙 / 激烈互动**：`facing_another, eye_contact, glaring, looking at each other`
-- **羞耻 / 逃避 / 屈辱**：`looking_away, averted_gaze, biting_lip, blushing fiercely, gritting_teeth`
-- **动作注视（看着施力点）**：`looking_down, looking at penis, looking at hands, wide eyes`
-- **快感 / 痛苦失神（破防失神）**：`rolling_eyes, head_back, eyes_fluttering, half-closed_eyes, ahegao, drool, slack-jawed`
+#### 法则四：微细节优先级阶梯（Micro-detail Priority Ladder）
+当画格标签配额仍有富余时，V23 明确给出了微细节的注入优先级指导，用以反向锁死动作张力：
+
+$$\text{即时动态反馈 (trembling, splash, sweat)} > \text{主体标志特征 (配饰/纹饰)} > \text{空间氛围渲染 (光影/粒子)} > \text{普通细节补全}$$
+
+- **以果导因（锚定动作）**：剧烈动作或重压之下，主动补充即时的生理与物理反馈（如用力抓握伴随受力凹陷 `flesh_indent`；剧烈冲击伴随速度线 `motion_lines`、汗水 `sweat`、战栗 `trembling`），迫使扩散模型为了渲染这些反馈痕迹，反向把动作与接触点画实。
 
 ---
 
-### 6. 全题材高频交互与体位动作权威 Danbooru 词典
+#### 法则五：多角色施受关系路由（Interaction Routing）
+多角色同格互动时，严禁各写各的单人动词。V23 规范通过前缀明确双方动作的几何拓扑关系：
+- `source#动作`：主动施加动作方（支配方、攻击方、握持方）；
+- `target#动作`：受动承受方（被压制方、受击方、被动方）；
+- `mutual#动作`：双方对称协同动作（拥抱、对拳、亲吻）。
 
-#### A. 战斗动作与压制打击类 (Combat, Strike & Grapple)
-- `1.3::punching, fist to face::, impact_lines, head tilted back, spitting saliva, shockwave`
-- `1.3::pinning down, arm lock::, one_knee_on_chest, pinning_wrists_to_ground, struggling`
-- `1.3::wall slam, pinned against wall::, one_hand_choking, feet off ground, cracked_wall`
-- `1.3::sword clash, crossed blades::, sparks_flying, gritting_teeth, intense_eye_contact`
+---
 
-#### B. 强推、壁咚与侵入逼近类 (Cornering, Wall Pin & Ambush)
-- `1.3::kabedon, cornering, trapping::, one_hand_on_wall, towering_over, cornered_girl, trembling`
-- `1.3::grabbing collar, lifting up::, fist_clenched, terrified_expression, pulled_close`
-- `1.3::pinning wrists overhead::, hands_held_above_head, pinned_to_bed, arching_back`
+#### 法则六：累积状态跨图演进律（Cumulative State Dynamics）
+连续生图中，角色同一持续状态（如疲惫、出汗、负伤、兴奋）按 V23 规范应遵循动态演进：
+- 跨分镜/跨页面权重按 `+0.2` 阶梯递增（例如初始 `sweat` $\rightarrow$ 剧烈动作后 `1.2::sweat::` $\rightarrow$ 高潮终末 `1.4::sweat, steaming_body::`）；
+- 一旦发生转场、换装或动作休止，累积状态即时重置。
 
-#### C. 本番核心抽送体位全集 (Full Intercourse Positions)
-- **站立后入 (Standing Sex / Grabbing from Behind)**：
-  `1.3::standing sex, from behind, vaginal penetration::, one_hand_grabbing_hip, other_hand_pulling_hair, leaning_forward, hands_against_wall, arched_back, shaking_legs`
-- **趴卧后入 (Prone Bone / Doggy Style)**：
-  `1.3::prone bone, doggystyle, deep penetration::, hips_elevated, face_pressed_into_pillow, hands_gripping_sheets, slamming_pelvis, motion_lines, trembling_thighs`
-- **经典传教士 (Missionary / Pinning Legs)**：
-  `1.3::missionary, legs_up, knees_to_chest::, hands_holding_ankles, deep_thrusting, head_thrown_back, rolling_eyes, sweat, splashing_fluids`
-- **跨坐骑乘 (Cowgirl / Straddling)**：
-  `1.3::cowgirl_position, straddling, bouncing::, hands_on_partner's_chest, arched_back, heavy_breathing, breasts_bouncing, downward_gaze, biting_lip`
-- **侧位交缠 (Spooning / Side Sex)**：
-  `1.3::spooning, side sex, interlocking_legs::, one_leg_lifted, arm_wrapped_around_waist, neck_kissing, flushed_cheeks`
+---
 
-#### D. 口交、深喉与侍奉类 (Oral, Deepthroat, Paizuri)
-- **跪姿深喉 (Forced Deepthroat)**：
-  `1.3::deepthroat, fellatio, forced_oral::, kneeling, looking_up, head_forced_down, hands_grabbing_hair, penis_in_mouth, tears_in_eyes, saliva_dripping, choking_expression, gagging`
-- **乳交夹击 (Paizuri / Breast Cleavage)**：
-  `1.3::paizuri, breast_smother::, squeezing_breasts_together, penis_between_breasts, looking_up_at_partner, blush, heavy_cleavage, cum_on_breasts`
+#### 法则七：视点几何与镜头严格过滤（Camera Filtering & Gaze Coupling）
+- **镜头过滤铁律**：画面看不见的部位绝对禁止写入对应提示词！
+  - 主观视角（POV）$\rightarrow$ 观察者禁入 characters，不可写其面部与表情；
+  - 半身特写（upper_body / cowboy_shot）$\rightarrow$ 严禁出现下半身（膝下/脚/鞋）；
+  - 背身机位（from_behind）$\rightarrow$ 严禁描写正脸表情（回头除外）。
+- **视线解剖对齐**：严禁机械式全员直视镜头（`looking_at_viewer`）。视线必须紧扣交互目标：
+  - 双方互动：`facing_another, eye_contact`；
+  - 观察动作/物品：`looking_down, looking at [object/hands]`；
+  - 仰视动作：严格使用 `head_back, looking_up`（严禁误写为 `looking_down`）；
+  - 羞涩回避：`averted_gaze, looking_away`。
 
-#### E. 拘束、肉便器与墙体结合类 (Restraints, Mounted Pelvis, Meat Toilet, Glory Hole)
-- **挂墙截断骨盆 / 肉便器 (Glory Hole / Wall-Mounted Pelvis)**：
-  `severed female pelvis, plump buttocks protruding from wooden wall frame, restrained, spread_legs, vaginal_opening_exposed, 1.3::thrusting, pelvis_slamming_against_wood::, red_slap_marks, flesh_indent, overflowing_semen, white_foam, dripping_fluids`
-- **四肢拘束 (Bondage & Spread Eagle)**：
-  `1.3::bound_wrists, suspended_arms::, leather_straps, spreader_bar, spread_legs, helpless_expression, trembling_body`
+---
+
+### 2. 全题材分镜动作实战推导（从 V23 方法论到各场景标签）
+
+掌握了上述 7 大方法论指导，即可在各类不同题材的分镜规划中，自然推导出自洽高水准的绘图标签：
+
+#### A. 战斗动作与压制打击类（热血/格斗/悬疑）
+- **冲刺重拳**：
+  `facing_another, leaning_forward, 1.3::punching, outstretched_arm::, other_hand_guarding, impact_lines, gritting_teeth, intense_glare`
+- **地面擒拿压制**：
+  `1.3::pinning_down, arm_lock::, one_knee_on_ground, pinning_wrists_to_ground, struggling, grimace, tensed_muscles, sweat`
+- **兵刃对决**：
+  `facing_another, 1.3::sword_clash, crossed_blades::, two_hands_on_hilt, sparks_flying, intense_eye_contact, motion_blur`
+
+#### B. 戏剧冲突、壁咚与情感张力类（少女/恋爱/日常）
+- **单手壁咚**：
+  `towering_over, 1.2::kabedon, one_hand_on_wall::, other_hand_in_pocket, leaning_close, looking_down, smirk`
+- **受惊被困（受方回应）**：
+  `cornered_girl, back_against_wall, hands_pressed_against_chest, blushing, trembling, looking_up, wide_eyed`
+- **递交物品**：
+  `standing, reaching_out, right_hand_holding_envelope, left_hand_at_side, friendly_smile, looking_at_partner`
+
+#### C. 感官互动与亲密接触类（同人/本番）
+- **背后主导抽送**：
+  `from_behind, 1.3::standing_sex, vaginal_penetration::, one_hand_gripping_hip, other_hand_on_waist, leaning_forward, heavy_breathing, sweat`
+- **跪姿侍奉**：
+  `kneeling, looking_up, 1.3::fellatio, oral::, hands_holding_partner, head_tilted_up, blush, saliva_dripping, trembling`
+- **受控形变高潮**：
+  `lying_on_back, arched_back, 1.3::deep_penetration::, hands_gripping_bedsheets, flesh_indent, rolling_eyes, ahegao, blushing, splashing_fluids`
 
 ---
 

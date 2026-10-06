@@ -424,6 +424,7 @@ colored, color, full color, 3d, realistic, photorealistic, bad anatomy, deformed
 - [ ] **8. 气泡语法对齐**：`BubbleType` 声明顺序与数量，是否与 `Text:` 中的两空行（`\n\n`）隔开的文本完全一一对应？
 - [ ] **9. 负面词清洗**：Negative Prompt 是否已排除 `comic`、`text`、`speech bubble` 等违禁词？
 - [ ] **10. 翻页悬念锚定**：左下角末尾格是否具备引导翻页的动作前摇或情绪悬念？
+- [ ] **11. 断肢/挂墙骨盆/死躯防伪校验**：画面出现无头尸体、挂墙截断骨盆 (glory hole pelvis) 或残肢时：① 首选作为静物并入画格 `description` / `non_character`，严禁开辟活体 `characters` 槽位，防止背景墙面或肉块长出莫名发辫；② 若保留人物槽，其 `state.base` 严禁携带 `hair/head/eyes` 标签，且 `negative` 必须注入 `1.6::head, face, hair, ponytail, eyes::, head_attached`；③ 全局 `page.base` 严禁盲目计入 `1girl`/`1boy`！
 
 ---
 

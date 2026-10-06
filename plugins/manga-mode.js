@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.28';
+        const VERSION = '1.9.29';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -310,7 +310,7 @@
                 }
             }, required: ['format', 'anchor', 'page', 'panels']
         };
-        if (ec === 'v_manga_narrative') {
+        if (ec === 'v_manga_narrative' || ec === 'v_manga_v5') {
             schema.properties.intent.description = '可选；简述本页内容起止、叙事任务及必要分页理由，不写长篇推理。';
             schema.properties.page.properties.base.description = 'Actual people/panel counts and page form; concrete row/column arrangement, relative panel sizes and adjacency, reading path and lighting. Balanced panels are valid; enlarge a focal panel only when the story needs it. No dialogue.';
         }
@@ -356,7 +356,7 @@
                 }]
             }]
         };
-        if (ec === 'v_manga_narrative') {
+        if (ec === 'v_manga_narrative' || ec === 'v_manga_v5') {
             schema.segments[0].intent = '可选；本页从哪个事件到哪个结果、叙事任务与必要分页理由，简短说明';
             schema.segments[0].page.base = '本页实际人数、页面形态与格数，各排/列的切分、各格相对大小和邻接关系、阅读路径与光影；允许均衡分格，重要时刻可扩大，不强制主格；不能只写 vertical layout';
         }
@@ -1022,6 +1022,15 @@
 
     // Historical planning texts; the existing SDT context selector chooses the variant.
     const MANGA_PLANNING_PROMPTS = {
+        v_manga_v5: `【漫画 5.0 商业大师导演规划（Universal Director v5.0 白皮书标准）】
+一次完成全文选材、分页、分镜与绘图词，直接输出最终 JSON。严格遵循商业日漫与同人本工业级导演规范：
+1. 【剧作节拍与黄金主格统治律】：通读 currentMessage，按正文时间线提炼关键事件与反应，保留完整问答与因果。每页必须有且仅有 1 个【黄金主格 (Hero Panel)】占据全页 45%～65% 面积，承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载铺垫前摇或局部反应。严禁机械平分均分。视线动线遵循日漫反 Z 字（右上起手 → 左侧/中段大主格 → 右下/左下终末收束）。
+2. 【物理接触熔接（Contact Fusion）】：凡涉及身体接触（搏击、推倒、拥抱、壁咚、本番抽送），严禁各写各的站桩！page.base 统领双人接触关系（grappling, physical contact, body contact, height difference）；支配方写主动矢量（dominant stance, towering over, pinning）；受制方写受动姿态（submissive posture, pinned, struggling）；局部坐标重叠紧贴。
+3. 【断头/死伤/残缺防伪铁律（严防无头尸体生头）】：当人物斩首、成为无头尸体（headless/decapitated）、残肢或死亡时，模型若复用档案 base 将强制画出面部五官！必须：① 首选将尸体/残躯转入画格 description 或 non_character 作为场景环境静物呈现（decapitated corpse on ground, blood pool, headless body）；② 若保留人物槽，其 state.base 必须显式覆写为无头躯体（headless body），且该人物 negative 强制注入 head, face, eyes, mouth, hair, facial features, portrait，彻底切断头部特征回写。
+4. 【镜头景别阶梯与同人本闭环】：一页内严禁连续出现同级景别（如中景接中景），必须在全景 FS、中景 MS、特写 CU、极近特写 ECU 与插入细节 Cut-in 之间大开大合跳跃。同人感官互动严格落实三大视点闭环：见せコマ核心体位大主格（50%） -> 结合部极近微距 Cut-in（25%，macro close-up on physical contact points, intense skin contact） -> 阿黑颜面部破防特写（25%，ahegao tendency, rolling eyes, parted lips with drool, blush stickers, heart-shaped pupils）。
+5. 【视觉特效与拟声词注入】：动作高潮与爆点主动注入日漫特效层（集中线 focus lines, 速度线 speed lines, 手绘排线 cross-hatching, 纯墨黑块 solid black shadows, 网点 screentone）。纯拟声词使用 SFX: 擬音, 吹き出しなし 并注入纯正日文（战斗 ドカッ/ズバッ/ゴゴゴ；心理 ドクン/ゾクッ；感官 ヌプッ/ズブッ/クチュクチュ/パンパン/ビクンビクン）。
+6. 【符号化微表情与气泡归属】：表情直译日漫符号（blush stickers 羞耻斜线红晕, face darkened by shadows 绝望黑化, heart-shaped pupils 心瞳, popping veins 青筋, blank white eyes 白目）。气泡归属严格对齐：页级仅 caption/sfx；人物台词与心声必须挂在该人物 bubbles，绝不漏在格级；画外音归格级且 position=offscreen。
+7. 【画布容量自适应】：参考 mangaCanvas 像素与方向，根据人物数与对白量合理定格。拥挤时在自然停顿处拆页，空洞时合页，绝不硬删关键对白与剧情结尾。reason 简述选材与分页，intent 简述本页核心爆点。`,
         v_manga_150: `漫画分页依据正文事件、文字量与画格容量；相邻事件可同页，单格页可只含一个决定性瞬间。按 page/panels/characters 嵌套协议输出，每格人物数量与画格数无关。核对台本覆盖、空间位置、人物状态和文字归属。`,
         v_manga_161: `【漫画前情与本楼规划】
 一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
@@ -1062,7 +1071,7 @@
     }
 
     function buildMangaPlanningContext(ratio, ec = getSdtStore().enhancedContext) {
-        if (ec !== 'v_manga_185' && ec !== 'v_manga_narrative') return null;
+        if (ec !== 'v_manga_185' && ec !== 'v_manga_narrative' && ec !== 'v_manga_v5') return null;
         const settings = RBQ.api.getSettings();
         const mode = settings.currentMode || 'nai';
         const fallback = mode === 'nai' ? [832, 1216] : [1024, 1024];
@@ -2696,6 +2705,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         const ecField = ecSelect ? ecSelect.closest('.st-scene-trigger-field') : null;
         if (ecSelect && ecField) {
             for (const [value, label] of [
+                ['v_manga_v5', '漫画 5.0 · 商业大师导演规划（推荐 · v5.0白皮书标准）'],
                 ['v_manga_narrative', '漫画 · 全文分页规划（试用）'],
                 ['v_manga', '漫画 1.8.4 · 前情规划（619字）'],
                 ['v_manga_185', '漫画 1.8.5 · 前情规划（717字 · 参考画布）'],

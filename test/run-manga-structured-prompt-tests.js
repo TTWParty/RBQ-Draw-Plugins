@@ -97,7 +97,7 @@ const systemText = body => body.messages.filter(message => message.role === 'sys
         buildThinkingParams: () => ({}), DRAW_SPEC_TOOL_RULE: 'Submit final results via generate_draw_spec' });
     await test('shared structured examples remain valid across existing planners and monochrome or color generation', () => {
         reset();
-        for (const ec of ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga_narrative']) {
+        for (const ec of ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga_narrative', 'v_manga_v5']) {
             settings._smartDrawTrigger.enhancedContext = ec;
             for (const style of ['soft_color', 'monochrome']) {
                 settings._mangaMode.style = style;

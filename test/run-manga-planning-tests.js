@@ -12,7 +12,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const initialSettings = clone(settings);
 const originalSave = sdt.save;
 const historicalOptions = ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'];
-const comicOptions = [...historicalOptions, 'v_manga_narrative'];
+const comicOptions = [...historicalOptions, 'v_manga_narrative', 'v_manga_v5'];
 // SHA-256 of the evaluated historical production strings, including whitespace.
 const historicalPrompts = {
     v_manga: { ref: '2c3ffd0', length: 619, hash: '3d676af809e60b659e7c633ca75b069648f5cee5e8d6c61dee0d0d40e9bfbc1a' },
@@ -130,7 +130,7 @@ for (const priorContext of ['v14', 'off', undefined]) {
         assert.equal(RBQ.api.mangaProtocol.planningPrompt().length, 619);
 
         let expectedSaves = 0;
-        for (const ec of ['v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) {
+        for (const ec of ['v_manga_v5', 'v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) {
             ui.changeTo(ec);
             expectedSaves++;
             assert.equal(settings._smartDrawTrigger.enhancedContext, ec);
@@ -171,8 +171,8 @@ test('context UI restores pre-existing option flags and keeps all five comic cho
     settings._mangaMode.enabled = true;
     manga.syncMangaToSdt(settings._mangaMode, false);
     manga.updateUiState();
-    for (const ec of ['v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) ui.changeTo(ec);
-    assert.equal(ui.saveCount(), 5, 'all five choices persist immediately');
+    for (const ec of ['v_manga_v5', 'v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) ui.changeTo(ec);
+    assert.equal(ui.saveCount(), 6, 'all six choices persist immediately');
     manga.updateUiState();
     assert.equal(ui.select.value, 'v_manga');
     settings._mangaMode.enabled = false;

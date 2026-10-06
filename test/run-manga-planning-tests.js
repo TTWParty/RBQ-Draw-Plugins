@@ -12,7 +12,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const initialSettings = clone(settings);
 const originalSave = sdt.save;
 const historicalOptions = ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'];
-const comicOptions = [...historicalOptions, 'v_manga_narrative', 'v_manga_v5'];
+const comicOptions = [...historicalOptions, 'v_manga_narrative', 'v_manga_v5', 'v_manga_layered_v1'];
 // SHA-256 of the evaluated historical production strings, including whitespace.
 const historicalPrompts = {
     v_manga: { ref: '2c3ffd0', length: 619, hash: '3d676af809e60b659e7c633ca75b069648f5cee5e8d6c61dee0d0d40e9bfbc1a' },

@@ -49,6 +49,13 @@ test('other manga contract errors remain structure diagnostics even if their dat
     assert.match(tip(result), /页面或格内人物结构/);
     assert.doesNotMatch(tip(result), /Safety Refusal|Jailbreak|开启破限/);
 });
+test('task scope errors explain the requested bounds instead of claiming usable page data are missing', () => {
+    const result = { errorCode: 'MANGA_TASK_SCOPE', reason: '漫画任务范围校验失败：本次页数 2 不符合任务范围，未提交生图', rawOutput: modelPages };
+    assert.equal(context.getTaggerErrorCategory(result), 'manga-task');
+    assert.match(tip(result), /单页\/单格限制、指定格数及 page.base/);
+    assert.match(tip(result), /未截取额外页面/);
+    assert.doesNotMatch(tip(result), /缺少可用|Safety Refusal|Jailbreak|开启破限/);
+});
 test('dialogue apologies and isolated safety words never establish an upstream refusal', () => {
     for (const rawOutput of [modelPages, '抱歉，我迟到了。', 'safety audit meeting',
         JSON.stringify({ note: 'content_filter is an API field name', page: { finish_reason: 'SAFETY' } })]) {

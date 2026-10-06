@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.21';
+    const PLUGIN_VERSION = '6.5.22';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2470,7 +2470,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
-        enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185 | v_manga_161 | v_manga_150 | v_manga_narrative | v_manga_v5
+        enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185 | v_manga_161 | v_manga_150 | v_manga_narrative | v_manga_v5 | v_manga_layered_v1
         postProcessEnabled: false,
         postProcessRole: 'assistant',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
@@ -3360,8 +3360,8 @@ ${activeRegistrySection}`;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
 
-    function collectCharacterCardInfo(currentMes = '', recentMessages = []) {
-        const store = getStore();
+    function collectCharacterCardInfo(currentMes = '', recentMessages = [], requestStore = null) {
+        const store = requestStore || getStore();
         if (!store.injectCharacterCard) return [];
 
         try {
@@ -3454,12 +3454,12 @@ ${activeRegistrySection}`;
     }
 
     // References for standalone manga entry points; obsolete versioned states are pruned on read.
-    function collectMangaReferenceData(content = '') {
+    function collectMangaReferenceData(content = '', requestStore = null) {
         const references = {};
-        const cards = collectCharacterCardInfo(content, []);
+        const cards = collectCharacterCardInfo(content, [], requestStore);
         if (cards.length) references.characterCardInfo = cards;
-        if (getStore().characterMemoryEnabled) {
-            const memory = getMangaMemoryReferences();
+        if ((requestStore || getStore()).characterMemoryEnabled) {
+            const memory = getMangaMemoryReferences(undefined, requestStore);
             if (memory.length) references.characterMemory = memory;
         }
         return references;
@@ -4671,10 +4671,10 @@ ${getCharacterMemoryTagSpecification()}
         }
     }
 
-    function getNormalizedLorebooks() {
-        const store = getStore();
+    function getNormalizedLorebooks(requestStore = null) {
+        const store = requestStore || getStore();
         if (!store.lorebookEnabled) return [];
-        return ensureLorebookStore()
+        return (requestStore ? requestStore.lorebookSources || [] : ensureLorebookStore())
             .filter((source) => source && source.enabled !== false)
             .flatMap((source) => {
                 const cached = lorebookMemoryCache.get(source.id);
@@ -6074,10 +6074,10 @@ ${getCharacterMemoryTagSpecification()}
         return true;
     }
 
-    function collectMatchedLorebookEntries(currentMes, recentMessages, messageId) {
-        const store = getStore();
+    function collectMatchedLorebookEntries(currentMes, recentMessages, messageId, requestStore = null) {
+        const store = requestStore || getStore();
         if (!store.lorebookEnabled) return [];
-        const entries = getNormalizedLorebooks();
+        const entries = getNormalizedLorebooks(requestStore);
         const currentFloorOnly = !!store.lorebookCurrentFloorOnly;
         const globalDepth = Math.max(1, Number(store.lorebookContextDepth) || 5);
         const allContext = [...recentMessages.map(m => m.content), currentMes];
@@ -6593,11 +6593,70 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function isMangaContextPreset(ec) {
-        return ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga_narrative', 'v_manga_v5'].includes(ec);
+        return ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga_narrative', 'v_manga_v5', 'v_manga_layered_v1'].includes(ec);
     }
 
     function getRequestEnhancedContext(store = getStore()) {
         return isMangaRequest(store) ? (isMangaContextPreset(store.enhancedContext) ? store.enhancedContext : 'v_manga') : store.enhancedContext;
+    }
+
+    function isLayeredMangaRequest(store = getStore()) {
+        return store.enhancedContext === 'v_manga_layered_v1';
+    }
+
+    function captureLayeredMangaPromptSnapshot(store = getStore()) {
+        if (!isLayeredMangaRequest(store)) return null;
+        const protocol = getMangaProtocol();
+        if (typeof protocol.resolvePromptPreset !== 'function' || typeof protocol.buildPromptBundle !== 'function'
+            || typeof protocol.validatePromptResult !== 'function') {
+            throw new Error('请更新漫画模式插件并刷新酒馆，以使用正文分层规划');
+        }
+        const manga = RBQ.api.getSettings()?.['_mangaMode'] || {};
+        const settingsSnapshot = JSON.parse(JSON.stringify({
+            ...protocol.captureRenderSettings?.(),
+            grammar: manga.grammar, language: manga.language, antiHijack: manga.antiHijack,
+        }));
+        const presets = RBQ.api.getSettings()?.['_promptPresets'];
+        const activePreset = store.injectPresetsToTagger && presets?.activeId
+            ? presets.presets?.find(preset => preset.id === presets.activeId) : null;
+        const stylePreset = activePreset ? {
+            name: String(activePreset.name || ''), positive: String(activePreset.positive || ''), negative: String(activePreset.negative || '')
+        } : null;
+        return {
+            storeSnapshot: { ...JSON.parse(JSON.stringify(store)), _mangaPromptSettings: settingsSnapshot,
+                lorebookSources: JSON.parse(JSON.stringify(store.lorebookSources || [])) }, settingsSnapshot,
+            presetDescriptor: JSON.parse(JSON.stringify(protocol.resolvePromptPreset(store.enhancedContext))),
+            referenceOptions: {
+                characterMemoryEnabled: !!store.characterMemoryEnabled, injectCharacterCard: !!store.injectCharacterCard,
+                lorebookBase64: !!store.lorebookBase64, stylePresetEnabled: !!stylePreset,
+            },
+            stylePreset,
+            canvas: JSON.parse(JSON.stringify(protocol.planningContext?.(undefined, store.enhancedContext) || null)),
+        };
+    }
+
+    function buildLayeredMangaPromptBundle(snapshot, task, responseKind, transport, limits = {}) {
+        return getMangaProtocol().buildPromptBundle({
+            presetDescriptor: snapshot.presetDescriptor, task, settingsSnapshot: snapshot.settingsSnapshot,
+            canvas: snapshot.canvas, referenceOptions: snapshot.referenceOptions, responseKind, transport, limits,
+        });
+    }
+
+    function applyLayeredMangaPromptPayload(payload, bundle, snapshot, requestContext) {
+        delete payload.segmentInstruction;
+        delete payload.contextAnalysisInstructions;
+        delete payload.manualInstruction;
+        delete payload.stylePreset;
+        payload.outputSchema = bundle.schema;
+        payload.outputExample = bundle.outputExample;
+        if (snapshot.canvas) payload.mangaCanvas = snapshot.canvas;
+        payload.mangaPromptTrace = bundle.trace;
+        if (snapshot.stylePreset) payload.stylePreset = { ...snapshot.stylePreset };
+        if (snapshot.storeSnapshot.provider === 'custom') payload.mangaInstruction = bundle.instructionText;
+        if (requestContext) {
+            requestContext.mangaPromptTrace = JSON.parse(JSON.stringify(bundle.trace));
+            requestContext.stylePresetSnapshot = snapshot.stylePreset ? { ...snapshot.stylePreset } : null;
+        }
     }
 
     // Archive lookup/display names and NAI identities can differ. Translation belongs to the Tagger.
@@ -6741,9 +6800,11 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     // Derived drawing data stays separate from canonical character profiles and timelines.
-    function getMangaRenderCacheRows(renderSettings) {
+    function getMangaRenderCacheRows(renderSettings, requestStore = null) {
         const protocol = RBQ.api.mangaProtocol;
-        if (!isMangaRequest() || !getStore().characterMemoryEnabled || (renderSettings || protocol?.captureRenderSettings?.())?.style !== 'monochrome') return [];
+        const store = requestStore || getStore();
+        if (!isMangaRequest(store) || !store.characterMemoryEnabled
+            || (renderSettings || requestStore?._mangaPromptSettings || protocol?.captureRenderSettings?.())?.style !== 'monochrome') return [];
         const cache = getStore().mangaRenderCache;
         if (!protocol?.renderCacheVersion || cache?.version !== protocol.renderCacheVersion) return [];
         const rows = cache.chats?.[JSON.stringify(getChatKey())];
@@ -6756,14 +6817,17 @@ ${getCharacterMemoryTagSpecification()}
     function saveMangaRenderCache(pages, context) {
         assertMangaRequestContext(context);
         const protocol = RBQ.api.mangaProtocol;
-        if (!context || context.manga !== true || !getStore().characterMemoryEnabled || context.memoryEnabled === false
+        const memoryEnabled = context?.mangaPromptTrace?.presetId === 'v_manga_layered_v1'
+            ? context.memoryEnabled : getStore().characterMemoryEnabled;
+        if (!context || context.manga !== true || !memoryEnabled || context.memoryEnabled === false
             || context.renderSettings?.style !== 'monochrome' || !protocol?.renderCacheVersion) return;
         // Validate every page before publishing any new derived entry.
         pages.forEach(page => protocol.compile(page));
         const cache = getStore().mangaRenderCache?.version === protocol.renderCacheVersion
             ? getStore().mangaRenderCache : { version: protocol.renderCacheVersion, chats: {} };
         const chatKey = JSON.stringify(context.chatKey);
-        const rows = [...getMangaRenderCacheRows(context.renderSettings)];
+        const rows = [...getMangaRenderCacheRows(context.renderSettings, context?.mangaPromptTrace?.presetId === 'v_manga_layered_v1'
+            ? { ...getStore(), characterMemoryEnabled: context.memoryEnabled } : null)];
         let changed = false;
         for (const page of pages) for (const panel of page.panels) for (const c of panel.characters) {
             if (!c.name || isJunkCharacterName(c.name) || /^(?:[cp]\d+|unknown|unnamed|路人|匿名|无名)$/i.test(c.name)
@@ -6807,7 +6871,7 @@ ${getCharacterMemoryTagSpecification()}
     RBQ.api.saveMangaRenderCache = saveMangaRenderCache;
 
     // Use the state preceding this floor, not the latest state of a future floor being re-parsed.
-    function getMangaMemoryReferences(messageId) {
+    function getMangaMemoryReferences(messageId, requestStore = null) {
         invalidateMangaStateHistory();
         const chronological = Number.isInteger(messageId) && messageId >= 0;
         const references = Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
@@ -6829,23 +6893,24 @@ ${getCharacterMemoryTagSpecification()}
             return { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
                 outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
         });
-        const rows = getMangaRenderCacheRows();
+        const rows = getMangaRenderCacheRows(undefined, requestStore);
         return rows.length && RBQ.api.mangaProtocol?.cachedReferenceViews
             ? RBQ.api.mangaProtocol.cachedReferenceViews(references, rows) : references;
     }
 
-    function captureMangaRequestContext(currentMessage, messageId) {
-        const references = getStore().characterMemoryEnabled ? getMangaMemoryReferences(messageId) : [];
-        const renderSettings = isMangaRequest() ? getMangaProtocol().captureRenderSettings?.() : undefined;
+    function captureMangaRequestContext(currentMessage, messageId, promptSnapshot = null) {
+        const requestStore = promptSnapshot?.storeSnapshot || getStore();
+        const references = requestStore.characterMemoryEnabled ? getMangaMemoryReferences(messageId, promptSnapshot?.storeSnapshot) : [];
+        const renderSettings = promptSnapshot?.settingsSnapshot || (isMangaRequest() ? getMangaProtocol().captureRenderSettings?.() : undefined);
         return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
             memoryEpoch: captureMangaRequestContext.memoryEpochs?.[JSON.stringify(getChatKey())] || 0,
             manga: isMangaRequest(), renderSettings,
-            planningPreset: isMangaRequest() ? getRequestEnhancedContext() : undefined,
+            planningPreset: isMangaRequest(requestStore) ? getRequestEnhancedContext(requestStore) : undefined,
             messageVersion: getMangaMessageVersion(messageId),
             currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
                 [getCanonicalCharName(profile.displayName || name).toLowerCase(), profile.currentOutfit || ''])),
-            memoryEnabled: !!getStore().characterMemoryEnabled,
-            renderCache: JSON.parse(JSON.stringify(getMangaRenderCacheRows(renderSettings).filter(row => references.some(ref =>
+            memoryEnabled: !!requestStore.characterMemoryEnabled,
+            renderCache: JSON.parse(JSON.stringify(getMangaRenderCacheRows(renderSettings, promptSnapshot?.storeSnapshot).filter(row => references.some(ref =>
                 getCanonicalCharName(ref.name).toLowerCase() === getCanonicalCharName(row.name).toLowerCase())))),
             references: JSON.parse(JSON.stringify(references)) };
     }
@@ -6914,7 +6979,9 @@ ${getCharacterMemoryTagSpecification()}
     // Learn once per response, after all pages compile. Never infer persistent traits from shot captions.
     function learnMangaCharacterMemory(source, segments, context) {
         assertMangaRequestContext(context);
-        if (!getStore().characterMemoryEnabled || context?.memoryEnabled === false || !segments.some(s => s.mangaPage)) return;
+        const memoryEnabled = context?.mangaPromptTrace?.presetId === 'v_manga_layered_v1'
+            ? context.memoryEnabled : getStore().characterMemoryEnabled;
+        if (!memoryEnabled || context?.memoryEnabled === false || !segments.some(s => s.mangaPage)) return;
         const validName = value => {
             if (typeof value !== 'string') return '';
             const name = String(value).trim();
@@ -7160,6 +7227,7 @@ ${getCharacterMemoryTagSpecification()}
             : (typeof rawContent === 'string'
                 ? extractJson(rawContent)
                 : (rawContent && typeof rawContent === 'object' ? rawContent : (data && typeof data === 'object' ? data : {})));
+        if (mangaContext?.mangaPromptTrace) getMangaProtocol().validatePromptResult(source, mangaContext.mangaPromptTrace);
         // Validate only what rendering needs; source quotes and planning notes are not a render contract.
         if (mangaContext && (typeof source?.shouldDraw !== 'boolean' || !Array.isArray(source?.segments)
             || (source.shouldDraw && !source.segments.length))) {
@@ -7194,6 +7262,7 @@ ${getCharacterMemoryTagSpecification()}
                 if (item?.format === 'nai5-comic' || item?.page || item?.panels) {
                     const segment = normalizeMangaSegment(item, index);
                     if (mangaContext?.renderSettings) segment.mangaRenderSettings = { ...mangaContext.renderSettings };
+                    if (mangaContext?.mangaPromptTrace) segment.mangaPromptTrace = JSON.parse(JSON.stringify(mangaContext.mangaPromptTrace));
                     return segment;
                 }
                 if (isMangaRequest()) throw new Error('漫画解析返回了旧式人物数组，请重新解析以生成 page/panels/characters 结构');
@@ -7331,6 +7400,7 @@ ${getCharacterMemoryTagSpecification()}
             decisionReason = `共 ${segments.length} 页漫画。` + segments.map((seg, index) => `第 ${index + 1} 页：${seg.reason || seg.label}`).join('；');
         }
         const normalized = {
+            ...(mangaContext?.mangaPromptTrace ? { mangaPromptTrace: JSON.parse(JSON.stringify(mangaContext.mangaPromptTrace)) } : {}),
             shouldDraw,
             label: segments.length ? (segments[0].label || '') : (decodeUnicodeEscapes(String(source?.label || source?.title || '')).trim() || '分镜01·剧情插画'),
             prompt: segments.length ? segments[0].prompt : '',
@@ -7372,7 +7442,8 @@ ${getCharacterMemoryTagSpecification()}
             learnMangaCharacterMemory(source, segments, mangaContext);
             if (hasMangaPages) saveMangaRenderCache(segments.map(s => s.mangaPage), mangaContext);
         }
-        else if (mangaContext && getStore().characterMemoryEnabled && mangaContext.memoryEnabled !== false
+        else if (mangaContext && (mangaContext?.mangaPromptTrace?.presetId === 'v_manga_layered_v1'
+            ? mangaContext.memoryEnabled : getStore().characterMemoryEnabled) && mangaContext.memoryEnabled !== false
             && Number.isInteger(mangaContext.messageId) && mangaContext.messageId >= 0) {
             invalidateMangaStateHistory(mangaContext.messageId);
         }
@@ -7629,10 +7700,23 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     async function runSegmentAiRefinement(segResult, userInstructions) {
-        const store = getStore();
-        const requestContext = segResult?.mangaPage ? captureMangaRequestContext() : null;
+        const liveStore = getStore();
+        const layeredSnapshot = segResult?.mangaPage && liveStore.enhancedContext === 'v_manga_layered_v1'
+            ? captureLayeredMangaPromptSnapshot(liveStore) : null;
+        const store = layeredSnapshot?.storeSnapshot || liveStore;
+        if (layeredSnapshot) {
+            layeredSnapshot.settingsSnapshot = { ...layeredSnapshot.settingsSnapshot, ...(segResult.mangaRenderSettings || {}) };
+            layeredSnapshot.referenceOptions = { characterMemoryEnabled: false, injectCharacterCard: false, lorebookBase64: false, stylePresetEnabled: false };
+            layeredSnapshot.stylePreset = null;
+        }
+        const requestContext = segResult?.mangaPage ? captureMangaRequestContext(undefined, undefined, layeredSnapshot) : null;
+        const promptBundle = layeredSnapshot ? buildLayeredMangaPromptBundle(layeredSnapshot, 'refine_page', 'page', 'json') : null;
+        if (promptBundle) {
+            requestContext.mangaPromptTrace = JSON.parse(JSON.stringify(promptBundle.trace));
+            requestContext.stylePresetSnapshot = null;
+        }
         const segJson = JSON.stringify(segResult || {});
-        const systemPrompt = segResult?.mangaPage
+        const systemPrompt = promptBundle ? promptBundle.instructionText : segResult?.mangaPage
             ? getMangaProtocol().systemPrompt(getRequestEnhancedContext(store)) + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit、' + (getMangaProtocol().usesStructuredBubbles?.() !== false ? '本格动作 positive 与逐泡文字 bubbles' : '包含本格动作、气泡说明及末尾 Text: 的 positive/non_character') + '，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema(undefined, getRequestEnhancedContext(store)))
             : `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
@@ -7659,7 +7743,10 @@ SCHEMA:
 
         const messages = [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Original Segment Data:\n${segJson}\n\nUser Modification Request:\n${userInstructions}\n\nOutput Refined JSON:` }
+            { role: 'user', content: promptBundle ? JSON.stringify({
+                originalSegment: segResult, modificationRequest: userInstructions, outputSchema: promptBundle.schema,
+                outputExample: promptBundle.outputExample, mangaPromptTrace: promptBundle.trace
+            }, null, 2) : `Original Segment Data:\n${segJson}\n\nUser Modification Request:\n${userInstructions}\n\nOutput Refined JSON:` }
         ];
 
         let json;
@@ -7701,6 +7788,7 @@ SCHEMA:
         if (requestContext) assertMangaRequestContext(requestContext);
         const rawContent = json?.choices?.[0]?.message?.content || json?.content || json;
         const parsedRaw = typeof rawContent === 'object' && rawContent !== null ? rawContent : extractJson(rawContent);
+        if (promptBundle) getMangaProtocol().validatePromptResult(parsedRaw, promptBundle.trace);
 
         let parsed = parsedRaw;
         if (Array.isArray(parsedRaw?.segments) && parsedRaw.segments.length > 0) {
@@ -7727,7 +7815,9 @@ SCHEMA:
                 throw error;
             }
             const page = protocol.resolveAppearances(refinedPages, [], [], [], requestContext?.renderSettings)[0];
-            return { ...normalizeMangaSegment(page), mangaRenderSettings: requestContext?.renderSettings, ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
+            return { ...normalizeMangaSegment(page), mangaRenderSettings: requestContext?.renderSettings,
+                ...(promptBundle ? { mangaPromptTrace: JSON.parse(JSON.stringify(promptBundle.trace)) } : {}),
+                ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
         }
 
         let charactersList = [];
@@ -8911,6 +9001,11 @@ SCHEMA:
     function getTaggerDebugReason(result) {
         const reason = String(result?.reason || result?.thinkContent || '').trim();
         const collected = Array.isArray(result?.mangaWarnings) ? [...result.mangaWarnings] : [];
+        if (result?.mangaPromptTrace) {
+            const trace = result.mangaPromptTrace;
+            const modules = Array.isArray(trace.modules) ? trace.modules.map(module => module.id).filter(Boolean).join(' → ') : '';
+            collected.push(`漫画提示组合：${trace.presetId || ''} · ${trace.task || ''}${modules ? ' · ' + modules : ''}`);
+        }
         if (result?.mangaPage && typeof result.mangaPage === 'object' && result.mangaPage.format === 'nai5-comic') {
             try {
                 // Older snapshots may predate ownership diagnostics. Recompile a copy
@@ -8931,6 +9026,7 @@ SCHEMA:
         // A failed render contract means the model returned data. Diagnose that
         // contract before examining provider refusal metadata or literal dialogue.
         if (/^MANGA_BUBBLE_(?:OWNERSHIP|SPEAKER)$/.test(code) || /(?:气泡|结构化文字)[^\n]*(?:归属|所属)/.test(reason)) return 'manga-bubbles';
+        if (code === 'MANGA_TASK_SCOPE') return 'manga-task';
         if (/^MANGA_/.test(code) || /漫画(?:规划校验失败|响应缺少|页缺少|第|解析返回了旧式)/.test(reason)) return 'manga-structure';
         const safetyCode = /^(?:SAFETY|CONTENT_FILTER|RECITATION|PROHIBITED_CONTENT|UPSTREAM_SAFETY)$/i;
         if (result?.errorCategory === 'safety' || safetyCode.test(code)
@@ -8994,6 +9090,8 @@ SCHEMA:
 
             if (errorCategory === 'manga-bubbles') {
                 specificTip = '漫画文字归属检查未通过，模型已返回页面数据。请展开原始输出，核对 page、panel 与人物的 bubbles 类型及归属，再修改分镜或重新解析。';
+            } else if (errorCategory === 'manga-task') {
+                specificTip = '模型返回结果不符合本次漫画任务范围。请展开原始输出，按错误位置核对单页/单格限制、指定格数及 page.base，再重新解析。程序未截取额外页面或替换已有分镜。';
             } else if (reason.includes('漫画规划校验失败')) {
                 specificTip = '漫画节点引用检查未通过。请同时更新漫画模式至 1.6.1、智能生图至 6.2.1 或更高版本，刷新酒馆后重新解析。新版已取消该项严格检查和规划重试。';
             } else if (errorCategory === 'manga-structure') {
@@ -10310,6 +10408,7 @@ SCHEMA:
     function sanitizeSdtResult(result) {
         if (!result) return null;
         return {
+            ...(result.mangaPromptTrace ? { mangaPromptTrace: JSON.parse(JSON.stringify(result.mangaPromptTrace)) } : {}),
             shouldDraw: !!result.shouldDraw,
             prompt: String(result.prompt || ''),
             negative: String(result.negative || ''),
@@ -10552,6 +10651,10 @@ SCHEMA:
     }
 
     function getEnhancedContextPayload(ec) {
+        if (ec === 'v_manga_layered_v1') {
+            const canvas = getMangaProtocol().planningContext?.(undefined, ec);
+            return canvas ? { mangaCanvas: canvas } : {};
+        }
         const activeEc = isMangaContextPreset(ec) ? 'v_manga' : (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPayloads = {
             v_manga: "Select meaningful current-message events, preserve inherited state, and group readable panels into comic pages. Return final pages directly; no separate planning ledger. Each segment is one image.",
@@ -10567,6 +10670,7 @@ SCHEMA:
     }
 
     function getEnhancedContextSystemPrompt(ec) {
+        if (ec === 'v_manga_layered_v1') return '';
         const activeEc = isMangaContextPreset(ec) ? 'v_manga' : (ec === 'v12' || ec === 'v10') ? 'v13' : ec;
         const ecPrompts = {
             v_manga: activeEc === 'v_manga' ? getMangaProtocol().planningPrompt(ec) : '',
@@ -10596,8 +10700,11 @@ SCHEMA:
         }
     }
 
-    function buildRequestPayload(messageId, trigger, { skipLorebook = false } = {}) {
-        const store = getStore();
+    function buildRequestPayload(messageId, trigger, { skipLorebook = false, promptSnapshot = null } = {}) {
+        const liveStore = getStore();
+        const layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
+            ? captureLayeredMangaPromptSnapshot(liveStore) : null);
+        const store = layeredSnapshot?.storeSnapshot || liveStore;
         const current = getMessageSnapshot(messageId);
         if (!current) throw new Error(`未找到当前消息 #${messageId}`);
 
@@ -10613,7 +10720,7 @@ SCHEMA:
             const last = recentMessages[recentMessages.length - 1];
             if (Number(last.id) === Number(messageId)) last.content = current.mes;
         }
-        const lorebook = skipLorebook ? [] : collectMatchedLorebookEntries(current.mes, recentMessages, messageId);
+        const lorebook = skipLorebook ? [] : collectMatchedLorebookEntries(current.mes, recentMessages, messageId, layeredSnapshot?.storeSnapshot);
 
         const minSeg = Number(store.minSegments) || 0;
         const rawContent = String(current?.mes || '');
@@ -10635,7 +10742,7 @@ SCHEMA:
             },
             recentMessages,
             contextCount: Number(store.contextCount) || 5,
-            ...(isMangaRequest(store) ? {
+            ...(layeredSnapshot ? {} : isMangaRequest(store) ? {
                 segmentInstruction: ['v_manga_narrative', 'v_manga_v5'].includes(getRequestEnhancedContext(store))
                     ? '通读完整 currentMessage，保留推动剧情的行动、问答、揭示、反应及结果；合并重复描写。先组织连续叙事段与页面内容，再按画面和对白容量决定页数、格数与切分；容量不足应拆页，不截掉结尾。一个 segment 是一张漫画图片；每页明确起止与任务，每格明确相容时刻、人物、动作、文字、位置与面积，page.base 的布局须与 panels[].description 一致。普通插画最少分镜数及图组数量不决定漫画页数。按 outputSchema 直接输出最终 segments/page/panels/characters，说明简短，不输出规划账本。'
                     : '先选择本楼有叙事价值的节点，再按可读容量分页；一个 segment 是一张漫画图片。直接提交最终 page/panels/characters，说明文字保持简短。普通插画最少分镜数及图组标记不决定漫画页数，重要媒介内容可放入合适画格；不要漏掉正文开端或结尾。'
@@ -10650,9 +10757,9 @@ SCHEMA:
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
-            ...getEnhancedContextPayload(getRequestEnhancedContext(store)),
-            ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store, false, messageId) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
-            outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
+            ...(!layeredSnapshot ? getEnhancedContextPayload(getRequestEnhancedContext(store)) : {}),
+            ...(!layeredSnapshot && isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store, false, messageId) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
+            outputSchema: layeredSnapshot ? undefined : isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
                 segments: ((store.enhancedContext && store.enhancedContext !== 'off') || effectiveMinSeg > 1) ? [
@@ -10709,7 +10816,7 @@ SCHEMA:
             }
         }
 
-        const cardInfo = skipLorebook ? [] : collectCharacterCardInfo(current.mes, recentMessages);
+        const cardInfo = skipLorebook ? [] : collectCharacterCardInfo(current.mes, recentMessages, layeredSnapshot?.storeSnapshot);
         if (cardInfo && cardInfo.length > 0) {
             if (store.lorebookBase64) {
                 payload.characterCardInfo_base64 = utf8ToBase64(JSON.stringify(cardInfo));
@@ -10741,11 +10848,11 @@ SCHEMA:
                     wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
                 }));
             if (memoryList.length > 0) {
-                payload.characterMemory = isMangaRequest(store) ? getMangaMemoryReferences(messageId) : memoryList;
+                payload.characterMemory = isMangaRequest(store) ? getMangaMemoryReferences(messageId, layeredSnapshot?.storeSnapshot) : memoryList;
             }
         }
 
-        if (store.injectPresetsToTagger) {
+        if (!layeredSnapshot && store.injectPresetsToTagger) {
             const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
             const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
             if (activePreset) {
@@ -10757,10 +10864,19 @@ SCHEMA:
             }
         }
 
-        return { payload, rawLorebooks: lorebook, requestContext: captureMangaRequestContext(payload.currentMessage, messageId) };
+        const requestContext = captureMangaRequestContext(payload.currentMessage, messageId, layeredSnapshot);
+        const promptBundle = layeredSnapshot ? buildLayeredMangaPromptBundle(layeredSnapshot, 'adapt_message', 'story',
+            store.provider !== 'custom' && store.toolCallMode ? 'tool' : 'json') : null;
+        if (promptBundle) applyLayeredMangaPromptPayload(payload, promptBundle, layeredSnapshot, requestContext);
+        return { payload, rawLorebooks: lorebook, requestContext, ...(promptBundle ? { promptBundle, storeSnapshot: store } : {}) };
     }
 
     function getSystemPromptWithPresets(store, hasCardInfo = false, messageId) {
+        if (isLayeredMangaRequest(store)) {
+            const snapshot = captureLayeredMangaPromptSnapshot(store);
+            return buildLayeredMangaPromptBundle(snapshot, 'adapt_message', 'story',
+                store.provider !== 'custom' && store.toolCallMode ? 'tool' : 'json').instructionText;
+        }
         let systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt(getRequestEnhancedContext(store)) : getActiveSystemPrompt(store);
         if (store.lorebookBase64) {
             systemPrompt += '\n\n【🛡️ Base64 设定资产混淆解码指令】\n为了确保底层文本传输链路合规安全，输入数据 payload 中的世界书设定（`lorebook` 数组中的 `tags_base64` 与 `name_base64`，以及 `lorebook_base64` 原始汇总数组）和角色卡设定（`characterCardInfo_base64`）均已采用 UTF-8 Base64 编码进行了混淆封装。\n【模型执行规则】：\n1. 你必须在内部推理思考（thinking）阶段解码这些 Base64 字段，还原为原本的人物外貌、发型、发色、瞳色、服装、配饰等视觉设定文本；\n2. 严禁在普通文本或输出中回显原始设定文本，只需客观将其提炼为 Danbooru 英文生图标签（例如: blonde hair, twintails, plaid skirt 等）；\n3. 无论世界书是否编码，均需严格视其为出镜角色的权威外貌设定并保持画面一致。';
@@ -10975,7 +11091,11 @@ SCHEMA:
             }
         }
     };
-    function getDrawSpecTool(store) {
+    function getDrawSpecTool(store, promptBundle = null) {
+        if (promptBundle) return {
+            type: 'function', function: { name: 'generate_draw_spec', description: 'Submit the planned comic pages.',
+                parameters: JSON.parse(JSON.stringify(promptBundle.schema)) }
+        };
         if (!isMangaRequest(store)) return DRAW_SPEC_TOOL;
         const tool = JSON.parse(JSON.stringify(DRAW_SPEC_TOOL));
         tool.function.parameters.properties.reason.description = 'Brief summary of selected story beats, actual page count and page allocation; no extended reasoning.';
@@ -11227,19 +11347,22 @@ SCHEMA:
         }
     }
 
-    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false } = {}) {
-        const store = getStore();
+    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, promptSnapshot = null } = {}) {
+        const liveStore = getStore();
+        const layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
+            ? captureLayeredMangaPromptSnapshot(liveStore) : null);
+        const store = layeredSnapshot?.storeSnapshot || liveStore;
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
         if (!modelName) throw new Error('请先填写模型名称');
         checkUrlSafety(url);
-        const { payload, rawLorebooks, requestContext } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook });
+        const { payload, rawLorebooks, requestContext, promptBundle } = buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook, promptSnapshot: layeredSnapshot });
         logTaggerPayload('tagger request body', payload);
 
-        const systemPrompt = getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64), messageId);
-        const ecSysPrompt = getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
-        const toolRule = store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
+        const systemPrompt = promptBundle ? promptBundle.instructionText : getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64), messageId);
+        const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
+        const toolRule = !promptBundle && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
 
         // Combine all system directives into the top system message so Gemini never errors with "System instruction only at start"
         const fullSystemPrompt = [systemPrompt, ecSysPrompt, toolRule].filter(Boolean).join('\n\n');
@@ -11267,7 +11390,7 @@ SCHEMA:
         };
 
         if (store.toolCallMode) {
-            reqBody.tools = [getDrawSpecTool(store)];
+            reqBody.tools = [getDrawSpecTool(store, promptBundle)];
             reqBody.tool_choice = { type: 'function', function: { name: 'generate_draw_spec' } };
             reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
@@ -11292,7 +11415,7 @@ SCHEMA:
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                 assertMangaRequestContext(requestContext);
-                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
+                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
             }
             throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
         }
@@ -11344,7 +11467,7 @@ SCHEMA:
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${sseState.safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                             assertMangaRequestContext(requestContext);
-                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true });
+                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
                         }
 
                         const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${sseState.safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
@@ -11430,8 +11553,11 @@ SCHEMA:
         return normalized;
     }
 
-    async function callCustomHttp(messageId, trigger, { signal } = {}) {
-        const store = getStore();
+    async function callCustomHttp(messageId, trigger, { signal, promptSnapshot = null } = {}) {
+        const liveStore = getStore();
+        const layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
+            ? captureLayeredMangaPromptSnapshot(liveStore) : null);
+        const store = layeredSnapshot?.storeSnapshot || liveStore;
         const url = String(store.customUrl || '').trim();
         if (!url) throw new Error('请先填写自定义 HTTP 接口地址');
         checkUrlSafety(url);
@@ -11440,7 +11566,7 @@ SCHEMA:
             const headerName = store.customApiKeyHeader || 'Authorization';
             headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${store.customApiKey}` : store.customApiKey;
         }
-        const { payload, rawLorebooks, requestContext } = buildRequestPayload(messageId, trigger);
+        const { payload, rawLorebooks, requestContext } = buildRequestPayload(messageId, trigger, { promptSnapshot: layeredSnapshot });
         logTaggerPayload('tagger request body', payload);
         const response = await smartFetch(url, {
             method: 'POST',
@@ -11620,15 +11746,18 @@ SCHEMA:
     }
 
     async function callTagger(messageId, trigger, { signal } = {}) {
-        const store = getStore();
-        const origin = captureMangaRequestContext(null, messageId);
+        const liveStore = getStore();
+        const promptSnapshot = liveStore.enhancedContext === 'v_manga_layered_v1'
+            ? captureLayeredMangaPromptSnapshot(liveStore) : null;
+        const store = promptSnapshot?.storeSnapshot || liveStore;
+        const origin = captureMangaRequestContext(null, messageId, promptSnapshot);
         if (store.lorebookEnabled) {
             try { await warmLorebookMemoryCache(); } catch (_e) {}
         }
         assertMangaRequestContext(origin);
         return store.provider === 'custom'
-            ? callCustomHttp(messageId, trigger, { signal })
-            : callOpenAiCompatible(messageId, trigger, { signal });
+            ? callCustomHttp(messageId, trigger, { signal, promptSnapshot })
+            : callOpenAiCompatible(messageId, trigger, { signal, promptSnapshot });
     }
 
     function visibleTextNodes(root) {
@@ -14399,7 +14528,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 5.0: 商业大师导演规划（推荐 · v5.0白皮书标准，黄金主格/接触熔接/断头防伪/本番微距）。全文漫画规划：先选材和组织内容，再按实际画布决定页数、每页格数与切分。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga_v5">漫画 5.0 · 商业大师导演规划（推荐 · v5.0白皮书标准）</option><option value="v_manga_narrative">漫画 · 全文分页规划（试用）</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
+                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 5.0: 商业大师导演规划（推荐 · v5.0白皮书标准，黄金主格/接触熔接/断头防伪/本番微距）。全文漫画规划：先选材和组织内容，再按实际画布决定页数、每页格数与切分。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。正文分层规划：基础规范、正文页格规划与V23漫画适配格内绘图分别组装，按任务限制新建或润色。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga_layered_v1">漫画 · 正文分层规划（试用 · V23格内绘图）</option><option value="v_manga_v5">漫画 5.0 · 商业大师导演规划（推荐 · v5.0白皮书标准）</option><option value="v_manga_narrative">漫画 · 全文分页规划（试用）</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
                     </div>
                 </div>
 
@@ -15413,7 +15542,10 @@ SCHEMA:
         submitBtn.textContent = '⏳ tagger 分析中...';
         statusEl.textContent = '正在调用 tagger API 解析场景描述...';
         try {
-            const store = getStore();
+            const liveStore = getStore();
+            const layeredSnapshot = liveStore.enhancedContext === 'v_manga_layered_v1'
+                ? captureLayeredMangaPromptSnapshot(liveStore) : null;
+            const store = layeredSnapshot?.storeSnapshot || liveStore;
             const useContext = !!document.getElementById('rbq-sdt-manual-use-context')?.checked;
             localStorage.setItem('rbq-sdt-manual-context', String(useContext));
 
@@ -15438,7 +15570,7 @@ SCHEMA:
             let rawLorebooks = [];
             try {
                 const matchText = description + (recentMessages.length ? '\n' + recentMessages.map(m => m.content).join('\n') : '');
-                rawLorebooks = collectMatchedLorebookEntries(matchText, recentMessages, latestMessageId >= 0 ? latestMessageId : 0);
+                rawLorebooks = collectMatchedLorebookEntries(matchText, recentMessages, latestMessageId >= 0 ? latestMessageId : 0, layeredSnapshot?.storeSnapshot);
             } catch (e) {
                 console.warn('[Smart Draw] failed to gather lorebook for manual draw', e);
             }
@@ -15459,9 +15591,9 @@ SCHEMA:
                 manualInstruction: useContext
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
-                ...getEnhancedContextPayload(getRequestEnhancedContext(store)),
-                ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
-                outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
+                ...(!layeredSnapshot ? getEnhancedContextPayload(getRequestEnhancedContext(store)) : {}),
+                ...(!layeredSnapshot && isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
+                outputSchema: layeredSnapshot ? undefined : isMangaRequest(store) ? getMangaOutputSchema(store) : {
                     shouldDraw: 'boolean', reason: 'string',
                     segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                         characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'string', uc: 'string' }]
@@ -15469,7 +15601,7 @@ SCHEMA:
                 },
             };
 
-            if (store.injectPresetsToTagger) {
+            if (!layeredSnapshot && store.injectPresetsToTagger) {
                 const presetsStore = RBQ.api.getSettings()?.['_promptPresets'];
                 const activePreset = presetsStore?.activeId ? presetsStore.presets?.find(p => p.id === presetsStore.activeId) : null;
                 if (activePreset) {
@@ -15481,7 +15613,7 @@ SCHEMA:
                 }
             }
 
-            const cardInfo = collectCharacterCardInfo(description, recentMessages);
+            const cardInfo = collectCharacterCardInfo(description, recentMessages, layeredSnapshot?.storeSnapshot);
             if (cardInfo && cardInfo.length > 0) {
                 manualPayload.characterCardInfo = cardInfo;
             }
@@ -15510,13 +15642,15 @@ SCHEMA:
                 }
             }
 
-            const requestContext = captureMangaRequestContext(manualPayload.currentMessage, -1);
+            const requestContext = captureMangaRequestContext(manualPayload.currentMessage, -1, layeredSnapshot);
             if (isMangaRequest(store) && store.characterMemoryEnabled) manualPayload.characterMemory = requestContext.references;
+            const promptBundle = layeredSnapshot ? buildLayeredMangaPromptBundle(layeredSnapshot, 'adapt_manual', 'story', 'json', { minPages: 1, shouldDraw: true }) : null;
+            if (promptBundle) applyLayeredMangaPromptPayload(manualPayload, promptBundle, layeredSnapshot, requestContext);
             logTaggerPayload('manual draw request', manualPayload);
 
             // Build messages exactly like callOpenAiCompatible / callCustomHttp
-            const systemPrompt = getSystemPromptWithPresets(store, !!manualPayload.characterCardInfo);
-            const ecSysPrompt = getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
+            const systemPrompt = promptBundle ? promptBundle.instructionText : getSystemPromptWithPresets(store, !!manualPayload.characterCardInfo);
+            const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
             const fullSystemPrompt = [systemPrompt, ecSysPrompt].filter(Boolean).join('\n\n');
 
             const jailbreakPrompt = getActiveJailbreakPrompt(store);
@@ -16973,12 +17107,15 @@ SCHEMA:
     }
 
     async function parseTaggerSegment(description, onProgress) {
-        const store = getStore();
+        const liveStore = getStore();
+        const layeredSnapshot = liveStore.enhancedContext === 'v_manga_layered_v1'
+            ? captureLayeredMangaPromptSnapshot(liveStore) : null;
+        const store = layeredSnapshot?.storeSnapshot || liveStore;
         if (onProgress) onProgress('正在调用 Tagger API 分析场景描述...');
 
         let rawLorebooks = [];
         try {
-            rawLorebooks = collectMatchedLorebookEntries(description, [], 0);
+            rawLorebooks = collectMatchedLorebookEntries(description, [], 0, layeredSnapshot?.storeSnapshot);
         } catch (e) {
             console.warn('[Smart Draw] failed to gather lorebook for test draw', e);
         }
@@ -17000,8 +17137,8 @@ SCHEMA:
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
             ...(isMangaRequest(store) && ['v_manga_185', 'v_manga_narrative', 'v_manga_v5'].includes(getRequestEnhancedContext(store))
                 ? getEnhancedContextPayload(getRequestEnhancedContext(store)) : {}),
-            ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
-            outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
+            ...(!layeredSnapshot && isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
+            outputSchema: layeredSnapshot ? undefined : isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean', reason: 'string',
                 segments: [{ label: 'string', anchor: { text: 'string' }, scene: 'string',
                     characters: [{ name: 'string', base: 'string', outfit: 'string', action: 'string', center: 'object | string', uc: 'string' }]
@@ -17009,15 +17146,19 @@ SCHEMA:
             },
         };
 
-        if (isMangaRequest(store)) Object.assign(manualPayload, collectMangaReferenceData(description));
+        if (isMangaRequest(store)) Object.assign(manualPayload, collectMangaReferenceData(description, layeredSnapshot?.storeSnapshot));
         else {
             const cardInfo = collectCharacterCardInfo(description, []);
             if (cardInfo.length) manualPayload.characterCardInfo = cardInfo;
         }
 
+        const requestContext = captureMangaRequestContext(manualPayload.currentMessage, -1, layeredSnapshot);
+        if (isMangaRequest(store) && store.characterMemoryEnabled) manualPayload.characterMemory = requestContext.references;
+        const promptBundle = layeredSnapshot ? buildLayeredMangaPromptBundle(layeredSnapshot, 'test_page', 'story', 'json', { minPages: 1, maxPages: 1, shouldDraw: true }) : null;
+        if (promptBundle) applyLayeredMangaPromptPayload(manualPayload, promptBundle, layeredSnapshot, requestContext);
         logTaggerPayload('test draw request', manualPayload);
 
-        const systemPrompt = isMangaRequest(store) ? getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) : `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
+        const systemPrompt = promptBundle ? promptBundle.instructionText : isMangaRequest(store) ? getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) : `你是一个二次元图片生成提示词专家。你的任务是将用户输入的一段画面描述转化为结构化的分镜 JSON。
 
 请分析用户的场景描述，并将其转化为如下 JSON 结构：
 {
@@ -17051,8 +17192,6 @@ SCHEMA:
             ? parseJailbreakMessages(jailbreakPrompt, systemPrompt)
             : [{ role: 'system', content: systemPrompt }];
 
-        const requestContext = captureMangaRequestContext(manualPayload.currentMessage, -1);
-        if (isMangaRequest(store) && store.characterMemoryEnabled) manualPayload.characterMemory = requestContext.references;
         rawMessages.push({ role: 'user', content: JSON.stringify(manualPayload, null, 2) });
 
         applyPostProcessPrompt(rawMessages, store);

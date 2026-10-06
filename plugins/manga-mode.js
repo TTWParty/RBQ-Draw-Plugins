@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.34';
+        const VERSION = '1.9.35';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -1240,16 +1240,12 @@
 
     // New assemblies use these independent modules; historical prompts above
     // retain their original combined behavior and are never augmented with V23.
-    const MANGA_LAYERED_STORY_PROMPT = `只改编 currentMessage 中已经发生的事件，前文只补充身份与连续状态，严禁续写。
-先通读正文，定位全篇剧情中最具戏剧张力与视觉冲击力的核心事件、激烈交锋、关键体位爆发与因果问答。
-1. 【剧作高光与黄金主格统治律（坚决拒绝平庸均分与垃圾静物）】：
-每页必须有且仅有 1 个【黄金主格 (Hero Panel)】占据全页 45%～65% 面积，专门承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载前摇铺垫或局部反应。严禁机械平分均分画格，严禁浪费画格去画无关痛痒的走廊、工具箱或空镜！
-2. 【动作参与者必须建立 characters 独立条目】：
-凡涉及互动、身体接触或关键动作的角色（包括主动施动者、男主、配角、路人），必须在对应画格的 characters 数组中建立独立条目，由 positive 承载动作与交互！严禁把人物动作写成 description 里的英文故事从句！
-3. 【定格瞬间与视线动线】：
-逐格选一个同时成立的相容定格瞬间。按日漫反 Z 字动线引导视线（右上起手 → 左侧/中段大主格 → 右下/左下终末收束）。正文台词逐句按发言人归入对应人物 bubbles。
-根据理解动作所需选择镜头与文字空间，按输入画布宽高与方向复核容量。保留关键回答、条件、理由与结尾，不删字凑页数。
-最终明确各页排/列、各格相对大小与相邻关系，page.base 与格 description、人物位置应一致，不能仅写 vertical layout。reason/intent 只给简短结论，不输出额外长推理。`;
+    const MANGA_LAYERED_STORY_PROMPT = `【漫画前情与正文规划】
+一次完成选材、分页与绘图词，直接输出最终 JSON，不另写节点清单、逐句引用或长篇分析。
+前情只用于确认进入本楼时仍有效的身份、场景、衣着、持物和接触。以最近明确记录为准，本楼变化按发生顺序更新；后文换装/放下物品不能提前作用于前面的格，角色档案和衣柜不能覆盖已发生的变化。未知细节少写，不自动复原。
+从本楼开端看到结尾，保留重要动作及结果、关键对白、情绪转折、线索与转场；无大动作的告白或拒绝也值得画。重复描写合并，无新信息的寒暄、抽象议论和未发生的假设不硬画，不重画历史。
+先考虑每格呈现的定格，再按人物、动作、对白容量组合成页：多个相邻事件可同页，长对白或复杂互动可跨页。普通页通常2～5格只是参考，单格页合法；不按句号、图组数量或 minSegments 凑页。保留因果、说话者和反应，不为了少页删掉转折，也不为多页补无意义镜头。
+每页先选主画面（大主格承载核心动作爆发与主要情节），再把剩余事件安排到辅助格；在 page.base 写主格位置及大致面积、辅助格大小和相互排列，不能只报格数或 vertical layout。每格选一个定格时刻，明确出场人物、动作对象、持物和接触，再选景别；动作参与者在 characters 建立条目，位置称呼贯穿 description 与人物 positive。对白容量不足时调整格大小或分页，不牺牲最后事件。提交前核对剧情首尾、人物状态、逐句说话者与文字归属。reason 只写简短结论，intent 可省略；页数以 segments 实际数量为准。`;
 
     const MANGA_LAYERED_PANEL_PROMPT = `将已经确定的画面写成英文绘图词，直接服务 NovelAI V5 / SD 扩散模型，不重新选材、增删页格、替换人物或改变台词。
 page.base 落实既定整页形态、实际人数/格数、布局与共用光照。普通页树的 panel.description 写本格位置、大小、已选景别/机位与环境；工作台提供 position/shot 字段时，格位大小与镜头分别写入二者，description 只写背景环境，由编译器附加格位和镜头。镜头不放人物动作字段。

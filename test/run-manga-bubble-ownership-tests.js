@@ -175,6 +175,30 @@ function ownershipError(error, utterance = '资料已收到。') {
             assert.equal(JSON.stringify(input), before);
         }
     });
+    await test('many ownership errors keep a compact message while preserving every location and original JSON', () => {
+        reset();
+        const pages = Array.from({ length: 3 }, (_, index) => {
+            const input = page(), panel = input.panels[0];
+            input.page.bubbles = [bubble(`第${index + 1}页的提醒。`)];
+            panel.bubbles = [bubble(`资料${index + 1}已收到。`), bubble(`稍后查看${index + 1}。`, 'thought')];
+            panel.characters[0].bubbles = [bubble(`日期${index + 1}`, 'caption'), bubble(`沙沙${index + 1}`, 'sfx')];
+            panel.characters[1].bubbles = [bubble(`办公室${index + 1}`, 'caption')];
+            return input;
+        });
+        const before = JSON.stringify(pages);
+        assert.throws(() => protocol.validateResponseBubbles(pages), error => {
+            assert.equal(error.code, 'MANGA_BUBBLE_OWNERSHIP');
+            assert.match(error.message, /共 18 处/);
+            assert.match(error.message, /另有 14 处/);
+            assert.ok(error.message.length < 700, 'visible message stays bounded instead of repeating all instructions');
+            assert.ok(Array.isArray(error.validationIssues));
+            assert.equal(error.validationIssues.length, 18);
+            assert.ok(error.validationIssues.some(issue => /第 3 页.*P1\/C2/.test(issue)), 'last issue remains in full diagnostics');
+            assert.deepEqual(JSON.parse(error.rawOutput), pages);
+            return true;
+        });
+        assert.equal(JSON.stringify(pages), before);
+    });
     await test('legacy empty-bubble recovery still retains original text while editor clears remain authoritative', () => {
         reset(); const input = page();
         input.panels[0].characters[0].positive += ', BubbleType: 通常吹き出し, 右上, Layout: 縦書き\nText: 资料已收到。';

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.17';
+    const PLUGIN_VERSION = '6.5.18';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7954,7 +7954,8 @@ SCHEMA:
                 if (viewerImg) viewerImg.style.opacity = '1';
                 console.error(`[${PLUGIN_NAME}] AI 调整此图失败:`, err);
                 toastr.error(`AI 调整生图失败: ${err.message || String(err)}`, PLUGIN_NAME);
-                const diagnostic = { isError: true, shouldDraw: false, reason: err.message || String(err), rawOutput: err.rawOutput || '' };
+                const diagnostic = { isError: true, shouldDraw: false, reason: err.message || String(err),
+                    errorCode: err.code || '', rawOutput: err.rawOutput || '' };
                 if (wrapper) {
                     renderCardBadges(wrapper, segResult);
                     renderTaggerDebugInfo(wrapper, diagnostic);
@@ -8911,6 +8912,30 @@ SCHEMA:
         return [reason, ...warnings.filter(warning => !reason.includes(warning))].filter(Boolean).join('\n');
     }
 
+    function getTaggerErrorCategory(result) {
+        const code = String(result?.errorCode || result?.code || '');
+        const reason = String(result?.reason || '').trim();
+        // A failed render contract means the model returned data. Diagnose that
+        // contract before examining provider refusal metadata or literal dialogue.
+        if (code === 'MANGA_BUBBLE_OWNERSHIP' || /(?:气泡|结构化文字)[^\n]*(?:归属|所属)/.test(reason)) return 'manga-bubbles';
+        if (/^MANGA_/.test(code) || /漫画(?:规划校验失败|响应缺少|页缺少|第|解析返回了旧式)/.test(reason)) return 'manga-structure';
+        const safetyCode = /^(?:SAFETY|CONTENT_FILTER|RECITATION|PROHIBITED_CONTENT|UPSTREAM_SAFETY)$/i;
+        if (result?.errorCategory === 'safety' || safetyCode.test(code)
+            || /(?:大模型|模型|服务端|服务商|官方)[^\n]*(?:安全审查|安全策略|审核拦截|拒绝回答|拒答)/.test(reason)
+            || /\b(?:content_filter|prohibited use policy|sensitive words|safety refusal)\b/i.test(reason)) return 'safety';
+        // Inspect provider metadata only when the recorded output is a complete
+        // response envelope; keywords inside a story or diagnostic trace are text.
+        try {
+            const raw = JSON.parse(String(result?.rawOutput || ''));
+            const finishReasons = (Array.isArray(raw?.choices) ? raw.choices : []).map(choice => choice?.finish_reason);
+            finishReasons.push(...(Array.isArray(raw?.candidates) ? raw.candidates : []).map(candidate => candidate?.finishReason));
+            if (finishReasons.some(value => safetyCode.test(String(value || '')))
+                || safetyCode.test(String(raw?.promptFeedback?.blockReason || raw?.error?.code || ''))
+                || (Array.isArray(raw?.choices) && raw.choices.some(choice => typeof choice?.message?.refusal === 'string' && choice.message.refusal.trim()))) return 'safety';
+        } catch (_) {}
+        return '';
+    }
+
     function renderTaggerDebugInfo(wrapper, result) {
         if (!(wrapper instanceof HTMLElement)) return;
         const store = getStore();
@@ -8950,12 +8975,15 @@ SCHEMA:
             const tipEl = document.createElement('div');
             tipEl.style.cssText = 'font-size: 11px; margin-top: 6px; padding: 6px 8px; background: rgba(239, 68, 68, 0.12); border-left: 3px solid #ef4444; border-radius: 3px; line-height: 1.4; color: #ffcdd2;';
 
-            const errStr = (reason + ' ' + rawOutput).toLowerCase();
+            const errStr = reason.toLowerCase();
+            const errorCategory = getTaggerErrorCategory(result);
             let specificTip = '';
 
-            if (reason.includes('漫画规划校验失败')) {
+            if (errorCategory === 'manga-bubbles') {
+                specificTip = '漫画文字归属检查未通过，模型已返回页面数据。请展开原始输出，核对 page、panel 与人物的 bubbles 类型及归属，再修改分镜或重新解析。';
+            } else if (reason.includes('漫画规划校验失败')) {
                 specificTip = '漫画节点引用检查未通过。请同时更新漫画模式至 1.6.1、智能生图至 6.2.1 或更高版本，刷新酒馆后重新解析。新版已取消该项严格检查和规划重试。';
-            } else if (reason.includes('漫画响应缺少') || reason.includes('漫画页缺少') || reason.includes('漫画第') || reason.includes('漫画解析返回了旧式')) {
+            } else if (errorCategory === 'manga-structure') {
                 specificTip = '漫画返回数据缺少可用的页面或格内人物结构。请展开原始响应，检查是否输出完整 JSON、是否被截断，并确认两个插件均已更新后刷新。';
             } else if (errStr.includes('ending with a model turn') || errStr.includes('model turn are not supported')) {
                 specificTip = '⚠️ <strong>请求结构错误 (400 Bad Request)</strong>：Google Gemini API 规范强制要求消息序列末尾必须是 User 回合，不支持以 Assistant (model) 结尾。<br>'
@@ -8975,14 +9003,14 @@ SCHEMA:
             } else if (errStr.includes('404') || errStr.includes('model_not_found') || errStr.includes('model not found')) {
                 specificTip = '⚠️ <strong>模型不存在 (404 Not Found)</strong>：当前配置的模型名称在服务商处不存在。<br>'
                     + '👉 <strong>解决方案</strong>：请点击「获取模型列表」重新选择可用模型，或核对自定义模型名称拼写。';
-            } else if (errStr.includes('safety') || errStr.includes('prohibited') || errStr.includes('sensitive words') || errStr.includes('finish_reason: safety') || errStr.includes('抱歉') || errStr.includes('违规') || errStr.includes('色情') || errStr.includes('性描写')) {
+            } else if (errorCategory === 'safety') {
                 specificTip = '⚠️ <strong>内容审核拦截或模型拒答 (Safety Refusal)</strong>：当前剧情触发了服务商的内容安全审查或模型拒绝回答。<br>'
-                    + '👉 <strong>解决方案</strong>：请在「智能触发」设置中开启<strong>「开启破限 (Jailbreak)」</strong>并选择<strong>「酒馆沙盒纯净版」</strong>；如使用 Gemini，建议开启尾部输出引导防模型拒绝。';
+                    + '请检查原始响应中的拒答原因，并按服务商支持的内容与接口要求调整请求。';
             } else {
                 specificTip = '💡 <strong>排查建议：</strong><br>'
-                    + '1. 若提示安全审查 / 内容熔断，可开启<strong>「🛡️ 工具调用抗外审」</strong>或<strong>「开启破限」</strong>。<br>'
-                    + '2. 若使用的是第三方中转代理，可能模型未开放 Tool Call，可在设置中切换为「纯文本+Schema」模式。<br>'
-                    + '3. 可展开下方查看详细错误日志与原始响应。';
+                    + '1. 展开下方错误日志，检查接口状态与原始响应。<br>'
+                    + '2. 若代理不支持 Tool Call，可在设置中切换为「纯文本+Schema」模式。<br>'
+                    + '3. 若已返回 JSON，检查页面结构和字段是否完整。';
             }
             tipEl.innerHTML = specificTip;
             debugBox.append(titleEl, reasonEl, tipEl);
@@ -12660,6 +12688,9 @@ SCHEMA:
                 }
                 // Response validation can fail after receiving complete model output.
                 // Preserve that trace alongside transport diagnostics for inspection.
+                if (Array.isArray(error.validationIssues) && error.validationIssues.length) {
+                    formattedDebugTrace += `\n【完整字段校验问题】:\n${error.validationIssues.join('\n')}\n`;
+                }
                 if (error.rawOutput) {
                     const rawOutput = typeof error.rawOutput === 'string' ? error.rawOutput : JSON.stringify(error.rawOutput, null, 2);
                     formattedDebugTrace += `\n【原始输出 (Raw Output)】:\n${rawOutput}\n`;
@@ -12672,6 +12703,9 @@ SCHEMA:
                     isError: true,
                     shouldDraw: false,
                     reason: error.message || String(error),
+                    errorCode: error.code || '',
+                    errorCategory: getTaggerErrorCategory({ reason: error.message || String(error),
+                        errorCode: error.code || '', rawOutput: error.rawOutput || '' }),
                     rawOutput: formattedDebugTrace
                 });
             }

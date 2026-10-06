@@ -75,6 +75,7 @@ function mockRefinement(result) {
         assert.ok(error, 'production protocol rejects a fresh page speech bubble');
         const result = await showFailure(error);
         assert.equal(result.isError, true); assert.equal(result.reason, error.message);
+        assert.equal(result.errorCode, error.code || '');
         assert.ok(result.rawOutput.includes(error.rawOutput));
         assert.match(result.rawOutput, /办公室里有人说话。/);
         assert.match(result.rawOutput, /错误信息|Raw Output/);
@@ -94,6 +95,13 @@ function mockRefinement(result) {
         const result = await showFailure(new Error('连接断开'));
         assert.match(result.rawOutput, /连接断开|未记录原始输出/);
         assert.doesNotMatch(result.rawOutput, /服务端未返回有效大模型正文|该错误由接口或网络异常触发/);
+    });
+    await test('actual wrapper catch retains explicit provider refusal metadata after adding the diagnostic trace', async () => {
+        const error = new Error('接口返回错误');
+        error.rawOutput = JSON.stringify({ choices: [{ finish_reason: 'content_filter' }] });
+        const result = await showFailure(error);
+        assert.equal(result.errorCategory, 'safety');
+        assert.equal(sdt.getTaggerErrorCategory(result), 'safety');
     });
     await test('cached page warnings reach debug text once and survive a single-page cache snapshot', () => {
         reset(); const invalid = page(); invalid.page.bubbles = [bubble('办公室里有人说话。')];

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.27';
+        const VERSION = '1.9.28';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -282,7 +282,7 @@
                             id: string,
                             description: { type: 'string', description: 'Panel position/size, shot and environment tags. No P1: prose, character actions or dialogue.' },
                             non_character: { type: 'string', description: 'Optional caption/SFX/offscreen source visual tags. No literal dialogue. Visible speakers own their character.bubbles.' },
-                            bubbles: mangaBubblesSchema('Explicit array of this panel caption/SFX/offscreen/broadcast/tailless text in reading order; [] when none. speech/screaming/whisper/shiver/connected require explicit position=offscreen. Thought and visible speakers own character.bubbles.', 'panel'),
+                            bubbles: mangaBubblesSchema('Panel non-person text only, NOT all dialogue in this panel. For visible people talking without caption/SFX/offscreen text, use [] here and put each utterance in its speaker characters[].bubbles. caption/SFX/offscreen/broadcast/tailless are supported; speech/screaming/whisper/shiver/connected require explicit position=offscreen. Thought always belongs to its character.', 'panel'),
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
@@ -528,7 +528,11 @@
             }
         }
         if (warnings.length) {
-            const error = new Error(`模型返回的结构化气泡文字归属错误，未提交生图。请检查原始输出后重新解析：\n${warnings.join('\n')}`);
+            const locations = warnings.map(warning => warning.split('气泡文字归属错误')[0].trim());
+            const preview = locations.slice(0, 4).join('；') + (locations.length > 4 ? `；另有 ${locations.length - 4} 处` : '');
+            const error = new Error(`模型返回的结构化气泡文字归属错误，共 ${warnings.length} 处，未提交生图。${preview}。可见人物对白/心声应放在对应 characters[].bubbles；真正画外对白应明确 position=offscreen。请在原始 JSON 中核对说话者后重新解析。`);
+            error.code = 'MANGA_BUBBLE_OWNERSHIP';
+            error.validationIssues = warnings;
             error.rawOutput = JSON.stringify(pages, null, 2);
             throw error;
         }
@@ -1069,16 +1073,43 @@
         return { width, height, orientation: width > height ? 'landscape' : width < height ? 'portrait' : 'square', autoSpread: !!getStore().autoSpread };
     }
 
+    function mangaStructuredDialogueExample(store) {
+        const japanese = store.language === 'ja';
+        const people = [
+            { character_id: 'C1', name: 'Ada (original)', base: 'girl, adult, long black hair', outfit: 'white shirt, black trousers',
+                positive: 'full-page panel, standing on right, right hand holding envelope, facing another', negative: '',
+                bubbles: [{ type: 'speech', position: 'right-upper', layout: 'vertical', text: japanese ? '手紙は届いた？' : '信收到了吗？' }] },
+            { character_id: 'C2', name: 'Beth (original)', base: 'girl, adult, short blonde hair', outfit: 'blue jacket, dark skirt',
+                positive: 'full-page panel, standing on left, looking at another, nodding', negative: '',
+                bubbles: [{ type: 'speech', position: 'left-lower', layout: 'vertical', text: japanese ? '届いたよ。' : '收到了。' }] }
+        ];
+        if (store.style === 'monochrome') {
+            people[0].render = { base: 'girl, adult, long black hair', outfit: 'white shirt, black trousers' };
+            people[1].render = { base: 'girl, adult, short light hair', outfit: 'dark jacket, dark skirt' };
+        }
+        return JSON.stringify({
+            page: { base: (store.style === 'monochrome' ? 'monochrome, greyscale, screentone, ' : '')
+                + 'splash page, 2girls, 1 panel, full-page panel, office, window light', bubbles: [] },
+            panels: [{ id: 'P1', description: 'full-page panel, medium shot, office, desk', bubbles: [], characters: people }]
+        });
+    }
+
     function buildMangaDialoguePrompt(store) {
         if (usesStructuredMangaBubbles(store)) return `【对白与非人物文字】
+先依据正文逐句确定说话者，再定位这句话发生的画格和该人物 character_id，把原句填入 panels[].characters[].bubbles，最后选择气泡形状、位置和排版。speech/screaming/whisper/shiver/connected 描述说话方式或气泡形状，不决定文字属于哪一层；喊叫、耳语、多句或气泡面积大都不改变说话者归属。心声也归对应人物。
+panel.bubbles 只收本格非人物文字，不是本格全部对白。两位可见人物对话且无旁白、拟音或真正画外声时，panel.bubbles=[]，双方 characters[].bubbles 分别填本人原句；同格只有一位可见说话者也按此规则处理。若同时有非人物文字，只将那些文字放在 panel.bubbles，人物原句仍归本人。先问者、回答者各归本人，不能把整段问答集中放在 panel.bubbles，再把所有人物 bubbles 填成 []。同人多泡保留在同一个人物条目下，不因多句复制人物。
 人物对白/心声归该人物 bubbles；本格旁白、拟音和画外对白归 panel.bubbles，整页旁白/拟音才归 page.bubbles，不占人物槽。positive、non_character 只写视觉说明，不写 BubbleType/Layout/Text 协议片段；这是字段分工，不是整页禁止文字。所选剧情的原句保留说话者、次序、次数和标点。每句需要上画的台词必须实际填写 bubbles[].text，不能只写 speaking、speech bubble，或在 desc/reason 中概述“说了某事”却不给台词。长句按原有停顿分气泡，不删字。容量不足先压缩重复视觉描写，再分格/分页，不截掉结尾或关键对话。
 每泡独立输出 {type,position,layout,text}。type 可用 speech（通常）、screaming（呐喊）、thought（心声）、whisper（耳语）、shiver（颤抖）、broadcast（广播）、caption（旁白）、offscreen（画外）、tailless（无尾）、connected（连泡）、sfx（拟音）。text 只有实际要画出的文字，不放字段说明，不手工拼接 Text:，不以字面反斜杠 n 拼接多泡；同人多泡使用同一 bubbles 数组，不重复人物槽。每个 panel 和 character 都显式输出 bubbles；静默人物、无非人物文字的画格写 []，不为填字段添加空泡；无整页文字可省略 page.bubbles。
 各层类型限制：page.bubbles 仅 caption/sfx；character.bubbles 不能放 caption/sfx；thought 必须归对应人物。panel.bubbles 可放 caption/sfx/offscreen/broadcast/tailless；使用 speech/screaming/whisper/shiver/connected 表达真正画外声时必须显式 position=offscreen，不将可见人物台词放入画格或整页字段。声源不明可用 panel 的 tailless，不编造人物。程序会拦截新响应中明确违反归属的非空气泡。
 position 使用 right-upper、left-upper、right-lower、left-lower、mouth、offscreen、above、top、bottom；同格先说居右上，后说居左下，不能因说话人站左侧就交换问答。气泡避开脸与主动作；尾巴指向当前镜头的嘴部，心声圆点指向头部，旁白/拟音无尾；同人连续多泡成一组，两人分组，声源未知不猜方向。
 layout 使用 vertical 或 horizontal；对白/心声通常竖排，外语对白、屏幕/信件字和旁白横排。外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点；不按列手工断行。
 说话者在本格可见时，文字必须进本人 bubbles。只有真的画外声才放 panel.bubbles；明确本格位置、画外来源及气泡，不用 page.bubbles 承载某一格的回答。问答按正文先问后答，回答不能提前放到入场格；放不下顺延下一格。叙述中的动作转成视觉标签，不整段变旁白。
-格式示例：positive="top panel, standing, holding envelope, smiling"，bubbles=[{"type":"speech","position":"right-upper","layout":"vertical","text":"信收到了。"},{"type":"thought","position":"left-lower","layout":"vertical","text":"终于等到了。"}]。拟音放 panel.bubbles=[{"type":"sfx","position":"bottom","layout":"vertical","text":"咔哒"}]。旁白只取必要的时空/客观提示。
-程序按原版 v1.1 编译：所有气泡类型、位置、Layout 先写，唯一末尾 Text: 后只有各句真实文字，以真正空行分隔。你只输出分栏 JSON，不自行执行拼接。
+【结构化气泡完整嵌套示例】
+只借字段关系，不复制示例姓名、台词、镜头、页数或格数。例中艾达询问、贝丝回答，两人可见；页级和格级没有非人物文字，所以两处 bubbles 都是 []。以下为同一页的 page/panels 字段；其他入口要求的 format、anchor 等字段仍按该入口合同输出。
+${mangaStructuredDialogueExample(store)}
+例中问句仅在 characters[0].bubbles，答句仅在 characters[1].bubbles。若艾达改为喊话，只将她本人的 type 改为 screaming，仍保留在她的 bubbles。人物 positive 始终只有动作视觉词。
+拟音单独放 panel.bubbles，例如 {"type":"sfx","position":"bottom","layout":"vertical","text":"咔哒"}。真正的画外耳语可放 panel.bubbles，例如 {"type":"whisper","position":"offscreen","layout":"vertical","text":"等一下。"}；仅因人物嘴部被气泡挡住、人物位于画面边缘或台词多，不改成画外声。旁白只取必要的时空/客观提示。
+最终检查每句原文对应的说话者和完整嵌套路径；同一次发言只在一个归属位置出现，正文中的重复发言仍保留原次数。正文有可见人物说话而该人物 bubbles=[] 时，检查是否误放到 panel/page，并在本次输出内按正文确认的说话者修正。只输出本次约定的结构化 JSON，文字拼接由程序处理，不自行执行拼接。
 文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}`;
         return `【对白与非人物文字：原版 v1.1 Text 协议】
 人物对白/心声写在本人 positive，旁白、拟音和真正的画外对白写在所属 page.non_character 或 panel.non_character，不占人物槽。page.base、description、base/outfit/state/render 不写对白。可见说话者的台词不得放入非人物字段；page.non_character 只承载整页文字，不能承载某一格的回答。问答按正文先问后答，不把回答提前放到入场格。叙述中的动作转成视觉词，旁白只保留必要的时空/客观提示。
@@ -1140,7 +1171,7 @@ ${buildMangaDialoguePrompt(store)}
 ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则，一次解析统一完成灰阶转译。page.base 用 monochrome, greyscale, screentone；description、non_character 的视觉部分、positive 与 negative 中的人物、道具、环境都按黑/白/灰、深浅、材质和明暗关系表达，不留彩色色相或 full color。光照只写方向、强弱和对比，避免色温染色。\n人物 base/outfit/state 与 character_memory 仍完整保留原设颜色。characterMemory.render 是与该资料当前完整原色来源匹配的灰阶缓存，命中字段直接沿用，不重写、不重复输出。首次指本次响应内该人物第一次出场，已建档不等于已有灰阶词：缺少缓存的字段须在本次首次出场输出 render:{base,outfit}，分别为当前完整外貌和完整衣着的灰阶绘图视图；已存资料原样为依据，已有姓名、同人 Tag、国籍、年龄、身高、形状、衣物层次及配饰不得遗漏，不重新猜外貌，不按景别裁剪。\n同一次响应的后续格/页，同人外观未变时省略 render；程序复用已给视图。明确换装时仅更新 render.outfit；明确临时外貌变化时仅更新 render.base，以变化后的完整 state 为依据；两者都变则一起更新。原色资料同一外观只能对应同一灰阶视图，即使重复输出也沿用首次视图。原色来源变化且没有对应缓存或前格视图时输出新视图；仅标签顺序或空白变化仍可复用，不能把不同服装或外貌当作同一来源。无衣物用 render.outfit=""。negative 对照灰阶后的实际外貌，不靠彩色色相排除其他人物。可靠身份标签和 Text 原文不脱色；灰阶结果仅服务本次绘图，不能反写长期档案。\n黑白分栏示例（只借格式）：首次 base="girl, blonde hair, brown eyes"，outfit="beige trench coat, white shirt"，render={"base":"girl, light hair, dark eyes","outfit":"light trench coat, white shirt"}，positive="standing, holding dark umbrella"；下一格 base=""、outfit=""，省略 render，仅写本格动作；下一次解析若 characterMemory.render 已有对应缓存，首次也省略命中字段。换红外套时 state.outfit="red coat"，render={"outfit":"dark coat"}，不再重复灰阶 base。' : '色彩遵循选定画风，人物发眼、衣物、配饰与道具保持已知固有颜色；同地点连续时间沿用主光源方向与明暗关系，镜头变化不新造光源。仅转场、时间经过或实际光源变化才更新；固有颜色与环境照明分开写。'}
 
 【输出核对】
-核对台本起止与覆盖、格数与页面形态、${narrative ? '页面任务、各格容量与实际切分' : '主辅格面积和相对排列'}、人物身份及动作连续性。${usesStructuredMangaBubbles(store) ? '逐句确认文字类型与说话者：可见人物对白只在本人 bubbles，画外声/旁白/拟音才在 panel/page.bubbles；page.base、description、positive、non_character 不放 Text 协议。逐句检查所选剧情的台词已实际进入 bubbles[].text，不能将有台词的出场误填成 []；明确静默的格子仍保持无字。' : '逐句确认文字类型与说话者：可见人物对白只在本人 positive，画外声/旁白/拟音才在所属 non_character；气泡说明全部在唯一 Text: 前，原句全部在其后，多句用空行分隔。逐句核对所选台词已实际写入 Text:，明确静默的格子保持无字，不输出 bubbles。'}检查正负词不互斥，布局和动作信息已实际写进绘图字段，不能仅在 reason/intent 解释。直接提交最终页格，不输出额外的节点清单或覆盖报告。默认自动定位，不输出坐标；仅明确手动定位时输出 position_mode="manual"，每次人物出场附整页归一化 center:{x,y}（0～1）。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
+核对台本起止与覆盖、格数与页面形态、${narrative ? '页面任务、各格容量与实际切分' : '主辅格面积和相对排列'}、人物身份及动作连续性。${usesStructuredMangaBubbles(store) ? '逐句确认文字类型与说话者：可见人物对白/心声只在本人 characters[].bubbles；本格旁白、拟音与真正画外声归 panel.bubbles；整页旁白/拟音才归 page.bubbles。page.base、description、positive、non_character 不放 Text 协议。逐句检查所选剧情的台词已实际进入对应人物 bubbles[].text，不能将有台词的出场误填成 []，也不能把问答集中放到 panel.bubbles；明确静默的格子仍保持无字。' : '逐句确认文字类型与说话者：可见人物对白只在本人 positive，画外声/旁白/拟音才在所属 non_character；气泡说明全部在唯一 Text: 前，原句全部在其后，多句用空行分隔。逐句核对所选台词已实际写入 Text:，明确静默的格子保持无字，不输出 bubbles。'}检查正负词不互斥，布局和动作信息已实际写进绘图字段，不能仅在 reason/intent 解释。直接提交最终页格，不输出额外的节点清单或覆盖报告。默认自动定位，不输出坐标；仅明确手动定位时输出 position_mode="manual"，每次人物出场附整页归一化 center:{x,y}（0～1）。只输出约定 JSON；reason 简述所选剧情、实际页数与分页依据，不重复整段正文。`;
     }
 
     // Filter whole tags (including weighted groups), never substrings or dialogue.
@@ -3687,7 +3718,7 @@ page.base 写${ec === 'v_manga_narrative' ? '各排/列的切分、各格相对�
 若输入带 characterCardInfo/characterMemory，按姓名参考角色卡与已存外貌衣着，未知不猜、已有不漏；当前剧情的明确变化优先。完整外貌放 base、完整衣着放 outfit、本格演出放 positive，不额外更新长期记忆档案。局部镜头用 shot 指定，base/outfit 仍保留完整资料。
 拟音偏好：${store.studio?.autoSfx === false ? '不补拟音，只保留用户明确要求的原句。' : '可转译正文出现的独立拟音。'}
 ${usesStructuredMangaBubbles(store) ? '各格使用 id、title、desc（本格剧情依据）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、bubbles（本格旁白/拟音/画外文字数组）、non_character（非人物视觉说明）、characters 数组。对白/心声逐泡归 characters[].bubbles，每人只放自己的话。每个画格和人物都显式返回 bubbles 数组，静默用 []；不生成旧版 bubbleText 或内嵌 Text 字符串。' : '各格使用 id、title、desc（本格剧情依据）、position（唯一版面位置和大小）、shot（景别）、description（纯环境）、non_character（本格非人物视觉说明及末尾 Text:）、characters 数组。对白/心声归本人 positive，旁白/拟音/真正画外声归 non_character；不输出 bubbles 或 bubbleText。'}
-characters 每项使用 character_id、name、base、outfit、positive、negative，可附 state；character_id 跨格同人保持一致。中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名。黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。
+characters 每项使用 character_id、name、base、outfit、positive、${usesStructuredMangaBubbles(store) ? 'bubbles、' : ''}negative，可附 state；${usesStructuredMangaBubbles(store) ? 'bubbles 必须在该人物对象内：有台词填该人物原句，静默才填 []。panel.bubbles 不汇总可见人物问答；两人对话且无非人物文字时，panel.bubbles=[]，双方各自在自己对象中填 bubbles。' : ''}character_id 跨格同人保持一致。中文资料关联 name 另用 name_tag 给英文绘图身份（同人通用英文角色 Tag (作品英文名)，原创英文/罗马字 Name (original)），已有则复用，仅缺失时每人提供一次，不改档案关联名。黑白模式按同一规则提供并复用 render；按普通模式的完整 base/outfit 复用资料。
 ${isToolMode
     ? '必须调用 generate_manga_storyboard 工具提交当前单页 page 与 panels，不在普通文本中输出额外内容或 Markdown。'
     : '只输出一个 JSON 对象 {"page":{"base":"..."},"panels":[...],"capacity_note":"可选容量说明"}，不要输出 Markdown 或额外文字。'}`;

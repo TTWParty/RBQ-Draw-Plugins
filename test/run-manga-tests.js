@@ -1912,7 +1912,8 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
             const body = JSON.parse(options.body), userInput = JSON.parse(body.messages[1].content);
             assert.deepEqual(userInput, { currentMessage: 'story', ...studioReferences,
                 ...(ec === 'v_manga_185' ? { mangaCanvas: json(RBQ.api.mangaProtocol.planningContext(settings._mangaMode.studio.ratio)) } : {}) });
-            assert.equal(body.messages[0].content.includes('输入 mangaCanvas 是本页实际画布像素与方向'), ec === 'v_manga_185');
+            assert.ok(body.messages[0].content.includes(RBQ.api.mangaProtocol.planningPrompt(ec)));
+            assert.equal(body.messages[0].content.includes('输入 mangaCanvas 是实际画布像素与方向'), ec === 'v_manga_185');
             assert.match(body.messages[0].content, /characterCardInfo\/characterMemory/);
             const panel = fixture().panels[0];
             panel.characters[1].base = ''; panel.characters[1].outfit = '';
@@ -1940,7 +1941,7 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     settings._mangaMode.style = 'soft_color';
     manga.fetch = async (_url, options) => {
         const body = JSON.parse(options.body);
-        assert.match(body.messages[0].content, /完整外貌衣着快照/);
+        assert.match(body.messages[0].content, /当前完整原色外貌衣着/);
         const single = body.messages[0].content.includes('只返回正在编辑的一个画格');
         return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ panels: single ? [draft[1]] : draft }) } }] }) };
     };

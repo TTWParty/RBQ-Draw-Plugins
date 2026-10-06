@@ -101,7 +101,7 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
         assert.deepEqual(clone(viaJson), clone(parsed));
         assert.deepEqual(JSON.parse(studio._lastDebug.rawOutput), scene());
     });
-    await test('callLlmStoryboardParser sends 2-4 panel auto instructions and strict fixed count', async () => {
+    await test('callLlmStoryboardParser selects actual page capacity and preserves strict fixed count', async () => {
         let capturedTask = '';
         let capturedExpected = null;
         manga.requestStudioPanels = async (_store, task, _content, expectedCount) => {
@@ -110,36 +110,31 @@ RBQ.api.callStructuredCompletion = async () => ({ rawReply: JSON.stringify(scene
             return [];
         };
         await manga.callLlmStoryboardParser(story, 'cinema', 'zh', 'auto');
-        assert.match(capturedTask, /自适应拆解为 2 至 4 格/);
-        assert.match(capturedTask, /严禁偷懒合并为整页单格/);
+        assert.match(capturedTask, /自动规划 1 至 5 格/);
+        assert.match(capturedTask, /一个决定性瞬间可用单格/);
         assert.equal(capturedExpected, 0);
 
         await manga.callLlmStoryboardParser(story, 'cinema', 'zh', '3');
         assert.match(capturedTask, /严格规划为 3 格/);
         assert.equal(capturedExpected, 3);
     });
-    await test('studioDirectorPrompt enforces multi-panel progression, non-omitted interactors, and action fidelity', () => {
+    await test('studioDirectorPrompt shares narrative rules and preserves Studio fields without forced pacing', () => {
         const promptJson = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', false);
-        assert.match(promptJson, /【画格叙事递进与时间流逝/);
-        assert.match(promptJson, /自适应拆解为 2 至 4 格/);
-        assert.match(promptJson, /选材覆盖与叙事闭环铁律/);
-        assert.match(promptJson, /主格法则 \(Hero Panel\)/);
-        assert.match(promptJson, /【动作表达保真与严禁抽象概括/);
-        assert.match(promptJson, /严禁在 desc 中将具体动作抽象化为模糊概括/);
-        assert.match(promptJson, /【实体解耦公理与格内多角色同框/);
-        assert.match(promptJson, /绝不能只建主动方而漏掉受动方/);
-        assert.match(promptJson, /【分级判定准则与 Danbooru 客观转译/);
-        assert.match(promptJson, /严禁将亲密\/侵犯剧情擅自篡改为废墟战斗/);
-        assert.doesNotMatch(promptJson, /任何没有原文依据的文字都不要编造/);
-        assert.doesNotMatch(promptJson, /无台词的静默格不添空白气泡/);
-        assert.doesNotMatch(promptJson, /静默格不添字/);
-        assert.doesNotMatch(promptJson, /禁止凭空补字/);
+        assert.match(promptJson, /按正文顺序组织有叙事价值的事件/);
+        assert.match(promptJson, /不为凑格补剧情/);
+        assert.match(promptJson, /一个相容时刻/);
+        assert.match(promptJson, /可见人物分别建立 characters 条目/);
+        assert.match(promptJson, /动作和表情归各自 positive/);
+        assert.match(promptJson, /page.base 写整页主格位置与大致面积/);
+        assert.match(promptJson, /实际阅读路径与光影/);
+        assert.match(promptJson, /capacity_note/);
+        assert.doesNotMatch(promptJson, /默认采用 3 至 4 格|铺垫最多占用第 1 格|收尾特写均有独立画格|逐格规划差异化/);
         assert.match(promptJson, /bubbles（本格旁白\/拟音\/画外文字数组）/);
         assert.match(promptJson, /characters\[\]\.bubbles/);
         assert.match(promptJson, /只输出一个 JSON 对象/);
 
         const promptTool = manga.studioDirectorPrompt(settings._mangaMode, 'test task', 'off', true);
-        assert.match(promptTool, /必须调用 generate_manga_storyboard 工具提交你的漫画分镜规划数据/);
+        assert.match(promptTool, /必须调用 generate_manga_storyboard 工具提交当前单页 page 与 panels/);
         assert.doesNotMatch(promptTool, /只输出一个 JSON 对象/);
 
         const extracted = manga.studioPanelFromProtocol(scene().panels[0]);

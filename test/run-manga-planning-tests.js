@@ -11,7 +11,8 @@ const { manga, sdt, settings, RBQ, mangaSource, sdtSource, fixture, payload, man
 const clone = value => JSON.parse(JSON.stringify(value));
 const initialSettings = clone(settings);
 const originalSave = sdt.save;
-const comicOptions = ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'];
+const historicalOptions = ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'];
+const comicOptions = [...historicalOptions, 'v_manga_narrative'];
 // SHA-256 of the evaluated historical production strings, including whitespace.
 const historicalPrompts = {
     v_manga: { ref: '2c3ffd0', length: 619, hash: '3d676af809e60b659e7c633ca75b069648f5cee5e8d6c61dee0d0d40e9bfbc1a' },
@@ -82,7 +83,7 @@ function assertAvailable(ui, enabled) {
 }
 
 test('all four planning variants retain the exact historical text and only 717 characters receives canvas', () => {
-    for (const ec of comicOptions) {
+    for (const ec of historicalOptions) {
         settings._smartDrawTrigger.enhancedContext = ec;
         const prompt = RBQ.api.mangaProtocol.planningPrompt();
         const historical = historicalPrompts[ec];
@@ -105,13 +106,13 @@ test('SDT selector initialization accepts each saved planning variant', () => {
         settings._smartDrawTrigger.enhancedContext = ec;
         const ui = selector();
         vm.runInContext(initialize, sdt);
-        assert.equal(ui.select.value, ec, 'saved historical planners survive SDT initialization');
+        assert.equal(ui.select.value, ec, 'saved planners survive SDT initialization');
         assert.equal(ui.saveCount(), 0, 'opening settings never makes an API request or rewrites the saved choice');
     }
 });
 
 for (const priorContext of ['v14', 'off', undefined]) {
-    test(`existing context selector preserves all four planners through refresh and sync, then restores ${priorContext ?? 'an absent context'}`, () => {
+    test(`existing context selector preserves all five planners through refresh and sync, then restores ${priorContext ?? 'an absent context'}`, () => {
         const ordinary = { systemPromptPreset: 'custom', customSystemPrompt: 'ordinary prompt',
             systemPrompt: 'ordinary prompt', multiCharOutput: false };
         if (priorContext !== undefined) ordinary.enhancedContext = priorContext;
@@ -129,12 +130,13 @@ for (const priorContext of ['v14', 'off', undefined]) {
         assert.equal(RBQ.api.mangaProtocol.planningPrompt().length, 619);
 
         let expectedSaves = 0;
-        for (const ec of ['v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) {
+        for (const ec of ['v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) {
             ui.changeTo(ec);
             expectedSaves++;
             assert.equal(settings._smartDrawTrigger.enhancedContext, ec);
             assert.equal(ui.saveCount(), expectedSaves, 'each choice persists immediately before any Save button');
-            assert.equal(RBQ.api.mangaProtocol.planningPrompt().length, historicalPrompts[ec].length);
+            if (historicalPrompts[ec]) assert.equal(RBQ.api.mangaProtocol.planningPrompt().length, historicalPrompts[ec].length);
+            else assert.equal(RBQ.api.mangaProtocol.planningPrompt(), RBQ.api.mangaProtocol.planningPrompt(ec));
             manga.updateUiState();
             manga.syncMangaToSdt(settings._mangaMode, false);
             manga.syncMangaToSdt(settings._mangaMode, false);
@@ -159,7 +161,7 @@ for (const priorContext of ['v14', 'off', undefined]) {
     });
 }
 
-test('context UI restores pre-existing option flags and keeps all four comic choices hidden while disabled', () => {
+test('context UI restores pre-existing option flags and keeps all five comic choices hidden while disabled', () => {
     settings._smartDrawTrigger = { enhancedContext: 'v14' };
     settings._mangaMode.enabled = false;
     const ui = selector('v14');
@@ -169,8 +171,8 @@ test('context UI restores pre-existing option flags and keeps all four comic cho
     settings._mangaMode.enabled = true;
     manga.syncMangaToSdt(settings._mangaMode, false);
     manga.updateUiState();
-    for (const ec of ['v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) ui.changeTo(ec);
-    assert.equal(ui.saveCount(), 4, 'all four choices persist immediately');
+    for (const ec of ['v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) ui.changeTo(ec);
+    assert.equal(ui.saveCount(), 5, 'all five choices persist immediately');
     manga.updateUiState();
     assert.equal(ui.select.value, 'v_manga');
     settings._mangaMode.enabled = false;
@@ -200,7 +202,7 @@ test('B reads selected host dimensions and safe NAI or other-mode fallbacks with
         assert.deepEqual(clone(RBQ.api.mangaProtocol.planningContext()), { ...sample.expected, autoSpread: true });
         assert.deepEqual(settings, before, 'canvas context only reads host settings');
     }
-    for (const ec of comicOptions.filter(ec => ec !== 'v_manga_185')) {
+    for (const ec of historicalOptions.filter(ec => ec !== 'v_manga_185')) {
         assert.equal(RBQ.api.mangaProtocol.planningContext(undefined, ec), null);
     }
 });
@@ -227,7 +229,7 @@ test('B workbench dimensions prefer its ratio and reuse host or fallback dimensi
         { width: 832, height: 1216, orientation: 'portrait', autoSpread: false });
 });
 
-test('all four planners send identical NAI data for the same cached page without changing memory, gray cache or image parameters', () => {
+test('all five planners send identical NAI data for the same cached page without changing memory, gray cache or image parameters', () => {
     settings._smartDrawTrigger = { _mangaActive: true, enhancedContext: 'v_manga', characterMemoryEnabled: true,
         characterProfiles: {}, multiCharOutput: true, multiCharUseCoords: false };
     const page = fixture();

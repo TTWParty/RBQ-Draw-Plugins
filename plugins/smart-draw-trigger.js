@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.15';
+    const PLUGIN_VERSION = '6.5.16';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2470,7 +2470,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
-        enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185 | v_manga_161 | v_manga_150
+        enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185 | v_manga_161 | v_manga_150 | v_manga_narrative
         postProcessEnabled: false,
         postProcessRole: 'assistant',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
@@ -6589,7 +6589,7 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function isMangaContextPreset(ec) {
-        return ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150'].includes(ec);
+        return ['v_manga', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga_narrative'].includes(ec);
     }
 
     function getRequestEnhancedContext(store = getStore()) {
@@ -6691,7 +6691,7 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function getMangaOutputSchema(store = getStore()) {
-        const schema = getMangaProtocol().outputSchema();
+        const schema = getMangaProtocol().outputSchema(undefined, getRequestEnhancedContext(store));
         if (store.characterMemoryEnabled) {
             schema.character_memory = [{ name: '与格内人物一致的稳定关联姓名', name_tag: '中文关联名缺少绘图身份时，每人一次提供英文/罗马字 Tag；已有则沿用', initial_outfit: '可选，新人物进入本楼时的完整已知服装，不是末格服装', base: '按七维规格提炼的英文逗号标签，保留已知国籍/族裔/面相等身份外貌，无人数、衣物或动作；已有则为空', outfit: '按颜色/已知材质/款式/长度与状态逐件列出的英文逗号标签；首次或明确换装才更新，否则为空' }];
         }
@@ -6836,6 +6836,7 @@ ${getCharacterMemoryTagSpecification()}
         return { ...currentMessage, messageId, chatKey: getChatKey(), epoch: captureMangaRequestContext.epoch || 0,
             memoryEpoch: captureMangaRequestContext.memoryEpochs?.[JSON.stringify(getChatKey())] || 0,
             manga: isMangaRequest(), renderSettings,
+            planningPreset: isMangaRequest() ? getRequestEnhancedContext() : undefined,
             messageVersion: getMangaMessageVersion(messageId),
             currentOutfits: Object.fromEntries(Object.entries(getCharacterProfiles()).map(([name, profile]) =>
                 [getCanonicalCharName(profile.displayName || name).toLowerCase(), profile.currentOutfit || ''])),
@@ -7628,7 +7629,7 @@ ${getCharacterMemoryTagSpecification()}
         const requestContext = segResult?.mangaPage ? captureMangaRequestContext() : null;
         const segJson = JSON.stringify(segResult || {});
         const systemPrompt = segResult?.mangaPage
-            ? getMangaProtocol().systemPrompt() + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit、' + (getMangaProtocol().usesStructuredBubbles?.() !== false ? '本格动作 positive 与逐泡文字 bubbles' : '包含本格动作、气泡说明及末尾 Text: 的 positive/non_character') + '，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema())
+            ? getMangaProtocol().systemPrompt(getRequestEnhancedContext(store)) + '\n本次只修改用户指定的一页，保留未修改的画格与人物。这是已有绘图快照编辑，不重新套用当前角色档案；将当前完整绘图快照拆成完整 base、outfit、' + (getMangaProtocol().usesStructuredBubbles?.() !== false ? '本格动作 positive 与逐泡文字 bubbles' : '包含本格动作、气泡说明及末尾 Text: 的 positive/non_character') + '，不按景别删外貌衣着，不只返回增量。mangaPage 提供结构，外层 scene 和 characters.caption/uc 是用户最新编辑结果，若不同以最新编辑为准并归回对应 panelId/characterId。输出单页对象，结构：' + JSON.stringify(getMangaProtocol().segmentSchema(undefined, getRequestEnhancedContext(store)))
             : `You are an expert anime AI art storyboard director and tagger.
 Your task is to refine or modify a single storyboard segment based on the user's specific instructions.
 Instructions:
@@ -10473,8 +10474,11 @@ SCHEMA:
             v14: "FOUR-AXIOMS LEAN REASONING: Execute lean analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage to draw and HOW MANY images needed based on narrative progression and visual beats: 0 if idle chat, 1 if single moment, multiple if multi-stage progression), ② Layering (2-3 layers, empty is valid), ③ Viewer eye-datum (dynamic camera height, vertical delta >= 50cm forbids close-up), ④ Frustum ingress & contact anchoring (bottom edge ingress, contact closure), ⑤ Entity decoupling (zero Char2, negative male).",
             v11: "SCENE-AWARE 9.7 REASONING: Execute 7-step analysis before output: ① Scene Selection & Segment Count Decision (core: analyze WHERE in currentMessage needs image generation and HOW MANY images needed: 0 if idle chat, 1 if single moment, multiple if multi-stage progression/action beats, verbatim anchor.text), ② L0~L2 Consistency Tracking (L0 Base/L1 Scene/L2 Transient, persistent states like sweat/blush/cum never auto-restore), ③ Q1-Q3 Rating (Safe/R/X), ④ 2~3 Layer Spatial Depth (Foreground/Middle/Background with subject freedom), ⑤ Lens & Camera Angle Matrix (14 situations reference), ⑥ Visibility Pruning & Conflict Offloading into UC, ⑦ Self-check.",
         };
-        const canvas = ec === 'v_manga_185' ? getMangaProtocol().planningContext?.(undefined, ec) : null;
-        return ecPayloads[activeEc] ? { contextAnalysisInstructions: ecPayloads[activeEc], ...(canvas ? { mangaCanvas: canvas } : {}) } : {};
+        const canvas = isMangaContextPreset(ec) ? getMangaProtocol().planningContext?.(undefined, ec) : null;
+        const instructions = ec === 'v_manga_narrative'
+            ? 'Adapt the complete currentMessage into comic pages: select essential events and reactions, group connected beats, draft page boundaries, choose compatible panel moments and dialogue, check actual canvas capacity, then finalize page count, panel count and explicit cuts. Preserve story order and inherited state. Return final pages directly with brief page intent and panel purpose; no separate planning ledger. Each segment is one page image.'
+            : ecPayloads[activeEc];
+        return instructions ? { contextAnalysisInstructions: instructions, ...(canvas ? { mangaCanvas: canvas } : {}) } : {};
     }
 
     function getEnhancedContextSystemPrompt(ec) {
@@ -10547,7 +10551,9 @@ SCHEMA:
             recentMessages,
             contextCount: Number(store.contextCount) || 5,
             ...(isMangaRequest(store) ? {
-                segmentInstruction: '先选择本楼有叙事价值的节点，再按可读容量分页；一个 segment 是一张漫画图片。直接提交最终 page/panels/characters，说明文字保持简短。普通插画最少分镜数及图组标记不决定漫画页数，重要媒介内容可放入合适画格；不要漏掉正文开端或结尾。'
+                segmentInstruction: getRequestEnhancedContext(store) === 'v_manga_narrative'
+                    ? '通读完整 currentMessage，保留推动剧情的行动、问答、揭示、反应及结果；合并重复描写。先组织连续叙事段与页面内容，再按画面和对白容量决定页数、格数与切分；容量不足应拆页，不截掉结尾。一个 segment 是一张漫画图片；每页明确起止与任务，每格明确相容时刻、人物、动作、文字、位置与面积，page.base 的布局须与 panels[].description 一致。普通插画最少分镜数及图组数量不决定漫画页数。按 outputSchema 直接输出最终 segments/page/panels/characters，说明简短，不输出规划账本。'
+                    : '先选择本楼有叙事价值的节点，再按可读容量分页；一个 segment 是一张漫画图片。直接提交最终 page/panels/characters，说明文字保持简短。普通插画最少分镜数及图组标记不决定漫画页数，重要媒介内容可放入合适画格；不要漏掉正文开端或结尾。'
             } : detectedPhotoCount > 0 ? {
                 minSegments: detectedPhotoCount,
                 segmentInstruction: `检测到正文显式包含 ${detectedPhotoCount} 个图组/媒介标记（${photoGroupMatches.join('、')}），本次请求必须严格 1:1 输出 ${detectedPhotoCount} 个独立分镜，有多少个图组就输出多少个分镜，绝对严禁漏提、截断或合并任何一个图组！【最高警告：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对禁止提取历史楼层（recentMessages）中的图组或场景！】`
@@ -10670,7 +10676,7 @@ SCHEMA:
     }
 
     function getSystemPromptWithPresets(store, hasCardInfo = false, messageId) {
-        let systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt() : getActiveSystemPrompt(store);
+        let systemPrompt = isMangaRequest(store) ? getMangaProtocol().systemPrompt(getRequestEnhancedContext(store)) : getActiveSystemPrompt(store);
         if (store.lorebookBase64) {
             systemPrompt += '\n\n【🛡️ Base64 设定资产混淆解码指令】\n为了确保底层文本传输链路合规安全，输入数据 payload 中的世界书设定（`lorebook` 数组中的 `tags_base64` 与 `name_base64`，以及 `lorebook_base64` 原始汇总数组）和角色卡设定（`characterCardInfo_base64`）均已采用 UTF-8 Base64 编码进行了混淆封装。\n【模型执行规则】：\n1. 你必须在内部推理思考（thinking）阶段解码这些 Base64 字段，还原为原本的人物外貌、发型、发色、瞳色、服装、配饰等视觉设定文本；\n2. 严禁在普通文本或输出中回显原始设定文本，只需客观将其提炼为 Danbooru 英文生图标签（例如: blonde hair, twintails, plaid skirt 等）；\n3. 无论世界书是否编码，均需严格视其为出镜角色的权威外貌设定并保持画面一致。';
         }
@@ -10892,9 +10898,10 @@ SCHEMA:
         if (store.characterMemoryEnabled) {
             tool.function.parameters.properties.character_memory = getMangaMemorySchema();
         }
-        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema();
+        tool.function.parameters.properties.segments.items = getMangaProtocol().segmentSchema(undefined, getRequestEnhancedContext(store));
         if (store.characterMemoryEnabled) {
-            tool.function.parameters.properties.segments.items.properties.panels.items.properties.characters.items.required.push('name');
+            const required = tool.function.parameters.properties.segments.items.properties.panels.items.properties.characters.items.required;
+            if (!required.includes('name')) required.push('name');
         }
         tool.function.parameters.properties.segments.description = 'Comic pages in narrative order; each page contains panels and each panel contains its visible characters.';
         return tool;
@@ -14293,7 +14300,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
+                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。全文漫画规划：先选材和组织内容，再按实际画布决定页数、每页格数与切分。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga_narrative">漫画 · 全文分页规划（试用）</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
                     </div>
                 </div>
 
@@ -16892,7 +16899,8 @@ SCHEMA:
             contextCount: 1,
             manualMode: true,
             manualInstruction: '用户在生图测试中输入了一段想要生成的图片描述，请将其转化为结构化的分镜 JSON。shouldDraw 必须为 true。仅输出 1 个 segment。',
-            ...(isMangaRequest(store) && getRequestEnhancedContext(store) === 'v_manga_185' ? getEnhancedContextPayload('v_manga_185') : {}),
+            ...(isMangaRequest(store) && ['v_manga_185', 'v_manga_narrative'].includes(getRequestEnhancedContext(store))
+                ? getEnhancedContextPayload(getRequestEnhancedContext(store)) : {}),
             ...(isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
             outputSchema: isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean', reason: 'string',

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.20';
+    const PLUGIN_VERSION = '6.5.21';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3349,7 +3349,11 @@ ${activeRegistrySection}`;
 
         // Build weighted base for NAI: apply name weight + memory base
         // For 同人 characters with stored memory, re-apply name weight to the stored base
-        const displayBase = renderCharacterMemoryBase(cleanName, finalBase, drawingName);
+        let displayBase = renderCharacterMemoryBase(cleanName, finalBase, drawingName);
+        if (/\b(?:headless|decapitat(?:ed|ion)|severed\s+(?:pelvis|torso|legs?|arms?|body|limbs?|buttocks?)|only\s+(?:a\s+)?(?:severed\s+)?(?:female\s+)?(?:pelvis|buttocks|lower\s+body|torso)|neck\s+stump|bloody\s+neck\s+stump|无头|身首异处|断头|斩首|仅剩骨盆|仅留骨盆|被切下的(?:女性)?骨盆)\b/i.test([llmAction, llmBase].join(' '))) {
+            const forbiddenHeadHairPatterns = /\b(?:(?:\w+\s+)?hair(?:\s+\w+)?|ponytail|twintails?|braids?|pigtails?|bangs|ahoge|bun|buns|dreadlocks|afro|messy\s+ponytail|eyes?|pupils?|iris|eyebrows?|eyelashes?|face|mouth|lips?|nose|ears?|cheeks?|chin|expression|smile|blush|tears?|lifeless\s+eyes|closed\s+eyes|parted\s+lips|open\s+mouth|tongue|facial|portrait|horns?|forehead)\b/i;
+            displayBase = displayBase.split(/[,，\n]+/).map(t => t.trim()).filter(t => t && !forbiddenHeadHairPatterns.test(t.toLowerCase().replace(/[-_]/g, ' '))).join(', ');
+        }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
         const wrappedBase = (['v40_worldbook_97_opt', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
@@ -9918,11 +9922,23 @@ SCHEMA:
             scene: deduplicateQualityTags(segmentResult.scene || ''), negative: getSegmentNegative(segmentResult),
             useCoords: !!getStore().multiCharUseCoords,
             enabled: !!getStore().multiCharOutput,
-            characters: segmentResult.characters.map(c => ({
-                caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
-                center: typeof c.center === 'object' && c.center ? { ...c.center } : c.center || { x: 0.5, y: 0.5 },
-                uc: c.uc || '',
-            })),
+            characters: segmentResult.characters.map(c => {
+                let uc = c.uc || '';
+                const actionText = [c.caption, c.action, c._rawAction].join(' ');
+                if (/\b(?:headless|decapitat(?:ed|ion)|severed\s+(?:pelvis|torso|legs?|arms?|body|limbs?|buttocks?)|only\s+(?:a\s+)?(?:severed\s+)?(?:female\s+)?(?:pelvis|buttocks|lower\s+body|torso)|neck\s+stump|bloody\s+neck\s+stump|无头|身首异处|断头|斩首|仅剩骨盆|仅留骨盆|被切下的(?:女性)?骨盆)\b/i.test(actionText)) {
+                    const headHairUCParts = ['head', 'face', 'hair', 'ponytail', 'eyes', 'mouth', 'facial features'];
+                    const needed = headHairUCParts.filter(tag => !new RegExp(`\\b${tag}\\b`, 'i').test(uc));
+                    if (needed.length) {
+                        const injection = `1.6::${needed.slice(0, 6).join(', ')}::, head_attached`;
+                        uc = uc ? `${uc}, ${injection}` : injection;
+                    }
+                }
+                return {
+                    caption: c.caption || [c._rawName, c._rawAction].filter(Boolean).join(', '),
+                    center: typeof c.center === 'object' && c.center ? { ...c.center } : c.center || { x: 0.5, y: 0.5 },
+                    uc,
+                };
+            }),
         };
     }
 

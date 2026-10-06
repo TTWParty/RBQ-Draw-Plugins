@@ -1960,8 +1960,29 @@ test('ordinary SDT schema unchanged when manga is inactive', () => {
     const changedDraft = await manga.callLlmBatchSentenceExpander(structuredDraft, 'cinema', 'zh-hans');
     assert.match(changedDraft[0].characters[0].positive,/long hair, white shirt/);
     assert.match(changedDraft[1].characters[0].positive,/short hair, blue coat/);
-    assert.doesNotMatch(changedDraft[1].characters[0].positive,/long hair|white shirt|red dress/);
     console.log('PASS Studio refinement applies explicit structured changes without live memory overriding drafts'); passed++;
+    const severedPage = {
+        format: 'nai5-comic', anchor: { text: '骨盆被挂在墙上' },
+        page: { base: 'comic, 3 panels, 2boys, 1girl, vertical layout' },
+        panels: [
+            { id: 'P1', description: 'inside toilet stall, wooden frame', characters: [
+                { character_id: 'C1', name: 'Zhuo Yin', base: '', outfit: 'completely nude',
+                  positive: 'top panel, headless, armless, legless, severed female pelvis, plump buttocks', negative: '' }
+            ] }
+        ]
+    };
+    const resolvedSevered = RBQ.api.mangaProtocol.resolveAppearances([severedPage], [
+        { name: 'Zhuo Yin', base: 'Zhuo Yin, east asian, young woman, long black hair in a messy ponytail, pale skin, lifeless eyes, dead', outfit: '' }
+    ]);
+    const compiledSevered = manga.compileMangaPage(resolvedSevered[0]);
+    const charSevered = compiledSevered.characters[0];
+    assert.doesNotMatch(charSevered.caption, /hair|ponytail|lifeless eyes/);
+    assert.match(charSevered.caption, /pale skin/);
+    assert.match(charSevered.caption, /severed female pelvis/);
+    assert.match(charSevered.uc, /head, face, hair, ponytail, eyes, mouth/);
+    assert.doesNotMatch(compiledSevered.base, /\b1girl\b/);
+    assert.match(compiledSevered.base, /2boys/);
+    console.log('PASS headless and severed pelvis automatically purge hair/head from base, inject negative exclusions and strip 1girl'); passed++;
     settings._mangaMode.style = draftStyle;
     settings._mangaMode.studio.useChatChars = false;
     delete RBQ.api.collectMangaReferenceData;

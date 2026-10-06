@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.30';
+        const VERSION = '1.9.31';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -657,10 +657,26 @@
         return { visual: [clean, bubble.visual].filter(Boolean).join(', '), text: bubble.text };
     }
 
-    function mangaCharacterCaption(c, monochrome = false) {
+    const isMangaHeadlessOrSevered = text => {
+        return /\b(?:headless|decapitat(?:ed|ion)|severed\s+(?:pelvis|torso|legs?|arms?|body|limbs?|buttocks?)|only\s+(?:a\s+)?(?:severed\s+)?(?:female\s+)?(?:pelvis|buttocks|lower\s+body|torso)|neck\s+stump|bloody\s+neck\s+stump|无头|身首异处|断头|斩首|仅剩骨盆|仅留骨盆|被切下的(?:女性)?骨盆)\b/i.test(text || '');
+    };
+
+    const sanitizeMangaSeveredBaseTags = baseText => {
+        if (!baseText) return '';
+        const forbiddenHeadHairPatterns = /\b(?:(?:\w+\s+)?hair(?:\s+\w+)?|ponytail|twintails?|braids?|pigtails?|bangs|ahoge|bun|buns|dreadlocks|afro|messy\s+ponytail|eyes?|pupils?|iris|eyebrows?|eyelashes?|face|mouth|lips?|nose|ears?|cheeks?|chin|expression|smile|blush|tears?|lifeless\s+eyes|closed\s+eyes|parted\s+lips|open\s+mouth|tongue|facial|portrait|horns?|forehead)\b/i;
+        return filterMangaTags(baseText, new Set(), tag => {
+            const cleanTag = tag.toLowerCase().replace(/[-_]/g, ' ').trim();
+            return forbiddenHeadHairPatterns.test(cleanTag) ? '' : tag;
+        }, true);
+    };
+
+    function mangaCharacterCaption(c, monochrome = false, panel = null) {
         const view = monochrome && c.render ? c.render : c;
-        const appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function'
+        let appearance = typeof RBQ.api.renderCharacterMemoryBase === 'function'
             ? RBQ.api.renderCharacterMemoryBase(c.name, view.base || '', c.name_tag) : view.base;
+        if (isMangaHeadlessOrSevered(c.positive) || isMangaHeadlessOrSevered(c.base) || isMangaHeadlessOrSevered(c.action) || isMangaHeadlessOrSevered(panel?.description)) {
+            appearance = sanitizeMangaSeveredBaseTags(appearance);
+        }
         return joinMangaCaptions([appearance, view.outfit,
             mangaCaptionParts(c.positive, c.bubbles, c.character_id || c.name, c._mangaTextLiteral !== true)], c._mangaTextLiteral !== true);
     }
@@ -726,6 +742,20 @@
             return `${data.panels.length} panel${data.panels.length === 1 ? '' : 's'}`;
         }, true);
         if (!countFound) base.visual = `${data.panels.length} panel${data.panels.length === 1 ? '' : 's'}, ${base.visual}`;
+        const femaleAppearances = [];
+        data.panels.forEach(p => {
+            if (!p || !Array.isArray(p.characters)) return;
+            p.characters.forEach(c => {
+                if (!c) return;
+                const isFem = /\b(?:girl|woman|female|young woman)\b/i.test([c.base, c.name, c.positive].filter(Boolean).join(' '));
+                if (isFem) {
+                    femaleAppearances.push({ isSevered: isMangaHeadlessOrSevered(c.positive) || isMangaHeadlessOrSevered(c.base) || isMangaHeadlessOrSevered(p.description) });
+                }
+            });
+        });
+        if (femaleAppearances.length > 0 && femaleAppearances.every(f => f.isSevered)) {
+            base.visual = filterMangaTags(base.visual, new Set(['1girl', '1 girl', 'solo', 'female focus', '1woman', '1 woman']), tag => tag, true);
+        }
         if (base.text) warnings.push('page.base 含文字：请将对白归本人、旁白/拟音归 non_character');
         if (data.panels.length > 1 && /\bsplash page\b|単一コマ/.test(base.visual)) warnings.push('单格页面标记与多格 panels 冲突，请检查本页布局');
         const pieces = [base, mangaCaptionParts(data.page.non_character, data.page.bubbles, 'page', data.page._mangaTextLiteral !== true)];
@@ -808,13 +838,22 @@
                     || c.center.x < 0 || c.center.x > 1 || c.center.y < 0 || c.center.y > 1)) {
                     throw new Error(`${panel.id}/${c.character_id} 缺少有效的手动坐标`);
                 }
-                const positive = mangaCharacterCaption(c, data.render_mode === 'monochrome');
+                const positive = mangaCharacterCaption(c, data.render_mode === 'monochrome', panel);
+                let uc = c.negative.trim();
+                if (isMangaHeadlessOrSevered(c.positive) || isMangaHeadlessOrSevered(c.base) || isMangaHeadlessOrSevered(panel.description)) {
+                    const headHairUCParts = ['head', 'face', 'hair', 'ponytail', 'eyes', 'mouth', 'facial features'];
+                    const needed = headHairUCParts.filter(tag => !new RegExp(`\\b${tag}\\b`, 'i').test(uc));
+                    if (needed.length) {
+                        const injection = `1.6::${needed.slice(0, 6).join(', ')}::, head_attached`;
+                        uc = uc ? `${uc}, ${injection}` : injection;
+                    }
+                }
                 characters.push({
                     index: characters.length + 1, panelId: panel.id, characterId: c.character_id,
                     name: c.name || c.character_id, _rawName: c.name || c.character_id,
                     // Compile the resolved snapshot without consulting or reapplying current memory.
                     caption: positive, action: positive, _rawAction: positive,
-                    base: '', outfit: '', uc: c.negative.trim(),
+                    base: '', outfit: '', uc,
                     center: manual ? { ...c.center } : { x: 0.5, y: 0.5 }
                 });
             });
@@ -1133,7 +1172,9 @@
 一次完成全文选材、分页、分镜与绘图词，直接输出最终 JSON。严格遵循商业日漫与同人本工业级导演规范：
 1. 【剧作节拍与黄金主格统治律】：通读 currentMessage，按正文时间线提炼关键事件与反应，保留完整问答与因果。每页必须有且仅有 1 个【黄金主格 (Hero Panel)】占据全页 45%～65% 面积，承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载铺垫前摇或局部反应。严禁机械平分均分。视线动线遵循日漫反 Z 字（右上起手 → 左侧/中段大主格 → 右下/左下终末收束）。
 2. 【物理接触熔接（Contact Fusion）】：凡涉及身体接触（搏击、推倒、拥抱、壁咚、本番抽送），严禁各写各的站桩！page.base 统领双人接触关系（grappling, physical contact, body contact, height difference）；支配方写主动矢量（dominant stance, towering over, pinning）；受制方写受动姿态（submissive posture, pinned, struggling）；局部坐标重叠紧贴。
-3. 【断头/死伤/残缺防伪铁律（严防无头尸体生头）】：当人物斩首、成为无头尸体（headless/decapitated）、残肢或死亡时，模型若复用档案 base 将强制画出面部五官！必须：① 首选将尸体/残躯转入画格 description 或 non_character 作为场景环境静物呈现（decapitated corpse on ground, blood pool, headless body）；② 若保留人物槽，其 state.base 必须显式覆写为无头躯体（headless body），且该人物 negative 强制注入 head, face, eyes, mouth, hair, facial features, portrait，彻底切断头部特征回写。
+3. 【断头/死伤/挂墙骨盆/残躯铁律（严防异化长头/钉墙浮发）】：凡人物斩首、身首异处、挂墙肉便器/截断骨盆(severed pelvis/buttocks protruding from wall)、断肢或死尸：
+① 【首选环境静物法（画质最高）】：严禁为其单独开辟 characters 槽位！AI扩散模型会将独立人物槽判定为完整活人导致肉块或木板墙上无端长出头发马尾。必须将其作为画格 description 与 non_character 的环境静物呈现（如 inside public toilet, severed female pelvis with plump buttocks protruding from wooden frame on plywood wall）；
+② 【人物槽降级规则】：若必须开辟人物槽，严禁在 page.base 中计入 1girl/1boy！其 state.base 必须强制覆写为纯躯干/骨盆（如 state: { base: "severed female pelvis, fair smooth skin, headless, armless, legless, no hair" }），彻底剥离发型/发色/面孔，且该人物 negative 必须强制写入 1.6::head, face, hair, ponytail, eyes, mouth::, head_attached，坚决杜绝扩散模型在肉块或墙壁上无端滋生头发！
 4. 【镜头景别阶梯与同人本闭环】：一页内严禁连续出现同级景别（如中景接中景），必须在全景 FS、中景 MS、特写 CU、极近特写 ECU 与插入细节 Cut-in 之间大开大合跳跃。同人感官互动严格落实三大视点闭环：见せコマ核心体位大主格（50%） -> 结合部极近微距 Cut-in（25%，macro close-up on physical contact points, intense skin contact） -> 阿黑颜面部破防特写（25%，ahegao tendency, rolling eyes, parted lips with drool, blush stickers, heart-shaped pupils）。
 5. 【视觉特效与拟声词注入】：动作高潮与爆点主动注入日漫特效层（集中线 focus lines, 速度线 speed lines, 手绘排线 cross-hatching, 纯墨黑块 solid black shadows, 网点 screentone）。纯拟声词使用 SFX: 擬音, 吹き出しなし 并注入纯正日文（战斗 ドカッ/ズバッ/ゴゴゴ；心理 ドクン/ゾクッ；感官 ヌプッ/ズブッ/クチュクチュ/パンパン/ビクンビクン）。
 6. 【符号化微表情与气泡归属】：表情直译日漫符号（blush stickers 羞耻斜线红晕, face darkened by shadows 绝望黑化, heart-shaped pupils 心瞳, popping veins 青筋, blank white eyes 白目）。气泡归属严格对齐：页级仅 caption/sfx；人物台词与心声必须挂在该人物 bubbles，绝不漏在格级；画外音归格级且 position=offscreen。
@@ -3633,7 +3674,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         const characters = (panel.characters || []).map(person => {
             const { base, outfit, state, render, _mangaAppearance, _mangaInitialAppearance, _mangaRenderFallbackFields, ...c } = person;
             const character = { ...c, _mangaTextLiteral: true, ...(Array.isArray(c.bubbles) ? { bubbles: c.bubbles.map(b => ({ ...b })) } : {}),
-                positive: mangaCharacterCaption(person, !!render) };
+                positive: mangaCharacterCaption(person, !!render, panel) };
             if (typeof base === 'string' && typeof outfit === 'string') {
                 // The editor displays one complete caption, but a later parse
                 // still needs its original appearance and optional gray view.

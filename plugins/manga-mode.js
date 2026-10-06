@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.38';
+        const VERSION = '1.9.39';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -32,6 +32,7 @@
                 gutter: 'bleed', // bleed | framed | splash | black_line
                 autoSpread: true, // 智能跨页 (見開きページ)
                 antiHijack: true, // 同人角色防夺舍
+                planningPreset: 'v_manga_layered_v1', // 默认正文分层规划
                 studio: null,
             };
         }
@@ -1276,7 +1277,7 @@ page.base 落实既定整页形态、实际人数/格数、布局与共用光照
 5. 【镜头可见性与解剖过滤】：
 单格不可见部位不写。局部特写（lower_body, close-up 等）正面标明部位，negative 对应排除画外部位（如 head, face）；半身特写 negative 排除 lower body, legs；背身机位 (from_behind) negative 排除 face, front view。复杂空间演出可用简短英文短词组修饰，不写整段英语记叙文长散句。`;
 
-    function resolveMangaPromptPreset(ec = 'v_manga') {
+    function resolveMangaPromptPreset(ec = 'v_manga_layered_v1') {
         if (ec === 'v_manga_layered_v1') return {
             id: ec, layered: true, assemblyVersion: 1, contractModule: 'manga_contract_v1',
             plannerModule: 'manga_story_v1', panelModule: 'v23_manga_v1'
@@ -2946,7 +2947,11 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             if (sdtStore.enhancedContext && !sdtStore._mangaActive) {
                 sdtStore._mangaSavedEnhancedContext = sdtStore.enhancedContext;
             }
-            if (!isMangaPlanningPreset(sdtStore.enhancedContext)) sdtStore.enhancedContext = 'v_manga';
+            if (isMangaPlanningPreset(sdtStore.enhancedContext)) {
+                store.planningPreset = sdtStore.enhancedContext;
+            } else {
+                sdtStore.enhancedContext = isMangaPlanningPreset(store.planningPreset) ? store.planningPreset : 'v_manga_layered_v1';
+            }
             // 自动开启多角色独立生图以确保 char_captions 注入
             if (sdtStore.multiCharOutput === false) {
                 sdtStore._mangaSavedMultiChar = false;
@@ -3076,8 +3081,8 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             const ecLabel = ecField.querySelector(':scope > span');
             if (ecLabel) ecLabel.textContent = store.enabled ? '正文漫画规划' : '前情增强分析';
             for (const [value, label] of [
-                ['v_manga_layered_v1', '漫画 5.0 · 正文分层规划（白皮书全要素 · V23格内指导）'],
-                ['v_manga_v5', '漫画 5.0 · 商业大师导演规划（推荐 · v5.0白皮书标准）'],
+                ['v_manga_layered_v1', '漫画 5.0 · 正文分层规划（推荐 · 白皮书全要素 · V23格内指导）'],
+                ['v_manga_v5', '漫画 5.0 · 商业大师导演规划（v5.0白皮书标准）'],
                 ['v_manga_narrative', '漫画 · 全文分页规划（试用）'],
                 ['v_manga', '漫画 1.8.4 · 前情规划（619字）'],
                 ['v_manga_185', '漫画 1.8.5 · 前情规划（717字 · 参考画布）'],
@@ -3104,7 +3109,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             }
             const sdtStore = getSdtStore();
             const expectedEc = store.enabled
-                ? (isMangaPlanningPreset(sdtStore.enhancedContext) ? sdtStore.enhancedContext : 'v_manga')
+                ? (isMangaPlanningPreset(sdtStore.enhancedContext) ? sdtStore.enhancedContext : (store.planningPreset || 'v_manga_layered_v1'))
                 : sdtStore.enhancedContext || 'v13';
             if (ecSelect.value !== expectedEc) ecSelect.value = expectedEc;
             if (typeof ecField.appendChild === 'function') {

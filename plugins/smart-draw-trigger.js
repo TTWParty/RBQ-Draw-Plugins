@@ -14528,7 +14528,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <label class="st-scene-trigger-field"><span>上下文条数</span><input id="rbq-sdt-context-count" type="number" min="1" max="50" step="1"></label>
-                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 5.0: 商业大师导演规划（推荐 · v5.0白皮书标准，黄金主格/接触熔接/断头防伪/本番微距）。全文漫画规划：先选材和组织内容，再按实际画布决定页数、每页格数与切分。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。正文分层规划：基础规范、正文页格规划与V23漫画适配格内绘图分别组装，按任务限制新建或润色。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga_layered_v1">漫画 · 正文分层规划（试用 · V23格内绘图）</option><option value="v_manga_v5">漫画 5.0 · 商业大师导演规划（推荐 · v5.0白皮书标准）</option><option value="v_manga_narrative">漫画 · 全文分页规划（试用）</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
+                        <label class="st-scene-trigger-field" title="前情增强分析：深度推演正文中【哪里需要生图】、【需要生几张】，地毯式识别视觉节点并精准布点。V13: 9.7 全息节拍推演（深度分析生图位置与数量 · 推荐）。V14: 极简四公理自适应推演 (低Token快速推演)。V11: 9.7 全息七步推演 (经典备选)。漫画 5.0: 商业大师导演规划（推荐 · v5.0白皮书标准，黄金主格/接触熔接/断头防伪/本番微距）。全文漫画规划：先选材和组织内容，再按实际画布决定页数、每页格数与切分。漫画 1.8.4: 619字原规划；漫画 1.8.5: 717字规划并参考画布；漫画 1.6.1: 491字简版（沿用至1.7.2）；漫画 1.5.0: 109字极简版。正文分层规划：基础规范、正文页格规划与V23漫画适配格内绘图分别组装，按任务限制新建或润色。切换后重新解析生效。"><span>前情增强分析</span><select id="rbq-sdt-enhanced-context"><option value="off">关闭 (纯正文直出 · 省Token)</option><option value="v13">V13 · 9.7全息节拍推演 (深度分析生图位置与数量 · 推荐)</option><option value="v14">V14 · 极简四公理自适应推演 (低Token快速推演)</option><option value="v11">V11 · 9.7全息七步推演 (经典备选)</option><option value="v_manga_layered_v1">漫画 5.0 · 正文分层规划（推荐 · 白皮书全要素 · V23格内指导）</option><option value="v_manga_v5">漫画 5.0 · 商业大师导演规划（v5.0白皮书标准）</option><option value="v_manga_narrative">漫画 · 全文分页规划（试用）</option><option value="v_manga">漫画 1.8.4 · 前情规划（619字）</option><option value="v_manga_185">漫画 1.8.5 · 前情规划（717字 · 参考画布）</option><option value="v_manga_161">漫画 1.6.1 · 简版（491字）</option><option value="v_manga_150">漫画 1.5.0 · 极简（109字）</option></select></label>
                     </div>
                 </div>
 
@@ -14948,6 +14948,8 @@ SCHEMA:
             const s = getStore();
             if (isMangaRequest(s) && isMangaContextPreset(event.target.value)) {
                 s.enhancedContext = event.target.value;
+                const mangaStore = RBQ.api.getSettings()?._mangaMode;
+                if (mangaStore) mangaStore.planningPreset = event.target.value;
                 save();
             }
         });
@@ -14960,6 +14962,10 @@ SCHEMA:
             s.targetRole = val('rbq-sdt-target-role');
             s.contextCount = Math.max(1, Math.min(50, Number(val('rbq-sdt-context-count')) || 5));
             s.enhancedContext = val('rbq-sdt-enhanced-context') || 'off';
+            if (isMangaRequest(s) && isMangaContextPreset(s.enhancedContext)) {
+                const mangaStore = RBQ.api.getSettings()?._mangaMode;
+                if (mangaStore) mangaStore.planningPreset = s.enhancedContext;
+            }
             s.debugToast = checked('rbq-sdt-debug');
             s.showTaggerDebug = checked('rbq-sdt-tagger-debug');
             s.multiCharOutput = checked('rbq-sdt-multichar');

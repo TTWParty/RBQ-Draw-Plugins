@@ -125,12 +125,12 @@ for (const priorContext of ['v14', 'off', undefined]) {
         settings._mangaMode.enabled = true;
         manga.syncMangaToSdt(settings._mangaMode, false);
         manga.updateUiState();
-        assert.equal(ui.select.value, 'v_manga');
+        assert.equal(ui.select.value, 'v_manga_layered_v1');
         assertAvailable(ui, true);
-        assert.equal(RBQ.api.mangaProtocol.planningPrompt().length, 619);
+        assert.equal(RBQ.api.mangaProtocol.planningPrompt(), RBQ.api.mangaProtocol.planningPrompt('v_manga_layered_v1'));
 
         let expectedSaves = 0;
-        for (const ec of ['v_manga_v5', 'v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) {
+        for (const ec of ['v_manga_v5', 'v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga', 'v_manga_layered_v1']) {
             ui.changeTo(ec);
             expectedSaves++;
             assert.equal(settings._smartDrawTrigger.enhancedContext, ec);
@@ -161,7 +161,7 @@ for (const priorContext of ['v14', 'off', undefined]) {
     });
 }
 
-test('context UI restores pre-existing option flags and keeps all five comic choices hidden while disabled', () => {
+test('context UI restores pre-existing option flags and keeps all comic choices hidden while disabled', () => {
     settings._smartDrawTrigger = { enhancedContext: 'v14' };
     settings._mangaMode.enabled = false;
     const ui = selector('v14');
@@ -171,10 +171,10 @@ test('context UI restores pre-existing option flags and keeps all five comic cho
     settings._mangaMode.enabled = true;
     manga.syncMangaToSdt(settings._mangaMode, false);
     manga.updateUiState();
-    for (const ec of ['v_manga_v5', 'v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga']) ui.changeTo(ec);
-    assert.equal(ui.saveCount(), 6, 'all six choices persist immediately');
+    for (const ec of ['v_manga_v5', 'v_manga_narrative', 'v_manga_185', 'v_manga_161', 'v_manga_150', 'v_manga', 'v_manga_layered_v1']) ui.changeTo(ec);
+    assert.equal(ui.saveCount(), 7, 'all seven choices persist immediately');
     manga.updateUiState();
-    assert.equal(ui.select.value, 'v_manga');
+    assert.equal(ui.select.value, 'v_manga_layered_v1');
     settings._mangaMode.enabled = false;
     manga.syncMangaToSdt(settings._mangaMode, false);
     manga.updateUiState();

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.31';
+        const VERSION = '1.9.32';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -1171,7 +1171,12 @@
         v_manga_v5: `【漫画 5.0 商业大师导演规划（Universal Director v5.0 白皮书标准）】
 一次完成全文选材、分页、分镜与绘图词，直接输出最终 JSON。严格遵循商业日漫与同人本工业级导演规范：
 1. 【剧作节拍与黄金主格统治律】：通读 currentMessage，按正文时间线提炼关键事件与反应，保留完整问答与因果。每页必须有且仅有 1 个【黄金主格 (Hero Panel)】占据全页 45%～65% 面积，承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载铺垫前摇或局部反应。严禁机械平分均分。视线动线遵循日漫反 Z 字（右上起手 → 左侧/中段大主格 → 右下/左下终末收束）。
-2. 【物理接触熔接（Contact Fusion）】：凡涉及身体接触（搏击、推倒、拥抱、壁咚、本番抽送），严禁各写各的站桩！page.base 统领双人接触关系（grappling, physical contact, body contact, height difference）；支配方写主动矢量（dominant stance, towering over, pinning）；受制方写受动姿态（submissive posture, pinned, struggling）；局部坐标重叠紧贴。
+2. 【动作肢体碎化与物理接触熔接（Limb Atomization & Contact Fusion · 深度融合 SDT V23 实战技巧）】：
+凡涉及动作推进或身体接触（搏击、推倒、拥抱、壁咚、本番抽送、口交），严禁写笼统英语散句或各写各的站桩！必须落实 SDT V23 四大生图秘籍：
+① 【左右手独立碎化（两手分工）】：严禁模糊写 both hands。必须明确双手的独立任务与握持部位（如 one hand grabbing breast, other hand pinning wrist；或 left hand lifting leg, right hand slapping buttocks）；真正握住写 holding/gripping，悬空靠近写 reaching toward。
+② 【核心交互动词 1.2~1.4 闭合加权】：扩散模型对普通动词响应度低，核心动作动词必须加权！如 1.3::thrusting, vaginal penetration, slamming pelvis::；1.3::deepthroat, fellatio, oral::；1.3::groping, squeezing breast::；1.3::pinning down, wrestling::。
+③ 【肉体形变与即时生理反馈】：用力抓握必带 flesh_indent, skin_indent, red_finger_marks；激烈抽送必带 trembling, spasms, motion_lines, splashing_fluids, dripping_cum, sweat, heavy_breathing；靠反作用力与痕迹反向锁死动作。
+④ 【视线与表情解剖联动】：互动时视线严禁全员机械看向镜头（looking at viewer）！必须跟随动作互动：对峙 looking at another, eye_contact；动作注视 looking down；羞耻 averted gaze；快感失神 rolling eyes, head back, ahegao；痛苦咬牙 gritting teeth。page.base 统领双人接触关系（grappling, physical contact, body contact, height difference），局部坐标重叠紧贴。
 3. 【断头/死伤/挂墙骨盆/残躯铁律（严防异化长头/钉墙浮发）】：凡人物斩首、身首异处、挂墙肉便器/截断骨盆(severed pelvis/buttocks protruding from wall)、断肢或死尸：
 ① 【首选环境静物法（画质最高）】：严禁为其单独开辟 characters 槽位！AI扩散模型会将独立人物槽判定为完整活人导致肉块或木板墙上无端长出头发马尾。必须将其作为画格 description 与 non_character 的环境静物呈现（如 inside public toilet, severed female pelvis with plump buttocks protruding from wooden frame on plywood wall）；
 ② 【人物槽降级规则】：若必须开辟人物槽，严禁在 page.base 中计入 1girl/1boy！其 state.base 必须强制覆写为纯躯干/骨盆（如 state: { base: "severed female pelvis, fair smooth skin, headless, armless, legless, no hair" }），彻底剥离发型/发色/面孔，且该人物 negative 必须强制写入 1.6::head, face, hair, ponytail, eyes, mouth::, head_attached，坚决杜绝扩散模型在肉块或墙壁上无端滋生头发！
@@ -1321,7 +1326,7 @@ base、outfit、state 与 character_memory 保留原设颜色，与普通模式�
 page.base、description 和 positive 的视觉部分以可识别的 Danbooru 英文标签为骨架，用英文逗号分隔。page.base 用 1girl, 1boy 等实际人数词，不用含糊的 2 characters；格位用 top-right panel 等位置，不用 P1: 代替。name 填稳定关联姓名，英文绘图身份用 name 或 name_tag，保留已有英文姓名标签，剧情解释放 reason/intent，绘图字段不写 A girl is... 或整段故事转述。
 每个人物按 base/outfit/positive 分栏；positive 依次写本格位置 → 身体朝向/基础姿势 → 肢体动作及接触对象 → 表情与视线。动作至少说明“谁、用哪个可见部位、对什么做什么”：优先 holding, reaching out, sitting, crossed legs 等标签；标签表达不清时紧跟一个短关系词组，如 right hand holding umbrella handle，不重复叙述整句。
 同格多人动作分别归本人。递接、拉扶等互动明确施方/受方、对象和接触状态，source#/target# 仅用于双方同一明确交互词，不给每个词机械加前缀。只写当前定格，不同时写准备、进行和完成。每只可见手的任务相容；离物体有距离时写 reaching toward，真正握住才写 holding/gripping。标签不足时补空间关系，不凭空造标签。
-机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。outfit 保留完整衣物和配饰；特写用明确景别控制画面，背位动作不写看不见的正脸表演。默认不加权；确需突出/弱化已写明的焦点时用闭合的 1.2::短词组:: / 0.6::短词组::，强度不设配额。不加权整段、编号或 Text；权重不能补救漏写、错人或冲突，不用全局负权排除需要的漫画元素。
+机位与景别放 description，人物视线跟随目标；不要把仰头误写 looking down，或把相互注视写 looking at viewer。outfit 保留完整衣物和配饰；特写用明确景别控制画面，背位动作不写看不见的正脸表演。落实 SDT V23 动作加权律：核心动作与交互关键动词使用闭合的 1.2~1.4::短词组:: 加权（如 1.3::thrusting, slamming pelvis::、1.3::groping breast::、1.3::pinning down::），以激活模型强动势先验；次要远景或遮挡用 0.6::tag::。严禁写整段自然语言散句，必须拆解为 Danbooru 标签体系：左右手分别独立分配动作（left hand... / right hand...），搭配肉体受力形变（flesh_indent, skin_indent）与即时生理反馈（sweat, trembling, motion_lines, splashing_fluids），视线严格贴合动作目标（looking at another, looking down 等，严禁机械全写 looking at viewer）。不加权整段、编号或 Text；权重不能补救漏写、错人或冲突，不用全局负权排除需要的漫画元素。
 普通动作示例（只借格式）：description="top panel, medium shot, from side, indoors, desk"；递信者 base="girl, short hair"，outfit="white shirt"，positive="top panel, standing, facing another, outstretched arm, right hand holding envelope, looking at another's hand"；接信者 base="boy, short hair"，outfit="dark jacket"，positive="top panel, sitting, reaching out, left hand reaching toward envelope, looking at envelope"。物品交接完成另格呈现，不在同格混写已收好。
 每次出场的 negative 对照本页所有其他不同人物（包括其他格），同格优先；不把自己的其他出场当成别人。只排除本镜头适用、易串位且互斥的具体发型/配饰/衣物等特征；可补有明确依据的互斥误画特征，去重。自己的正确外貌、共享特征、环境、漫画、文字和画质不排除。黑白时不用彩色色相区别人。没有适用项写空字符串；negative 不能代替 positive 的正确外貌。
 ${store.antiHijack ? '同人防夺舍：仅在有可靠依据时将原作画师 artist: 标签或作品标签放入该人物 negative；不得从姓名括号猜造标签，不排除人物自身标签。' : ''}

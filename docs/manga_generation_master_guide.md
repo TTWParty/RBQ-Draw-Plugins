@@ -123,31 +123,105 @@
 
 ---
 
-## 六、多角色物理接触熔接法（Universal Contact Fusion）
+## 六、多角色物理接触与肢体动作工程学（The Action & Limb Engineering Masterclass · 融合 SDT V23/V40 核心神技）
 
-### 1. 站桩失联的底层原因
-当启用 Character Prompt 分槽时，模型如果只在各个角色槽里写单独动作（A: `standing`, B: `punching`），模型会将注意力头分配到画面两端，生成“两人各摆各的 Pose，中间隔着银河”的失败构图。
+在生成漫画或插画时，最常遇到的挫败就是**“动作僵硬、四肢变形、两人各摆各的 Pose 假装在互动”**。很多时候并非大模型不懂剧情，而是分镜给出的提示词违背了 AI 扩散模型的物理受力与视觉注意力机制。本章深度融合 **SDT V23（国籍面相版）与 V40（全息分层优化版）** 中经过数万次实战沉淀的动作生成绝技，建立一套严密的动作工程体系。
 
-### 2. 物理接触三层熔接协议
-任何涉及身体接触（抓握、推倒、拥抱、搏击打击、压制、体位交缠）的画格，必须严格执行：
+### 1. 动作崩坏与站桩失联的底层原因
+1. **注意力分散（Attention Split）**：在 Character Prompt 模式下，如果只在各自的角色槽写单独动词（A: `standing`, B: `punching`），扩散模型会将交叉注意力头分别分配到画布左右两侧，导致“两人中间隔着银河”的各摆各 Pose。
+2. **动词权重匮乏（Verb Starvation）**：扩散模型是基于名词/视觉实体训练的（发色、衣服、五官等名词先验极强）。如果动词使用 1.0 默认权重，动作信号会被强大的角色外观词直接吞噬淹没，导致人物退化为呆板的立绘站姿。
+3. **肢体模糊与手部粘连（Hand Confusion）**：只写 `both hands gripping`，AI 无法判断两只手的具体受力支点，极易生成黏在一起的肉团、或者凭空画出第 3 只手。
+4. **缺乏受力反作用与生理反馈（Missing Reaction & Strain）**：只有“动作”没有“痕迹”，AI 就会画成“手悬空贴在衣服表面”。真实的激烈互动必须靠肉体形变、皮肤凹陷、体液喷溅反向约束四肢。
 
+---
+
+### 2. 肢体动作碎化与左右手独立分工铁律（The Two-Hand Independent Rule · SDT V23 核心法宝）
+严禁写泛泛的 `both hands` 或整句英语散文！必须将角色的身体动力学拆解为四个层级：
+
+```text
+[层级 1: 基础骨架与朝向] → 朝向 (facing_viewer / facing_another / from_side) + 基础姿势 (standing / sitting / kneeling / lying / straddling / leaning_forward)
+[层级 2: 躯干与脊椎张力] → arching back (弓背挺腰) / twisted torso (扭转躯干) / leaning over (倾覆压下)
+[层级 3: 左右手独立任务] → 明确两只手各自的部位与抓握目标：
+  - 左手 (Left Hand / One Hand): 抓握核心对象 (e.g., left hand grasping hair / one hand gripping wrist)
+  - 右手 (Right Hand / Other Hand): 支撑重心或施加第二动作 (e.g., right hand pressing against wall / other hand squeezing breast)
+[层级 4: 细微接触力道] → 真正握住写 holding / gripping；死死抠入写 fingers digging into [flesh/sheets]；悬空靠近写 reaching toward。
 ```
-[Layer 1: 全局 Base Caption 统领] 
-── 强制注入双人空间相互作用词：
-   grappling, physical contact, body contact, height difference, size difference,
-   [pinned against wall / tackling / holding wrists / tight embrace]
 
-[Layer 2: 支配方/主动方 Slot]
-── 注入主动矢量与姿态：
-   dominant stance, towering over, pressing forward, gripping [shoulder/collar], aggressive force
+---
 
-[Layer 3: 承受方/受动方 Slot]
-── 注入受制状态与反作用力：
-   submissive posture, pinned, struggling, arms restrained, pushed back, clenched posture
+### 3. 核心交互动词 1.2~1.4 闭合加权律（The Action Weighting Law）
+在 NovelAI V5 / V4.5 中，**所有决定画面核心动势的关键动词必须赋予 `1.2~1.4::动作::` 闭合加权**！这是激活潜空间强动作先验的关键钥匙：
 
-[Layer 4: 坐标体系 (use_coords)]
-── 严禁拉开 X 轴距离！双人中心坐标必须设置为紧贴或重叠 (例如 x=0.48 与 x=0.52)。
-```
+| 动作类型 | 必须加权的提示词结构 | 错误范例（严禁平写） |
+| :--- | :--- | :--- |
+| **本番抽送 / 活塞运动** | `1.3::thrusting, vaginal penetration, slamming pelvis::` | `penetration`（会变成静止插着不动） |
+| **推倒 / 擒拿压制** | `1.3::pinning down, tackling, wrestling, pinning wrists::` | `holding her`（会变成普通牵手） |
+| **揉捏 / 抓握肉体** | `1.3::groping, squeezing breast, grabbing buttocks::` | `touching breast`（会变成浮空贴着） |
+| **深喉 / 强行口交** | `1.3::deepthroat, fellatio, forced oral, head forced down::` | `oral sex`（会变成普通微张嘴） |
+| **后背箍紧 / 勒抱** | `1.3::bear hug, full nelson, choking, arm lock::` | `hugging from behind`（会变成温和拥抱） |
+
+---
+
+### 4. 肉体受力形变与即时生理/物理反馈系统（Flesh Indentation & Dynamic Feedback）
+AI 画画是“以果导因”的。想要手抓得紧、撞得狠，必须在提示词中加入**物理痕迹与生理反应**：
+
+1. **肉体受力形变（Flesh Deformation）**：
+   - 指尖陷进软肉：`flesh_indent, skin_indent, fingers_digging_into_flesh, deformed_flesh`
+   - 抓痕与巴掌红印：`red_marks, slap_marks, handprint_on_butt, bruised_skin`
+2. **冲击动线与肌肉紧绷（Motion & Tension）**：
+   - 冲撞速度线：`motion_lines, impact_lines, shockwave_lines`
+   - 肌肉抽搐与战栗：`trembling, spasms, tensed muscles, arched back, curled toes (脚趾蜷缩)`
+3. **体液、汗水与热度反馈（Fluids & Heat）**：
+   - 汗水与剧烈喘息：`sweat, steaming_body, heavy_breathing, flushed_skin`
+   - 体液喷溅与拉丝：`splashing_fluids, dripping_saliva, cum_overflow, leaking_fluids, stringy_saliva`
+
+---
+
+### 5. 视线、表情与头部角度的解剖联动（Gaze & Facial Expression Coupling）
+严禁在互动场景中所有人盲目写 `looking_at_viewer`（机械看镜头）！视线必须严格与互动目标解剖绑定：
+- **两人对峙 / 激烈互动**：`facing_another, eye_contact, glaring, looking at each other`
+- **羞耻 / 逃避 / 屈辱**：`looking_away, averted_gaze, biting_lip, blushing fiercely, gritting_teeth`
+- **动作注视（看着施力点）**：`looking_down, looking at penis, looking at hands, wide eyes`
+- **快感 / 痛苦失神（破防失神）**：`rolling_eyes, head_back, eyes_fluttering, half-closed_eyes, ahegao, drool, slack-jawed`
+
+---
+
+### 6. 全题材高频交互与体位动作权威 Danbooru 词典
+
+#### A. 战斗动作与压制打击类 (Combat, Strike & Grapple)
+- `1.3::punching, fist to face::, impact_lines, head tilted back, spitting saliva, shockwave`
+- `1.3::pinning down, arm lock::, one_knee_on_chest, pinning_wrists_to_ground, struggling`
+- `1.3::wall slam, pinned against wall::, one_hand_choking, feet off ground, cracked_wall`
+- `1.3::sword clash, crossed blades::, sparks_flying, gritting_teeth, intense_eye_contact`
+
+#### B. 强推、壁咚与侵入逼近类 (Cornering, Wall Pin & Ambush)
+- `1.3::kabedon, cornering, trapping::, one_hand_on_wall, towering_over, cornered_girl, trembling`
+- `1.3::grabbing collar, lifting up::, fist_clenched, terrified_expression, pulled_close`
+- `1.3::pinning wrists overhead::, hands_held_above_head, pinned_to_bed, arching_back`
+
+#### C. 本番核心抽送体位全集 (Full Intercourse Positions)
+- **站立后入 (Standing Sex / Grabbing from Behind)**：
+  `1.3::standing sex, from behind, vaginal penetration::, one_hand_grabbing_hip, other_hand_pulling_hair, leaning_forward, hands_against_wall, arched_back, shaking_legs`
+- **趴卧后入 (Prone Bone / Doggy Style)**：
+  `1.3::prone bone, doggystyle, deep penetration::, hips_elevated, face_pressed_into_pillow, hands_gripping_sheets, slamming_pelvis, motion_lines, trembling_thighs`
+- **经典传教士 (Missionary / Pinning Legs)**：
+  `1.3::missionary, legs_up, knees_to_chest::, hands_holding_ankles, deep_thrusting, head_thrown_back, rolling_eyes, sweat, splashing_fluids`
+- **跨坐骑乘 (Cowgirl / Straddling)**：
+  `1.3::cowgirl_position, straddling, bouncing::, hands_on_partner's_chest, arched_back, heavy_breathing, breasts_bouncing, downward_gaze, biting_lip`
+- **侧位交缠 (Spooning / Side Sex)**：
+  `1.3::spooning, side sex, interlocking_legs::, one_leg_lifted, arm_wrapped_around_waist, neck_kissing, flushed_cheeks`
+
+#### D. 口交、深喉与侍奉类 (Oral, Deepthroat, Paizuri)
+- **跪姿深喉 (Forced Deepthroat)**：
+  `1.3::deepthroat, fellatio, forced_oral::, kneeling, looking_up, head_forced_down, hands_grabbing_hair, penis_in_mouth, tears_in_eyes, saliva_dripping, choking_expression, gagging`
+- **乳交夹击 (Paizuri / Breast Cleavage)**：
+  `1.3::paizuri, breast_smother::, squeezing_breasts_together, penis_between_breasts, looking_up_at_partner, blush, heavy_cleavage, cum_on_breasts`
+
+#### E. 拘束、肉便器与墙体结合类 (Restraints, Mounted Pelvis, Meat Toilet, Glory Hole)
+- **挂墙截断骨盆 / 肉便器 (Glory Hole / Wall-Mounted Pelvis)**：
+  `severed female pelvis, plump buttocks protruding from wooden wall frame, restrained, spread_legs, vaginal_opening_exposed, 1.3::thrusting, pelvis_slamming_against_wood::, red_slap_marks, flesh_indent, overflowing_semen, white_foam, dripping_fluids`
+- **四肢拘束 (Bondage & Spread Eagle)**：
+  `1.3::bound_wrists, suspended_arms::, leather_straps, spreader_bar, spread_legs, helpless_expression, trembling_body`
 
 ---
 

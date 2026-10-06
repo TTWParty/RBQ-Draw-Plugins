@@ -154,6 +154,80 @@ function mockRefinement(result) {
         assert.equal(JSON.stringify(segment), before);
     });
     assert.equal(typeof protocol.validateResponseBubbles, 'function');
+    assert.equal(typeof protocol.normalizeResponseBubbles, 'function');
+    for (const provider of ['custom', 'openai']) {
+        await test(`${provider} actual SDT refinement routes an explicitly identified panel speaker before validation`, async () => {
+            reset(provider); const original = sdt.normalizeMangaSegment(page()), before = JSON.stringify(original);
+            const response = page(); response.panels[0].characters[0].bubbles = [];
+            response.panels[0].bubbles = [{ ...bubble('请把资料放到桌上。'), speaker_id: 'C1' }];
+            const responseBefore = JSON.stringify(response); mockRefinement(response);
+            const result = await sdt.runSegmentAiRefinement(original, '把这句台词归给艾达');
+            assert.equal(manga.splitMangaText(result.scene, false).text, '');
+            assert.equal(manga.splitMangaText(result.characters[0].caption, false).text, '请把资料放到桌上。');
+            assert.deepEqual(clone(result.mangaPage.panels[0].bubbles), []);
+            assert.doesNotMatch(result.characters[0].caption, /speaker_id/);
+            assert.equal(JSON.stringify(original), before); assert.equal(JSON.stringify(response), responseBefore);
+            assert.equal(calls, 1); assert.equal(saves, 0); assert.equal(images, 0);
+        });
+    }
+    await test('refinement speaker routing rejects conflicting legacy Text even beside an explicit empty array', async () => {
+        reset(); const original = sdt.normalizeMangaSegment(page()), response = page();
+        response.panels[0].characters[0].bubbles = [];
+        response.panels[0].characters[0].positive += ', BubbleType: 通常吹き出し, 右上, Layout: 縦書き\nText: 旧格式留存文字。';
+        response.panels[0].bubbles = [{ ...bubble('这是新归属的文字。'), speaker_id: 'C1' }]; mockRefinement(response);
+        const before = JSON.stringify(original);
+        await assert.rejects(sdt.runSegmentAiRefinement(original, '修改台词'), error => {
+            assert.equal(error.code, 'MANGA_BUBBLE_SPEAKER'); assert.match(error.rawOutput, /旧格式留存文字/); return true;
+        });
+        assert.equal(JSON.stringify(original), before);
+        assert.equal(calls, 1); assert.equal(saves, 0); assert.equal(images, 0);
+    });
+    await test('refinement ownership failure after a successful speaker route exposes original response ownership', async () => {
+        reset(); const original = sdt.normalizeMangaSegment(page()), before = JSON.stringify(original), response = page();
+        response.panels[0].characters[0].bubbles = [];
+        response.panels[0].bubbles = [{ ...bubble('可以明确归属的台词。'), speaker_id: 'C1' }];
+        response.page.bubbles = [bubble('仍然放错位置的台词。')]; mockRefinement(response);
+        await assert.rejects(sdt.runSegmentAiRefinement(original, '核对台词归属'), error => {
+            assert.equal(error.code, 'MANGA_BUBBLE_OWNERSHIP');
+            const raw = JSON.parse(error.rawOutput)[0];
+            assert.deepEqual(clone(raw.panels[0].bubbles), response.panels[0].bubbles);
+            assert.deepEqual(clone(raw.panels[0].characters[0].bubbles), []);
+            assert.deepEqual(clone(raw.page.bubbles), response.page.bubbles);
+            return true;
+        });
+        assert.equal(JSON.stringify(original), before);
+        assert.equal(calls, 1); assert.equal(saves, 0); assert.equal(images, 0);
+    });
+    await test('refinement preserves explicit offscreen voices instead of routing them to a visible actor', async () => {
+        reset(); const original = sdt.normalizeMangaSegment(page()), response = page();
+        response.panels[0].bubbles = [{ ...bubble('会议开始了。', 'offscreen'), speaker_id: 'C1' }]; mockRefinement(response);
+        const result = await sdt.runSegmentAiRefinement(original, '保留画外提醒');
+        assert.equal(manga.splitMangaText(result.scene, false).text, '会议开始了。');
+        assert.equal(manga.splitMangaText(result.characters[0].caption, false).text, '资料已收到。');
+        assert.equal(calls, 1); assert.equal(saves, 0); assert.equal(images, 0);
+    });
+    await test('refinement never guesses a panel speaker from actor count or an unmatched identity', async () => {
+        for (const speakerId of [undefined, 'C999']) {
+            reset(); const original = sdt.normalizeMangaSegment(page()), before = JSON.stringify(original), response = page();
+            response.panels[0].characters[0].bubbles = [];
+            response.panels[0].bubbles = [{ ...bubble('没有可靠说话人。'), ...(speakerId ? { speaker_id: speakerId } : {}) }];
+            mockRefinement(response);
+            await assert.rejects(sdt.runSegmentAiRefinement(original, '核对说话人'), error => {
+                assert.match(error.message, /归属|说话|speaker/i); assert.match(error.rawOutput, /没有可靠说话人/); return true;
+            });
+            assert.equal(JSON.stringify(original), before);
+            assert.equal(calls, 1); assert.equal(saves, 0); assert.equal(images, 0);
+        }
+    });
+    await test('refinement refuses to invent an order between routed and existing actor text', async () => {
+        reset(); const original = sdt.normalizeMangaSegment(page()), before = JSON.stringify(original), response = page();
+        response.panels[0].bubbles = [{ ...bubble('另一句尚无次序的文字。'), speaker_id: 'C1' }]; mockRefinement(response);
+        await assert.rejects(sdt.runSegmentAiRefinement(original, '归属台词'), error => {
+            assert.equal(error.code, 'MANGA_BUBBLE_SPEAKER'); assert.match(error.rawOutput, /另一句尚无次序的文字/); return true;
+        });
+        assert.equal(JSON.stringify(original), before);
+        assert.equal(calls, 1); assert.equal(saves, 0); assert.equal(images, 0);
+    });
     for (const provider of ['custom', 'openai']) {
         await test(`${provider} actual SDT refinement rejects newly misplaced speech before replacing the page`, async () => {
             reset(provider); const original = sdt.normalizeMangaSegment(page()), before = JSON.stringify(original);

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.19';
+    const PLUGIN_VERSION = '6.5.20';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -7709,9 +7709,18 @@ SCHEMA:
 
         if (segResult?.mangaPage) {
             const protocol = getMangaProtocol();
-            const refinedPages = [{ ...parsed, anchor: segResult.anchor }];
-            if (typeof protocol.validateResponseBubbles === 'function') {
-                protocol.validateResponseBubbles(refinedPages, [segResult.mangaPage]);
+            let refinedPages = [{ ...parsed, anchor: segResult.anchor }];
+            const rawRefinedOutput = JSON.stringify(refinedPages, null, 2);
+            try {
+                if (typeof protocol.normalizeResponseBubbles === 'function') {
+                    refinedPages = protocol.normalizeResponseBubbles(refinedPages, [segResult.mangaPage]);
+                }
+                if (typeof protocol.validateResponseBubbles === 'function') {
+                    protocol.validateResponseBubbles(refinedPages, [segResult.mangaPage]);
+                }
+            } catch (error) {
+                if (error && typeof error === 'object') error.rawOutput = rawRefinedOutput;
+                throw error;
             }
             const page = protocol.resolveAppearances(refinedPages, [], [], [], requestContext?.renderSettings)[0];
             return { ...normalizeMangaSegment(page), mangaRenderSettings: requestContext?.renderSettings, ...(getSegmentNegative(segResult) !== undefined ? { negativePrompt: getSegmentNegative(segResult) } : {}), matchedLorebooks: segResult.matchedLorebooks || [] };
@@ -8917,7 +8926,7 @@ SCHEMA:
         const reason = String(result?.reason || '').trim();
         // A failed render contract means the model returned data. Diagnose that
         // contract before examining provider refusal metadata or literal dialogue.
-        if (code === 'MANGA_BUBBLE_OWNERSHIP' || /(?:气泡|结构化文字)[^\n]*(?:归属|所属)/.test(reason)) return 'manga-bubbles';
+        if (/^MANGA_BUBBLE_(?:OWNERSHIP|SPEAKER)$/.test(code) || /(?:气泡|结构化文字)[^\n]*(?:归属|所属)/.test(reason)) return 'manga-bubbles';
         if (/^MANGA_/.test(code) || /漫画(?:规划校验失败|响应缺少|页缺少|第|解析返回了旧式)/.test(reason)) return 'manga-structure';
         const safetyCode = /^(?:SAFETY|CONTENT_FILTER|RECITATION|PROHIBITED_CONTENT|UPSTREAM_SAFETY)$/i;
         if (result?.errorCategory === 'safety' || safetyCode.test(code)

@@ -31,6 +31,12 @@ test('stable ownership code overrides all literal model JSON and provider-lookin
     const withProviderMetadata = { ...result, rawOutput: JSON.stringify({ choices: [{ finish_reason: 'content_filter' }] }) };
     assert.equal(context.getTaggerErrorCategory(withProviderMetadata), 'manga-bubbles');
 });
+test('speaker routing errors use bubble correction guidance without claiming page data are missing', () => {
+    const result = { errorCode: 'MANGA_BUBBLE_SPEAKER', reason: '明确说话人目标存在已有文字，无法确定顺序', rawOutput: modelPages };
+    assert.equal(context.getTaggerErrorCategory(result), 'manga-bubbles');
+    assert.match(tip(result), /文字归属检查|bubbles/);
+    assert.doesNotMatch(tip(result), /缺少可用|Safety Refusal|Jailbreak|开启破限/);
+});
 test('legacy ownership errors without codes receive the same correction guidance', () => {
     const result = { reason: '模型返回的结构化气泡文字归属错误，未提交生图。', rawOutput: modelPages };
     assert.equal(context.getTaggerErrorCategory(result), 'manga-bubbles');

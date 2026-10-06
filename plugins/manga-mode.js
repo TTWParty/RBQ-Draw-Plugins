@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.29';
+        const VERSION = '1.9.30';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -247,6 +247,7 @@
                 type: { type: 'string', enum: [...(MANGA_BUBBLE_OWNER_TYPES[owner] || Object.keys(MANGA_BUBBLE_TYPES))] },
                 position: { type: 'string', enum: Object.keys(MANGA_BUBBLE_POSITIONS) },
                 layout: { type: 'string', enum: ['vertical', 'horizontal'] },
+                ...(owner !== 'page' ? { speaker_id: { type: 'string', description: 'Optional explicit speaker reference: exact character_id, never a name or array index. For a visible speaker use the matching character in this panel; known offscreen speakers still require explicit offscreen type/position. Omit for caption/SFX or unknown voices.' } } : {}),
                 text: { type: 'string', description: 'Only the literal utterance. No BubbleType/Layout/Text headers, no manually escaped newline separators.' }
             }, required: ['type', 'position', 'layout', 'text'] }
         };
@@ -282,7 +283,7 @@
                             id: string,
                             description: { type: 'string', description: 'Panel position/size, shot and environment tags. No P1: prose, character actions or dialogue.' },
                             non_character: { type: 'string', description: 'Optional caption/SFX/offscreen source visual tags. No literal dialogue. Visible speakers own their character.bubbles.' },
-                            bubbles: mangaBubblesSchema('Panel non-person text only, NOT all dialogue in this panel. For visible people talking without caption/SFX/offscreen text, use [] here and put each utterance in its speaker characters[].bubbles. caption/SFX/offscreen/broadcast/tailless are supported; speech/screaming/whisper/shiver/connected require explicit position=offscreen. Thought always belongs to its character.', 'panel'),
+                            bubbles: mangaBubblesSchema('Panel non-person text, NOT all dialogue in this panel. Prefer visible speech/thought in its speaker characters[].bubbles and [] here when no non-person text. An explicit speaker_id matching one visible character in this panel can recover a misplaced person bubble if that character has no existing text; omission never guesses a speaker. caption/SFX have no speaker_id. True offscreen voices require explicit offscreen type/position; broadcast/tailless unknown sources are supported.', 'panel'),
                             characters: {
                                 type: 'array', items: {
                                     type: 'object', properties: {
@@ -299,7 +300,7 @@
                                             outfit: { type: 'string', description: 'Complete grayscale view of current original outfit/state.outfit, including all layers. Required on first appearance IN THIS RESPONSE without matching characterMemory.render.outfit, or actual uncached clothing change; otherwise omit to reuse. Empty only for no clothing.' }
                                         }, description: 'Derived drawing view, NEVER original memory. characterMemory.render is already cached for its source appearance; reuse it without rewriting. Return only uncached fields, omit this object when both views are known.' } } : {}),
                                         positive: { type: 'string', description: 'This appearance visual tags only: panel position, pose, limb action with object/contact, expression/gaze. No dialogue/protocol headers. Identity and clothing belong in base/outfit.' },
-                                        bubbles: mangaBubblesSchema('Explicit array of this visible character speech/thought in reading order. Include every utterance to be drawn; [] only if silent. Never caption/SFX, and never duplicate it in positive or panel.bubbles.', 'character'),
+                                        bubbles: mangaBubblesSchema('Explicit array of this visible character speech/thought in reading order. Include every utterance to be drawn; [] only if silent. Include speaker_id equal to this character_id when known. Never caption/SFX, and never duplicate it in positive or panel.bubbles.', 'character'),
                                         negative: string,
                                         center: { type: 'object', properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 } }, required: ['x', 'y'], description: 'Required only in manual mode; normalized position on the entire page, not inside the panel.' }
                                     }, required: ['character_id', 'base', 'outfit', 'positive', 'bubbles', 'negative']
@@ -350,7 +351,7 @@
                         state: { base: '可选；明确外貌变化后的完整原色临时快照，不回写固定外貌', outfit: '可选；明确换装后的完整原色衣着；空字符串清空衣物' },
                         ...(store.style === 'monochrome' ? { render: { base: '完整灰阶外貌；本次响应首次且 characterMemory.render.base 无对应缓存时输出，命中缓存或前格已给则省略', outfit: '完整灰阶衣着；本次响应首次且 characterMemory.render.outfit 无对应缓存，或未缓存的换装时输出；空仅表示无衣物' } } : {}),
                         positive: '本格位置、姿势、肢体动作与对象、表情视线；只写视觉词，外貌服装放 base/outfit',
-                        bubbles: [{ type: 'speech', position: 'right-upper', layout: 'vertical', text: '仅该人物的一句台词，不含字段说明；静默时仍输出 bubbles: []' }],
+                        bubbles: [{ type: 'speech', position: 'right-upper', layout: 'vertical', speaker_id: 'C1', text: '仅该人物的一句台词，不含字段说明；静默时仍输出 bubbles: []' }],
                         negative: '仅针对本次人物出场的互斥特征；没有则为空'
                     }]
                 }]
@@ -493,7 +494,7 @@
                 }
                 if (instruction) issues.push({
                     message: `${label}.bubbles 第 ${index + 1} 个气泡文字归属错误（${type}）：${instruction}；程序未猜测说话者或移动文字`,
-                    signature: JSON.stringify([owner, ownerKey, type, position, bubble.layout || (type === 'caption' ? 'horizontal' : 'vertical'), bubble.text])
+                    signature: JSON.stringify([owner, ownerKey, type, position, bubble.layout || (type === 'caption' ? 'horizontal' : 'vertical'), bubble.text, bubble.speaker_id ?? null])
                 });
             });
         };
@@ -509,6 +510,111 @@
 
     function mangaBubbleOwnershipWarnings(data) {
         return mangaBubbleOwnershipIssues(data).map(issue => issue.message);
+    }
+
+    // Resolve declared references only. Never infer a speaker from prose, names,
+    // character count or bubble position; cached compilation does not call this.
+    function normalizeMangaResponseBubbles(pages, previousPages = []) {
+        const result = JSON.parse(JSON.stringify(pages));
+        const knownIds = new Set();
+        for (const page of [...pages, ...previousPages]) {
+            for (const panel of Array.isArray(page?.panels) ? page.panels : []) {
+                for (const character of Array.isArray(panel?.characters) ? panel.characters : []) {
+                    if (typeof character?.character_id === 'string' && character.character_id.trim()) knownIds.add(character.character_id);
+                }
+            }
+        }
+        const issues = [], moves = [];
+        const canonical = (value, vocabulary) => Object.hasOwn(vocabulary, value) ? value
+            : Object.keys(vocabulary).find(key => vocabulary[key] === value);
+        const inspect = (bubbles, owner, label, character, visible) => {
+            if (!Array.isArray(bubbles)) return;
+            bubbles.forEach((bubble, index) => {
+                if (!bubble || typeof bubble !== 'object' || !Object.hasOwn(bubble, 'speaker_id')) return;
+                const location = `${label}.bubbles 第 ${index + 1} 个`;
+                const fail = message => issues.push(`${location}：${message}`);
+                const id = bubble.speaker_id;
+                if (typeof id !== 'string' || !id.trim() || !knownIds.has(id)) {
+                    fail('speaker_id 必须是已声明的完整 character_id，不能是姓名、空值或未知编号'); return;
+                }
+                const type = canonical(bubble.type || 'speech', MANGA_BUBBLE_TYPES);
+                if (['caption', 'sfx'].includes(type)) {
+                    fail('caption/sfx 不属于人物，不能填写 speaker_id'); return;
+                }
+                if (owner === 'page') return; // Existing ownership checks reject page-level person text.
+                const matches = visible.get(id) || [];
+                if (matches.length > 1) {
+                    fail('同格 character_id 重复，无法唯一确定说话者'); return;
+                }
+                if (owner === 'character') {
+                    if (id !== character.character_id) fail('speaker_id 与包含此气泡的人物 character_id 不一致');
+                    return;
+                }
+                const position = canonical(bubble.position, MANGA_BUBBLE_POSITIONS);
+                if (type === 'offscreen' || position === 'offscreen') return;
+                if (!type || !MANGA_BUBBLE_OWNER_TYPES.character.includes(type)) return; // Compiler diagnoses malformed metadata.
+                if (!matches.length) {
+                    fail('说话者在本格不可见，画外声须明确 offscreen 类型或位置'); return;
+                }
+                // Blank/malformed utterances are left for the shared compiler.
+                if (typeof bubble.text !== 'string' || !bubble.text.trim()) return;
+                const target = matches[0];
+                const structuredText = Array.isArray(target.bubbles)
+                    && target.bubbles.some(item => typeof item?.text === 'string' && item.text.trim());
+                const legacyText = typeof target.positive === 'string' && splitMangaText(target.positive, false).text.trim();
+                if (structuredText || legacyText || (target.bubbles != null && !Array.isArray(target.bubbles))) {
+                    fail('对应人物已有文字或无效 bubbles，无法确认与格级文字的顺序；请合并到本人 bubbles 后重新解析'); return;
+                }
+                moves.push({ bubbles, bubble, index, target, label, location });
+            });
+        };
+        for (const [pageIndex, page] of result.entries()) {
+            if (page?.format !== 'nai5-comic') continue;
+            inspect(page.page?.bubbles, 'page', `第 ${pageIndex + 1} 页：page`, null, null);
+            for (const panel of Array.isArray(page.panels) ? page.panels : []) {
+                const visible = new Map();
+                for (const character of Array.isArray(panel?.characters) ? panel.characters : []) {
+                    if (!character || typeof character.character_id !== 'string') continue;
+                    const appearances = visible.get(character.character_id) || [];
+                    appearances.push(character); visible.set(character.character_id, appearances);
+                }
+                const label = `第 ${pageIndex + 1} 页：${panel?.id || 'panel'}`;
+                inspect(panel?.bubbles, 'panel', label, null, visible);
+                for (const character of Array.isArray(panel?.characters) ? panel.characters : []) {
+                    inspect(character?.bubbles, 'character', `${label}/${character?.character_id || 'character'}`, character, visible);
+                }
+                // Capture all destinations before changing any array, so multiple
+                // moves preserve the source order and validation remains atomic.
+                for (const move of moves.filter(item => item.bubbles === panel?.bubbles)) { move.panel = panel; move.page = page; }
+            }
+        }
+        if (issues.length) {
+            const preview = issues.slice(0, 4).join('；') + (issues.length > 4 ? `；另有 ${issues.length - 4} 处` : '');
+            const error = new Error(`结构化气泡说话者引用无法确定，共 ${issues.length} 处，未提交生图。${preview}。请核对 speaker_id 与同格人物后重新解析。`);
+            error.code = 'MANGA_BUBBLE_SPEAKER';
+            error.validationIssues = issues;
+            error.rawOutput = JSON.stringify(pages, null, 2);
+            throw error;
+        }
+        const movedByPanel = new Map();
+        for (const move of moves) {
+            (move.target.bubbles ||= []).push(move.bubble);
+            const indices = movedByPanel.get(move.panel) || new Set();
+            indices.add(move.index); movedByPanel.set(move.panel, indices);
+            if (!Array.isArray(move.page._mangaTextWarnings)) move.page._mangaTextWarnings = [];
+            move.page._mangaTextWarnings.push(`${move.location} 已按显式 speaker_id=${move.bubble.speaker_id} 归回对应人物；文字、位置、类型及原顺序保持不变`);
+        }
+        for (const [panel, indices] of movedByPanel) {
+            panel.bubbles = panel.bubbles.filter((_, index) => !indices.has(index));
+            // The original nonempty structured list already suppressed legacy Text.
+            // Moving its last bubble must not revive that stale mirror in recovery.
+            if (!panel.bubbles.length && (typeof panel.non_character === 'string' || Array.isArray(panel.non_character))) {
+                const source = Array.isArray(panel.non_character)
+                    ? panel.non_character.filter(value => typeof value === 'string').join(', ') : panel.non_character;
+                panel.non_character = mangaCaptionParts(source, [], panel.id, false).visual;
+            }
+        }
+        return result;
     }
 
     function validateMangaResponseBubbles(pages, previousPages = []) {
@@ -563,8 +669,9 @@
     // must not silently erase a literal old-format utterance the model also returned.
     // Editor clears and cached redraws still use explicit [] as the authoritative value.
     function recoverMangaResponseText(pages) {
-        validateMangaResponseBubbles(pages);
-        const result = JSON.parse(JSON.stringify(pages));
+        const result = normalizeMangaResponseBubbles(pages);
+        try { validateMangaResponseBubbles(result); }
+        catch (error) { error.rawOutput = JSON.stringify(pages, null, 2); throw error; }
         for (const page of result) {
             if (page?.format !== 'nai5-comic') continue;
             const warnings = [];
@@ -1013,7 +1120,7 @@
         appearanceStateVersion: 2, monochromeRenderVersion: 1, renderCacheVersion: 1, drawingIdentityVersion: 1, bubbleProtocolVersion: 1,
         appearanceSourceKey: mangaAppearanceSourceKey, cachedReferenceViews: mangaCachedReferenceViews,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, recoverResponseText: recoverMangaResponseText,
-        validateResponseBubbles: validateMangaResponseBubbles,
+        normalizeResponseBubbles: normalizeMangaResponseBubbles, validateResponseBubbles: validateMangaResponseBubbles,
         outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema, usesStructuredBubbles: usesStructuredMangaBubbles,
         planningPrompt: buildMangaPlanningPrompt, planningContext: buildMangaPlanningContext,
         systemPrompt: ec => buildMangaSystemPrompt(getStore(), ec)
@@ -1087,10 +1194,10 @@
         const people = [
             { character_id: 'C1', name: 'Ada (original)', base: 'girl, adult, long black hair', outfit: 'white shirt, black trousers',
                 positive: 'full-page panel, standing on right, right hand holding envelope, facing another', negative: '',
-                bubbles: [{ type: 'speech', position: 'right-upper', layout: 'vertical', text: japanese ? '手紙は届いた？' : '信收到了吗？' }] },
+                bubbles: [{ type: 'speech', position: 'right-upper', layout: 'vertical', speaker_id: 'C1', text: japanese ? '手紙は届いた？' : '信收到了吗？' }] },
             { character_id: 'C2', name: 'Beth (original)', base: 'girl, adult, short blonde hair', outfit: 'blue jacket, dark skirt',
                 positive: 'full-page panel, standing on left, looking at another, nodding', negative: '',
-                bubbles: [{ type: 'speech', position: 'left-lower', layout: 'vertical', text: japanese ? '届いたよ。' : '收到了。' }] }
+                bubbles: [{ type: 'speech', position: 'left-lower', layout: 'vertical', speaker_id: 'C2', text: japanese ? '届いたよ。' : '收到了。' }] }
         ];
         if (store.style === 'monochrome') {
             people[0].render = { base: 'girl, adult, long black hair', outfit: 'white shirt, black trousers' };
@@ -1109,6 +1216,7 @@
 panel.bubbles 只收本格非人物文字，不是本格全部对白。两位可见人物对话且无旁白、拟音或真正画外声时，panel.bubbles=[]，双方 characters[].bubbles 分别填本人原句；同格只有一位可见说话者也按此规则处理。若同时有非人物文字，只将那些文字放在 panel.bubbles，人物原句仍归本人。先问者、回答者各归本人，不能把整段问答集中放在 panel.bubbles，再把所有人物 bubbles 填成 []。同人多泡保留在同一个人物条目下，不因多句复制人物。
 人物对白/心声归该人物 bubbles；本格旁白、拟音和画外对白归 panel.bubbles，整页旁白/拟音才归 page.bubbles，不占人物槽。positive、non_character 只写视觉说明，不写 BubbleType/Layout/Text 协议片段；这是字段分工，不是整页禁止文字。所选剧情的原句保留说话者、次序、次数和标点。每句需要上画的台词必须实际填写 bubbles[].text，不能只写 speaking、speech bubble，或在 desc/reason 中概述“说了某事”却不给台词。长句按原有停顿分气泡，不删字。容量不足先压缩重复视觉描写，再分格/分页，不截掉结尾或关键对话。
 每泡独立输出 {type,position,layout,text}。type 可用 speech（通常）、screaming（呐喊）、thought（心声）、whisper（耳语）、shiver（颤抖）、broadcast（广播）、caption（旁白）、offscreen（画外）、tailless（无尾）、connected（连泡）、sfx（拟音）。text 只有实际要画出的文字，不放字段说明，不手工拼接 Text:，不以字面反斜杠 n 拼接多泡；同人多泡使用同一 bubbles 数组，不重复人物槽。每个 panel 和 character 都显式输出 bubbles；静默人物、无非人物文字的画格写 []，不为填字段添加空泡；无整页文字可省略 page.bubbles。
+明确的人物发言额外填写 speaker_id，值必须逐字等于其 character_id，不用姓名或数组序号。人物 bubbles 内的 speaker_id 必须等于外层人物编号。caption/sfx 和来源未知的声音省略 speaker_id；已知画外人物可引用本次响应或当前编辑页中已声明的编号，但仍显式写 offscreen 类型或位置，不添加假人物来承载文字。
 各层类型限制：page.bubbles 仅 caption/sfx；character.bubbles 不能放 caption/sfx；thought 必须归对应人物。panel.bubbles 可放 caption/sfx/offscreen/broadcast/tailless；使用 speech/screaming/whisper/shiver/connected 表达真正画外声时必须显式 position=offscreen，不将可见人物台词放入画格或整页字段。声源不明可用 panel 的 tailless，不编造人物。程序会拦截新响应中明确违反归属的非空气泡。
 position 使用 right-upper、left-upper、right-lower、left-lower、mouth、offscreen、above、top、bottom；同格先说居右上，后说居左下，不能因说话人站左侧就交换问答。气泡避开脸与主动作；尾巴指向当前镜头的嘴部，心声圆点指向头部，旁白/拟音无尾；同人连续多泡成一组，两人分组，声源未知不猜方向。
 layout 使用 vertical 或 horizontal；对白/心声通常竖排，外语对白、屏幕/信件字和旁白横排。外层「」、“”等对白标记转译为气泡后剥除，只保留句内真实引用和标点；不按列手工断行。
@@ -1117,8 +1225,9 @@ layout 使用 vertical 或 horizontal；对白/心声通常竖排，外语对白
 只借字段关系，不复制示例姓名、台词、镜头、页数或格数。例中艾达询问、贝丝回答，两人可见；页级和格级没有非人物文字，所以两处 bubbles 都是 []。以下为同一页的 page/panels 字段；其他入口要求的 format、anchor 等字段仍按该入口合同输出。
 ${mangaStructuredDialogueExample(store)}
 例中问句仅在 characters[0].bubbles，答句仅在 characters[1].bubbles。若艾达改为喊话，只将她本人的 type 改为 screaming，仍保留在她的 bubbles。人物 positive 始终只有动作视觉词。
+归属容错：假如误将 {"type":"speech","position":"left-lower","layout":"vertical","speaker_id":"C2","text":"收到了。"} 放在 panel.bubbles，只要同格唯一 C2 尚无文字，程序能按明确引用归回 C2；没有 speaker_id、编号冲突或目标已有文字时不猜测、不重排。这个引用用于确认归属，不替代优先直接嵌套到本人 bubbles 的规则。明示 offscreen 的文字仍留在 panel。
 拟音单独放 panel.bubbles，例如 {"type":"sfx","position":"bottom","layout":"vertical","text":"咔哒"}。真正的画外耳语可放 panel.bubbles，例如 {"type":"whisper","position":"offscreen","layout":"vertical","text":"等一下。"}；仅因人物嘴部被气泡挡住、人物位于画面边缘或台词多，不改成画外声。旁白只取必要的时空/客观提示。
-最终检查每句原文对应的说话者和完整嵌套路径；同一次发言只在一个归属位置出现，正文中的重复发言仍保留原次数。正文有可见人物说话而该人物 bubbles=[] 时，检查是否误放到 panel/page，并在本次输出内按正文确认的说话者修正。只输出本次约定的结构化 JSON，文字拼接由程序处理，不自行执行拼接。
+最终检查每句原文对应的说话者、speaker_id 和完整嵌套路径；同一次发言只在一个归属位置出现，正文中的重复发言仍保留原次数。正文有可见人物说话而该人物 bubbles=[] 时，检查是否误放到 panel/page，并在本次输出内按正文确认的说话者修正。只输出本次约定的结构化 JSON，文字拼接由程序处理，不自行执行拼接。
 文字语言：${store.language === 'ja' ? '自然转译为日文，保留原意和归属。' : '简体中文；原文已是中文时保留原句。'}`;
         return `【对白与非人物文字：原版 v1.1 Text 协议】
 人物对白/心声写在本人 positive，旁白、拟音和真正的画外对白写在所属 page.non_character 或 panel.non_character，不占人物槽。page.base、description、base/outfit/state/render 不写对白。可见说话者的台词不得放入非人物字段；page.non_character 只承载整页文字，不能承载某一格的回答。问答按正文先问后答，不把回答提前放到入场格。叙述中的动作转成视觉词，旁白只保留必要的时空/客观提示。
@@ -4097,20 +4206,26 @@ ${isToolMode
         // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
         let panels;
         try {
+            let inputPages;
             if (editingSnapshots) {
-                validateMangaResponseBubbles([rawPage], [{ format: 'nai5-comic', page: draftPage, panels: draftSources }]);
+                const previousPages = [{ format: 'nai5-comic', page: draftPage, panels: draftSources }];
+                inputPages = normalizeMangaResponseBubbles([rawPage], previousPages);
+                try { validateMangaResponseBubbles(inputPages, previousPages); }
+                catch (error) { error.rawOutput = JSON.stringify([rawPage], null, 2); throw error; }
                 // Reject malformed model fields before fallback can spread or
                 // normalize them, keeping the shared compiler's diagnostics.
-                compileMangaPage(rawPage);
-                restoreStudioAppearanceFields(rawPage.panels, draftSources);
+                compileMangaPage(inputPages[0]);
+                restoreStudioAppearanceFields(inputPages[0].panels, draftSources);
             }
-            const inputPages = editingSnapshots ? [rawPage] : recoverMangaResponseText([rawPage]);
+            else inputPages = recoverMangaResponseText([rawPage]);
             const page = resolveMangaAppearances(inputPages, (editingSnapshots || !useChatChars) ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
             compileMangaPage(page);
             panels = page.panels.map(studioPanelFromProtocol);
             if (data.page) panels.page = JSON.parse(JSON.stringify({ ...page.page, _mangaTextLiteral: true }));
             panels.pageLayoutSignature = studioPageLayoutSignature({ ...store, studio: { ...store.studio, panels } });
-            panels.capacityNote = typeof data.capacity_note === 'string' ? data.capacity_note.trim() : '';
+            panels.capacityNote = [typeof data.capacity_note === 'string' ? data.capacity_note.trim() : '',
+                ...(Array.isArray(page._mangaTextWarnings) ? page._mangaTextWarnings.filter(note => typeof note === 'string') : [])]
+                .filter(Boolean).join('\n');
             if (cacheContext) RBQ.api.saveMangaRenderCache?.([page], cacheContext);
         } catch (error) {
             error.rawOutput ||= `【模型原始返回正文 (Raw Output)】:\n${rawReply}\n\n【解析得到的 JSON 数据】:\n${JSON.stringify(data, null, 2)}`;

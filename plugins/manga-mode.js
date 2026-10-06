@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.33';
+        const VERSION = '1.9.34';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -1240,24 +1240,35 @@
 
     // New assemblies use these independent modules; historical prompts above
     // retain their original combined behavior and are never augmented with V23.
-    const MANGA_LAYERED_STORY_PROMPT = `只改编 currentMessage 中已经发生的事件，前文只补充身份与连续状态，不续写。
-先通读正文，确定关键行动、完整问答、信息变化、反应与结尾，保持因果和时间顺序。重复描写可合并，不按每句话机械建格，不只取末段。
-再拟定每页内容边界与叙事任务，按事件、对白及场景转换决定页数；相邻事件可同页，一个事件可跨格。不得为凑模板新增事件。
-逐格选一个同时成立的定格时刻，确定人物、主动作及对象、必要环境、景别与机位、原句和发言人。先后发生或互斥姿态应分格，不能同格既递出又已经收好。
-根据理解动作所需选择镜头与文字空间，允许相同机位、均衡分格、安静无字格和单格页，不强制唯一大主格、固定面积比例或镜头轮换。
-按输入画布宽高与方向、人物和文字负荷复核容量，必要时调整页界与格数。保留关键回答、条件、理由、次数和结尾；长句按原停顿分泡或相邻格续接，不删字凑页数。
-最终明确各页排/列、各格相对大小与相邻关系、右至左上至下的阅读路径；page.base 与格 description、人物位置应一致，不能仅写 vertical layout。
-依据正文确定逐句说话者与当前镜头可见性，分配到相应格与人物；不能为排版方便改成画外声。reason/intent 只给简短结论，不输出额外事件账本或长推理。`;
+    const MANGA_LAYERED_STORY_PROMPT = `只改编 currentMessage 中已经发生的事件，前文只补充身份与连续状态，严禁续写。
+先通读正文，定位全篇剧情中最具戏剧张力与视觉冲击力的核心事件、激烈交锋、关键体位爆发与因果问答。
+1. 【剧作高光与黄金主格统治律（坚决拒绝平庸均分与垃圾静物）】：
+每页必须有且仅有 1 个【黄金主格 (Hero Panel)】占据全页 45%～65% 面积，专门承载核心动作爆发、关键体位呈现或情绪巅峰；辅助格占 10%～25% 承载前摇铺垫或局部反应。严禁机械平分均分画格，严禁浪费画格去画无关痛痒的走廊、工具箱或空镜！
+2. 【动作参与者必须建立 characters 独立条目】：
+凡涉及互动、身体接触或关键动作的角色（包括主动施动者、男主、配角、路人），必须在对应画格的 characters 数组中建立独立条目，由 positive 承载动作与交互！严禁把人物动作写成 description 里的英文故事从句！
+3. 【定格瞬间与视线动线】：
+逐格选一个同时成立的相容定格瞬间。按日漫反 Z 字动线引导视线（右上起手 → 左侧/中段大主格 → 右下/左下终末收束）。正文台词逐句按发言人归入对应人物 bubbles。
+根据理解动作所需选择镜头与文字空间，按输入画布宽高与方向复核容量。保留关键回答、条件、理由与结尾，不删字凑页数。
+最终明确各页排/列、各格相对大小与相邻关系，page.base 与格 description、人物位置应一致，不能仅写 vertical layout。reason/intent 只给简短结论，不输出额外长推理。`;
 
-    const MANGA_LAYERED_PANEL_PROMPT = `将已经确定的画面写成相容的英文绘图标签，不重新选材、增删页格、替换人物、改变台词或引入状态变化。
+    const MANGA_LAYERED_PANEL_PROMPT = `将已经确定的画面写成英文绘图词，直接服务 NovelAI V5 / SD 扩散模型，不重新选材、增删页格、替换人物或改变台词。
 page.base 落实既定整页形态、实际人数/格数、布局与共用光照。普通页树的 panel.description 写本格位置、大小、已选景别/机位与环境；工作台提供 position/shot 字段时，格位大小与镜头分别写入二者，description 只写背景环境，由编译器附加格位和镜头。镜头不放人物动作字段。
-人物 positive 按当前朝向/位置、基础姿态、左右手及肢体任务、动作和接触对象、表情、视线、已有状态检查。每项只在当前画面有依据且可表达时填写，不机械填满。
-复合动作拆成明确相容的短标签，左右手任务分别交代；holding/gripping 表示已经接触，reaching toward 表示接近。递信未完成时不能同时写 received 或 put away。
-表情、视线与可见性服从所选镜头和正文；视线跟随人物或道具目标，不机械全员 looking at viewer，不编造被遮挡的动作细节。环境描写服务主要动作。
-相关标签相邻，按画面重要性排序。确需强调时使用已支持的 n::短词组:: 闭合权重，保持克制，不加权编号、整段或文字；权重不能修复漏写、错人或冲突。
-仅在有依据时补充即时反馈，不自动累积权重，不自行新增表情、损伤或状态。完整身份、衣着及明确变化按照基础合同处理，不猜年龄、国籍或新外貌。
-人物 negative 只排除当前镜头易串入的他人独有互斥特征或明确误画因素；不排除自己的正确特征、共享特征和必要漫画元素，不把其他人物的必要特征放进整页负词。
-最终确保规划的布局、镜头与动作进入真实绘图字段，保持已分配的对白、归属、顺序和标点。`;
+1. 【主力骨架（90%）：SDT V23 标准 Danbooru Tag 结构流水线】：
+画面与人物正面提示词必须以标准 Danbooru 英文标签为骨架，用英文逗号分隔。人物 positive 严格遵循 V23 8阶流水线：
+本格位置/朝向 → 基础姿态 → 肢体左右手独立分工 → 核心交互行为 → 表情与视线 → 状态 → 即时反馈微细节。
+① 肢体独立解耦：明确两手分工（left hand... / right hand...），严禁模糊写 both hands；真正握住写 holding/gripping，悬空靠近写 reaching toward。
+② 核心动作闭合加权律：关键动作动词必须使用 1.2~1.4::短词组:: 闭合加权（如 1.3::thrusting, vaginal penetration, slamming pelvis, doggystyle::、1.3::groping breast::、1.3::pinning down::），以激活模型强动势先验，严禁平写导致动作被淹没！
+③ 即时物理与生理反馈：动作必须伴随反作用力痕迹（受力形变 flesh_indent, skin_indent；冲击动势 motion_lines, speed lines, splashing_fluids, dripping_cum, sweat, trembling）反向锁死体位。
+④ 视线解剖对齐：互动时严禁机械全员写 looking at viewer！必须对准目标：facing another, eye_contact、向下注视 looking down、仰头 head back, looking up、羞耻 averted gaze。
+2. 【辅助修饰（10%）：V40 自然语言短词组紧密配合】：
+能用标签表达的坚决优先用标签；仅对标签无法涵盖的微妙空间质感、特殊动态或受力细节，可用简短自然语言短词组紧跟在其修饰的标签后（如 1.3::thrusting::, pelvis slammed against wooden frame）。
+⛔ 严厉禁止写整段英语小说记叙文散句（如 depicting the violent sexual assault... 绘图模型完全无法解析，会导致角色动作瘫痪成呆滞站桩）！
+3. 【镜头可见性与负面排除（V23 通用解剖过滤铁律）】：
+镜头看不见的部位绝对禁止写入正面词，并在 negative 中对应排除：
+- 局部特写/下半身（lower_body, buttocks_focus, close-up, cropped）：正面标明 lower_body 等部位，negative 排除 head, face, hair, upper body，严禁让局部特写无端长出头面；
+- 半身特写（upper_body / cowboy_shot）：negative 排除 lower body, legs, feet；
+- 背身机位（from_behind）：negative 排除 face, front view；
+人物 negative 只排除当前镜头易串入的他人互斥特征或镜头不应出现的部位，不排除自己的正确特征与共享特征。`;
 
     function resolveMangaPromptPreset(ec = 'v_manga') {
         if (ec === 'v_manga_layered_v1') return {

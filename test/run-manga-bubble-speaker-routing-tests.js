@@ -97,11 +97,25 @@ function assertRouted(result, utterance = '请放到桌上。') {
         normalized[0].panels[0].characters[0].bubbles[0].text = '另一份资料。';
         assert.deepEqual([input], before);
     });
-    await test('a panel line without an ID never guesses the first or only visible character', () => {
+    await test('a panel line without an ID auto-heals for a single visible character and rejects ambiguous multiple silent characters', () => {
         reset();
-        for (const count of [1, 2]) {
+        // count === 1: auto-heals into the only visible character
+        {
             const input = routedPage(); delete input.panels[0].bubbles[0].speaker_id;
-            input.panels[0].characters.length = count;
+            input.panels[0].characters.length = 1;
+            const normalized = protocol.normalizeResponseBubbles([input]);
+            assert.equal(normalized[0].panels[0].bubbles.length, 0);
+            assert.equal(normalized[0].panels[0].characters[0].bubbles[0].text, '请放到桌上。');
+            assert.ok(normalized[0]._mangaTextWarnings[0].includes('未指定 speaker_id，已自动智能归入本格角色 C1'));
+            const recovered = protocol.recoverResponseText([input]);
+            assert.equal(recovered[0].panels[0].characters[0].bubbles[0].text, '请放到桌上。');
+            const compiled = manga.compileMangaPage(recovered[0]);
+            assert.equal(text(compiled.characters[0].caption), '请放到桌上。');
+        }
+        // count === 2: ambiguous with multiple silent characters, never guesses
+        {
+            const input = routedPage(); delete input.panels[0].bubbles[0].speaker_id;
+            input.panels[0].characters.length = 2;
             assert.deepEqual(clone(protocol.normalizeResponseBubbles([input])), [input]);
             assert.throws(() => protocol.recoverResponseText([input]), error => error.code === 'MANGA_BUBBLE_OWNERSHIP');
             const compiled = manga.compileMangaPage(input);

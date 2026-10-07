@@ -12737,9 +12737,39 @@ SCHEMA:
             const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
             const loader = wrapper.querySelector('.st-scene-trigger-inline-loader');
             if (loader instanceof HTMLElement) loader.style.display = 'flex';
-            if (sub instanceof HTMLElement) sub.textContent = '正在调用 tagger API 解析世界书与提示词...';
-            const result = await callTagger(messageId, trigger, { signal: abortController.signal });
-            assertMangaRequestContext(origin);
+            let result;
+            try {
+                result = await callTagger(messageId, trigger, { signal: abortController.signal });
+            } catch (err) {
+                if (key !== 'diagnostic' && err && (err.code === 'MANGA_BUBBLE_OWNERSHIP' || err.code === 'MANGA_BUBBLE_SPEAKER') && err.rawOutput) {
+                    console.warn(`[${PLUGIN_NAME}] 漫画气泡归属未完全匹配，启动零阻断自愈容错`, err);
+                    try {
+                        const rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
+                        const pages = Array.isArray(rawObj) ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
+                        for (const page of pages) {
+                            if (!page || page.format !== 'nai5-comic') continue;
+                            for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
+                                if (Array.isArray(panel?.bubbles)) {
+                                    for (const b of panel.bubbles) {
+                                        if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
+                                            b.position = 'offscreen';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        result = validateStructuredResult(normalizeTaggerResult(rawObj, [], captureMangaRequestContext(null, messageId)));
+                        if (typeof toastr !== 'undefined' && toastr.info) {
+                            toastr.info('部分气泡说话者未明确，已自动作为画外对白保底自愈，生图继续进行', PLUGIN_NAME);
+                        }
+                    } catch (healErr) {
+                        console.error(`[${PLUGIN_NAME}] 自愈失败，进入原始报错流程:`, healErr);
+                        throw err;
+                    }
+                } else {
+                    throw err;
+                }
+            }
             const cacheKey = wrapper.dataset.rbqSdtBaseKey || key;
             const sanitized = sanitizeSdtResult(result);
             const currentMes = getMessageSnapshot(messageId);
@@ -15699,9 +15729,38 @@ SCHEMA:
                 json = await safeReadJsonResponse(response);
             }
 
-            // Normalize with lorebook (same as normal flow — applies character memory)
-            assertMangaRequestContext(requestContext);
-            const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
+            let normalized;
+            try {
+                normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
+            } catch (err) {
+                if (err && (err.code === 'MANGA_BUBBLE_OWNERSHIP' || err.code === 'MANGA_BUBBLE_SPEAKER') && err.rawOutput) {
+                    console.warn(`[${PLUGIN_NAME}] 手动生图气泡归属未完全匹配，启动零阻断自愈容错`, err);
+                    try {
+                        const rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
+                        const pages = Array.isArray(rawObj) ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
+                        for (const page of pages) {
+                            if (!page || page.format !== 'nai5-comic') continue;
+                            for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
+                                if (Array.isArray(panel?.bubbles)) {
+                                    for (const b of panel.bubbles) {
+                                        if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
+                                            b.position = 'offscreen';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        normalized = validateStructuredResult(normalizeTaggerResult(rawObj, rawLorebooks, requestContext.manga ? requestContext : null));
+                        if (typeof toastr !== 'undefined' && toastr.info) {
+                            toastr.info('部分气泡说话者未明确，已自动作为画外对白保底自愈，生图继续进行', PLUGIN_NAME);
+                        }
+                    } catch (healErr) {
+                        throw err;
+                    }
+                } else {
+                    throw err;
+                }
+            }
             logTaggerPayload('manual draw tagger result', normalized);
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
@@ -17232,8 +17291,38 @@ SCHEMA:
             json = await safeReadJsonResponse(response);
         }
 
-        assertMangaRequestContext(requestContext);
-        const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
+        let normalized;
+        try {
+            normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
+        } catch (err) {
+            if (err && (err.code === 'MANGA_BUBBLE_OWNERSHIP' || err.code === 'MANGA_BUBBLE_SPEAKER') && err.rawOutput) {
+                console.warn(`[${PLUGIN_NAME}] 测试生图气泡归属未完全匹配，启动零阻断自愈容错`, err);
+                try {
+                    const rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
+                    const pages = Array.isArray(rawObj) ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
+                    for (const page of pages) {
+                        if (!page || page.format !== 'nai5-comic') continue;
+                        for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
+                            if (Array.isArray(panel?.bubbles)) {
+                                for (const b of panel.bubbles) {
+                                    if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
+                                        b.position = 'offscreen';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    normalized = validateStructuredResult(normalizeTaggerResult(rawObj, rawLorebooks, requestContext.manga ? requestContext : null));
+                    if (typeof toastr !== 'undefined' && toastr.info) {
+                        toastr.info('部分气泡说话者未明确，已自动作为画外对白保底自愈，生图继续进行', PLUGIN_NAME);
+                    }
+                } catch (healErr) {
+                    throw err;
+                }
+            } else {
+                throw err;
+            }
+        }
         logTaggerPayload('test draw tagger result', normalized);
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.39';
+        const VERSION = '1.9.40';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -531,10 +531,60 @@
         const inspect = (bubbles, owner, label, character, visible) => {
             if (!Array.isArray(bubbles)) return;
             bubbles.forEach((bubble, index) => {
-                if (!bubble || typeof bubble !== 'object' || !Object.hasOwn(bubble, 'speaker_id')) return;
+                if (!bubble || typeof bubble !== 'object') return;
                 const location = `${label}.bubbles 第 ${index + 1} 个`;
                 const fail = message => issues.push(`${location}：${message}`);
-                const id = bubble.speaker_id;
+
+                // 未声明 speaker_id 的智能自愈分发
+                if (!Object.hasOwn(bubble, 'speaker_id') || bubble.speaker_id == null || bubble.speaker_id === '') {
+                    if (!previousPages.length && owner === 'panel' && visible) {
+                        const rawType = bubble.type || 'speech';
+                        const type = canonical(rawType, MANGA_BUBBLE_TYPES) || 'speech';
+                        const rawPos = bubble.position || (type === 'offscreen' ? 'offscreen' : 'right-upper');
+                        const position = canonical(rawPos, MANGA_BUBBLE_POSITIONS) || 'right-upper';
+                        // 人物台词/心声且未显式指定画外
+                        if ((MANGA_BUBBLE_OWNER_TYPES.character.includes(type) || type === 'thought') && position !== 'offscreen') {
+                            const chars = [...visible.values()].flat();
+                            // 情况 1：本格只有 1 位可见角色 -> 100% 智能归入该角色！
+                            if (chars.length === 1) {
+                                const target = chars[0];
+                                if (typeof bubble.text === 'string' && bubble.text.trim()) {
+                                    moves.push({ bubbles, bubble, index, target, label, location, autoHealed: true });
+                                }
+                                return;
+                            }
+                            // 情况 2：本格无可见角色（空镜头/景物） -> 自动标记为画外音
+                            if (chars.length === 0) {
+                                bubble.position = 'offscreen';
+                                return;
+                            }
+                            // 情况 3：本格多角色，且仅有 1 位角色当前没有台词 -> 智能归入该沉默角色
+                            if (chars.length > 1) {
+                                const silent = chars.filter(c => !Array.isArray(c.bubbles) || !c.bubbles.some(b => b?.text?.trim()));
+                                if (silent.length === 1 && typeof bubble.text === 'string' && bubble.text.trim()) {
+                                    moves.push({ bubbles, bubble, index, target: silent[0], label, location, autoHealed: true });
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // 显式填写了 speaker_id
+                let id = bubble.speaker_id;
+                // 支持角色姓名（大小写不敏感）自动映射到 character_id
+                if (typeof id === 'string' && id.trim() && !knownIds.has(id) && visible) {
+                    const matched = [...visible.values()].flat().find(c =>
+                        (c.name && c.name.trim().toLowerCase() === id.trim().toLowerCase())
+                        || (c.character_id && c.character_id.trim().toLowerCase() === id.trim().toLowerCase())
+                    );
+                    if (matched) {
+                        id = matched.character_id;
+                        bubble.speaker_id = matched.character_id;
+                    }
+                }
+
                 if (typeof id !== 'string' || !id.trim() || !knownIds.has(id)) {
                     fail('speaker_id 必须是已声明的完整 character_id，不能是姓名、空值或未知编号'); return;
                 }
@@ -603,7 +653,10 @@
             const indices = movedByPanel.get(move.panel) || new Set();
             indices.add(move.index); movedByPanel.set(move.panel, indices);
             if (!Array.isArray(move.page._mangaTextWarnings)) move.page._mangaTextWarnings = [];
-            move.page._mangaTextWarnings.push(`${move.location} 已按显式 speaker_id=${move.bubble.speaker_id} 归回对应人物；文字、位置、类型及原顺序保持不变`);
+            const msg = move.autoHealed
+                ? `${move.location} 未指定 speaker_id，已自动智能归入本格角色 ${move.target.character_id}`
+                : `${move.location} 已按显式 speaker_id=${move.bubble.speaker_id} 归回对应人物；文字、位置、类型及原顺序保持不变`;
+            move.page._mangaTextWarnings.push(msg);
         }
         for (const [panel, indices] of movedByPanel) {
             panel.bubbles = panel.bubbles.filter((_, index) => !indices.has(index));

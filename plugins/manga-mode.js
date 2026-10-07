@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.42';
+        const VERSION = '1.9.43';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -4018,17 +4018,82 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         };
     }
 
-    function studioPromptPreview(store) {
-        const compiled = compileMangaPage(buildStudioPage(store));
-        const warnings = [...new Set(compiled.warnings)];
-        return {
-            prompt: [compiled.base, ...compiled.characters.map(c => c.caption)].join(' | '), warnings,
-            note: [store.studio.capacityNote || '', ...warnings].filter(Boolean).join('\n')
-        };
+    function composeStudioPrompt(store) {
+        const studio = store.studio || {};
+        const panels = Array.isArray(studio.panels) && studio.panels.length ? studio.panels : STORYBOARD_PRESETS[0].panels;
+        const count = panels.length;
+
+        const form = count === 1 ? 'splash page, 単一コマ' : `comic, 複数コマの漫画ページ, ${count} panels`;
+        const layout = studio.ratio === '1216x832' ? '見開きページ' : 'vertical layout';
+        const gutter = (GUTTER_PRESETS[store.gutter] || GUTTER_PRESETS.bleed).tag;
+        const styleObj = COMIC_STYLES[store.style] || COMIC_STYLES.monochrome;
+        const stylePositive = store.style === 'custom' ? store.customPositive || '' : styleObj.positive;
+        const grammarTag = GRAMMAR_TAGS[store.grammar] || '';
+
+        const baseParts = [
+            form,
+            layout,
+            gutter,
+            stylePositive,
+            grammarTag,
+            'dynamic komawari'
+        ].filter(Boolean);
+
+        const baseCaption = baseParts.join(', ');
+
+        const panelSegments = panels.map((p, idx) => {
+            const parts = [];
+            const pos = p.position || defaultPanelPosition(idx, count, store.grammar);
+            if (pos) parts.push(pos);
+            if (p.shot) parts.push(p.shot);
+
+            const visualParts = [];
+            if (p.tags && p.tags.trim()) visualParts.push(p.tags.trim());
+            if (Array.isArray(p.characters)) {
+                p.characters.forEach(c => {
+                    if (c && c.positive && c.positive.trim()) {
+                        const cVis = splitMangaText(c.positive, true).visual.trim();
+                        if (cVis && !visualParts.some(vp => vp.includes(cVis))) {
+                            visualParts.push(cVis);
+                        }
+                    }
+                });
+            }
+            if (p.non_character && p.non_character.trim()) {
+                const ncVis = splitMangaText(p.non_character, true).visual.trim();
+                if (ncVis && !visualParts.some(vp => vp.includes(ncVis))) {
+                    visualParts.push(ncVis);
+                }
+            }
+            if (visualParts.length > 0) parts.push(visualParts.join(', '));
+
+            const bubbleText = (p.bubbleText || '').trim();
+            if (bubbleText) {
+                const bType = p.bubbleType || 'speech';
+                const typeTag = MANGA_BUBBLE_TYPES[bType] || 'speech bubble';
+                const layoutDir = p.bubbleLayout === 'horizontal' ? 'horizontal text' : 'vertical text';
+                parts.push(`BubbleType: ${typeTag}`);
+                parts.push(`Text: "${bubbleText.replace(/"/g, "'")}"`);
+                parts.push(layoutDir);
+            }
+            return parts.filter(Boolean).join(', ');
+        });
+
+        if (panelSegments.length > 0) {
+            return [baseCaption, ...panelSegments].join(' | ');
+        }
+        return baseCaption;
     }
 
-    function composeStudioPrompt(store) {
-        return studioPromptPreview(store).prompt;
+    function studioPromptPreview(store) {
+        let compiled = null;
+        try { compiled = compileMangaPage(buildStudioPage(store)); } catch (_) {}
+        const warnings = compiled ? [...new Set(compiled.warnings)] : [];
+        return {
+            prompt: composeStudioPrompt(store),
+            warnings,
+            note: [store.studio?.capacityNote || '', ...warnings].filter(Boolean).join('\n')
+        };
     }
 
     function studioLegacyBubbleType(tag) {
@@ -4087,7 +4152,8 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
         return {
             id: panel.id || `P${index + 1}`,
             title: panel.title || `画格 ${index + 1}`, desc: panel.desc || panel.title || '',
-            position: panel.position || '', shot: panel.shot || '', tags: panel.description || '',
+            position: panel.position || '', shot: panel.shot || '',
+            tags: panel.tags || panel.description || (characters[0]?.positive ? splitMangaText(characters[0].positive, false).visual : '') || '',
             non_character: joinMangaCaptions([mangaCaptionParts(panel.non_character, panel.bubbles, panel.id, panel._mangaTextLiteral !== true)]),
             _mangaTextLiteral: true,
             ...(Array.isArray(panel.bubbles) ? { bubbles: panel.bubbles.map(b => ({ ...b })) } : {}),
@@ -4689,7 +4755,31 @@ ${isToolMode
             throw err;
         }
         if (promptBundle) protocol.validatePromptResult(data, promptBundle.trace);
-        const rawPage = { format: 'nai5-comic', page: data.page || { base: 'comic' }, panels: data.panels };
+        const rawPage = { format: 'nai5-comic', page: data.page || { base: 'comic' }, panels: JSON.parse(JSON.stringify(data.panels)) };
+
+        rawPage.panels.forEach((panel, i) => {
+            if (!panel || typeof panel !== 'object') return;
+            panel.id = panel.id || `P${i + 1}`;
+            panel.title = panel.title || `画格 ${i + 1}`;
+            panel.desc = panel.desc || panel.title || '';
+            panel.shot = panel.shot || 'medium shot';
+            panel.position = panel.position || defaultPanelPosition(i, rawPage.panels.length, store.grammar);
+            const rawTags = panel.tags || panel.description || '';
+            panel.tags = rawTags;
+            panel.description = panel.description || rawTags;
+            if (panel.characters === undefined) {
+                const charPos = rawTags || '1girl, looking at viewer';
+                panel.characters = [{ character_id: 'C1', name: '', positive: charPos, negative: '' }];
+            } else if (Array.isArray(panel.characters) && !panel.tags && panel.characters[0]?.positive) {
+                panel.tags = splitMangaText(panel.characters[0].positive, false).visual;
+                if (!panel.description) panel.description = panel.tags;
+            }
+            if (panel.bubbleText && (!panel.characters[0]?.bubbles || !panel.characters[0].bubbles.length)) {
+                const bType = panel.bubbleType || 'speech';
+                const bLayout = panel.bubbleLayout || 'vertical';
+                panel.characters[0].bubbles = [{ type: bType, text: panel.bubbleText, layout: bLayout, position: 'right-upper' }];
+            }
+        });
         // Editing operates on complete draft captions; reapplying the live profile here would undo draft changes.
         let panels;
         try {
@@ -5839,7 +5929,8 @@ ${isToolMode
             try { compiled = compileMangaPage(buildStudioPage(store)); }
             catch (error) { return toastr.warning(error.message, PLUGIN_NAME); }
             if (compiled.warnings.length) toastr.warning([...new Set(compiled.warnings)].join('\n'), PLUGIN_NAME);
-            const prompt = compiled.base;
+            const assembledPrompt = composeStudioPrompt(store);
+            const prompt = assembledPrompt;
             const origHtml = btnGenerate.innerHTML;
             btnGenerate.disabled = true;
             btnGenerate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在向生图引擎提交漫画任务...';
@@ -5849,7 +5940,7 @@ ${isToolMode
             // New SDT owns the character/settings snapshot; legacy hosts retain
             // the original Studio compatibility bridge.
             studioRequest = typeof generatePage === 'function' ? null : { prompt, compiled };
-            const segment = { scene: prompt, prompt, label: '漫画工作台', mangaPage: true, mangaTextCompiled: true,
+            const segment = { scene: compiled.base, prompt: assembledPrompt, label: '漫画工作台', mangaPage: true, mangaTextCompiled: true,
                 mangaWarnings: [...new Set(compiled.warnings)],
                 mangaUseCoords: compiled.useCoords, characters: compiled.characters.map(c => ({ ...c, center: { ...c.center } })),
                 negativePrompt: String(RBQ.api.getSettings?.()?.negative || ''),
@@ -5857,7 +5948,6 @@ ${isToolMode
 
             try {
                 const onProgress = (progress) => {
-                    if (disposed) return;
                     if (disposed) return;
                     if (typeof progress === 'string') {
                         btnGenerate.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${progress.slice(0, 16)}...`;
@@ -5871,7 +5961,7 @@ ${isToolMode
 
                 if (result && result.url) {
                     studio.lastGeneratedUrl = result.url;
-                    studio.lastGeneratedPrompt = [compiled.base, ...compiled.characters.map(c => c.caption)].join(' | ');
+                    studio.lastGeneratedPrompt = assembledPrompt;
                     // Sending the image later must use its generated snapshot, even if the draft/settings changed.
                     studio.lastGeneratedSegment = JSON.parse(JSON.stringify(segment));
                     studio.lastGeneratedImage = JSON.parse(JSON.stringify(result));

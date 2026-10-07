@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.41';
+        const VERSION = '1.9.42';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -4670,6 +4670,16 @@ ${isToolMode
                 ? `AI 模型未返回有效分镜（可能触发了模型安全审核或拒绝回答）：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`
                 : `分镜解析失败：模型未返回合法 JSON 格式。片段：\n"${preview.slice(0, 150)}${preview.length > 150 ? '...' : ''}"`);
             err.rawOutput = `【模型原始返回正文 (Raw Output)】:\n${rawReply || '（空响应正文）'}\n\n【完整服务端返回报文 (Full Response)】:\n${rawText || '（无）'}\n\n【请求地址与模型】:\n- Endpoint: ${endpoint}\n- Model: ${model}\n\n【发送的消息列表 (Messages)】:\n${JSON.stringify(messages, null, 2)}`;
+            throw err;
+        }
+        const textToCheck = [
+            data.page?.base,
+            ...(Array.isArray(data.panels) ? data.panels.map(p => `${p?.id || ''} ${p?.description || ''} ${p?.title || ''} ${p?.desc || ''}`) : [])
+        ].join(' ');
+        if (/(?:cannot fulfill|unable to fulfill|i cannot|i'm sorry, but|refusal_panel|sexual violence|content policy|harmful and cannot|prohibited use policy|safety policy|policy guidelines)/i.test(textToCheck)) {
+            const err = new Error('上游 AI 模型触发内容安全审查并拒绝生成分镜 (Safety Refusal)。模型返回了安全拒绝声明，未生成有效画面。');
+            err.code = 'SAFETY_REFUSAL';
+            err.rawOutput = `【模型返回安全拒绝声明】:\n${textToCheck}\n\n【原始完整响应】:\n${rawReply}\n\n【请求地址与模型】:\n- Endpoint: ${endpoint}\n- Model: ${model}`;
             throw err;
         }
         if (!Array.isArray(data.panels) || !data.panels.length || data.panels.length > 5

@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.43';
+        const VERSION = '1.9.44';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -77,7 +77,10 @@
 
     function getSdtStore() {
         const s = RBQ.api.getSettings();
-        if (!s[SDT_KEY]) s[SDT_KEY] = {};
+        if (!s[SDT_KEY]) {
+            if (s['_smartDrawTriggerSettings']) return s['_smartDrawTriggerSettings'];
+            s[SDT_KEY] = {};
+        }
         return s[SDT_KEY];
     }
 
@@ -4500,15 +4503,20 @@ ${isToolMode
             rejectAbort = () => reject(controller.signal.reason || studioAbortError());
             controller.signal.addEventListener('abort', rejectAbort, { once: true });
         });
-        const timeout = setTimeout(() => {
-            const error = new Error('漫画分镜请求超过 180 秒，已停止等待；现有分镜已保留，请检查接口响应');
-            error.name = 'TimeoutError';
-            controller.abort(error);
-        }, STUDIO_REQUEST_TIMEOUT_MS);
+        let timeout;
+        const resetWatchdog = () => {
+            if (timeout) clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                const error = new Error('漫画分镜请求超过 180 秒，已停止等待；现有分镜已保留，请检查接口响应');
+                error.name = 'TimeoutError';
+                controller.abort(error);
+            }, STUDIO_REQUEST_TIMEOUT_MS);
+        };
+        resetWatchdog();
         studioParsingControllers.add(controller);
         try {
             // Settle even when a third-party transport ignores AbortSignal.
-            return await Promise.race([performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, controller.signal, taskKind, allowAutoHeal), aborted]);
+            return await Promise.race([performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, controller.signal, taskKind, allowAutoHeal, resetWatchdog), aborted]);
         } finally {
             clearTimeout(timeout);
             signal?.removeEventListener('abort', forwardAbort);
@@ -4517,7 +4525,7 @@ ${isToolMode
         }
     }
 
-    async function performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, signal, taskKind = null, allowAutoHeal = false) {
+    async function performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, signal, taskKind = null, allowAutoHeal = false, onProgress = null) {
         assertStudioRequestActive(signal);
         const studioTarget = store.studio;
         const liveConfig = getSdtStore();
@@ -4654,7 +4662,8 @@ ${isToolMode
                 tool: mangaTool,
                 temperature: 0.2,
                 customStore: config,
-                signal
+                signal,
+                onProgress
             });
             rawReply = completion.rawReply || '';
             rawText = completion.rawOutput || rawReply;

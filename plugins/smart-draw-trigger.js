@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.23';
+    const PLUGIN_VERSION = '6.5.24';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6507,7 +6507,7 @@ ${getCharacterMemoryTagSpecification()}
         }
     }
 
-    async function readSseCompletion(response, signal) {
+    async function readSseCompletion(response, signal, onProgress = null) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         const sseState = {
@@ -6532,6 +6532,9 @@ ${getCharacterMemoryTagSpecification()}
                     const chunkText = decoder.decode(value, { stream: !done });
                     sseBuffer += chunkText;
                     rawStreamText += chunkText;
+                    if (typeof onProgress === 'function') {
+                        try { onProgress(chunkText, sseState); } catch (_) {}
+                    }
                 }
                 const lines = sseBuffer.split('\n');
                 sseBuffer = lines.pop() || '';
@@ -11625,7 +11628,8 @@ SCHEMA:
         temperature = 0.2,
         signal = null,
         customStore = null,
-        fetchFn = null
+        fetchFn = null,
+        onProgress = null
     }) {
         const store = customStore || getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
@@ -11707,7 +11711,7 @@ SCHEMA:
         };
 
         if (isSseStream) {
-            const { sseState, rawStreamText } = await readSseCompletion(response, signal);
+            const { sseState, rawStreamText } = await readSseCompletion(response, signal, onProgress);
 
             rawOutput = rawStreamText;
 
@@ -17378,6 +17382,8 @@ SCHEMA:
             : rawMessages;
     };
     RBQ.api.callStructuredCompletion = callStructuredCompletion;
+    RBQ.api.getStore = getStore;
+    RBQ.api.isMangaContextPreset = isMangaContextPreset;
 
     RBQ.api.openLorebookSearchModal = (initialSourceId = 'all', onSelectEntry = null, initialMainCategory = 'all') => {
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);

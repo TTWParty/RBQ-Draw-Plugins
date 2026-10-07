@@ -328,6 +328,21 @@ function ownershipError(error, utterance = '资料已收到。') {
         assert.equal(saves, 0); assert.equal(images, 0);
         delete RBQ.api.callStructuredCompletion;
     });
+    await test('Studio requestStudioPanels auto-heals misplaced bubbles when allowAutoHeal is true', async () => {
+        reset(); settings._smartDrawTrigger.toolCallMode = true;
+        const invalid = invalidPage(), store = settings._mangaMode;
+        let calls = 0;
+        RBQ.api.callStructuredCompletion = async () => {
+            calls++;
+            return { rawReply: JSON.stringify({ page: invalid.page, panels: invalid.panels }) };
+        };
+        const panels = await manga.requestStudioPanels(store, '办公室交谈', story, 1, false, null, null, true);
+        assert.equal(calls, 1);
+        assert.equal(panels.length, 1);
+        assert.equal(panels[0].characters[0].bubbles[0].text, '资料已收到。');
+        assert.equal(panels[0].bubbles.length, 0);
+        delete RBQ.api.callStructuredCompletion;
+    });
     await test('Studio editing keeps a cached misplaced line available for explicit repair without guessing its speaker', async () => {
         reset(); settings._smartDrawTrigger.toolCallMode = true;
         const invalid = invalidPage(), before = JSON.stringify(invalid), store = settings._mangaMode;

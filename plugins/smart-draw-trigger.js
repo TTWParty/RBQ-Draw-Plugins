@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.22';
+    const PLUGIN_VERSION = '6.5.23';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6225,6 +6225,42 @@ ${getCharacterMemoryTagSpecification()}
 
     function validateStructuredResult(normalized) {
         return normalized;
+    }
+
+    function autoHealMangaTaggerPayload(rawObj) {
+        if (!rawObj) return rawObj;
+        const isArr = Array.isArray(rawObj);
+        const pages = isArr ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
+        for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            if (!page || page.format !== 'nai5-comic') continue;
+            if (typeof RBQ.api?.mangaProtocol?.autoHealResponseBubbles === 'function') {
+                pages[i] = RBQ.api.mangaProtocol.autoHealResponseBubbles(page);
+            } else {
+                for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
+                    if (Array.isArray(panel?.bubbles)) {
+                        const kept = [];
+                        for (const b of panel.bubbles) {
+                            if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
+                                if (Array.isArray(panel.characters) && panel.characters.length > 0) {
+                                    (panel.characters[0].bubbles ||= []).push({ ...b });
+                                } else {
+                                    kept.push({ ...b, position: 'offscreen' });
+                                }
+                            } else {
+                                kept.push(b);
+                            }
+                        }
+                        panel.bubbles = kept;
+                    }
+                }
+            }
+        }
+        if (!isArr && Array.isArray(rawObj?.segments)) {
+            rawObj.segments = pages;
+            return rawObj;
+        }
+        return isArr ? pages : (pages[0] || rawObj);
     }
 
     function normalizeAnchor(anchor, defaultIndex) {
@@ -12744,23 +12780,11 @@ SCHEMA:
                 if (key !== 'diagnostic' && err && (err.code === 'MANGA_BUBBLE_OWNERSHIP' || err.code === 'MANGA_BUBBLE_SPEAKER') && err.rawOutput) {
                     console.warn(`[${PLUGIN_NAME}] 漫画气泡归属未完全匹配，启动零阻断自愈容错`, err);
                     try {
-                        const rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
-                        const pages = Array.isArray(rawObj) ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
-                        for (const page of pages) {
-                            if (!page || page.format !== 'nai5-comic') continue;
-                            for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
-                                if (Array.isArray(panel?.bubbles)) {
-                                    for (const b of panel.bubbles) {
-                                        if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
-                                            b.position = 'offscreen';
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        let rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
+                        rawObj = autoHealMangaTaggerPayload(rawObj);
                         result = validateStructuredResult(normalizeTaggerResult(rawObj, [], captureMangaRequestContext(null, messageId)));
                         if (typeof toastr !== 'undefined' && toastr.info) {
-                            toastr.info('部分气泡说话者未明确，已自动作为画外对白保底自愈，生图继续进行', PLUGIN_NAME);
+                            toastr.info('部分画格对白未标明说话者，已自动自愈归入角色，生图继续进行', PLUGIN_NAME);
                         }
                     } catch (healErr) {
                         console.error(`[${PLUGIN_NAME}] 自愈失败，进入原始报错流程:`, healErr);
@@ -15736,23 +15760,11 @@ SCHEMA:
                 if (err && (err.code === 'MANGA_BUBBLE_OWNERSHIP' || err.code === 'MANGA_BUBBLE_SPEAKER') && err.rawOutput) {
                     console.warn(`[${PLUGIN_NAME}] 手动生图气泡归属未完全匹配，启动零阻断自愈容错`, err);
                     try {
-                        const rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
-                        const pages = Array.isArray(rawObj) ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
-                        for (const page of pages) {
-                            if (!page || page.format !== 'nai5-comic') continue;
-                            for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
-                                if (Array.isArray(panel?.bubbles)) {
-                                    for (const b of panel.bubbles) {
-                                        if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
-                                            b.position = 'offscreen';
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        let rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
+                        rawObj = autoHealMangaTaggerPayload(rawObj);
                         normalized = validateStructuredResult(normalizeTaggerResult(rawObj, rawLorebooks, requestContext.manga ? requestContext : null));
                         if (typeof toastr !== 'undefined' && toastr.info) {
-                            toastr.info('部分气泡说话者未明确，已自动作为画外对白保底自愈，生图继续进行', PLUGIN_NAME);
+                            toastr.info('部分画格对白未标明说话者，已自动自愈归入角色，生图继续进行', PLUGIN_NAME);
                         }
                     } catch (healErr) {
                         throw err;
@@ -17298,23 +17310,11 @@ SCHEMA:
             if (err && (err.code === 'MANGA_BUBBLE_OWNERSHIP' || err.code === 'MANGA_BUBBLE_SPEAKER') && err.rawOutput) {
                 console.warn(`[${PLUGIN_NAME}] 测试生图气泡归属未完全匹配，启动零阻断自愈容错`, err);
                 try {
-                    const rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
-                    const pages = Array.isArray(rawObj) ? rawObj : (Array.isArray(rawObj?.segments) ? rawObj.segments : [rawObj]);
-                    for (const page of pages) {
-                        if (!page || page.format !== 'nai5-comic') continue;
-                        for (const panel of (Array.isArray(page?.panels) ? page.panels : [])) {
-                            if (Array.isArray(panel?.bubbles)) {
-                                for (const b of panel.bubbles) {
-                                    if (b && (b.type === 'speech' || b.type === 'thought' || !b.type) && b.position !== 'offscreen') {
-                                        b.position = 'offscreen';
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let rawObj = typeof err.rawOutput === 'string' ? JSON.parse(err.rawOutput) : err.rawOutput;
+                    rawObj = autoHealMangaTaggerPayload(rawObj);
                     normalized = validateStructuredResult(normalizeTaggerResult(rawObj, rawLorebooks, requestContext.manga ? requestContext : null));
                     if (typeof toastr !== 'undefined' && toastr.info) {
-                        toastr.info('部分气泡说话者未明确，已自动作为画外对白保底自愈，生图继续进行', PLUGIN_NAME);
+                        toastr.info('部分画格对白未标明说话者，已自动自愈归入角色，生图继续进行', PLUGIN_NAME);
                     }
                 } catch (healErr) {
                     throw err;

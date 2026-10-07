@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.40';
+        const VERSION = '1.9.41';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -735,6 +735,100 @@
             mangaCaptionParts(c.positive, c.bubbles, c.character_id || c.name, c._mangaTextLiteral !== true)], c._mangaTextLiteral !== true);
     }
 
+    function autoHealMangaResponseBubbles(rawPage) {
+        const autoHealedPage = JSON.parse(JSON.stringify(rawPage));
+        const panels = Array.isArray(autoHealedPage?.panels) ? autoHealedPage.panels : [];
+
+        // 1. 修复 page.page.bubbles 中的对白/心声
+        if (Array.isArray(autoHealedPage?.page?.bubbles)) {
+            const keptPageBubbles = [];
+            for (const b of autoHealedPage.page.bubbles) {
+                const type = b?.type || 'caption';
+                if (type === 'speech' || type === 'thought') {
+                    const targetPanel = panels[0];
+                    if (targetPanel) {
+                        (targetPanel.bubbles ||= []).push(b);
+                    }
+                } else {
+                    keptPageBubbles.push(b);
+                }
+            }
+            autoHealedPage.page.bubbles = keptPageBubbles;
+        }
+
+        // 2. 逐格修复 panel 与 character 中的气泡
+        for (const panel of panels) {
+            const characters = Array.isArray(panel?.characters) ? panel.characters : [];
+
+            // 修复 character.bubbles 里的 caption/sfx（不属于人物，应归入 panel）
+            for (const c of characters) {
+                if (Array.isArray(c?.bubbles)) {
+                    const keptCharBubbles = [];
+                    for (const b of c.bubbles) {
+                        if (b?.type === 'caption' || b?.type === 'sfx') {
+                            (panel.bubbles ||= []).push(b);
+                        } else {
+                            if (b && b.speaker_id && b.speaker_id !== c.character_id) {
+                                delete b.speaker_id;
+                            }
+                            keptCharBubbles.push(b);
+                        }
+                    }
+                    c.bubbles = keptCharBubbles;
+                }
+            }
+
+            // 修复 panel.bubbles
+            if (Array.isArray(panel?.bubbles)) {
+                const keptPanelBubbles = [];
+                for (const b of panel.bubbles) {
+                    if (!b || typeof b !== 'object') continue;
+                    const type = b.type || 'speech';
+                    const pos = b.position || (type === 'offscreen' ? 'offscreen' : 'right-upper');
+
+                    if (type === 'caption' || type === 'sfx') {
+                        delete b.speaker_id;
+                        keptPanelBubbles.push(b);
+                        continue;
+                    }
+
+                    if (type === 'speech' || type === 'thought') {
+                        if (pos === 'offscreen') {
+                            delete b.speaker_id;
+                            keptPanelBubbles.push(b);
+                            continue;
+                        }
+
+                        let targetChar = null;
+                        if (b.speaker_id && typeof b.speaker_id === 'string') {
+                            const sid = b.speaker_id.trim().toLowerCase();
+                            targetChar = characters.find(c =>
+                                (c.character_id && c.character_id.trim().toLowerCase() === sid) ||
+                                (c.name && c.name.trim().toLowerCase() === sid)
+                            );
+                        }
+                        if (!targetChar && characters.length > 0) {
+                            targetChar = characters[0];
+                        }
+
+                        if (targetChar) {
+                            delete b.speaker_id;
+                            (targetChar.bubbles ||= []).push(b);
+                        } else {
+                            delete b.speaker_id;
+                            b.position = 'offscreen';
+                            keptPanelBubbles.push(b);
+                        }
+                    } else {
+                        keptPanelBubbles.push(b);
+                    }
+                }
+                panel.bubbles = keptPanelBubbles;
+            }
+        }
+        return autoHealedPage;
+    }
+
     // Only fresh model responses use this compatibility step. An empty new field
     // must not silently erase a literal old-format utterance the model also returned.
     // Editor clears and cached redraws still use explicit [] as the authoritative value.
@@ -1214,6 +1308,7 @@
         appearanceSourceKey: mangaAppearanceSourceKey, cachedReferenceViews: mangaCachedReferenceViews,
         compile: compileMangaPage, resolveAppearances: resolveMangaAppearances, recoverResponseText: recoverMangaResponseText,
         normalizeResponseBubbles: normalizeMangaResponseBubbles, validateResponseBubbles: validateMangaResponseBubbles,
+        autoHealResponseBubbles: autoHealMangaResponseBubbles,
         outputSchema: mangaOutputSchema, segmentSchema: mangaSegmentSchema, usesStructuredBubbles: usesStructuredMangaBubbles,
         planningPrompt: buildMangaPlanningPrompt, planningContext: buildMangaPlanningContext,
         resolvePromptPreset: resolveMangaPromptPreset, buildPromptBundle: buildMangaPromptBundle,
@@ -4329,7 +4424,7 @@ ${isToolMode
         if (signal?.aborted) throw signal.reason || studioAbortError();
     }
 
-    async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false, signal = null, taskKind = null) {
+    async function requestStudioPanels(store, task, content, expectedCount, editingSnapshots = false, signal = null, taskKind = null, allowAutoHeal = false) {
         assertStudioRequestActive(signal);
         const controller = new AbortController();
         const forwardAbort = () => controller.abort(signal.reason || studioAbortError());
@@ -4347,7 +4442,7 @@ ${isToolMode
         studioParsingControllers.add(controller);
         try {
             // Settle even when a third-party transport ignores AbortSignal.
-            return await Promise.race([performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, controller.signal, taskKind), aborted]);
+            return await Promise.race([performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, controller.signal, taskKind, allowAutoHeal), aborted]);
         } finally {
             clearTimeout(timeout);
             signal?.removeEventListener('abort', forwardAbort);
@@ -4356,7 +4451,7 @@ ${isToolMode
         }
     }
 
-    async function performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, signal, taskKind = null) {
+    async function performStudioPanelsRequest(store, task, content, expectedCount, editingSnapshots, signal, taskKind = null, allowAutoHeal = false) {
         assertStudioRequestActive(signal);
         const studioTarget = store.studio;
         const liveConfig = getSdtStore();
@@ -4599,7 +4694,26 @@ ${isToolMode
                 compileMangaPage(inputPages[0]);
                 restoreStudioAppearanceFields(inputPages[0].panels, draftSources);
             }
-            else inputPages = recoverMangaResponseText([rawPage]);
+            else {
+                try {
+                    inputPages = recoverMangaResponseText([rawPage]);
+                } catch (recErr) {
+                    if (allowAutoHeal && recErr && (recErr.code === 'MANGA_BUBBLE_OWNERSHIP' || recErr.code === 'MANGA_BUBBLE_SPEAKER')) {
+                        console.warn('[Manga Studio] 分镜推演气泡校验未通过，执行在线零阻断自愈容错:', recErr);
+                        const autoHealedPage = autoHealMangaResponseBubbles(rawPage);
+                        try {
+                            inputPages = recoverMangaResponseText([autoHealedPage]);
+                        } catch (_err) {
+                            inputPages = normalizeMangaResponseBubbles([autoHealedPage]);
+                        }
+                        if (typeof toastr !== 'undefined' && toastr.info) {
+                            toastr.info('部分画格对白未标明说话者，已自动归入本格首位角色构建分镜', PLUGIN_NAME);
+                        }
+                    } else {
+                        throw recErr;
+                    }
+                }
+            }
             const page = resolveMangaAppearances(inputPages, (editingSnapshots || !useChatChars) ? [] : references.characterMemory || [], [], [], store, cacheContext?.renderCache || [])[0];
             compileMangaPage(page);
             panels = page.panels.map(studioPanelFromProtocol);
@@ -4610,6 +4724,7 @@ ${isToolMode
                 .filter(Boolean).join('\n');
             if (cacheContext) RBQ.api.saveMangaRenderCache?.([page], cacheContext);
         } catch (error) {
+            error.parsedData = data;
             error.rawOutput ||= `【模型原始返回正文 (Raw Output)】:\n${rawReply}\n\n【解析得到的 JSON 数据】:\n${JSON.stringify(data, null, 2)}`;
             throw error;
         }
@@ -4633,7 +4748,7 @@ ${isToolMode
             : layered
                 ? '按正文实际事件与对白容量规划当前单页，保持关键事件、问答和结果的次序。page.base 写实际切分、相对大小、邻接和阅读路径，各格明确 position 与 shot；超出本页容量用 capacity_note 说明，不删关键回答和结尾。'
                 : '按正文实际事件与对白容量自动规划 1 至 5 格，保持关键事件、问答和结果的次序；一个决定性瞬间可用单格，不为凑格扩写。将主格面积、辅助格排列和阅读路径写进 page.base，再给各格明确 position 与 shot。';
-        return requestStudioPanels(store, taskText, storyText, fixed, false, signal, 'studio_page');
+        return requestStudioPanels(store, taskText, storyText, fixed, false, signal, 'studio_page', true);
     }
 
     async function callLlmSingleSentenceExpander(sentence, currentShot, grammar, language, allPanels = [], currentIndex = 0, signal = null) {
@@ -4642,7 +4757,7 @@ ${isToolMode
             '只返回正在编辑的一个画格；不因整页文法扩写其他格。参照已有角色身份，保持同一 character_id；不要复述其他格事件。',
             JSON.stringify({ currentMessage: sentence, currentShot, currentIndex,
                 currentPanel: targetPanel ? studioPanelForParsing(targetPanel) : null,
-                otherPanels: allPanels.filter((_, index) => index !== currentIndex).map(studioPanelForParsing) }), 1, true, signal, 'refine_panel');
+                otherPanels: allPanels.filter((_, index) => index !== currentIndex).map(studioPanelForParsing) }), 1, true, signal, 'refine_panel', true);
         // A local refinement is not a new one-panel page layout.
         if (result[0] && targetPanel) {
             result[0].id = targetPanel.id;
@@ -4656,7 +4771,7 @@ ${isToolMode
         if (onProgress) onProgress('正在核对逐格人物、对白和连续状态...');
         const store = { ...getStore(), grammar, language };
         const page = buildStudioPage({ ...store, studio: { ...store.studio, panels } }).page;
-        return requestStudioPanels(store, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属；保留输入 page 的整页文字，不复制到各格。`, JSON.stringify({ page, panels: panels.map(studioPanelForParsing) }), panels.length, true, signal, 'refine_panels');
+        return requestStudioPanels(store, `保持现有 ${panels.length} 格的次序与剧情，逐格完善演出和人物归属；保留输入 page 的整页文字，不复制到各格。`, JSON.stringify({ page, panels: panels.map(studioPanelForParsing) }), panels.length, true, signal, 'refine_panels', true);
     }
 
     function renderStudioCharacterFields(panel) {

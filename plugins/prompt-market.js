@@ -797,19 +797,6 @@
                                 ${item.negative}
                             </div>
                         </div>` : ''}
-
-                        <!-- 基准测试拼接说明 -->
-                        <div style="background:rgba(217,70,239,0.08); border:1px dashed rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px; line-height:1.55;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                <span style="color:#f0abfc; font-weight:700;"><i class="fa-solid fa-vial"></i> 完整测试提示词 (画师串 + 卡密sama基准底模)</span>
-                                <button id="rbq-pm-copy-full-combo" class="menu_button" style="background:rgba(217,70,239,0.2); border:1px solid rgba(217,70,239,0.4); color:#f0abfc; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
-                                    <i class="fa-solid fa-clone"></i> 复制全串
-                                </button>
-                            </div>
-                            <div style="color:#94a3b8; font-size:10.5px;">
-                                预览图真实由当前串与基准底模合并出图。* ${BENCHMARK_CREDIT}
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
@@ -832,12 +819,6 @@
                 toastr.success('预设负面词已复制到剪贴板！');
             };
         }
-
-        overlay.querySelector('#rbq-pm-copy-full-combo').onclick = async () => {
-            const fullCombo = [item.positive, BENCHMARK_POSITIVE_PROMPT].filter(Boolean).join(', ');
-            await copyToClipboard(fullCombo);
-            toastr.success('已复制完整拼接词（预设串 + 卡密sama基准底模）！');
-        };
 
         overlay.querySelector('#rbq-pm-install-now').onclick = () => {
             installToLocalPresets(item);
@@ -924,10 +905,12 @@
                     <div style="background:linear-gradient(135deg, rgba(217,70,239,0.1), rgba(56,189,248,0.1)); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span style="font-weight:700; color:#f0abfc;"><i class="fa-solid fa-vial"></i> 统一基准测试底模 (测试提示词由卡密sama提供)</span>
-                            <span style="font-size:10.5px; color:#7dd3fc; background:rgba(56,189,248,0.2); padding:1px 6px; border-radius:4px;">生图时自动合并</span>
+                            <button id="rbq-pm-up-copy-bm" type="button" class="menu_button" style="background:rgba(217,70,239,0.25); border:1px solid rgba(217,70,239,0.5); color:#f0abfc; font-size:11px; font-weight:600; padding:2px 9px; border-radius:5px; cursor:pointer;" title="点击复制卡密sama基准测试词">
+                                <i class="fa-solid fa-copy"></i> 复制基准测试词
+                            </button>
                         </div>
                         <div style="color:#cbd5e1; margin-top:4px; font-size:11px; line-height:1.45;">
-                            为确保全场预设在相同主体下横向对比，点击下方生图时，系统会自动将你的画师串与卡密sama基准词合并出图！
+                            为确保全场预设在相同主体下横向对比，点击下方生图时，系统会自动将你的画师串与卡密sama基准词合并出图！点击右上角可复制基准词自行测试。
                         </div>
                     </div>
 
@@ -965,6 +948,11 @@
 
         overlay.querySelector('#rbq-pm-upload-close').onclick = () => overlay.remove();
         overlay.querySelector('#rbq-pm-up-cancel').onclick = () => overlay.remove();
+
+        overlay.querySelector('#rbq-pm-up-copy-bm').onclick = async () => {
+            await copyToClipboard(BENCHMARK_POSITIVE_PROMPT);
+            toastr.success('已复制基准测试底模词！(由卡密sama提供)');
+        };
 
         const localSelect = overlay.querySelector('#rbq-pm-local-select');
         localSelect.onchange = (e) => {

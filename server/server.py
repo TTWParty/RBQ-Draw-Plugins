@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import time
+import shutil
 import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -143,7 +144,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-Type', mime)
                 self.send_header('Content-Length', str(len(content)))
-                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.send_header('Cache-Control', 'public, max-age=604800, immutable')
                 self.send_cors()
                 self.end_headers()
                 self.wfile.write(content)
@@ -245,13 +246,18 @@ class MarketHandler(BaseHTTPRequestHandler):
                     b64_data = preview_b64
 
                 try:
-                    img_bytes = base64.b64decode(b64_data)
-                    img_name = f'{preset_id}.{ext}'
-                    with open(os.path.join(UPLOADS_DIR, img_name), 'wb') as f:
-                        f.write(img_bytes)
-                    host = self.headers.get('Host', 'market.rbq.my')
-                    proto = self.headers.get('X-Forwarded-Proto', 'https')
-                    preview_url = f'{proto}://{host}/previews/{img_name}'
+                    # 磁盘安全熔断防御：剩余空间低于 80MB 时拒绝落盘，防止打崩服务器
+                    _, _, free_bytes = shutil.disk_usage(BASE_DIR)
+                    if free_bytes < 80 * 1024 * 1024:
+                        print('[Warning] Disk space below 80MB safe threshold. Skipped preview persistence.')
+                    else:
+                        img_bytes = base64.b64decode(b64_data)
+                        img_name = f'{preset_id}.{ext}'
+                        with open(os.path.join(UPLOADS_DIR, img_name), 'wb') as f:
+                            f.write(img_bytes)
+                        host = self.headers.get('Host', 'market.rbq.my')
+                        proto = self.headers.get('X-Forwarded-Proto', 'https')
+                        preview_url = f'{proto}://{host}/previews/{img_name}'
                 except Exception as e:
                     print('Error saving image:', e)
 

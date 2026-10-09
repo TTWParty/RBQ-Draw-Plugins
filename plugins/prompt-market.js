@@ -902,7 +902,7 @@
 
         function processImageObject(imgObj, sourceName = '本地上传') {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 720;
+            const MAX_WIDTH = 480; // 视网膜双倍高清卡片尺寸 (体积暴降60%~)
             let width = imgObj.width;
             let height = imgObj.height;
             if (width > MAX_WIDTH) {
@@ -913,7 +913,7 @@
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(imgObj, 0, 0, width, height);
-            compressedBase64 = canvas.toDataURL('image/webp', 0.82);
+            compressedBase64 = canvas.toDataURL('image/webp', 0.75);
             previewImg.src = compressedBase64;
             previewWrap.style.display = 'block';
             imgStatus.innerHTML = `<span style="color:#22c55e;"><i class="fa-solid fa-check"></i> 已绑定预览图 (${sourceName})</span>`;

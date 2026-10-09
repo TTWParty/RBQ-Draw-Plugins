@@ -16,6 +16,14 @@
     "main": "plugins/prompt-presets.js?v=1.3.18"
   },
   {
+    "id": "rbq-prompt-market",
+    "name": "提示词预设工坊 (Prompt Market)",
+    "description": "社区画师串与提示词预设共享中心。支持云端广场浏览、带图瀑布流卡片、风格标签筛选、一键将心仪预设安装至本地「提示词预设」插件，并支持一键将本地预设上传分享至云端工坊。",
+    "version": "1.0.0",
+    "author": "TTWP-09",
+    "main": "plugins/prompt-market.js?v=1.0.0"
+  },
+  {
     "id": "rbq-png-metadata",
     "name": "NAI 图片信息提取器",
     "description": "在画廊直接提取 NovelAI/SD/ComfyUI 图像的隐藏数据。并在“生成测试”面板中提供拖拽解析 (Prompt Reader) 与一键导入测试功能。",

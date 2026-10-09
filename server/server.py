@@ -28,7 +28,7 @@ INITIAL_PRESETS = [
         'positive': '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
         'negative': 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
         'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 28},
+        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 28, 'cfgRescale': 0},
         'likes': 520,
         'downloads': 1314,
         'createdAt': '2026-10-09'
@@ -43,7 +43,7 @@ INITIAL_PRESETS = [
         'positive': 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
         'negative': '2::2d, anime, cartoon, stylized, flat color, cute, chibi, big anime eyes, lineart, drawing, illustration::, 1.5::plastic skin, doll, toy, figurine, garage kit, oversaturated, bright daylight, flat lighting::, lowres, bad anatomy, bad hands, worst quality, blurry',
         'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 6.0, 'sampler': 'k_dpmpp_2m_sde', 'steps': 25},
+        'params': {'scale': 6.0, 'sampler': 'k_dpmpp_2m_sde', 'steps': 25, 'cfgRescale': 0},
         'likes': 128,
         'downloads': 360,
         'createdAt': '2026-10-09'
@@ -58,7 +58,7 @@ INITIAL_PRESETS = [
         'positive': '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
         'negative': 'opaque pantyhose, thick tights, matte pantyhose, black pantyhose, fishnet, ripped pantyhose, lowres, bad anatomy, bad hands',
         'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 5.5, 'sampler': 'k_euler_ancestral', 'steps': 23},
+        'params': {'scale': 5.5, 'sampler': 'k_euler_ancestral', 'steps': 23, 'cfgRescale': 0},
         'likes': 215,
         'downloads': 512,
         'createdAt': '2026-10-09'
@@ -73,7 +73,7 @@ INITIAL_PRESETS = [
         'positive': '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
         'negative': 'lowres, bad anatomy, bad hands, worst quality, flat color, simplified',
         'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 25},
+        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 25, 'cfgRescale': 0},
         'likes': 189,
         'downloads': 430,
         'createdAt': '2026-10-09'

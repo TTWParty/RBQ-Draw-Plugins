@@ -4,6 +4,14 @@
     const STORAGE_KEY = '_promptMarketSettings';
     const PRESETS_STORAGE_KEY = '_promptPresets';
 
+    // 默认基准测试底模提示词（卡密sama倾情提供）
+    const BENCHMARK_POSITIVE_PROMPT = '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes';
+
+    const BENCHMARK_NEGATIVE_PROMPT = 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly';
+
+    const BENCHMARK_CREDIT = '测试提示词由卡密sama提供';
+    const KAMI_DEFAULT_PREVIEW = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp';
+
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
         serverUrl: 'https://market.rbq.my', // 自建工坊服务器
@@ -30,7 +38,7 @@
         RBQ.api.saveSettings();
     }
 
-    // 复制剪贴板兜底
+    // 复制剪贴板通用兜底
     const copyToClipboard = async (text) => {
         if (typeof RBQ?.utils?.copyToClipboard === 'function') {
             return RBQ.utils.copyToClipboard(text);
@@ -53,20 +61,17 @@
         return success;
     };
 
-    // 全局默认真实测试预览图（由卡密sama提供的提示词真实渲染生成）
-    const KAMI_DEFAULT_PREVIEW = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp';
-
     // 内置初始精品预设（即使完全离线时也立即可用）
     const BUILTIN_PRESETS = [
         {
             id: 'kami-greenhouse-girl',
-            title: '复古花房·怀表麻花辫少女',
+            title: '复古花房·怀表麻花辫少女 (基准底模样张)',
             author: '卡密sama',
             model: 'v5',
-            description: '测试提示词由卡密sama提供。温室玻璃花房、拱形彩绘玻璃、阳光丁达尔效应、精美双麻花与金发粉渐变。',
-            tags: ['NAI V5', 'NAI V4.5', '卡密sama', '复古花房', '唯美少女'],
-            positive: '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
-            negative: 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
+            description: '测试提示词由卡密sama提供。全场统一基准测试底模：温室玻璃花房、拱形彩绘玻璃、精美双麻花与金发粉渐变。',
+            tags: ['NAI V5', '基准底模', '卡密sama', '复古花房', '唯美少女'],
+            positive: BENCHMARK_POSITIVE_PROMPT,
+            negative: BENCHMARK_NEGATIVE_PROMPT,
             previewUrl: KAMI_DEFAULT_PREVIEW,
             params: { scale: 6.0, sampler: 'k_euler_ancestral', steps: 28 },
             likes: 521,
@@ -79,7 +84,7 @@
             author: 'RBQ官方精选',
             model: 'v5',
             description: '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。（测试预览图由卡密sama提示词渲染）',
-            tags: ['3D写实', '御姐', '电影光影', '次世代', '卡密sama'],
+            tags: ['NAI V5', '3D写实', '御姐', '电影光影', '次世代'],
             positive: 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
             negative: '2::2d, anime, cartoon, stylized, flat color, cute, chibi, big anime eyes, lineart, drawing, illustration::, 1.5::plastic skin, doll, toy, figurine, garage kit, oversaturated, bright daylight, flat lighting::, lowres, bad anatomy, bad hands, worst quality, blurry',
             previewUrl: KAMI_DEFAULT_PREVIEW,
@@ -94,7 +99,7 @@
             author: 'RBQ官方精选',
             model: 'v4.5',
             description: '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。（测试预览图由卡密sama提示词渲染）',
-            tags: ['油光丝袜', '美腿', '高光反光', '御姐', '卡密sama'],
+            tags: ['NAI V4.5', '油光丝袜', '美腿', '高光反光', '御姐'],
             positive: '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
             negative: 'opaque pantyhose, thick tights, matte pantyhose, black pantyhose, fishnet, ripped pantyhose, lowres, bad anatomy, bad hands',
             previewUrl: KAMI_DEFAULT_PREVIEW,
@@ -109,7 +114,7 @@
             author: 'RBQ官方精选',
             model: 'v4.5',
             description: '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。（测试预览图由卡密sama提示词渲染）',
-            tags: ['日系厚涂', '肉感', '微汗水光', '解剖学', '卡密sama'],
+            tags: ['NAI V4.5', '日系厚涂', '肉感', '微汗水光', '解剖学'],
             positive: '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
             negative: 'lowres, bad anatomy, bad hands, worst quality, flat color, simplified',
             previewUrl: KAMI_DEFAULT_PREVIEW,
@@ -262,7 +267,8 @@
             /* 宿主 .menu_button 挤压防御铁律 */
             #rbq-pm-container .menu_button,
             #rbq-pm-upload-dialog .menu_button,
-            #rbq-pm-detail-dialog .menu_button {
+            #rbq-pm-detail-dialog .menu_button,
+            #rbq-pm-benchmark-dialog .menu_button {
                 display: inline-flex !important;
                 flex-direction: row !important;
                 align-items: center !important;
@@ -434,13 +440,13 @@
                                 <span>提示词预设工坊</span>
                                 <span style="font-size: 10px; font-weight: 700; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 7px; border-radius: 4px;">PROMPT WORKSHOP</span>
                             </div>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">社区画师串与预设中心 · 支持所见即所得生图发布与一键安装</div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">社区画师串与预设中心 · 支持现场生图发布与一键安装</div>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 7px 15px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 10px rgba(2, 132, 199, 0.35);">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>发布预设 (支持现场出图)</span>
+                            <span>发布预设 (现场出图)</span>
                         </button>
                         <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 7px 11px; font-size: 13px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
                             <i class="fa-solid fa-gear"></i>
@@ -449,6 +455,17 @@
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
+                </div>
+
+                <!-- HUD Fair Benchmark Banner -->
+                <div style="padding: 8px 20px; background: linear-gradient(90deg, rgba(168, 85, 247, 0.12), rgba(56, 189, 248, 0.1)); border-bottom: 1px solid rgba(168, 85, 247, 0.25); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11.5px; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <span style="font-size: 13px; color: #f0abfc;">✨</span>
+                        <span><strong>公平基准测试底模：</strong>全场预设预览图均由各画师串叠加<strong>「卡密sama温室少女」</strong>统一基准测试词渲染生成 (<span style="color:#f0abfc; font-weight:600;">测试提示词由卡密sama提供</span>)，保证同框同人，拒绝照骗与开盲盒！</span>
+                    </div>
+                    <button id="rbq-pm-btn-view-bm" class="menu_button" style="background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); color: #7dd3fc; font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer; flex-shrink: 0;">
+                        <i class="fa-solid fa-scroll"></i> 查看底模词
+                    </button>
                 </div>
 
                 <!-- Model Filter & Category Toolbar -->
@@ -504,6 +521,7 @@
 
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
         marketModal.querySelector('#rbq-pm-btn-settings').onclick = () => openSettingsDialog();
+        marketModal.querySelector('#rbq-pm-btn-view-bm').onclick = () => openBenchmarkInfoDialog();
 
         // 模型 Filter 切换
         marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(tab => {
@@ -625,7 +643,7 @@
             const card = document.createElement('div');
             card.className = 'rbq-pm-card';
 
-            const previewSrc = item.previewUrl || 'https://via.placeholder.com/400x300/111827/64748b?text=RBQ+Preset';
+            const previewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
 
             // 模型 Badge 样式判定
             const m = (item.model || '').toLowerCase();
@@ -645,8 +663,8 @@
                     <div style="position: absolute; top: 8px; left: 8px;">
                         ${modelBadgeHtml}
                     </div>
-                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); font-size: 10px; padding: 2px 7px; border-radius: 5px; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
-                        <i class="fa-solid fa-download"></i> ${item.downloads || 0}
+                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.68); backdrop-filter: blur(4px); font-size: 10px; padding: 2px 7px; border-radius: 5px; color: #f0abfc; display: flex; align-items: center; gap: 4px; border: 1px solid rgba(217,70,239,0.25);">
+                        <i class="fa-solid fa-palette"></i> 基准实测
                     </div>
                 </div>
                 <div style="padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 8px;">
@@ -715,40 +733,121 @@
         });
     }
 
-    // ── 详情弹窗 ──
+    // ── 查看基准底模信息弹窗 ──
+    function openBenchmarkInfoDialog() {
+        const overlay = document.createElement('div');
+        overlay.id = 'rbq-pm-benchmark-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
+        overlay.innerHTML = `
+            <div style="width:90vw; max-width:620px; max-height:86vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.75);">
+                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-scroll" style="color:#f0abfc;"></i>
+                        <span>统一基准测试底模 (Benchmark Prompt)</span>
+                    </div>
+                    <button id="rbq-pm-bm-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
+                    <div style="background:linear-gradient(135deg, rgba(217,70,239,0.15), rgba(56,189,248,0.15)); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:10px 14px; font-size:12px; color:#f8fafc; line-height:1.5;">
+                        <div style="font-weight:700; color:#f0abfc; margin-bottom:4px;">🌟 评测底模说明：${BENCHMARK_CREDIT}</div>
+                        <div>为了保证工坊内每一个画师串、风格预设在视觉上的<strong>公平横向比对</strong>，所有上传作品必须以这组「温室怀表双麻花少女」作为基准主体。这样玩家一眼就能看出不同画师串的色彩、笔触、光影差异！</div>
+                    </div>
+                    <div>
+                        <div style="font-size:12px; color:#38bdf8; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> 基准正向提示词 (Positive)</div>
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:150px; overflow-y:auto; user-select:text;">
+                            ${BENCHMARK_POSITIVE_PROMPT}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:12px; color:#f87171; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 基准负向提示词 (Negative)</div>
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; user-select:text;">
+                            ${BENCHMARK_NEGATIVE_PROMPT}
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
+                    <button id="rbq-pm-bm-copy" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 14px; font-weight:600;"><i class="fa-solid fa-copy"></i> 复制基准提示词</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#rbq-pm-bm-close').onclick = () => overlay.remove();
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.querySelector('#rbq-pm-bm-copy').onclick = async () => {
+            await copyToClipboard(BENCHMARK_POSITIVE_PROMPT);
+            toastr.success('基准测试底模词已复制！');
+        };
+    }
+
+    // ── 预设详情弹窗 ──
     function openDetailDialog(item) {
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-detail-dialog';
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.78); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
+        
+        const m = (item.model || '').toLowerCase();
+        let modelBadge = '<span style="font-size:10px; background:rgba(255,255,255,0.1); color:#cbd5e1; padding:2px 6px; border-radius:4px;">通用</span>';
+        if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
+            modelBadge = '<span style="font-size:10px; background:rgba(217,70,239,0.25); color:#f0abfc; padding:2px 6px; border-radius:4px; border:1px solid rgba(217,70,239,0.5);">NAI V5</span>';
+        } else if (m === 'v4.5' || (item.tags || []).includes('NAI V4.5')) {
+            modelBadge = '<span style="font-size:10px; background:rgba(56,189,248,0.25); color:#7dd3fc; padding:2px 6px; border-radius:4px; border:1px solid rgba(56,189,248,0.5);">NAI V4.5</span>';
+        }
+
         overlay.innerHTML = `
-            <div style="width:90vw; max-width:640px; max-height:86vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.7);">
+            <div style="width:92vw; max-width:660px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.75);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
                         <span>${item.title}</span>
-                        <span style="font-size:10px; background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px;">${(item.model || 'v5').toUpperCase()}</span>
+                        ${modelBadge}
                     </div>
                     <button id="rbq-pm-detail-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
                     <div>
-                        <div style="font-size:12px; color:#38bdf8; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> 正向提示词 (Positive)</div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:160px; overflow-y:auto; user-select:text;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                            <span style="font-size:12px; color:#38bdf8; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 画师/风格预设串 (Positive)</span>
+                            <button id="rbq-pm-copy-pos-only" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;">
+                                <i class="fa-solid fa-copy"></i> 复制预设词
+                            </button>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:120px; overflow-y:auto; user-select:text;">
                             ${item.positive || '(无)'}
                         </div>
                     </div>
+
+                    ${item.negative ? `
                     <div>
-                        <div style="font-size:12px; color:#f87171; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 负向提示词 (Negative)</div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; max-height:100px; overflow-y:auto; user-select:text;">
-                            ${item.negative || '(无)'}
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                            <span style="font-size:12px; color:#f87171; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 负向提示词 (Negative)</span>
+                            <button id="rbq-pm-copy-neg-only" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;">
+                                <i class="fa-solid fa-copy"></i> 复制负向词
+                            </button>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; max-height:80px; overflow-y:auto; user-select:text;">
+                            ${item.negative}
+                        </div>
+                    </div>` : ''}
+
+                    <!-- 基准测试底模拼接说明 -->
+                    <div style="background:rgba(217,70,239,0.08); border:1px dashed rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px; line-height:1.55;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <span style="color:#f0abfc; font-weight:700;"><i class="fa-solid fa-vial"></i> 基准测试生成全串 (预设串 + 卡密sama基准底模)</span>
+                            <button id="rbq-pm-copy-full-combo" class="menu_button" style="background:rgba(217,70,239,0.2); border:1px solid rgba(217,70,239,0.4); color:#f0abfc; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
+                                <i class="fa-solid fa-clone"></i> 复制完整生图提示词
+                            </button>
+                        </div>
+                        <div style="color:#cbd5e1; font-size:11px;">
+                            预览图为真实出图效果。点击复制完整词可直接在生图面板或 Web 还原该预设样张。
+                            <div style="color:#94a3b8; margin-top:2px; font-size:10.5px;">* ${BENCHMARK_CREDIT}</div>
                         </div>
                     </div>
-                    <div style="font-size:11.5px; color:#64748b; line-height:1.6; background:rgba(0,0,0,0.2); padding:8px 12px; border-radius:6px;">
-                        <div>作者: <strong style="color:#94a3b8;">${item.author || '匿名'}</strong> | 点赞数: <strong style="color:#fb7185;">${item.likes || 0}</strong> | 下载: ${item.downloads || 0}</div>
-                        <div>标签: ${(item.tags || []).join(', ')}</div>
+
+                    <div style="font-size:11.5px; color:#64748b; line-height:1.6; background:rgba(0,0,0,0.25); padding:8px 12px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>作者: <strong style="color:#cbd5e1;">${item.author || '匿名'}</strong> | 获赞: <strong style="color:#fb7185;">${item.likes || 0}</strong></div>
+                        <div>标签: ${(item.tags || []).join(' ')}</div>
                     </div>
                 </div>
                 <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
-                    <button id="rbq-pm-copy-pos" class="menu_button" style="font-size:12px; padding:6px 14px; background:rgba(255,255,255,0.08);"><i class="fa-solid fa-copy"></i> 复制正面词</button>
                     <button id="rbq-pm-install-now" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 16px; font-weight:600;"><i class="fa-solid fa-download"></i> 安装至本地预设</button>
                 </div>
             </div>
@@ -757,10 +856,24 @@
         overlay.querySelector('#rbq-pm-detail-close').onclick = () => overlay.remove();
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
-        overlay.querySelector('#rbq-pm-copy-pos').onclick = async () => {
+        overlay.querySelector('#rbq-pm-copy-pos-only').onclick = async () => {
             await copyToClipboard(item.positive || '');
-            toastr.success('正面提示词已复制到剪贴板！');
+            toastr.success('预设正面词已复制到剪贴板！');
         };
+
+        if (overlay.querySelector('#rbq-pm-copy-neg-only')) {
+            overlay.querySelector('#rbq-pm-copy-neg-only').onclick = async () => {
+                await copyToClipboard(item.negative || '');
+                toastr.success('预设负面词已复制到剪贴板！');
+            };
+        }
+
+        overlay.querySelector('#rbq-pm-copy-full-combo').onclick = async () => {
+            const fullCombo = [item.positive, BENCHMARK_POSITIVE_PROMPT].filter(Boolean).join(', ');
+            await copyToClipboard(fullCombo);
+            toastr.success('已复制完整拼接词（预设串 + 卡密sama基准底模）！');
+        };
+
         overlay.querySelector('#rbq-pm-install-now').onclick = () => {
             installToLocalPresets(item);
             overlay.remove();
@@ -785,11 +898,11 @@
         overlay.id = 'rbq-pm-upload-dialog';
         overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
         overlay.innerHTML = `
-            <div style="width:92vw; max-width:620px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
+            <div style="width:92vw; max-width:640px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
                         <i class="fa-solid fa-cloud-arrow-up" style="color:#38bdf8;"></i>
-                        <span>发布预设至工坊</span>
+                        <span>发布预设至工坊 (现场出图绑定)</span>
                     </div>
                     <button id="rbq-pm-upload-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
@@ -803,15 +916,12 @@
                                 ${localPresets.map((p, idx) => `<option value="${idx}">${p.name || p.id}</option>`).join('')}
                             </select>
                         </div>
-                        <button id="rbq-pm-fill-demo" type="button" class="menu_button" style="background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.35); color:#38bdf8; font-size:11px; padding:5px 9px; border-radius:6px; margin-top:14px;" title="填入卡密sama推荐测试词">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i> 填入卡密sama测试词
-                        </button>
                     </div>
 
                     <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设标题 *</label>
-                            <input id="rbq-pm-up-title" type="text" value="${defaultDemo.title}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                            <input id="rbq-pm-up-title" type="text" placeholder="例如: Neroma Shin 水光透肉丝袜" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                         </div>
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">适配模型 *</label>
@@ -823,42 +933,60 @@
                         </div>
                     </div>
 
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
+                            <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">风格标签 (空格分隔)</label>
+                            <input id="rbq-pm-up-tags" type="text" placeholder="例如: 3D写实 油光丝袜 御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <!-- 用户自定义画师/风格词 -->
                     <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
-                        <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || '卡密sama'}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <label style="font-size:12px; color:#38bdf8; display:block; margin-bottom:4px; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 用户画师 / 风格预设词 (Positive) *</label>
+                        <textarea id="rbq-pm-up-pos" rows="3" placeholder="在此输入你的画师串或预设词，例如: artist:neroma_shin, 1.4::shiny pantyhose::, 3d game cg" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box; line-height:1.4;"></textarea>
                     </div>
 
                     <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                            <label style="font-size:12px; color:#94a3b8;">正面提示词 (默认测试提示词) *</label>
-                            <button id="rbq-pm-run-draw" type="button" class="menu_button" style="background:linear-gradient(135deg, #a855f7, #6366f1); border:none; color:#fff; font-size:11px; font-weight:700; padding:4px 10px; border-radius:6px; box-shadow:0 2px 8px rgba(168,85,247,0.35);" title="所见即所得：现场用当前输入的词直接出图">
-                                <i class="fa-solid fa-paintbrush"></i> 🎨 立即生图并生成预览
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">负面提示词 (可选)</label>
+                        <textarea id="rbq-pm-up-neg" rows="2" placeholder="可选输入针对该风格的负向词，例如: flat color, simplified" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
+                    </div>
+
+                    <!-- 统一基准底模提示框 -->
+                    <div style="background:linear-gradient(135deg, rgba(217,70,239,0.1), rgba(56,189,248,0.1)); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:700; color:#f0abfc;"><i class="fa-solid fa-vial"></i> 统一基准测试底模 (测试提示词由卡密sama提供)</span>
+                            <span style="font-size:10.5px; color:#7dd3fc; background:rgba(56,189,248,0.2); padding:1px 6px; border-radius:4px;">生图时自动合并</span>
+                        </div>
+                        <div style="color:#cbd5e1; margin-top:4px; font-size:11px; line-height:1.45;">
+                            为确保全场预设在相同主体下横向对比，点击下方生图时，系统会自动将你的画师串与卡密sama基准词合并出图！
+                        </div>
+                    </div>
+
+                    <!-- 预览图生成与绑定核心区域 -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.18); border-radius:8px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <div style="font-size:12px; color:#cbd5e1; font-weight:600;"><i class="fa-solid fa-image"></i> 预览图生成与绑定 (720px / 0.82 质量)</div>
+                            <button id="rbq-pm-run-draw" type="button" class="menu_button" style="background:linear-gradient(135deg, #a855f7, #6366f1); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:5px 12px; border-radius:6px; box-shadow:0 2px 10px rgba(168,85,247,0.35); cursor:pointer;">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 🎨 立即生图并生成预览
                             </button>
                         </div>
-                        <textarea id="rbq-pm-up-pos" rows="3" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box; line-height:1.4;">${defaultDemo.positive}</textarea>
-                    </div>
-
-                    <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">负面提示词</label>
-                        <textarea id="rbq-pm-up-neg" rows="2" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;">${defaultDemo.negative}</textarea>
-                    </div>
-
-                    <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">风格标签 (空格或逗号分隔)</label>
-                        <input id="rbq-pm-up-tags" type="text" value="${defaultDemo.tags.join(' ')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
-                    </div>
-
-                    <!-- 预览图区域（支持现场出图或本地上传） -->
-                    <div style="background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.15); border-radius:8px; padding:12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <label style="font-size:12px; color:#cbd5e1; font-weight:600;"><i class="fa-solid fa-image"></i> 效果预览图 (必须是该串生成的图)</label>
-                            <span id="rbq-pm-img-status" style="font-size:11px; color:#22c55e;"><i class="fa-solid fa-check"></i> 默认预览图 (由该提示词真实渲染)</span>
+                        
+                        <div style="margin-top:8px; font-size:11px; color:#94a3b8; display:flex; align-items:center; justify-content:space-between;">
+                            <span id="rbq-pm-img-status"><i class="fa-regular fa-clock"></i> 尚未生成当前串的基准预览图</span>
+                            <span id="rbq-pm-img-spec" style="color:#64748b;">规格: 720px WebP (0.82)</span>
                         </div>
-                        <div style="margin-top:6px; display:flex; gap:10px; align-items:center;">
-                            <input id="rbq-pm-up-img" type="file" accept="image/*" style="font-size:11px; color:#cbd5e1; flex:1;">
-                        </div>
-                        <div id="rbq-pm-up-preview" style="margin-top:8px; display:block; max-height:160px; overflow:hidden; border-radius:8px; position:relative; background:#000;">
+
+                        <div id="rbq-pm-up-preview" style="margin-top:10px; display:block; max-height:160px; overflow:hidden; border-radius:8px; position:relative; background:#070b13; border:1px solid rgba(255,255,255,0.08);">
                             <img id="rbq-pm-preview-img" src="${KAMI_DEFAULT_PREVIEW}" style="max-height:160px; border-radius:8px; object-fit:contain; display:block; margin:0 auto;">
+                        </div>
+
+                        <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
+                            <span>若生图离线，也可手动选择本地已用该串渲染的图:</span>
+                            <input id="rbq-pm-up-img" type="file" accept="image/*" style="font-size:11px; color:#cbd5e1; width:160px;">
                         </div>
                     </div>
                 </div>
@@ -873,18 +1001,6 @@
         overlay.querySelector('#rbq-pm-upload-close').onclick = () => overlay.remove();
         overlay.querySelector('#rbq-pm-up-cancel').onclick = () => overlay.remove();
 
-        // 填入卡密sama测试词
-        overlay.querySelector('#rbq-pm-fill-demo').onclick = () => {
-            const demo = BUILTIN_PRESETS[0];
-            overlay.querySelector('#rbq-pm-up-title').value = demo.title;
-            overlay.querySelector('#rbq-pm-up-author').value = '卡密sama';
-            overlay.querySelector('#rbq-pm-up-model').value = 'v5';
-            overlay.querySelector('#rbq-pm-up-pos').value = demo.positive;
-            overlay.querySelector('#rbq-pm-up-neg').value = demo.negative;
-            overlay.querySelector('#rbq-pm-up-tags').value = demo.tags.join(' ');
-            toastr.success('已填入卡密sama推荐测试词！可以点击「🎨 立即生图」出图测试');
-        };
-
         const localSelect = overlay.querySelector('#rbq-pm-local-select');
         localSelect.onchange = (e) => {
             const idx = e.target.value;
@@ -896,12 +1012,13 @@
             }
         };
 
-        // 图片压缩转 Base64 逻辑
+        // 图片高保真压缩 (720px / 0.82 WebP)
         let compressedBase64 = '';
         const fileInput = overlay.querySelector('#rbq-pm-up-img');
         const previewWrap = overlay.querySelector('#rbq-pm-up-preview');
         const previewImg = overlay.querySelector('#rbq-pm-preview-img');
         const imgStatus = overlay.querySelector('#rbq-pm-img-status');
+        const imgSpec = overlay.querySelector('#rbq-pm-img-spec');
 
         function processImageObject(imgObj, sourceName = '本地上传') {
             const canvas = document.createElement('canvas');
@@ -919,7 +1036,10 @@
             compressedBase64 = canvas.toDataURL('image/webp', 0.82);
             previewImg.src = compressedBase64;
             previewWrap.style.display = 'block';
-            imgStatus.innerHTML = `<span style="color:#22c55e;"><i class="fa-solid fa-check"></i> 已绑定预览图 (${sourceName})</span>`;
+
+            const approxKb = Math.round((compressedBase64.length * 3) / 4 / 1024);
+            imgStatus.innerHTML = `<span style="color:#22c55e; font-weight:600;"><i class="fa-solid fa-check"></i> 已绑定真实预览 (${sourceName})</span>`;
+            imgSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
         }
 
         fileInput.onchange = (e) => {
@@ -940,7 +1060,7 @@
             const pos = overlay.querySelector('#rbq-pm-up-pos').value.trim();
             const neg = overlay.querySelector('#rbq-pm-up-neg').value.trim();
             if (!pos) {
-                toastr.warning('请先输入正面提示词后再进行生图！');
+                toastr.warning('请先输入你的画师串/正面提示词！');
                 return;
             }
 
@@ -949,13 +1069,17 @@
                 return;
             }
 
+            // 核心机制：画师串 + 卡密sama基准底模提示词自动合并
+            const finalPrompt = [pos, BENCHMARK_POSITIVE_PROMPT].filter(Boolean).join(', ');
+            const finalNegative = [neg, BENCHMARK_NEGATIVE_PROMPT].filter(Boolean).join(', ');
+
             drawBtn.disabled = true;
             const originalHtml = drawBtn.innerHTML;
             drawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>正在向生图集群排队出图...</span>';
             imgStatus.innerHTML = '<span style="color:#38bdf8;"><i class="fa-solid fa-spinner fa-spin"></i> 正在生成图片...</span>';
 
             try {
-                const drawRes = await RBQ.api.generateImage(pos, 'market-preset-preview', { negative: neg }, (progress) => {
+                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-preview', { negative: finalNegative }, (progress) => {
                     if (progress) drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
                 });
 
@@ -963,11 +1087,11 @@
                     throw new Error('生图服务未返回有效图片地址');
                 }
 
-                // 载入生成的图片并转换为 WebP
+                // 载入生成的图片并转换为 720px @ 0.82 WebP
                 const drawImg = new Image();
                 drawImg.crossOrigin = 'anonymous';
                 drawImg.onload = () => {
-                    processImageObject(drawImg, 'AI 现场生成');
+                    processImageObject(drawImg, '当前串+卡密sama底模 现场实测');
                     toastr.success('🎉 预览图生成成功并已绑定该提示词！所见即所得。');
                 };
                 drawImg.onerror = async () => {
@@ -978,7 +1102,7 @@
                         const reader = new FileReader();
                         reader.onload = (ev) => {
                             const bImg = new Image();
-                            bImg.onload = () => processImageObject(bImg, 'AI 现场生成');
+                            bImg.onload = () => processImageObject(bImg, '当前串+卡密sama底模 现场实测');
                             bImg.src = ev.target.result;
                         };
                         reader.readAsDataURL(blob);
@@ -1007,7 +1131,7 @@
             const tags = rawTags.split(/[\s,，]+/).filter(Boolean);
 
             if (!title || !positive) {
-                toastr.warning('请填写标题和正面提示词！');
+                toastr.warning('请填写标题和正面画师/预设提示词！');
                 return;
             }
 
@@ -1029,6 +1153,7 @@
                         positive,
                         negative,
                         tags,
+                        description: `基准测试预览由「卡密sama」提示词渲染`,
                         previewUrl: !compressedBase64 ? KAMI_DEFAULT_PREVIEW : '',
                         previewBase64: compressedBase64 || ''
                     })

@@ -4,19 +4,22 @@
     const STORAGE_KEY = '_promptMarketSettings';
     const PRESETS_STORAGE_KEY = '_promptPresets';
 
-    // 默认配置
+    // 默认配置 (默认直连用户自建的 9.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
-        workerUrl: '', // 用户的 Cloudflare Worker 地址，例如 https://rbq-market.xxx.workers.dev
+        serverUrl: 'http://9.rbq.my', // 自建工坊服务器，例如 http://9.rbq.my 或 http://38.47.113.1:3000
+        authorName: '',
         repo: 'TTWParty/RBQ-Prompt-Market',
         branch: 'main',
-        authorName: '',
-        cdnType: 'jsdelivr', // jsdelivr | github
         installedIds: []
     };
 
     function getConfig() {
         const s = RBQ.api.getSettings();
         if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { ...DEFAULT_CONFIG };
+        // 自动补充默认 serverUrl
+        if (!s[STORAGE_KEY].serverUrl && !s[STORAGE_KEY].workerUrl) {
+            s[STORAGE_KEY].serverUrl = 'http://9.rbq.my';
+        }
         return s[STORAGE_KEY];
     }
 
@@ -47,7 +50,7 @@
         return success;
     };
 
-    // 内置初始精品预设（即使在空仓库或网络不畅时也立即可用）
+    // 内置初始精品预设（即使完全离线时也立即可用）
     const BUILTIN_PRESETS = [
         {
             id: 'builtin-east-cg',
@@ -93,9 +96,25 @@
         }
     ];
 
-    // 获取云端预设列表
+    // 获取云端预设列表 (优先从自建服务器拉取)
     async function fetchCloudIndex() {
         const cfg = getConfig();
+        const serverEndpoint = cfg.serverUrl || cfg.workerUrl;
+
+        // 1. 如果有自建服务器地址，优先直连服务器
+        if (serverEndpoint) {
+            try {
+                const res = await fetch(`${serverEndpoint.replace(/\/+$/, '')}/api/presets?_t=${Date.now()}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) return data;
+                }
+            } catch (err) {
+                console.warn('[Prompt Market] 自建服务器获取预设失败，尝试 GitHub CDN 降级:', err);
+            }
+        }
+
+        // 2. 降级走 GitHub / jsDelivr CDN
         const urls = [
             `https://cdn.jsdelivr.net/gh/${cfg.repo}@${cfg.branch}/index.json?_t=${Date.now()}`,
             `https://raw.githubusercontent.com/${cfg.repo}/${cfg.branch}/index.json`
@@ -106,9 +125,7 @@
                 const res = await fetch(url);
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data) && data.length > 0) {
-                        return data;
-                    }
+                    if (Array.isArray(data) && data.length > 0) return data;
                 }
             } catch (_e) {}
         }
@@ -117,8 +134,20 @@
 
     // 获取单条详情
     async function fetchPresetDetail(item) {
-        if (item.positive) return item; // 已有详情
+        if (item.positive) return item;
         const cfg = getConfig();
+        const serverEndpoint = cfg.serverUrl || cfg.workerUrl;
+        if (serverEndpoint) {
+            try {
+                const res = await fetch(`${serverEndpoint.replace(/\/+$/, '')}/api/presets`);
+                if (res.ok) {
+                    const list = await res.json();
+                    const found = list.find(x => x.id === item.id);
+                    if (found && found.positive) return found;
+                }
+            } catch (_e) {}
+        }
+
         const urls = [
             `https://cdn.jsdelivr.net/gh/${cfg.repo}@${cfg.branch}/presets/${item.id}.json`,
             `https://raw.githubusercontent.com/${cfg.repo}/${cfg.branch}/presets/${item.id}.json`
@@ -482,8 +511,9 @@
     // ── 发布弹窗 ──
     function openUploadDialog() {
         const cfg = getConfig();
-        if (!cfg.workerUrl) {
-            toastr.info('请先在设置中填写你的 Cloudflare Worker 网关地址');
+        const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+        if (!uploadEndpoint) {
+            toastr.info('请先在设置中填写你的预设工坊服务器地址');
             openSettingsDialog();
             return;
         }
@@ -613,7 +643,7 @@
             submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 发布中...';
 
             try {
-                const res = await fetch(`${cfg.workerUrl}/api/upload`, {
+                const res = await fetch(`${uploadEndpoint}/api/upload`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -656,13 +686,13 @@
                 </div>
                 <div style="padding:16px; display:flex; flex-direction:column; gap:12px;">
                     <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">Cloudflare Worker 网关接口 (上传必备)</label>
-                        <input id="rbq-pm-cfg-worker" type="text" placeholder="https://rbq-market.xxx.workers.dev" value="${cfg.workerUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-                        <div style="font-size:11px; color:#64748b; margin-top:3px;">填入你部署的免费 Cloudflare Worker 地址，用于免登录将预设提交至 GitHub 仓库。</div>
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">工坊服务器地址 (API 接口)</label>
+                        <input id="rbq-pm-cfg-server" type="text" placeholder="http://9.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (http://9.rbq.my)。可直接上传和同步预设。</div>
                     </div>
                     <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">GitHub 仓库 (只读浏览)</label>
-                        <input id="rbq-pm-cfg-repo" type="text" value="${cfg.repo || 'TTWParty/RBQ-Prompt-Market'}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称 (默认发布者)</label>
+                        <input id="rbq-pm-cfg-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
                 </div>
                 <div style="padding:12px 16px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
@@ -673,11 +703,13 @@
         document.body.appendChild(overlay);
         overlay.querySelector('#rbq-pm-set-close').onclick = () => overlay.remove();
         overlay.querySelector('#rbq-pm-set-save').onclick = () => {
-            cfg.workerUrl = overlay.querySelector('#rbq-pm-cfg-worker').value.trim().replace(/\/+$/, '');
-            cfg.repo = overlay.querySelector('#rbq-pm-cfg-repo').value.trim();
+            const rawServer = overlay.querySelector('#rbq-pm-cfg-server').value.trim();
+            cfg.serverUrl = rawServer ? rawServer.replace(/\/+$/, '') : 'http://9.rbq.my';
+            cfg.authorName = overlay.querySelector('#rbq-pm-cfg-author').value.trim();
             saveConfig();
             toastr.success('设置已保存！');
             overlay.remove();
+            loadMarketData();
         };
     }
 

@@ -237,6 +237,18 @@
             .join(', ');
     }
 
+    function sanitizeNaiWeightSyntax(prompt) {
+        if (!prompt || typeof prompt !== 'string') return prompt;
+        // 自动纠正 NovelAI 权重块以数字结尾且紧贴闭合 :: 导致的词法解析灾难级权重错误
+        // 例如 0.6::artist:dishwasher1910:: 自动注入空格纠正为 0.6::artist:dishwasher1910 ::，避免 1910 被识别为后文权重
+        return prompt.replace(/(^|[\s,;|\(\[\{<"'])([-+]?\d+(?:\.\d+)?::|::)((?:(?!::)[\s\S])+?)::/g, (match, prefix, open, content) => {
+            if (/\d$/.test(content)) {
+                return `${prefix}${open}${content} ::`;
+            }
+            return match;
+        });
+    }
+
     function resolvePositivePrompt(original, presetPre, presetSuf, globalPrefix, globalSuffix, position = 'prepend') {
         // Legacy 5-argument form support: resolvePositivePrompt(orig, presetPos, gPre, gSuf, pos)
         if (typeof globalSuffix === 'undefined' && typeof position === 'string' && (position === 'prepend' || position === 'append')) {
@@ -262,15 +274,15 @@
             pre = '';
         }
 
-        return combineParts(gPre, pre, orig, suf, gSuf);
+        return sanitizeNaiWeightSyntax(combineParts(gPre, pre, orig, suf, gSuf));
     }
 
     function resolveNegativePrompt(original, presetText, globalText) {
         const orig = (original || '').trim();
         const preset = (presetText || '').trim();
         const global = (globalText || '').trim();
-        if (!preset && !global) return orig;
-        return combineParts(global, preset, orig);
+        if (!preset && !global) return sanitizeNaiWeightSyntax(orig);
+        return sanitizeNaiWeightSyntax(combineParts(global, preset, orig));
     }
 
     // ── Payload Hooks ──

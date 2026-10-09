@@ -17,86 +17,20 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 DATA_LOCK = threading.Lock()
 
-INITIAL_PRESETS = [
-    {
-        'id': 'kami-greenhouse-girl',
-        'title': '复古花房·怀表麻花辫少女',
-        'author': '卡密sama',
-        'model': 'v5',
-        'description': '测试提示词由卡密sama提供。温室玻璃花房、拱形彩绘玻璃、阳光丁达尔效应、精美双麻花与金发粉渐变。',
-        'tags': ['NAI V5', 'NAI V4.5', '卡密sama', '复古花房', '唯美少女'],
-        'positive': '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
-        'negative': 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
-        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 28, 'cfgRescale': 0},
-        'likes': 520,
-        'downloads': 1314,
-        'createdAt': '2026-10-09'
-    },
-    {
-        'id': 'builtin-east-cg',
-        'title': '次世代东方写实御姐 CG',
-        'author': 'RBQ官方精选',
-        'model': 'v5',
-        'description': '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。（测试预览图由卡密sama提示词渲染）',
-        'tags': ['3D写实', '御姐', '电影光影', '次世代', '卡密sama'],
-        'positive': 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
-        'negative': '2::2d, anime, cartoon, stylized, flat color, cute, chibi, big anime eyes, lineart, drawing, illustration::, 1.5::plastic skin, doll, toy, figurine, garage kit, oversaturated, bright daylight, flat lighting::, lowres, bad anatomy, bad hands, worst quality, blurry',
-        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 6.0, 'sampler': 'k_dpmpp_2m_sde', 'steps': 25, 'cfgRescale': 0},
-        'likes': 128,
-        'downloads': 360,
-        'createdAt': '2026-10-09'
-    },
-    {
-        'id': 'builtin-shiny-pantyhose',
-        'title': '顶级油光高光透肉丝袜专精',
-        'author': 'RBQ官方精选',
-        'model': 'v4.5',
-        'description': '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。（测试预览图由卡密sama提示词渲染）',
-        'tags': ['油光丝袜', '美腿', '高光反光', '御姐', '卡密sama'],
-        'positive': '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
-        'negative': 'opaque pantyhose, thick tights, matte pantyhose, black pantyhose, fishnet, ripped pantyhose, lowres, bad anatomy, bad hands',
-        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 5.5, 'sampler': 'k_euler_ancestral', 'steps': 23, 'cfgRescale': 0},
-        'likes': 215,
-        'downloads': 512,
-        'createdAt': '2026-10-09'
-    },
-    {
-        'id': 'builtin-thick-skin',
-        'title': '顶级肉感厚涂与温润肉温',
-        'author': 'RBQ官方精选',
-        'model': 'v4.5',
-        'description': '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。（测试预览图由卡密sama提示词渲染）',
-        'tags': ['日系厚涂', '肉感', '微汗水光', '解剖学', '卡密sama'],
-        'positive': '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
-        'negative': 'lowres, bad anatomy, bad hands, worst quality, flat color, simplified',
-        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
-        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 25, 'cfgRescale': 0},
-        'likes': 189,
-        'downloads': 430,
-        'createdAt': '2026-10-09'
-    }
-]
+INITIAL_PRESETS = []
 
 def load_presets():
     if not os.path.exists(PRESETS_FILE):
-        save_presets(INITIAL_PRESETS)
-        return INITIAL_PRESETS
+        save_presets([])
+        return []
     try:
         with open(PRESETS_FILE, 'r', encoding='utf-8') as f:
             presets = json.load(f)
-            # 确保所有初始预设的预览图均统一使用该测试提示词真实渲染的图片
-            for p in presets:
-                if not p.get('previewUrl') or 'unsplash' in p.get('previewUrl', '') or 'placeholder' in p.get('previewUrl', '') or p.get('id', '').startswith('builtin-') or p.get('id') == 'kami-greenhouse-girl':
-                    p['previewUrl'] = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp'
-            if not any(p.get('id') == 'kami-greenhouse-girl' for p in presets):
-                presets.insert(0, INITIAL_PRESETS[0])
-            save_presets(presets)
+            if not isinstance(presets, list):
+                presets = []
             return presets
     except Exception:
-        return INITIAL_PRESETS
+        return []
 
 def save_presets(data):
     with open(PRESETS_FILE, 'w', encoding='utf-8') as f:
@@ -220,6 +154,60 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
                     return
+
+        # ── 下载/安装计数 API ──
+        if parsed.path == '/api/download':
+            target_id = str(data.get('id', '')).strip()
+            if not target_id:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                return
+
+            with DATA_LOCK:
+                presets = load_presets()
+                found = None
+                for p in presets:
+                    if p.get('id') == target_id:
+                        p['downloads'] = int(p.get('downloads', 0)) + 1
+                        found = p
+                        break
+                if found:
+                    save_presets(presets)
+                    resp = json.dumps({'success': True, 'id': target_id, 'downloads': found['downloads']}).encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    return
+
+        # ── 删除预设 API (指定 ID 或 __ALL__ 清空) ──
+        if parsed.path == '/api/delete':
+            target_id = str(data.get('id', '')).strip()
+            with DATA_LOCK:
+                presets = load_presets()
+                if target_id == '__ALL__':
+                    presets = []
+                else:
+                    presets = [p for p in presets if p.get('id') != target_id]
+                save_presets(presets)
+            resp = json.dumps({'success': True, 'remaining': len(presets)}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(resp)
+            return
 
         # ── 上传发布 API ──
         if parsed.path == '/api/upload':

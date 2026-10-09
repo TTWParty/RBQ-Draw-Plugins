@@ -120,69 +120,8 @@
         toastr?.success?.(`🎉 已成功同步 NAI 生图参数！\nScale: ${scale} | 采样器: ${formatSampler(sampler)} | 步数: ${steps} | Rescale: ${cfgRescale}`);
     }
 
-    // 内置初始精品预设（即使完全离线时也立即可用）
-    const BUILTIN_PRESETS = [
-        {
-            id: 'kami-greenhouse-girl',
-            title: '复古花房·怀表麻花辫少女 (基准底模样张)',
-            author: '卡密sama',
-            model: 'v5',
-            description: '测试提示词由卡密sama提供。全场统一基准测试底模：温室玻璃花房、拱形彩绘玻璃、精美双麻花与金发粉渐变。',
-            tags: ['NAI V5', '基准底模', '卡密sama', '复古花房', '唯美少女'],
-            positive: BENCHMARK_POSITIVE_PROMPT,
-            negative: BENCHMARK_NEGATIVE_PROMPT,
-            previewUrl: KAMI_DEFAULT_PREVIEW,
-            params: { scale: 6.0, sampler: 'k_euler_ancestral', steps: 28, cfgRescale: 0 },
-            likes: 521,
-            downloads: 1314,
-            createdAt: '2026-10-09'
-        },
-        {
-            id: 'builtin-east-cg',
-            title: '次世代东方写实御姐 CG',
-            author: 'RBQ官方精选',
-            model: 'v5',
-            description: '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。（测试预览图由卡密sama提示词渲染）',
-            tags: ['NAI V5', '3D写实', '御姐', '电影光影', '次世代'],
-            positive: 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
-            negative: '2::2d, anime, cartoon, stylized, flat color, cute, chibi, big anime eyes, lineart, drawing, illustration::, 1.5::plastic skin, doll, toy, figurine, garage kit, oversaturated, bright daylight, flat lighting::, lowres, bad anatomy, bad hands, worst quality, blurry',
-            previewUrl: KAMI_DEFAULT_PREVIEW,
-            params: { scale: 6.0, sampler: 'k_dpmpp_2m_sde', steps: 25, cfgRescale: 0 },
-            likes: 128,
-            downloads: 360,
-            createdAt: '2026-10-09'
-        },
-        {
-            id: 'builtin-shiny-pantyhose',
-            title: '顶级油光高光透肉丝袜专精',
-            author: 'RBQ官方精选',
-            model: 'v4.5',
-            description: '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。（测试预览图由卡密sama提示词渲染）',
-            tags: ['NAI V4.5', '油光丝袜', '美腿', '高光反光', '御姐'],
-            positive: '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
-            negative: 'opaque pantyhose, thick tights, matte pantyhose, black pantyhose, fishnet, ripped pantyhose, lowres, bad anatomy, bad hands',
-            previewUrl: KAMI_DEFAULT_PREVIEW,
-            params: { scale: 5.5, sampler: 'k_euler_ancestral', steps: 23, cfgRescale: 0 },
-            likes: 215,
-            downloads: 512,
-            createdAt: '2026-10-09'
-        },
-        {
-            id: 'builtin-thick-skin',
-            title: '顶级肉感厚涂与温润肉温',
-            author: 'RBQ官方精选',
-            model: 'v4.5',
-            description: '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。（测试预览图由卡密sama提示词渲染）',
-            tags: ['NAI V4.5', '日系厚涂', '肉感', '微汗水光', '解剖学'],
-            positive: '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
-            negative: 'lowres, bad anatomy, bad hands, worst quality, flat color, simplified',
-            previewUrl: KAMI_DEFAULT_PREVIEW,
-            params: { scale: 6.0, sampler: 'k_euler_ancestral', steps: 25, cfgRescale: 0 },
-            likes: 189,
-            downloads: 430,
-            createdAt: '2026-10-09'
-        }
-    ];
+    // 内置初始预设（默认为空，完全由云端工坊动态分发）
+    const BUILTIN_PRESETS = [];
 
     // 获取云端预设列表 (优先从自建服务器拉取)
     async function fetchCloudIndex() {
@@ -195,7 +134,7 @@
                 const res = await fetch(`${serverEndpoint.replace(/\/+$/, '')}/api/presets?_t=${Date.now()}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data) && data.length > 0) return data;
+                    if (Array.isArray(data)) return data;
                 }
             } catch (err) {
                 console.warn('[Prompt Market] 自建服务器获取预设失败，尝试 GitHub CDN 降级:', err);
@@ -213,7 +152,7 @@
                 const res = await fetch(url);
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data) && data.length > 0) return data;
+                    if (Array.isArray(data)) return data;
                 }
             } catch (_e) {}
         }
@@ -282,6 +221,18 @@
         if (!cfg.installedIds.includes(preset.id)) {
             cfg.installedIds.push(preset.id);
             saveConfig();
+        }
+
+        // 上报下载量至云端工坊
+        const endpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+        if (endpoint && preset.id) {
+            fetch(`${endpoint}/api/download`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: preset.id })
+            }).then(r => r.json()).then(data => {
+                if (data?.downloads) preset.downloads = data.downloads;
+            }).catch(() => {});
         }
 
         toastr.success(`预设「${preset.title}」已成功装入你的本地预设库！`);
@@ -486,7 +437,7 @@
     let activeModelFilter = 'all'; // all | v5 | v4.5 | general
     let activeTag = '全部';
     let searchQuery = '';
-    let sortMode = 'popular'; // popular | newest
+    let sortMode = 'likes'; // likes | downloads | newest
     let cachedList = [];
 
     function openMarketModal() {
@@ -561,9 +512,10 @@
                                 <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #64748b;"></i>
                                 <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 11.5px; color: #fff; width: 170px; outline: none;">
                             </div>
-                            <select id="rbq-pm-sort-select" style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: #94a3b8; outline: none;">
-                                <option value="popular">🔥 热门点赞</option>
-                                <option value="newest">🆕 最新上架</option>
+                            <select id="rbq-pm-sort-select" style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: #cbd5e1; outline: none; cursor: pointer;">
+                                <option value="likes">❤️ 点赞数</option>
+                                <option value="downloads">📥 下载量</option>
+                                <option value="newest">🆕 最新</option>
                             </select>
                         </div>
                     </div>
@@ -692,15 +644,20 @@
             );
         }
 
-        // 排序
-        if (sortMode === 'popular') {
-            items.sort((a, b) => ((b.likes || 0) * 3 + (b.downloads || 0)) - ((a.likes || 0) * 3 + (a.downloads || 0)));
-        } else {
+        // 排序：点赞数、下载量、最新
+        if (sortMode === 'likes') {
+            items.sort((a, b) => ((b.likes || 0) - (a.likes || 0)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+        } else if (sortMode === 'downloads') {
+            items.sort((a, b) => ((b.downloads || 0) - (a.downloads || 0)) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+        } else if (sortMode === 'newest') {
             items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         }
 
         if (items.length === 0) {
-            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 70px; color: #64748b;"><i class="fa-regular fa-folder-open" style="font-size: 34px; margin-bottom: 12px;"></i><div>当前筛选分类下暂无预设</div></div>';
+            const emptyHtml = cachedList.length === 0
+                ? '<i class="fa-regular fa-folder-open" style="font-size: 38px; margin-bottom: 14px; color: #475569;"></i><div style="font-size: 13.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">工坊展厅目前暂无预设</div><div style="font-size: 12px; color: #64748b;">点击右上角「发布预设」，快来成为第一个分享神仙画师串的人吧！</div>'
+                : '<i class="fa-regular fa-folder-open" style="font-size: 34px; margin-bottom: 12px; color: #475569;"></i><div style="font-size: 13px; color: #94a3b8;">当前筛选分类下暂无预设</div>';
+            grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 70px 20px; color: #64748b;">${emptyHtml}</div>`;
             return;
         }
 

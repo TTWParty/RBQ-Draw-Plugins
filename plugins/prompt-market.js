@@ -267,6 +267,33 @@
 
         RBQ.api.saveSettings();
 
+        // ── ⚡ 核心修复：即时通知提示词预设插件刷新 UI，彻底告别刷新网页 ──
+        if (typeof RBQ?.api?.refreshPromptPresetsUi === 'function') {
+            try { RBQ.api.refreshPromptPresetsUi(); } catch (_e) {}
+        }
+        if (typeof RBQ?.emit === 'function') {
+            try { RBQ.emit('presets:updated', { preset: newPresetObj, action: 'installed' }); } catch (_e) {}
+        }
+        try {
+            window.dispatchEvent(new CustomEvent('rbq-presets-updated', { detail: { preset: newPresetObj } }));
+        } catch (_e) {}
+
+        // DOM 级实时兜底注入：即使跨版本亦能立刻在主面板下拉框 #rbq-pp-select 与悬浮窗中看到新预设
+        try {
+            const selectEls = document.querySelectorAll('#rbq-pp-select, #rbq-pp-floating-select');
+            selectEls.forEach(sel => {
+                let opt = sel.querySelector(`option[value="${newPresetObj.id}"]`);
+                if (!opt) {
+                    opt = document.createElement('option');
+                    opt.value = newPresetObj.id;
+                    opt.textContent = newPresetObj.name;
+                    sel.appendChild(opt);
+                } else {
+                    opt.textContent = newPresetObj.name;
+                }
+            });
+        } catch (_e) {}
+
         // 记录到已安装列表
         const cfg = getConfig();
         if (!cfg.installedIds.includes(preset.id)) {

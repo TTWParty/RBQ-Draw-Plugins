@@ -98,6 +98,28 @@
     }
 
     let renderPresetUi = null;
+
+    // ── 暴露给跨插件生态 (如预设工坊下载/导入后即时触发重绘，无需刷新网页) ──
+    if (RBQ && RBQ.api) {
+        RBQ.api.refreshPromptPresetsUi = () => {
+            if (typeof renderPresetUi === 'function') {
+                renderPresetUi();
+            }
+        };
+    }
+    if (typeof RBQ?.on === 'function') {
+        RBQ.on('presets:updated', () => {
+            if (typeof renderPresetUi === 'function') {
+                renderPresetUi();
+            }
+        });
+    }
+    window.addEventListener('rbq-presets-updated', () => {
+        if (typeof renderPresetUi === 'function') {
+            renderPresetUi();
+        }
+    });
+
     let isSaving = false;
     let isSyncing = false;
 

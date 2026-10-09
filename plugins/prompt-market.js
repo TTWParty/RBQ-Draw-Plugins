@@ -34,6 +34,26 @@
         return 'RBQ-U-' + rand;
     }
 
+    // NovelAI 官方常用推荐采样器列表
+    const NAI_SAMPLERS = [
+        { value: 'k_euler_ancestral', label: 'Euler Ancestral (推荐)' },
+        { value: 'k_euler', label: 'Euler' },
+        { value: 'k_dpmpp_2s_ancestral', label: 'DPM++ 2S Ancestral' },
+        { value: 'k_dpmpp_2m_sde', label: 'DPM++ 2M SDE' },
+        { value: 'k_dpmpp_sde', label: 'DPM++ SDE' },
+        { value: 'k_dpmpp_2m', label: 'DPM++ 2M' }
+    ];
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
         serverUrl: 'https://market.rbq.my', // 自建工坊服务器
@@ -900,6 +920,10 @@
                 .rbq-pm-live-right {
                     min-width: 0 !important;
                     max-width: 100% !important;
+                }
+                .rbq-pm-live-params-grid {
+                    grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 8px !important;
                 }
             }
         `;
@@ -1867,10 +1891,22 @@
         const p = preset.params || {};
         const s = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
 
-        let activeScale = p.scale !== undefined && p.scale !== null ? Number(p.scale) : (s.naiScale !== undefined ? Number(s.naiScale) : 6.0);
-        let activeSampler = p.sampler || s.naiSampler || 'k_euler_ancestral';
-        let activeSteps = p.steps !== undefined && p.steps !== null ? Number(p.steps) : (s.naiSteps !== undefined ? Number(s.naiSteps) : 28);
-        let activeCfgRescale = p.cfgRescale !== undefined && p.cfgRescale !== null ? Number(p.cfgRescale) : (s.naiCfgRescale !== undefined ? Number(s.naiCfgRescale) : 0);
+        // 判断预设是否带有作者推荐参数
+        const hasPresetParams = Boolean(p && (p.scale !== undefined || p.sampler || p.steps !== undefined || p.cfgRescale !== undefined));
+        let paramMode = hasPresetParams ? 'preset' : 'mine';
+
+        let activeScale = (paramMode === 'preset' && p.scale !== undefined && p.scale !== null)
+            ? Number(p.scale)
+            : (s.naiScale !== undefined && s.naiScale !== null ? Number(s.naiScale) : 6.0);
+        let activeSampler = (paramMode === 'preset' && p.sampler)
+            ? p.sampler
+            : (s.naiSampler || 'k_euler_ancestral');
+        let activeSteps = (paramMode === 'preset' && p.steps !== undefined && p.steps !== null)
+            ? Number(p.steps)
+            : (s.naiSteps !== undefined && s.naiSteps !== null ? Number(s.naiSteps) : 28);
+        let activeCfgRescale = (paramMode === 'preset' && p.cfgRescale !== undefined && p.cfgRescale !== null)
+            ? Number(p.cfgRescale)
+            : (s.naiCfgRescale !== undefined && s.naiCfgRescale !== null ? Number(s.naiCfgRescale) : 0);
 
         let testPrompts = getTestPrompts();
         let selectedBenchmarkId = testPrompts.find(tp => tp.isDefault)?.id || testPrompts[0]?.id || 'kami-greenhouse';
@@ -1898,7 +1934,7 @@
                                 <span>画师串现场试炼台</span>
                                 <span class="rbq-pm-desktop-only" style="font-size:9.5px; font-weight:700; background:rgba(217,70,239,0.2); color:#f0abfc; border:1px solid rgba(217,70,239,0.4); padding:1px 6px; border-radius:4px;">LIVE CRUCIBLE</span>
                             </div>
-                            <div class="rbq-pm-desktop-only" style="font-size:11px; color:#94a3b8; margin-top:1px;">预设「${preset.title || '未命名'}」 · 现场合成测串底模实时出图对比</div>
+                            <div class="rbq-pm-desktop-only" style="font-size:11px; color:#94a3b8; margin-top:1px;">预设「${escapeHtml(preset.title || '未命名')}」 · 现场合成测串底模实时出图对比</div>
                         </div>
                     </div>
                     <button id="rbq-pm-live-close" class="rbq-pm-close-btn" title="关闭试炼台" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
@@ -1939,14 +1975,30 @@
 
                     <!-- Right Column: Crucible Controls -->
                     <div class="rbq-pm-live-right" style="flex:2 1 360px; display:flex; flex-direction:column; gap:12px; min-width:290px;">
-                        <!-- Section 1: 画师预设核心词 -->
+                        <!-- Section 1: 画师预设核心词 (正向与负向双展示) -->
                         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                                <span style="font-size:11.5px; color:#38bdf8; font-weight:700;"><i class="fa-solid fa-paintbrush"></i> 画师预设词 (Positive)</span>
-                                <button id="rbq-pm-live-copy-artist-pos" class="menu_button" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; font-size:10.5px; padding:2px 6px; border-radius:4px; cursor:pointer;">复制</button>
+                                <span style="font-size:11.5px; color:#38bdf8; font-weight:700;"><i class="fa-solid fa-paintbrush"></i> 画师预设词 (Preset)</span>
+                                <div style="display:flex; gap:5px;">
+                                    <button id="rbq-pm-live-copy-artist-pos" class="menu_button" style="background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.3); color:#7dd3fc; font-size:10px; padding:2px 7px; border-radius:4px; cursor:pointer;" title="复制画师正向词">复制正面</button>
+                                    ${preset.negative ? `<button id="rbq-pm-live-copy-artist-neg" class="menu_button" style="background:rgba(244,63,94,0.15); border:1px solid rgba(244,63,94,0.3); color:#fda4af; font-size:10px; padding:2px 7px; border-radius:4px; cursor:pointer;" title="复制画师负向词">复制负面</button>` : ''}
+                                </div>
                             </div>
-                            <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:8px 10px; font-size:11px; color:#cbd5e1; line-height:1.45; max-height:55px; overflow-y:auto; word-break:break-word; font-family:monospace;">
-                                ${preset.positive || '(无)'}
+                            <div style="display:flex; flex-direction:column; gap:5px;">
+                                <div>
+                                    <div style="font-size:9.5px; color:#94a3b8; margin-bottom:2px;">正面预设词 (Positive)</div>
+                                    <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 8px; font-size:11px; color:#cbd5e1; line-height:1.45; max-height:45px; overflow-y:auto; word-break:break-word; font-family:monospace;">
+                                        ${escapeHtml(preset.positive || '(无)')}
+                                    </div>
+                                </div>
+                                ${preset.negative ? `
+                                <div>
+                                    <div style="font-size:9.5px; color:#f43f5e; margin-bottom:2px;">画师专属负面 (Negative)</div>
+                                    <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(244,63,94,0.18); border-radius:6px; padding:5px 8px; font-size:11px; color:#fda4af; line-height:1.4; max-height:40px; overflow-y:auto; word-break:break-word; font-family:monospace;">
+                                        ${escapeHtml(preset.negative)}
+                                    </div>
+                                </div>
+                                ` : ''}
                             </div>
                         </div>
 
@@ -1961,48 +2013,69 @@
                             <select id="rbq-pm-live-bm-select" style="width:100%; background:#0f172a; border:1px solid rgba(255,255,255,0.18); border-radius:6px; padding:6px 8px; color:#fff; font-size:12px; outline:none; cursor:pointer; margin-bottom:6px;">
                                 <!-- dynamically populated -->
                             </select>
-                            <div id="rbq-pm-live-bm-preview" style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 8px; font-size:11px; color:#94a3b8; max-height:45px; overflow-y:auto; word-break:break-word; font-family:monospace;">
-                                <!-- positive preview of selected benchmark -->
+                            <div id="rbq-pm-live-bm-preview" style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 8px; font-size:11px; color:#94a3b8; max-height:55px; overflow-y:auto; word-break:break-word; font-family:monospace; line-height:1.4;">
+                                <!-- positive & negative preview of selected benchmark -->
                             </div>
                         </div>
 
-                        <!-- Section 3: 最终合成提示词 -->
+                        <!-- Section 3: 最终合成提示词 (正面 + 负面完整呈现) -->
                         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                                 <span style="font-size:11.5px; color:#f0abfc; font-weight:700;"><i class="fa-solid fa-code-merge"></i> 最终合成提示词 (Merged Prompt)</span>
-                                <button id="rbq-pm-live-copy-merged-pos" class="menu_button" style="background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.35); color:#f0abfc; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:4px; cursor:pointer;">
-                                    <i class="fa-solid fa-copy"></i> 复制完整合成词
-                                </button>
+                                <div style="display:flex; gap:5px;">
+                                    <button id="rbq-pm-live-copy-merged-pos" class="menu_button" style="background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.35); color:#f0abfc; font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px; cursor:pointer;" title="复制最终正向合成词">
+                                        <i class="fa-solid fa-copy"></i> 复制正面
+                                    </button>
+                                    <button id="rbq-pm-live-copy-merged-neg" class="menu_button" style="background:rgba(244,63,94,0.18); border:1px solid rgba(244,63,94,0.35); color:#fda4af; font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px; cursor:pointer;" title="复制最终负向合成词">
+                                        <i class="fa-solid fa-copy"></i> 复制负面
+                                    </button>
+                                </div>
                             </div>
-                            <div id="rbq-pm-live-merged-pos" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 8px; font-size:11px; color:#e2e8f0; max-height:55px; overflow-y:auto; word-break:break-word; font-family:monospace;">
-                                <!-- merged positive -->
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                <div>
+                                    <div style="font-size:9.5px; color:#38bdf8; margin-bottom:2px; font-weight:600;">✨ 正向合成词 (画师串 + 底模正面)</div>
+                                    <div id="rbq-pm-live-merged-pos" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:6px 8px; font-size:11px; color:#e2e8f0; max-height:48px; overflow-y:auto; word-break:break-word; font-family:monospace; line-height:1.35;">
+                                        <!-- merged positive -->
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="font-size:9.5px; color:#f43f5e; margin-bottom:2px; font-weight:600;">🛡️ 负向合成词 (画师负面 + 底模负面) <span style="font-weight:normal; color:#94a3b8;">[可直接微调]</span></div>
+                                    <textarea id="rbq-pm-live-merged-neg" rows="2" placeholder="合成的负面提示词..." style="width:100%; background:rgba(0,0,0,0.3); border:1px solid rgba(244,63,94,0.22); border-radius:6px; padding:6px 8px; font-size:11px; color:#fca5a5; line-height:1.35; box-sizing:border-box; outline:none; resize:vertical; font-family:monospace;"></textarea>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Section 4: NAI 生图参数设定 -->
+                        <!-- Section 4: NAI 生图参数设定 (双态切换 + 标准采样器下拉) -->
                         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
                                 <span style="font-size:11.5px; color:#c084fc; font-weight:700;"><i class="fa-solid fa-sliders"></i> NAI 生图参数设定</span>
-                                <button id="rbq-pm-live-sync-params" class="menu_button" style="background:rgba(192,132,252,0.15); border:1px solid rgba(192,132,252,0.3); color:#e9d5ff; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:4px; cursor:pointer;" title="将当前参数同步到酒馆生图设置">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> 同步到酒馆设置
-                                </button>
+                                <div style="display:inline-flex; gap:3px; background:rgba(0,0,0,0.4); padding:2px; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">
+                                    <button id="rbq-pm-live-param-preset-btn" type="button" class="menu_button" style="font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; border:none; cursor:pointer; transition:all 0.15s;" title="快速载入预设作者推荐绑定的生图参数">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 预设推荐
+                                    </button>
+                                    <button id="rbq-pm-live-param-mine-btn" type="button" class="menu_button" style="font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; border:none; cursor:pointer; transition:all 0.15s;" title="快速载入当前酒馆设置中正在生效的 NAI 参数">
+                                        <i class="fa-solid fa-user-gear"></i> 我的酒馆设置
+                                    </button>
+                                </div>
                             </div>
-                            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
+                            <div class="rbq-pm-live-params-grid" style="display:grid; grid-template-columns: 1fr 1.35fr 1fr 1fr; gap:6px;">
                                 <div>
                                     <div style="font-size:9.5px; color:#94a3b8; margin-bottom:2px;">Scale (CFG)</div>
-                                    <input id="rbq-pm-live-param-scale" type="number" step="0.5" value="${activeScale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:4px 6px; color:#38bdf8; font-size:11px; font-family:monospace; box-sizing:border-box;">
+                                    <input id="rbq-pm-live-param-scale" type="number" step="0.5" value="${activeScale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:4px 6px; color:#38bdf8; font-size:11px; font-family:monospace; box-sizing:border-box;">
                                 </div>
                                 <div>
-                                    <div style="font-size:9.5px; color:#94a3b8; margin-bottom:2px;">采样器</div>
-                                    <input id="rbq-pm-live-param-sampler" type="text" value="${activeSampler}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:4px 6px; color:#f0abfc; font-size:11px; font-family:monospace; box-sizing:border-box;">
+                                    <div style="font-size:9.5px; color:#94a3b8; margin-bottom:2px;">采样器 (Sampler)</div>
+                                    <select id="rbq-pm-live-param-sampler" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:4px 6px; color:#f0abfc; font-size:11px; outline:none; cursor:pointer; box-sizing:border-box;">
+                                        <!-- populated dynamically -->
+                                    </select>
                                 </div>
                                 <div>
                                     <div style="font-size:9.5px; color:#94a3b8; margin-bottom:2px;">步数 (Steps)</div>
-                                    <input id="rbq-pm-live-param-steps" type="number" step="1" value="${activeSteps}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:4px 6px; color:#4ade80; font-size:11px; font-family:monospace; box-sizing:border-box;">
+                                    <input id="rbq-pm-live-param-steps" type="number" step="1" value="${activeSteps}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:4px 6px; color:#4ade80; font-size:11px; font-family:monospace; box-sizing:border-box;">
                                 </div>
                                 <div>
                                     <div style="font-size:9.5px; color:#94a3b8; margin-bottom:2px;">CFG Rescale</div>
-                                    <input id="rbq-pm-live-param-rescale" type="number" step="0.05" value="${activeCfgRescale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:4px 6px; color:#fbbf24; font-size:11px; font-family:monospace; box-sizing:border-box;">
+                                    <input id="rbq-pm-live-param-rescale" type="number" step="0.05" value="${activeCfgRescale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:4px 6px; color:#fbbf24; font-size:11px; font-family:monospace; box-sizing:border-box;">
                                 </div>
                             </div>
                         </div>
@@ -2137,17 +2210,27 @@
             toastr.success('已开始保存图片');
         };
 
-        // 测串底模下拉联动
+        // 测串底模与合成词联动
         const bmSelect = overlay.querySelector('#rbq-pm-live-bm-select');
         const bmPreview = overlay.querySelector('#rbq-pm-live-bm-preview');
         const mergedPos = overlay.querySelector('#rbq-pm-live-merged-pos');
+        const mergedNeg = overlay.querySelector('#rbq-pm-live-merged-neg');
 
         const updateMergedPromptView = () => {
             const curBm = testPrompts.find(tp => tp.id === selectedBenchmarkId) || testPrompts[0] || DEFAULT_TEST_PROMPTS[0];
-            if (bmPreview) bmPreview.textContent = curBm.positive || '(无正面底模词)';
+            if (bmPreview) {
+                bmPreview.innerHTML = `
+                    <div style="color:#cbd5e1;"><strong style="color:#38bdf8;">正面:</strong> ${escapeHtml(curBm?.positive || '(无)')}</div>
+                    ${curBm?.negative ? `<div style="margin-top:3px; color:#fda4af;"><strong style="color:#f43f5e;">负面:</strong> ${escapeHtml(curBm.negative)}</div>` : ''}
+                `;
+            }
             if (mergedPos) {
-                const combined = [preset.positive, curBm.positive].filter(Boolean).join(', ');
-                mergedPos.textContent = combined || '(无)';
+                const combinedPos = [preset.positive, curBm?.positive].filter(Boolean).join(', ');
+                mergedPos.textContent = combinedPos || '(无)';
+            }
+            if (mergedNeg) {
+                const combinedNeg = [preset.negative, curBm?.negative].filter(Boolean).join(', ');
+                mergedNeg.value = combinedNeg || '';
             }
         };
 
@@ -2158,7 +2241,7 @@
             }
             bmSelect.innerHTML = testPrompts.map(tp => `
                 <option value="${tp.id}" ${tp.id === selectedBenchmarkId ? 'selected' : ''}>
-                    ${tp.title || '未命名'} ${tp.isDefault ? '⭐' : ''}
+                    ${escapeHtml(tp.title || '未命名')} ${tp.isDefault ? '⭐' : ''}
                 </option>
             `).join('');
             updateMergedPromptView();
@@ -2178,29 +2261,122 @@
             });
         };
 
-        // 复制画师预设词
+        // 复制画师预设正向词
         overlay.querySelector('#rbq-pm-live-copy-artist-pos').onclick = async () => {
             await copyToClipboard(preset.positive || '');
-            toastr.success('已复制画师预设词！');
+            toastr.success('已复制画师正面预设词！');
         };
 
-        // 复制合成词
+        // 复制画师预设负向词（如果存在）
+        const copyArtistNegBtn = overlay.querySelector('#rbq-pm-live-copy-artist-neg');
+        if (copyArtistNegBtn) {
+            copyArtistNegBtn.onclick = async () => {
+                await copyToClipboard(preset.negative || '');
+                toastr.success('已复制画师负面预设词！');
+            };
+        }
+
+        // 复制合成正面词
         overlay.querySelector('#rbq-pm-live-copy-merged-pos').onclick = async () => {
-            const curBm = testPrompts.find(tp => tp.id === selectedBenchmarkId) || testPrompts[0] || DEFAULT_TEST_PROMPTS[0];
-            const combined = [preset.positive, curBm.positive].filter(Boolean).join(', ');
-            await copyToClipboard(combined);
-            toastr.success('已复制完整合成提示词！');
+            const text = mergedPos.textContent.trim();
+            await copyToClipboard(text);
+            toastr.success('已复制完整正面合成词！');
         };
 
-        // 一键同步参数
-        overlay.querySelector('#rbq-pm-live-sync-params').onclick = () => {
-            const scaleVal = parseFloat(overlay.querySelector('#rbq-pm-live-param-scale').value);
-            const samplerVal = overlay.querySelector('#rbq-pm-live-param-sampler').value.trim();
-            const stepsVal = parseInt(overlay.querySelector('#rbq-pm-live-param-steps').value, 10);
-            const rescaleVal = parseFloat(overlay.querySelector('#rbq-pm-live-param-rescale').value);
-            applyNaiParams({ scale: scaleVal, sampler: samplerVal, steps: stepsVal, cfgRescale: rescaleVal });
-            toastr.success('已将当前参数同步至酒馆生图设置！');
+        // 复制合成负面词
+        overlay.querySelector('#rbq-pm-live-copy-merged-neg').onclick = async () => {
+            const text = mergedNeg.value.trim();
+            await copyToClipboard(text);
+            toastr.success('已复制完整负面合成词！');
         };
+
+        // ── 参数控件与双态来源切换 ──
+        const scaleInput = overlay.querySelector('#rbq-pm-live-param-scale');
+        const samplerSelect = overlay.querySelector('#rbq-pm-live-param-sampler');
+        const stepsInput = overlay.querySelector('#rbq-pm-live-param-steps');
+        const rescaleInput = overlay.querySelector('#rbq-pm-live-param-rescale');
+
+        const populateSamplerOptions = (selectedVal) => {
+            let optionsHtml = '';
+            let matched = false;
+            for (const item of NAI_SAMPLERS) {
+                const isSel = (item.value === selectedVal);
+                if (isSel) matched = true;
+                optionsHtml += `<option value="${item.value}" ${isSel ? 'selected' : ''}>${item.label}</option>`;
+            }
+            if (!matched && selectedVal) {
+                optionsHtml += `<option value="${escapeHtml(selectedVal)}" selected>${escapeHtml(selectedVal)}</option>`;
+            }
+            samplerSelect.innerHTML = optionsHtml;
+        };
+
+        populateSamplerOptions(activeSampler);
+
+        const btnPreset = overlay.querySelector('#rbq-pm-live-param-preset-btn');
+        const btnMine = overlay.querySelector('#rbq-pm-live-param-mine-btn');
+
+        const updateParamModeButtons = (mode) => {
+            if (mode === 'preset') {
+                btnPreset.style.background = 'linear-gradient(135deg, #a855f7, #6366f1)';
+                btnPreset.style.color = '#fff';
+                btnMine.style.background = 'transparent';
+                btnMine.style.color = '#94a3b8';
+            } else if (mode === 'mine') {
+                btnMine.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
+                btnMine.style.color = '#fff';
+                btnPreset.style.background = 'transparent';
+                btnPreset.style.color = '#94a3b8';
+            } else {
+                btnPreset.style.background = 'transparent';
+                btnPreset.style.color = '#94a3b8';
+                btnMine.style.background = 'transparent';
+                btnMine.style.color = '#94a3b8';
+            }
+        };
+
+        updateParamModeButtons(paramMode);
+
+        btnPreset.onclick = () => {
+            const prScale = p.scale !== undefined && p.scale !== null ? Number(p.scale) : 6.0;
+            const prSampler = p.sampler || 'k_euler_ancestral';
+            const prSteps = p.steps !== undefined && p.steps !== null ? Number(p.steps) : 28;
+            const prRescale = p.cfgRescale !== undefined && p.cfgRescale !== null ? Number(p.cfgRescale) : 0;
+            scaleInput.value = prScale;
+            populateSamplerOptions(prSampler);
+            samplerSelect.value = prSampler;
+            stepsInput.value = prSteps;
+            rescaleInput.value = prRescale;
+            updateParamModeButtons('preset');
+            hintSpan.innerHTML = `<span style="color:#c084fc;"><i class="fa-solid fa-wand-magic-sparkles"></i> 已载入预设推荐参数 (CFG: ${prScale} | 采样器: ${prSampler} | 步数: ${prSteps})</span>`;
+            toastr.info('已载入该预设作者推荐参数');
+        };
+
+        btnMine.onclick = () => {
+            const fresh = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
+            const myScale = fresh.naiScale !== undefined && fresh.naiScale !== null ? Number(fresh.naiScale) : 6.0;
+            const mySampler = fresh.naiSampler || 'k_euler_ancestral';
+            const mySteps = fresh.naiSteps !== undefined && fresh.naiSteps !== null ? Number(fresh.naiSteps) : 28;
+            const myRescale = fresh.naiCfgRescale !== undefined && fresh.naiCfgRescale !== null ? Number(fresh.naiCfgRescale) : 0;
+            scaleInput.value = myScale;
+            populateSamplerOptions(mySampler);
+            samplerSelect.value = mySampler;
+            stepsInput.value = mySteps;
+            rescaleInput.value = myRescale;
+            updateParamModeButtons('mine');
+            hintSpan.innerHTML = `<span style="color:#38bdf8;"><i class="fa-solid fa-user-gear"></i> 已载入我的酒馆 NAI 设置 (CFG: ${myScale} | 采样器: ${mySampler} | 步数: ${mySteps})</span>`;
+            toastr.info('已载入当前酒馆全局生图设置');
+        };
+
+        [scaleInput, samplerSelect, stepsInput, rescaleInput].forEach(el => {
+            el.addEventListener('input', () => {
+                updateParamModeButtons('custom');
+                hintSpan.innerHTML = '<span style="color:#cbd5e1;"><i class="fa-solid fa-circle-info"></i> 将使用现场微调参数出图</span>';
+            });
+            el.addEventListener('change', () => {
+                updateParamModeButtons('custom');
+                hintSpan.innerHTML = '<span style="color:#cbd5e1;"><i class="fa-solid fa-circle-info"></i> 将使用现场微调参数出图</span>';
+            });
+        });
 
         // 安装预设
         overlay.querySelector('#rbq-pm-live-install-btn').onclick = () => {
@@ -2210,9 +2386,8 @@
 
         // ── 🎨 核心装置：现场立即出图实测 ──
         drawBtn.onclick = async () => {
-            const curBm = testPrompts.find(tp => tp.id === selectedBenchmarkId) || testPrompts[0] || DEFAULT_TEST_PROMPTS[0];
-            const finalPrompt = [preset.positive, curBm?.positive].filter(Boolean).join(', ');
-            const finalNegative = [preset.negative, curBm?.negative].filter(Boolean).join(', ');
+            const finalPrompt = mergedPos ? mergedPos.textContent.trim() : [preset.positive, curBm?.positive].filter(Boolean).join(', ');
+            const finalNegative = mergedNeg ? mergedNeg.value.trim() : [preset.negative, curBm?.negative].filter(Boolean).join(', ');
 
             if (!finalPrompt) {
                 toastr.warning('合成提示词为空，无法生图');
@@ -2224,11 +2399,19 @@
                 return;
             }
 
-            // 同步当前现场参数到会话
-            const liveScale = parseFloat(overlay.querySelector('#rbq-pm-live-param-scale').value);
-            const liveSampler = overlay.querySelector('#rbq-pm-live-param-sampler').value.trim();
-            const liveSteps = parseInt(overlay.querySelector('#rbq-pm-live-param-steps').value, 10);
-            const liveRescale = parseFloat(overlay.querySelector('#rbq-pm-live-param-rescale').value);
+            // 同步当前现场参数
+            const liveScale = parseFloat(scaleInput.value);
+            const liveSampler = samplerSelect.value.trim();
+            const liveSteps = parseInt(stepsInput.value, 10);
+            const liveRescale = parseFloat(rescaleInput.value);
+
+            // 快照当前设置，现场出图隔离，finally 中精准还原，不污染全局酒馆配置
+            const originalGlobalSettings = {
+                naiScale: s.naiScale,
+                naiSampler: s.naiSampler,
+                naiSteps: s.naiSteps,
+                naiCfgRescale: s.naiCfgRescale
+            };
 
             if (!isNaN(liveScale)) s.naiScale = liveScale;
             if (liveSampler) s.naiSampler = liveSampler;
@@ -2244,7 +2427,14 @@
             renderVisualFrame();
 
             try {
-                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-live-test', { negative: finalNegative }, (progress) => {
+                const meta = {
+                    negative: finalNegative,
+                    scale: !isNaN(liveScale) ? liveScale : undefined,
+                    sampler: liveSampler || undefined,
+                    steps: !isNaN(liveSteps) ? liveSteps : undefined,
+                    cfgRescale: !isNaN(liveRescale) ? liveRescale : undefined
+                };
+                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-live-test', meta, (progress) => {
                     if (progress) {
                         drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
                         const statusText = overlay.querySelector('#rbq-pm-live-status-text');
@@ -2264,6 +2454,12 @@
                 hintSpan.innerHTML = `<span style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> 生图失败: ${err.message || String(err)}</span>`;
                 toastr.error('实测出图失败: ' + (err.message || String(err)));
             } finally {
+                // 安全恢复用户日常生图配置
+                if (originalGlobalSettings.naiScale !== undefined) s.naiScale = originalGlobalSettings.naiScale;
+                if (originalGlobalSettings.naiSampler !== undefined) s.naiSampler = originalGlobalSettings.naiSampler;
+                if (originalGlobalSettings.naiSteps !== undefined) s.naiSteps = originalGlobalSettings.naiSteps;
+                if (originalGlobalSettings.naiCfgRescale !== undefined) s.naiCfgRescale = originalGlobalSettings.naiCfgRescale;
+
                 isGenerating = false;
                 drawBtn.disabled = false;
                 drawBtn.innerHTML = originalBtnHtml;
@@ -2844,5 +3040,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.13 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.14 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

@@ -190,6 +190,7 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
 
     for (const chunk of [
         { choices: [{ delta: {}, finish_reason: 'content_filter' }] },
+        { choices: [{ delta: {}, finish_reason: 'content_filter: PROHIBITED_CONTENT' }] },
         { candidates: [{ content: { parts: [] }, finishReason: 'SAFETY' }] },
         { choices: [{ delta: { refusal: 'neutral refusal fixture' }, finish_reason: 'stop' }] }
     ]) await test('terminal safety or refusal is processed before completion', async () => {

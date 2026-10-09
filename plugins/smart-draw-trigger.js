@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.24';
+    const PLUGIN_VERSION = '6.5.25';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6426,8 +6426,9 @@ ${getCharacterMemoryTagSpecification()}
 
             const finishReason = choice?.finish_reason || candidate?.finishReason || delta?.finish_reason;
             if (finishReason) {
+                state.lastFinishReason = String(finishReason);
                 const frLower = String(finishReason).toLowerCase();
-                if (frLower === 'safety' || frLower === 'content_filter' || frLower === 'recitation') {
+                if (frLower.includes('safety') || frLower.includes('content_filter') || frLower.includes('prohibited') || frLower.includes('recitation') || frLower.includes('blocklist') || frLower.includes('spii')) {
                     state.hasSafetyBlock = true;
                     state.safetyReason = `finish_reason: ${finishReason}`;
                 }
@@ -6512,7 +6513,7 @@ ${getCharacterMemoryTagSpecification()}
         const decoder = new TextDecoder();
         const sseState = {
             accumulatedArgs: '', accumulatedContent: '', accumulatedReasoning: '',
-            hasSafetyBlock: false, safetyReason: '', rawDebugChunks: [], streamComplete: false
+            hasSafetyBlock: false, safetyReason: '', lastFinishReason: '', rawDebugChunks: [], streamComplete: false
         };
         let sseBuffer = '', rawStreamText = '', reachedEof = false, onAbort;
         const abortError = () => signal?.reason && typeof signal.reason.message === 'string'
@@ -6567,6 +6568,7 @@ ${getCharacterMemoryTagSpecification()}
             accumulatedReasoning: '',
             hasSafetyBlock: false,
             safetyReason: '',
+            lastFinishReason: '',
             rawDebugChunks: []
         };
         const lines = String(rawText || '').split('\n');
@@ -6583,6 +6585,7 @@ ${getCharacterMemoryTagSpecification()}
         }
         return {
             choices: [{
+                finish_reason: state.lastFinishReason || (state.hasSafetyBlock ? 'content_filter' : 'stop'),
                 message: {
                     ...(state.accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: state.accumulatedArgs } }] } : {}),
                     content: state.accumulatedContent,
@@ -9069,16 +9072,18 @@ SCHEMA:
         if (/^MANGA_/.test(code) || /漫画(?:规划校验失败|响应缺少|页缺少|第|解析返回了旧式)/.test(reason)) return 'manga-structure';
         const safetyCode = /^(?:SAFETY|CONTENT_FILTER|RECITATION|PROHIBITED_CONTENT|UPSTREAM_SAFETY)$/i;
         if (result?.errorCategory === 'safety' || safetyCode.test(code)
-            || /(?:大模型|模型|服务端|服务商|官方)[^\n]*(?:安全审查|安全策略|审核拦截|拒绝回答|拒答)/.test(reason)
-            || /\b(?:content_filter|prohibited use policy|sensitive words|safety refusal)\b/i.test(reason)) return 'safety';
+            || /(?:大模型|模型|服务端|服务商|官方)[^\n]*(?:安全审查|安全策略|审核拦截|拒绝回答|拒答|敏感词)/.test(reason)
+            || /\b(?:content_filter|prohibited use policy|sensitive words|safety refusal|prohibited_content)\b/i.test(reason)
+            || (reason.includes('content_filter') && reason.includes('PROHIBITED_CONTENT'))) return 'safety';
         // Inspect provider metadata only when the recorded output is a complete
         // response envelope; keywords inside a story or diagnostic trace are text.
         try {
             const raw = JSON.parse(String(result?.rawOutput || ''));
             const finishReasons = (Array.isArray(raw?.choices) ? raw.choices : []).map(choice => choice?.finish_reason);
             finishReasons.push(...(Array.isArray(raw?.candidates) ? raw.candidates : []).map(candidate => candidate?.finishReason));
-            if (finishReasons.some(value => safetyCode.test(String(value || '')))
-                || safetyCode.test(String(raw?.promptFeedback?.blockReason || raw?.error?.code || ''))
+            const isSafetyReasonMeta = value => /(?:SAFETY|CONTENT_FILTER|RECITATION|PROHIBITED_CONTENT|UPSTREAM_SAFETY|PROHIBITED)/i.test(String(value || ''));
+            if (finishReasons.some(isSafetyReasonMeta)
+                || isSafetyReasonMeta(raw?.promptFeedback?.blockReason || raw?.error?.code || '')
                 || (Array.isArray(raw?.choices) && raw.choices.some(choice => typeof choice?.message?.refusal === 'string' && choice.message.refusal.trim()))) return 'safety';
         } catch (_) {}
         return '';
@@ -11446,9 +11451,7 @@ SCHEMA:
         }, reqBody);
         if (!response.ok) {
             const errText = await response.text();
-            const isInputWafHttpError = errText.includes('sensitive words')
-                || errText.includes('Prohibited Use policy')
-                || errText.includes('The prompt could not be submitted');
+            const isInputWafHttpError = /sensitive words|prohibited use policy|the prompt could not be submitted|content_filter|prohibited_content|safety/i.test(errText);
             const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
             if (store.lorebookWafRetry && isInputWafHttpError && !retryWithoutLorebook && hasLorebookAttached) {
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
@@ -11493,36 +11496,50 @@ SCHEMA:
 
                 // 如果两者都为空，说明流式未产出内容
                 if (!sseState.accumulatedArgs && !sseState.accumulatedContent) {
-                    if (sseState.hasSafetyBlock) {
-                        const isInputWafBlock = sseState.safetyReason.includes('sensitive words')
-                            || sseState.safetyReason.includes('The prompt could not be submitted')
-                            || sseState.safetyReason.includes('Prohibited Use policy')
-                            || sseState.safetyReason.includes('content_filter')
-                            || sseState.safetyReason.includes('SAFETY');
+                    const isSafetyReason = sseState.hasSafetyBlock
+                        || (sseState.lastFinishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(sseState.lastFinishReason));
+
+                    if (isSafetyReason) {
+                        const safetyDetail = sseState.safetyReason || `finish_reason: ${sseState.lastFinishReason}`;
+                        const isInputWafBlock = /sensitive words|the prompt could not be submitted|prohibited use policy|content_filter|safety|prohibited/i.test(safetyDetail);
 
                         // 🛡️ 自动自愈重试：若当前请求携带了世界书/角色卡，且触发了 Google 前置输入审核阻断，自动剥离世界书发起重试
                         const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
                         if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
-                            console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${sseState.safetyReason})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
+                            console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${safetyDetail})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                             assertMangaRequestContext(requestContext);
                             return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
                         }
 
-                        const err = new Error(`Gemini / 大模型触发了官方前置内容安全审查熔断 (${sseState.safetyReason})。请尝试开启「开启破限」选项或精简剧情敏感词。`);
+                        const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
                         err.debugInfo = {
-                            reason: `大模型触发前置安全策略熔断 (${sseState.safetyReason})`,
+                            reason: `大模型触发前置安全策略熔断 (${safetyDetail})`,
                             model: modelName,
                             llmOutput: '(空 - 服务端由于安全策略中断，未生成任何正文)',
                             chunks: sseState.rawDebugChunks,
                         };
+                        err.rawOutput = `【错误】: 大模型触发内容审查拦截 (${safetyDetail})。\n【排查建议】: 本次请求被模型官方安全过滤（NSFW/敏感词/违规内容）阻断，大模型拒绝作答并中断了工具调用。建议尝试开启「开启破限」选项、对世界书/角色卡/提示词脱敏、精简敏感剧情，或在代理/中转端关闭安全过滤。`;
+                        throw err;
+                    }
+
+                    if (sseState.lastFinishReason && String(sseState.lastFinishReason).toLowerCase() === 'length') {
+                        const err = new Error('大模型输出因达到最大 Token (Max Tokens) 限制而被截断，未能完整返回分镜数据。请在设置中调大 Max Tokens 或精简上下文。');
+                        err.debugInfo = {
+                            reason: '大模型输出被 Max Tokens 截断 (finish_reason: length)',
+                            model: modelName,
+                            llmOutput: '(空)',
+                            chunks: sseState.rawDebugChunks,
+                        };
+                        err.rawOutput = `【错误】: 大模型输出达到 Max Tokens 截断限制 (finish_reason: length)。\n【排查建议】: 请在设置中调大 Max Tokens，或减少带入的上下文层数与世界书条目。`;
                         throw err;
                     }
 
                     if (reqBody.tools) {
-                        const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                        const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
+                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
                         err.debugInfo = {
-                            reason: '大模型未透传 Tool Call 参数',
+                            reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
                             model: modelName,
                             llmOutput: '(空)',
                             chunks: sseState.rawDebugChunks,
@@ -11531,9 +11548,10 @@ SCHEMA:
                         throw err;
                     }
 
-                    const err = new Error('大模型未输出任何内容（可能被代理静默拦截或发生网络异常）。建议检查代理日志或在设置中切换模型。');
+                    const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
+                    const err = new Error(`大模型未输出任何内容${finishReasonInfo}（可能被代理静默拦截或发生网络异常）。建议检查代理日志或在设置中切换模型。`);
                     err.debugInfo = {
-                        reason: '未获得任何有效正文',
+                        reason: `未获得任何有效正文${finishReasonInfo}`,
                         model: modelName,
                         llmOutput: '(空)',
                         chunks: sseState.rawDebugChunks,
@@ -11541,9 +11559,38 @@ SCHEMA:
                     throw err;
                 } else {
                     if (reqBody.tools && !sseState.accumulatedArgs) {
-                        const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                        const isSafetyReason = sseState.hasSafetyBlock
+                            || (sseState.lastFinishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(sseState.lastFinishReason));
+
+                        if (isSafetyReason) {
+                            const safetyDetail = sseState.safetyReason || `finish_reason: ${sseState.lastFinishReason}`;
+                            const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
+                            err.debugInfo = {
+                                reason: `大模型触发前置安全策略熔断 (${safetyDetail})`,
+                                model: modelName,
+                                llmOutput: sseState.accumulatedContent || '(空)',
+                                chunks: sseState.rawDebugChunks,
+                            };
+                            err.rawOutput = `【错误】: 大模型触发内容审查拦截 (${safetyDetail})。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 本次请求被模型官方安全过滤（NSFW/敏感词）阻断。建议尝试开启「开启破限」选项、对提示词脱敏或在代理端关闭安全过滤。`;
+                            throw err;
+                        }
+
+                        if (sseState.lastFinishReason && String(sseState.lastFinishReason).toLowerCase() === 'length') {
+                            const err = new Error('大模型输出因达到最大 Token (Max Tokens) 限制而被截断，未能完整返回工具调用数据。请在设置中调大 Max Tokens 或精简上下文。');
+                            err.debugInfo = {
+                                reason: '大模型输出被 Max Tokens 截断 (finish_reason: length)',
+                                model: modelName,
+                                llmOutput: sseState.accumulatedContent || '(空)',
+                                chunks: sseState.rawDebugChunks,
+                            };
+                            err.rawOutput = `【错误】: 大模型输出达到 Max Tokens 截断限制 (finish_reason: length)。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 请在设置中调大 Max Tokens。`;
+                            throw err;
+                        }
+
+                        const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
+                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
                         err.debugInfo = {
-                            reason: '大模型未透传 Tool Call 参数',
+                            reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
                             model: modelName,
                             llmOutput: sseState.accumulatedContent || '(空)',
                             chunks: sseState.rawDebugChunks,
@@ -11553,6 +11600,7 @@ SCHEMA:
                     }
                     json = {
                         choices: [{
+                            finish_reason: sseState.lastFinishReason || 'stop',
                             message: {
                                 ...(sseState.accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: sseState.accumulatedArgs } }] } : {}),
                                 content: sseState.accumulatedContent,
@@ -11570,11 +11618,50 @@ SCHEMA:
 
         if (reqBody.tools && !json?.shouldDraw) {
             const choice = json?.choices?.[0];
+            const candidate = json?.candidates?.[0];
+            const finishReason = choice?.finish_reason || candidate?.finishReason;
+            const refusal = choice?.message?.refusal || candidate?.refusal;
+            const isSafetyReason = (finishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(String(finishReason)))
+                || (refusal && typeof refusal === 'string' && refusal.trim())
+                || /content_filter|safety|prohibited/i.test(String(json?.promptFeedback?.blockReason || ''));
+
+            if (isSafetyReason) {
+                const safetyDetail = `finish_reason: ${finishReason || (refusal ? 'refusal' : json?.promptFeedback?.blockReason || 'SAFETY')}`;
+                const isInputWafBlock = /sensitive words|the prompt could not be submitted|prohibited use policy|content_filter|safety|prohibited/i.test(safetyDetail);
+                const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
+                if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
+                    console.warn(`[${PLUGIN_NAME}] ⚠️ 非流式检测到触发内容审查拦截 (${safetyDetail})，正在自动剥离世界书发起自愈重试...`);
+                    toastr.warning('世界书触发敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
+                    assertMangaRequestContext(requestContext);
+                    return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                }
+                const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
+                err.debugInfo = {
+                    reason: `大模型触发前置安全策略熔断 (${safetyDetail})`,
+                    model: modelName,
+                    llmOutput: choice?.message?.content || '(空 - 服务端由于安全策略中断，未生成任何正文)',
+                };
+                err.rawOutput = `【错误】: 大模型触发内容审查拦截 (${safetyDetail})。\n【排查建议】: 本次请求被模型官方安全过滤（NSFW/敏感词/违规内容）阻断，未生成任何分镜内容或工具调用数据。建议精简敏感剧情、对世界书/提示词脱敏，或在代理端关闭安全过滤。`;
+                throw err;
+            }
+
+            if (finishReason && String(finishReason).toLowerCase() === 'length') {
+                const err = new Error('大模型输出因达到最大 Token (Max Tokens) 限制而被截断，未能完整返回分镜数据。请在设置中调大 Max Tokens 或精简上下文。');
+                err.debugInfo = {
+                    reason: '大模型输出被 Max Tokens 截断 (finish_reason: length)',
+                    model: modelName,
+                    llmOutput: choice?.message?.content || '(空)',
+                };
+                err.rawOutput = `【错误】: 大模型输出达到 Max Tokens 截断限制 (finish_reason: length)。\n【排查建议】: 请在设置中调大 Max Tokens，或减少带入的上下文层数与世界书条目。`;
+                throw err;
+            }
+
             const hasTool = !!(choice?.message?.tool_calls?.length || choice?.message?.function_call || json?.candidates?.[0]?.content?.parts?.some(p => p.functionCall));
             if (!hasTool) {
-                const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
+                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
                 err.debugInfo = {
-                    reason: '大模型未透传 Tool Call 参数',
+                    reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
                     model: modelName,
                     llmOutput: choice?.message?.content || '(空)',
                 };
@@ -11686,20 +11773,22 @@ SCHEMA:
         let reasoning = '';
         let rawOutput = '';
         let isToolCall = false;
+        let json = null;
+        let sseState = null;
         const toolName = tool?.function?.name || '';
         // Some compatible endpoints return a complete legacy/native message even
         // when stream=true. Use the same envelope decoding for both body paths.
-        const unwrapCompletion = json => {
-            const choice = json?.choices?.[0];
+        const unwrapCompletion = envelopeJson => {
+            const choice = envelopeJson?.choices?.[0];
             const message = choice?.message || choice?.delta || {};
-            const parts = Array.isArray(json?.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts : [];
+            const parts = Array.isArray(envelopeJson?.candidates?.[0]?.content?.parts) ? envelopeJson.candidates[0].content.parts : [];
             const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
             const call = calls.find(entry => entry?.function?.name === toolName) || calls[0];
             const nativeCalls = parts.filter(part => part?.functionCall).map(part => part.functionCall);
             const nativeCall = nativeCalls.find(entry => entry?.name === toolName) || nativeCalls[0];
             const args = call?.function?.arguments ?? message.function_call?.arguments ?? nativeCall?.args;
             const hasArgs = typeof args === 'string' || (args !== null && typeof args === 'object');
-            const content = message.content ?? choice?.text ?? json?.content
+            const content = message.content ?? choice?.text ?? envelopeJson?.content
                 ?? parts.filter(part => !part?.thought && typeof part?.text === 'string').map(part => part.text).join('');
             const reply = hasArgs ? args : content;
             return {
@@ -11711,18 +11800,19 @@ SCHEMA:
         };
 
         if (isSseStream) {
-            const { sseState, rawStreamText } = await readSseCompletion(response, signal, onProgress);
-
-            rawOutput = rawStreamText;
+            const streamResult = await readSseCompletion(response, signal, onProgress);
+            sseState = streamResult.sseState;
+            rawOutput = streamResult.rawStreamText;
 
             // 容错：如果流中未检测到 SSE 格式 (data:)，但实际上返回了完整的单体 JSON（例如反代未走流式包装）
-            if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.hasSafetyBlock && rawStreamText.trim()) {
-                const trimmedRaw = rawStreamText.trim();
+            if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.hasSafetyBlock && rawOutput.trim()) {
+                const trimmedRaw = rawOutput.trim();
                 if (trimmedRaw.startsWith('{') && trimmedRaw.endsWith('}')) {
                     try {
                         const parsedDirect = JSON.parse(trimmedRaw);
                         if (parsedDirect && (parsedDirect.choices || parsedDirect.candidates || parsedDirect.error)) {
                             if (parsedDirect.error) throw new Error(parsedDirect.error.message || JSON.stringify(parsedDirect.error));
+                            json = parsedDirect;
                             ({ rawReply, reasoning, isToolCall } = unwrapCompletion(parsedDirect));
                         }
                     } catch (_e) {}
@@ -11740,9 +11830,12 @@ SCHEMA:
                 }
                 reasoning = sseState.accumulatedReasoning;
 
-                if (!rawReply && sseState.hasSafetyBlock) {
-                    const err = new Error(`大模型触发了官方前置内容安全审查 (${sseState.safetyReason || 'SAFETY'})`);
-                    err.rawOutput = `【前置安全审查熔断】: ${sseState.safetyReason || 'SAFETY'}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【调试信息】:\n${JSON.stringify(sseState.rawDebugChunks, null, 2)}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
+                const isSafetyReason = sseState.hasSafetyBlock
+                    || (sseState.lastFinishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(sseState.lastFinishReason));
+                if (!rawReply && isSafetyReason) {
+                    const safetyDetail = sseState.safetyReason || `finish_reason: ${sseState.lastFinishReason}`;
+                    const err = new Error(`大模型触发了官方前置内容安全审查 (${safetyDetail})`);
+                    err.rawOutput = `【前置安全审查熔断】: ${safetyDetail}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【调试信息】:\n${JSON.stringify(sseState.rawDebugChunks, null, 2)}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
                     throw err;
                 }
             }
@@ -11750,7 +11843,6 @@ SCHEMA:
             // 非流式响应
             const jsonText = await response.text();
             rawOutput = jsonText;
-            let json;
             try {
                 json = JSON.parse(jsonText);
             } catch (_e) {
@@ -11768,7 +11860,18 @@ SCHEMA:
 
         if (useToolCall) {
             if (!isToolCall || !rawReply) {
-                const err = new Error('大模型未返回工具调用参数（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。');
+                const finishReason = json?.choices?.[0]?.finish_reason || json?.candidates?.[0]?.finishReason || sseState?.lastFinishReason;
+                const isSafetyReason = sseState?.hasSafetyBlock
+                    || (finishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(String(finishReason)))
+                    || (json?.promptFeedback?.blockReason && /content_filter|safety|prohibited/i.test(String(json.promptFeedback.blockReason)));
+                if (isSafetyReason) {
+                    const safetyDetail = sseState?.safetyReason || `finish_reason: ${finishReason || json?.promptFeedback?.blockReason || 'SAFETY'}`;
+                    const err = new Error(`大模型触发了官方前置内容安全审查 (${safetyDetail})`);
+                    err.rawOutput = `【前置安全审查熔断】: ${safetyDetail}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【服务端原始响应】:\n${rawOutput || '（空）'}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
+                    throw err;
+                }
+                const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
+                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
                 err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。\n\n【服务端原始响应】:\n${rawReply || rawOutput || '（空）'}`;
                 throw err;
             }

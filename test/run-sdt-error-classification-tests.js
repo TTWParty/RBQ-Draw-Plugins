@@ -76,6 +76,7 @@ test('explicit upstream safety messages remain classified as refusals with provi
 });
 test('structured OpenAI and native provider refusal metadata remain supported', () => {
     for (const envelope of [{ choices: [{ finish_reason: 'content_filter' }] },
+        { choices: [{ finish_reason: 'content_filter: PROHIBITED_CONTENT' }] },
         { candidates: [{ finishReason: 'SAFETY' }] }, { promptFeedback: { blockReason: 'PROHIBITED_CONTENT' } },
         { error: { code: 'CONTENT_FILTER' } }, { choices: [{ message: { refusal: 'Service declined this request.' } }] }]) {
         const result = { reason: '接口返回错误', rawOutput: JSON.stringify(envelope) };

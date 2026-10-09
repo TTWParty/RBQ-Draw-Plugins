@@ -314,7 +314,8 @@
             #rbq-pm-benchmark-dialog .menu_button,
             #rbq-pm-test-dialog .menu_button,
             #rbq-pm-test-edit-dialog .menu_button,
-            #rbq-pm-live-test-dialog .menu_button {
+            #rbq-pm-live-test-dialog .menu_button,
+            #rbq-pm-settings-dialog .menu_button {
                 display: inline-flex !important;
                 flex-direction: row !important;
                 align-items: center !important;
@@ -322,6 +323,78 @@
                 gap: 6px !important;
                 white-space: nowrap !important;
                 box-sizing: border-box !important;
+            }
+
+            /* 全局模态 Overlay 防御体系：锁定全屏并支持安全内滚 */
+            #rbq-prompt-market-overlay,
+            #rbq-pm-upload-dialog,
+            #rbq-pm-detail-dialog,
+            #rbq-pm-benchmark-dialog,
+            #rbq-pm-test-dialog,
+            #rbq-pm-test-edit-dialog,
+            #rbq-pm-live-test-dialog,
+            #rbq-pm-settings-dialog {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                height: 100dvh !important;
+                z-index: 99999 !important;
+                background: rgba(5, 7, 13, 0.85) !important;
+                backdrop-filter: blur(10px) !important;
+                -webkit-backdrop-filter: blur(10px) !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                box-sizing: border-box !important;
+                padding: 16px !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+
+            /* 工坊主面板容器防御：边界锁死，严防顶部溢出与被挤出视口 */
+            #rbq-pm-container {
+                width: min(1080px, 95vw) !important;
+                height: min(840px, calc(100dvh - 32px)) !important;
+                max-height: min(840px, calc(100dvh - 32px)) !important;
+                min-height: 0 !important;
+                background: #090d16 !important;
+                border: 1px solid rgba(255, 255, 255, 0.14) !important;
+                border-radius: 16px !important;
+                box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(56, 189, 248, 0.08) !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: hidden !important;
+                box-sizing: border-box !important;
+                margin: auto !important;
+            }
+
+            /* 子弹窗容器高度防御 */
+            #rbq-pm-upload-dialog > div,
+            #rbq-pm-detail-dialog > div,
+            #rbq-pm-benchmark-dialog > div,
+            #rbq-pm-test-dialog > div,
+            #rbq-pm-test-edit-dialog > div,
+            #rbq-pm-live-test-dialog > div,
+            #rbq-pm-settings-dialog > div {
+                max-height: calc(100dvh - 32px) !important;
+                display: flex !important;
+                flex-direction: column !important;
+                min-height: 0 !important;
+                margin: auto !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+            }
+
+            #rbq-pm-header {
+                flex-shrink: 0 !important;
+                min-height: 48px !important;
+            }
+            #rbq-pm-toolbar {
+                flex-shrink: 0 !important;
             }
 
             /* 卡片与网格容器 Zero-CLS */
@@ -479,30 +552,56 @@
                 flex-shrink: 0;
             }
 
-            /* 网格布局：自适应 4~5 列 */
+            /* 网格布局：自适应 4~5 列，内置平滑滚动与 flex-shrink: 0 防御 */
             #rbq-pm-card-grid {
-                flex: 1;
-                overflow-y: auto;
+                flex: 1 1 0% !important;
+                min-height: 0 !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch !important;
                 padding: 16px 20px;
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
                 gap: 16px;
                 align-content: start;
+                box-sizing: border-box !important;
             }
 
             /* ── 📱 移动端与小屏极端工况深度适配 (彻底告别竖排挤压与臃肿) ── */
             @media (max-width: 640px) {
+                #rbq-prompt-market-overlay,
+                #rbq-pm-upload-dialog,
+                #rbq-pm-detail-dialog,
+                #rbq-pm-benchmark-dialog,
+                #rbq-pm-test-dialog,
+                #rbq-pm-test-edit-dialog,
+                #rbq-pm-live-test-dialog,
+                #rbq-pm-settings-dialog {
+                    padding: 6px !important;
+                }
+
                 #rbq-pm-container {
-                    width: 96vw !important;
-                    height: 94dvh !important;
-                    max-height: 94dvh !important;
+                    width: calc(100vw - 12px) !important;
+                    height: calc(100dvh - 12px) !important;
+                    max-height: calc(100dvh - 12px) !important;
+                    border-radius: 12px !important;
+                }
+
+                #rbq-pm-detail-dialog > div,
+                #rbq-pm-upload-dialog > div,
+                #rbq-pm-live-test-dialog > div,
+                #rbq-pm-test-dialog > div,
+                #rbq-pm-test-edit-dialog > div,
+                #rbq-pm-benchmark-dialog > div,
+                #rbq-pm-settings-dialog > div {
+                    width: calc(100vw - 12px) !important;
+                    max-height: calc(100dvh - 12px) !important;
                     border-radius: 12px !important;
                 }
                 
                 /* 顶部 HUD 紧凑排版：强制单行不换行，隐藏冗余小标题与英文徽章 */
                 #rbq-pm-header {
                     padding: 8px 10px !important;
-                    gap: 8px !important;
+                    gap: 6px !important;
                 }
                 #rbq-pm-hdr-title {
                     font-size: 13.5px !important;
@@ -584,15 +683,7 @@
                     padding: 2px 6px !important;
                 }
 
-                /* 详情/试炼台/词库模态弹窗移动端自适应 */
-                #rbq-pm-detail-dialog > div,
-                #rbq-pm-live-test-dialog > div,
-                #rbq-pm-upload-dialog > div,
-                #rbq-pm-test-dialog > div {
-                    width: 96vw !important;
-                    max-height: 94dvh !important;
-                    border-radius: 12px !important;
-                }
+                /* 详情模态弹窗移动端自适应 */
                 .rbq-pm-detail-body {
                     flex-direction: column !important;
                     padding: 10px !important;
@@ -600,7 +691,7 @@
                 }
                 .rbq-pm-detail-left {
                     width: 100% !important;
-                    max-width: 200px !important;
+                    max-width: 180px !important;
                     margin: 0 auto !important;
                 }
                 .rbq-pm-detail-right {
@@ -614,9 +705,38 @@
                     gap: 6px !important;
                 }
                 .rbq-pm-detail-foot .menu_button {
-                    font-size: 11px !important;
-                    padding: 5px 8px !important;
+                    font-size: 11.5px !important;
+                    padding: 6px 10px !important;
                     flex: 1 1 auto !important;
+                }
+
+                /* 上传模态弹窗移动端自适应 */
+                .rbq-pm-up-grid-2col {
+                    grid-template-columns: 1fr !important;
+                    gap: 8px !important;
+                }
+                .rbq-pm-up-params-grid {
+                    grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 6px !important;
+                }
+
+                /* 试炼台模态弹窗移动端自适应 */
+                .rbq-pm-live-body {
+                    flex-direction: column !important;
+                    padding: 10px !important;
+                    gap: 12px !important;
+                }
+                .rbq-pm-live-left {
+                    max-width: 100% !important;
+                    min-width: 0 !important;
+                }
+                #rbq-pm-live-visual-frame {
+                    max-height: 250px !important;
+                    margin: 0 auto !important;
+                }
+                .rbq-pm-live-right {
+                    min-width: 0 !important;
+                    max-width: 100% !important;
                 }
             }
         `;
@@ -714,7 +834,7 @@
                         </div>
 
                         <!-- Divider -->
-                        <span style="color: rgba(255,255,255,0.18); font-size: 12px; margin: 0 1px; flex-shrink: 0;">|</span>
+                        <span id="rbq-pm-filter-divider" style="color: rgba(255,255,255,0.18); font-size: 12px; margin: 0 1px; flex-shrink: 0;">|</span>
 
                         <!-- Tag Pills Track -->
                         <div id="rbq-pm-tag-bar" style="display: flex; gap: 5px; align-items: center; flex-shrink: 0;">
@@ -768,28 +888,60 @@
             renderCards();
         };
 
-        renderTags();
+        refreshDynamicTags();
         loadMarketData();
     }
 
-    const POPULAR_TAGS = ['全部', '卡密sama', '3D写实', '油光丝袜', '日系厚涂', '二次元平涂', '赛博朋克', '光影氛围', '解剖学'];
-
-    function renderTags() {
+    function refreshDynamicTags() {
+        if (!marketModal) return;
         const tagBar = marketModal.querySelector('#rbq-pm-tag-bar');
+        const divider = marketModal.querySelector('#rbq-pm-filter-divider');
+        if (!tagBar) return;
         tagBar.innerHTML = '';
-        POPULAR_TAGS.forEach(tag => {
+
+        // 动态汇总当前所有预设中真实存在的标签
+        const tagCounts = new Map();
+        (cachedList || []).forEach(item => {
+            if (Array.isArray(item.tags)) {
+                item.tags.forEach(t => {
+                    const tag = String(t || '').trim();
+                    if (tag && tag !== '全部' && tag !== 'NAI V5' && tag !== 'NAI V4.5') {
+                        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+                    }
+                });
+            }
+        });
+
+        // 若当前选中的标签在所有预设中已被删除，自动重置为“全部”
+        if (activeTag !== '全部' && !tagCounts.has(activeTag)) {
+            activeTag = '全部';
+        }
+
+        // 若云端没有任何预设标签，隐藏分隔符并只保留全部
+        if (tagCounts.size === 0) {
+            if (divider) divider.style.display = 'none';
+            return;
+        }
+
+        if (divider) divider.style.display = 'inline';
+
+        const availableTags = ['全部', ...Array.from(tagCounts.keys())];
+
+        availableTags.forEach(tag => {
             const btn = document.createElement('button');
             const isActive = tag === activeTag;
+            btn.className = 'rbq-pm-tag-pill' + (isActive ? ' active' : '');
             btn.style.cssText = `
                 padding: 3px 9px; font-size: 11px; font-weight: 500; border-radius: 12px;
                 border: 1px solid ${isActive ? '#38bdf8' : 'rgba(255,255,255,0.08)'};
                 background: ${isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.03)'};
                 color: ${isActive ? '#38bdf8' : '#94a3b8'}; cursor: pointer; white-space: nowrap;
             `;
-            btn.textContent = tag;
+            const count = tagCounts.get(tag);
+            btn.textContent = tag + (count ? ` (${count})` : '');
             btn.onclick = () => {
                 activeTag = tag;
-                renderTags();
+                refreshDynamicTags();
                 renderCards();
             };
             tagBar.appendChild(btn);
@@ -803,9 +955,11 @@
         try {
             const list = await fetchCloudIndex();
             cachedList = Array.isArray(list) ? list : BUILTIN_PRESETS;
+            refreshDynamicTags();
             renderCards();
         } catch (_err) {
             cachedList = BUILTIN_PRESETS;
+            refreshDynamicTags();
             renderCards();
         }
     }
@@ -1019,15 +1173,12 @@
                             </div>
                         </div>` : ''}
 
-                        <!-- NAI 生图参数罗盘 -->
+                        <!-- NAI 生图参数罗盘 (仅作展示参考) -->
                         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                 <span style="font-size:12px; color:#c084fc; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
                                     <i class="fa-solid fa-sliders"></i> 生成时的 NAI 参数
                                 </span>
-                                <button id="rbq-pm-apply-params" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; box-sizing:border-box !important; background:rgba(192,132,252,0.18); border:1px solid rgba(192,132,252,0.4); color:#e9d5ff; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; cursor:pointer;" title="一键将该预设的 NAI 参数应用到当前酒馆生图设置">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> 一键同步参数到生图
-                                </button>
                             </div>
                             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(75px, 1fr)); gap:8px;">
                                 <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; text-align:center;">
@@ -1052,10 +1203,9 @@
                 </div>
                 <div class="rbq-pm-detail-foot" style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                     <div style="font-size:11px; color:#64748b;">
-                        <i class="fa-solid fa-circle-check" style="color:#22c55e;"></i> NAI 参数已就绪
+                        <span>预设ID: <code style="color:#94a3b8; font-size:10.5px;">${item.id || 'community'}</code></span>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        <button id="rbq-pm-sync-params-foot" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:6px !important; white-space:nowrap !important; background:rgba(192,132,252,0.15); border:1px solid rgba(192,132,252,0.35); color:#e9d5ff; font-size:12px; padding:6px 14px; font-weight:600;"><i class="fa-solid fa-sliders"></i> 一键同步参数</button>
                         <button id="rbq-pm-btn-live-test" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:6px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:12px; padding:6px 16px; font-weight:700; box-shadow:0 2px 10px rgba(168,85,247,0.35); cursor:pointer;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试用画师串</button>
                         <button id="rbq-pm-install-now" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:6px !important; white-space:nowrap !important; background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 16px; font-weight:600;"><i class="fa-solid fa-download"></i> 安装至本地预设</button>
                     </div>
@@ -1089,10 +1239,6 @@
                 toastr.success('预设负面词已复制到剪贴板！');
             };
         }
-
-        const handleSync = () => applyNaiParams(p);
-        overlay.querySelector('#rbq-pm-apply-params').onclick = handleSync;
-        overlay.querySelector('#rbq-pm-sync-params-foot').onclick = handleSync;
 
         overlay.querySelector('#rbq-pm-btn-live-test').onclick = () => {
             openLiveTestModal(item);
@@ -1866,7 +2012,7 @@
                         </div>
                     </div>
 
-                    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
+                    <div class="rbq-pm-up-grid-2col" style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设标题 *</label>
                             <input id="rbq-pm-up-title" type="text" placeholder="例如: Neroma Shin 水光透肉丝袜" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
@@ -1881,7 +2027,7 @@
                         </div>
                     </div>
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <div class="rbq-pm-up-grid-2col" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
                             <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
@@ -1911,7 +2057,7 @@
                                 <i class="fa-solid fa-arrows-rotate"></i> 重新读取设置
                             </button>
                         </div>
-                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px;">
+                        <div class="rbq-pm-up-params-grid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px;">
                             <div>
                                 <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Scale (CFG)</label>
                                 <input id="rbq-pm-up-param-scale" type="number" step="0.5" value="${activeScale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:5px 6px; color:#38bdf8; font-size:11.5px; font-family:monospace; box-sizing:border-box;">
@@ -1958,8 +2104,14 @@
                             <span id="rbq-pm-img-spec" style="color:#64748b;">规格: 720px WebP (0.82)</span>
                         </div>
 
-                        <div id="rbq-pm-up-preview" style="margin-top:10px; display:block; max-height:160px; overflow:hidden; border-radius:8px; position:relative; background:#070b13; border:1px solid rgba(255,255,255,0.08);">
-                            <img id="rbq-pm-preview-img" src="${KAMI_DEFAULT_PREVIEW}" style="max-height:160px; border-radius:8px; object-fit:contain; display:block; margin:0 auto;">
+                        <!-- 预览图展示区：未生成前展示空状态引导，绝不预填默认图开盲盒 -->
+                        <div id="rbq-pm-up-preview" style="margin-top:10px; min-height:120px; border-radius:8px; position:relative; background:#070b13; border:1px dashed rgba(255,255,255,0.14); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                            <div id="rbq-pm-preview-empty" style="padding:24px 16px; text-align:center; color:#64748b;">
+                                <i class="fa-solid fa-image" style="font-size:28px; opacity:0.35; margin-bottom:6px; display:block;"></i>
+                                <div style="font-size:12px; color:#94a3b8; font-weight:600;">尚未生成基准预览图</div>
+                                <div style="font-size:11px; color:#475569; margin-top:3px;">请先点击上方「🎨 立即生图并生成预览」出图后方可发布</div>
+                            </div>
+                            <img id="rbq-pm-preview-img" src="" style="display:none; max-height:180px; border-radius:8px; object-fit:contain; margin:0 auto;">
                         </div>
 
                         <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
@@ -1970,7 +2122,7 @@
                 </div>
                 <div style="padding:14px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
                     <button id="rbq-pm-up-cancel" class="menu_button" style="font-size:12px; padding:6px 14px;">取消</button>
-                    <button id="rbq-pm-up-submit" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 18px; font-weight:700;"><i class="fa-solid fa-paper-plane"></i> 确认发布至工坊</button>
+                    <button id="rbq-pm-up-submit" class="menu_button" disabled style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 18px; font-weight:700; opacity:0.45; cursor:not-allowed;" title="必须先生成或绑定测试预览图"><i class="fa-solid fa-ban"></i> 需先生成测试预览图</button>
                 </div>
             </div>
         `;
@@ -2033,7 +2185,19 @@
             ctx.drawImage(imgObj, 0, 0, width, height);
             compressedBase64 = canvas.toDataURL('image/webp', 0.82);
             previewImg.src = compressedBase64;
-            previewWrap.style.display = 'block';
+            previewImg.style.display = 'block';
+            const emptyEl = overlay.querySelector('#rbq-pm-preview-empty');
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            // 成功绑定真实预览后，解锁发布按钮
+            const submitBtn = overlay.querySelector('#rbq-pm-up-submit');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = 'pointer';
+                submitBtn.title = '发布预设至工坊';
+                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 确认发布至工坊';
+            }
 
             const approxKb = Math.round((compressedBase64.length * 3) / 4 / 1024);
             imgStatus.innerHTML = `<span style="color:#22c55e; font-weight:600;"><i class="fa-solid fa-check"></i> 已绑定真实预览 (${sourceName})</span>`;
@@ -2156,6 +2320,12 @@
                 return;
             }
 
+            // 严禁未生成测试图直接发布
+            if (!compressedBase64) {
+                toastr.warning('必须先生成或绑定当前画师串的基准预览图！请点击「🎨 立即生图并生成预览」出图。');
+                return;
+            }
+
             cfg.authorName = author;
             saveConfig();
 
@@ -2176,8 +2346,8 @@
                         tags,
                         params: uploadParams,
                         description: `基准测试预览由「卡密sama」提示词渲染`,
-                        previewUrl: !compressedBase64 ? KAMI_DEFAULT_PREVIEW : '',
-                        previewBase64: compressedBase64 || ''
+                        previewUrl: '',
+                        previewBase64: compressedBase64
                     })
                 });
 

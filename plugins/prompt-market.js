@@ -372,7 +372,7 @@
             }
 
             /* 全局模态 Overlay 防御体系：锁定全屏并支持安全内滚 */
-            #rbq-prompt-market-overlay,
+            #rbq-prompt-market-overlay:not(.rbq-pm-hidden),
             #rbq-pm-upload-dialog,
             #rbq-pm-detail-dialog,
             #rbq-pm-benchmark-dialog,
@@ -399,6 +399,53 @@
                 padding: 16px !important;
                 overflow-y: auto !important;
                 -webkit-overflow-scrolling: touch !important;
+            }
+
+            /* 彻底修复隐藏态无法被 style.display 覆盖的 fatal bug */
+            #rbq-prompt-market-overlay.rbq-pm-hidden {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+            }
+
+            /* 全局与所有子弹窗的关闭按钮极速响应与超大热区标准 (44x44px 人体工学防御) */
+            .rbq-pm-close-btn {
+                min-width: 44px !important;
+                min-height: 44px !important;
+                width: 44px !important;
+                height: 44px !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                padding: 0 !important;
+                margin: -6px -6px -6px 0 !important;
+                background: transparent !important;
+                border: none !important;
+                border-radius: 8px !important;
+                color: #94a3b8 !important;
+                font-size: 20px !important;
+                line-height: 1 !important;
+                cursor: pointer !important;
+                touch-action: manipulation !important;
+                -webkit-tap-highlight-color: rgba(255, 255, 255, 0.2) !important;
+                user-select: none !important;
+                -webkit-user-select: none !important;
+                flex-shrink: 0 !important;
+                position: relative !important;
+                z-index: 30 !important;
+                box-sizing: border-box !important;
+                transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease !important;
+            }
+
+            .rbq-pm-close-btn:hover {
+                background: rgba(255, 255, 255, 0.1) !important;
+                color: #f1f5f9 !important;
+            }
+
+            .rbq-pm-close-btn:active {
+                background: rgba(239, 68, 68, 0.25) !important;
+                color: #f87171 !important;
+                transform: scale(0.92) !important;
             }
 
             /* 工坊主面板容器防御：边界锁死，严防顶部溢出与被挤出视口 */
@@ -637,7 +684,7 @@
 
             /* ── 📱 移动端与小屏极端工况深度适配 (彻底告别竖排挤压与臃肿) ── */
             @media (max-width: 640px) {
-                #rbq-prompt-market-overlay,
+                #rbq-prompt-market-overlay:not(.rbq-pm-hidden),
                 #rbq-pm-upload-dialog,
                 #rbq-pm-detail-dialog,
                 #rbq-pm-benchmark-dialog,
@@ -686,6 +733,11 @@
                     padding: 4px 7px !important;
                     font-size: 11px !important;
                     gap: 3px !important;
+                }
+                .rbq-pm-close-btn {
+                    width: 44px !important;
+                    height: 44px !important;
+                    margin: -8px -6px -8px 0 !important;
                 }
                 .rbq-pm-desktop-only {
                     display: none !important;
@@ -826,11 +878,42 @@
     let sortMode = 'likes'; // likes | downloads | newest
     let cachedList = [];
 
+    // ── 极速防抖关闭交互助手 (专克移动端 300ms 延迟与手势冲突) ──
+    function bindFastClose(el, closeAction) {
+        if (!el || typeof closeAction !== 'function') return;
+        let lockTime = 0;
+        const trigger = (e) => {
+            const now = Date.now();
+            if (now - lockTime < 350) return;
+            lockTime = now;
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            closeAction(e);
+        };
+        el.addEventListener('touchend', trigger, { passive: false });
+        el.addEventListener('pointerup', trigger, { passive: false });
+        el.onclick = trigger;
+    }
+
+    function closeMarketModal() {
+        if (!marketModal) return;
+        marketModal.classList.add('rbq-pm-hidden');
+        marketModal.style.setProperty('display', 'none', 'important');
+    }
+
+    function showMarketModal() {
+        if (!marketModal) return;
+        marketModal.classList.remove('rbq-pm-hidden');
+        marketModal.style.setProperty('display', 'flex', 'important');
+    }
+
     function openMarketModal() {
         ensureMarketStyles();
 
         if (marketModal) {
-            marketModal.style.display = 'flex';
+            showMarketModal();
             loadMarketData();
             return;
         }
@@ -877,7 +960,7 @@
                         <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 5px 8px; font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; white-space: nowrap !important;">
                             <i class="fa-solid fa-gear"></i>
                         </button>
-                        <button id="rbq-pm-btn-close" style="background: transparent; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 2px 6px; line-height: 1; flex-shrink: 0;">
+                        <button id="rbq-pm-btn-close" class="rbq-pm-close-btn" title="关闭工坊" aria-label="关闭">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
@@ -927,11 +1010,23 @@
 
         document.body.appendChild(marketModal);
 
-        // 事件监听
-        marketModal.querySelector('#rbq-pm-btn-close').onclick = () => { marketModal.style.display = 'none'; };
-        marketModal.addEventListener('click', (e) => {
-            if (e.target === marketModal) marketModal.style.display = 'none';
+        // 事件监听 (极速防抖关闭)
+        bindFastClose(marketModal.querySelector('#rbq-pm-btn-close'), () => {
+            closeMarketModal();
         });
+
+        // 遮罩空白区点击关闭 (支持 touch 与 pointerup)
+        const handleBackdropClose = (e) => {
+            if (e.target === marketModal) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                closeMarketModal();
+            }
+        };
+        marketModal.addEventListener('click', handleBackdropClose);
+        marketModal.addEventListener('pointerup', handleBackdropClose);
 
         marketModal.querySelector('#rbq-pm-btn-test-prompts').onclick = () => openTestPromptsDialog();
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
@@ -1219,7 +1314,7 @@
                         ${modelBadge}
                         ${isMyWork ? '<span class="rbq-pm-badge-author-mine"><i class="fa-solid fa-crown"></i> 我的作品</span>' : ''}
                     </div>
-                    <button id="rbq-pm-detail-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="rbq-pm-detail-close" class="rbq-pm-close-btn" title="关闭详情" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="rbq-pm-detail-body" style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-wrap:wrap; gap:16px;">
                     <!-- Left Column: Portrait Artwork Preview -->
@@ -1310,17 +1405,19 @@
             </div>
         `;
         document.body.appendChild(overlay);
-        overlay.querySelector('#rbq-pm-detail-close').onclick = () => overlay.remove();
+        bindFastClose(overlay.querySelector('#rbq-pm-detail-close'), () => overlay.remove());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.addEventListener('pointerup', (e) => { if (e.target === overlay) overlay.remove(); });
 
         // 点击预览图放大 Lightbox
         const imgWrap = overlay.querySelector('#rbq-pm-detail-img-wrap');
         if (imgWrap) {
             imgWrap.onclick = () => {
                 const lb = document.createElement('div');
+                lb.id = 'rbq-pm-lightbox';
                 lb.style.cssText = 'position:fixed; inset:0; z-index:100005; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; backdrop-filter:blur(10px);';
                 lb.innerHTML = `<img src="${previewSrc}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
-                lb.onclick = () => lb.remove();
+                bindFastClose(lb, () => lb.remove());
                 document.body.appendChild(lb);
             };
         }
@@ -1417,7 +1514,7 @@
             <div style="width:90vw; max-width:540px; background:#0f172a; border:1px solid rgba(255,255,255,0.18); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 20px 50px rgba(0,0,0,0.9);">
                 <div style="padding:12px 16px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <span style="font-size:14px; font-weight:700;">${isEdit ? '编辑测串底模' : '新建测串底模'}</span>
-                    <button id="rbq-pm-edit-close" style="background:transparent; border:none; color:#94a3b8; font-size:16px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="rbq-pm-edit-close" class="rbq-pm-close-btn" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div style="padding:14px 16px; display:flex; flex-direction:column; gap:10px; overflow-y:auto;">
                     <div>
@@ -1444,8 +1541,10 @@
             </div>
         `;
         document.body.appendChild(subOverlay);
-        subOverlay.querySelector('#rbq-pm-edit-close').onclick = () => subOverlay.remove();
-        subOverlay.querySelector('#rbq-pm-edit-cancel').onclick = () => subOverlay.remove();
+        bindFastClose(subOverlay.querySelector('#rbq-pm-edit-close'), () => subOverlay.remove());
+        bindFastClose(subOverlay.querySelector('#rbq-pm-edit-cancel'), () => subOverlay.remove());
+        subOverlay.addEventListener('click', (e) => { if (e.target === subOverlay) subOverlay.remove(); });
+        subOverlay.addEventListener('pointerup', (e) => { if (e.target === subOverlay) subOverlay.remove(); });
 
         subOverlay.querySelector('#rbq-pm-edit-save').onclick = () => {
             const title = subOverlay.querySelector('#rbq-pm-edit-title').value.trim();
@@ -1500,7 +1599,7 @@
                                 <div style="font-size:11px; color:#94a3b8; margin-top:1px;">管理用于实测各画师串风格的底模提示词 · 现场出图自动叠加</div>
                             </div>
                         </div>
-                        <button id="rbq-pm-test-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                        <button id="rbq-pm-test-close" class="rbq-pm-close-btn" title="关闭词库" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                     </div>
 
                     <!-- Action Bar -->
@@ -1578,8 +1677,10 @@
                 </div>
             `;
 
-            overlay.querySelector('#rbq-pm-test-close').onclick = () => overlay.remove();
-            overlay.querySelector('#rbq-pm-test-done-btn').onclick = () => overlay.remove();
+            bindFastClose(overlay.querySelector('#rbq-pm-test-close'), () => overlay.remove());
+            bindFastClose(overlay.querySelector('#rbq-pm-test-done-btn'), () => overlay.remove());
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            overlay.addEventListener('pointerup', (e) => { if (e.target === overlay) overlay.remove(); });
 
             // 设为默认
             overlay.querySelectorAll('.rbq-pm-test-set-default').forEach(btn => {
@@ -1748,7 +1849,7 @@
                             <div class="rbq-pm-desktop-only" style="font-size:11px; color:#94a3b8; margin-top:1px;">预设「${preset.title || '未命名'}」 · 现场合成测串底模实时出图对比</div>
                         </div>
                     </div>
-                    <button id="rbq-pm-live-close" style="background:transparent; border:none; color:#94a3b8; font-size:20px; cursor:pointer; padding:4px 8px; line-height:1; flex-shrink:0;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="rbq-pm-live-close" class="rbq-pm-close-btn" title="关闭试炼台" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
 
                 <!-- Body (Responsive 2 Columns) -->
@@ -1873,8 +1974,9 @@
         `;
 
         document.body.appendChild(overlay);
-        overlay.querySelector('#rbq-pm-live-close').onclick = () => overlay.remove();
+        bindFastClose(overlay.querySelector('#rbq-pm-live-close'), () => overlay.remove());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.addEventListener('pointerup', (e) => { if (e.target === overlay) overlay.remove(); });
 
         const frame = overlay.querySelector('#rbq-pm-live-visual-frame');
         const tabLive = overlay.querySelector('#rbq-pm-live-tab-live');
@@ -2155,7 +2257,7 @@
                         <i class="fa-solid fa-cloud-arrow-up" style="color:#38bdf8;"></i>
                         <span>发布预设至工坊 (现场出图绑定)</span>
                     </div>
-                    <button id="rbq-pm-upload-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="rbq-pm-upload-close" class="rbq-pm-close-btn" title="关闭发布" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
                     <!-- 快捷填充与导入 -->
@@ -2285,8 +2387,10 @@
         `;
         document.body.appendChild(overlay);
 
-        overlay.querySelector('#rbq-pm-upload-close').onclick = () => overlay.remove();
-        overlay.querySelector('#rbq-pm-up-cancel').onclick = () => overlay.remove();
+        bindFastClose(overlay.querySelector('#rbq-pm-upload-close'), () => overlay.remove());
+        bindFastClose(overlay.querySelector('#rbq-pm-up-cancel'), () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.addEventListener('pointerup', (e) => { if (e.target === overlay) overlay.remove(); });
 
         overlay.querySelector('#rbq-pm-up-copy-bm').onclick = async () => {
             await copyToClipboard(BENCHMARK_POSITIVE_PROMPT);
@@ -2543,7 +2647,7 @@
                         <i class="fa-solid fa-gear" style="color:#38bdf8;"></i>
                         <span>工坊设置与创作者身份</span>
                     </div>
-                    <button id="rbq-pm-set-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="rbq-pm-set-close" class="rbq-pm-close-btn" title="关闭设置" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div style="padding:16px 18px; display:flex; flex-direction:column; gap:14px; overflow-y:auto; flex:1;">
                     <!-- 创作者个人码 (Creator Key) 专区 -->
@@ -2597,8 +2701,10 @@
         `;
         document.body.appendChild(overlay);
 
-        overlay.querySelector('#rbq-pm-set-close').onclick = () => overlay.remove();
-        overlay.querySelector('#rbq-pm-set-cancel').onclick = () => overlay.remove();
+        bindFastClose(overlay.querySelector('#rbq-pm-set-close'), () => overlay.remove());
+        bindFastClose(overlay.querySelector('#rbq-pm-set-cancel'), () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.addEventListener('pointerup', (e) => { if (e.target === overlay) overlay.remove(); });
 
         // 复制个人码
         overlay.querySelector('#rbq-pm-cfg-copy-key').onclick = async () => {
@@ -2690,6 +2796,37 @@
         setInterval(check, 1000);
     }
 
+    // ── 全局 ESC 键关闭任意活动弹窗 (依照反向层级递进退出) ──
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            // 先尝试关闭最顶层子弹窗或 Lightbox
+            const subOverlays = [
+                document.getElementById('rbq-pm-lightbox'),
+                document.getElementById('rbq-pm-test-edit-dialog'),
+                document.getElementById('rbq-pm-settings-dialog'),
+                document.getElementById('rbq-pm-upload-dialog'),
+                document.getElementById('rbq-pm-test-dialog'),
+                document.getElementById('rbq-pm-live-test-dialog'),
+                document.getElementById('rbq-pm-detail-dialog')
+            ];
+            for (const sub of subOverlays) {
+                if (sub && sub.parentNode) {
+                    sub.remove();
+                    return;
+                }
+            }
+            // 若无子弹窗且工坊主弹窗处于打开状态，则关闭工坊
+            if (marketModal && !marketModal.classList.contains('rbq-pm-hidden') && marketModal.style.display !== 'none') {
+                closeMarketModal();
+            }
+        }
+    });
+
+    if (RBQ && RBQ.api) {
+        RBQ.api.openMarketModal = openMarketModal;
+        RBQ.api.closeMarketModal = closeMarketModal;
+    }
+
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.12 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

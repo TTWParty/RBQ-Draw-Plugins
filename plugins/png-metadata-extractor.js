@@ -195,6 +195,24 @@
             }
 
             let model = rawJson.model || '';
+            let effort = '';
+            if (rawJson.effort) {
+                effort = rawJson.effort === 'medium' ? 'Medium (蒸馏优化 14步)' : 'High (完整版)';
+            } else if (rawJson.model_hash === '70AB5786' || (rawJson.steps === 14 && String(rawJson.model_name || '').includes('V5'))) {
+                effort = 'Medium (蒸馏优化 14步)';
+            } else if (rawJson.model_hash === '0ADF9AB7') {
+                effort = 'High (完整版)';
+            }
+
+            if (!model) {
+                if (rawJson.model_hash === '70AB5786' || rawJson.model_hash === '0ADF9AB7') {
+                    model = `NovelAI Diffusion V5 Full (${rawJson.model_hash})`;
+                } else if (rawJson.model_name) {
+                    model = rawJson.model_name + (rawJson.model_hash ? ` (${rawJson.model_hash})` : '');
+                } else if (metadata['Source']) {
+                    model = metadata['Source'];
+                }
+            }
             let smea = '';
             if (rawJson.sm === true) {
                 smea = rawJson.sm_dyn === true ? '开启 (DYN)' : '开启';
@@ -234,6 +252,7 @@
                 cfg: rawJson.scale ? String(rawJson.scale) : '',
                 size: (rawJson.width && rawJson.height) ? `${rawJson.width}x${rawJson.height}` : '',
                 model,
+                effort,
                 smea,
                 cfg_rescale,
                 noise_schedule,
@@ -861,6 +880,8 @@
         let smallFields = [];
         if (isSimple) {
             smallFields = [
+                createField('模型 (Model)', parsed.model),
+                createField('算力档位 (Effort)', parsed.effort),
                 createField('种子 (Seed)', parsed.seed),
                 createField('尺寸 (Size)', parsed.size),
                 createField('步数 (Steps)', parsed.steps),
@@ -870,6 +891,7 @@
         } else {
             smallFields = [
                 createField('模型 (Model)', parsed.model),
+                createField('算力档位 (Effort)', parsed.effort),
                 createField('种子 (Seed)', parsed.seed),
                 createField('尺寸 (Size)', parsed.size),
                 createField('步数 (Steps)', parsed.steps),
@@ -968,6 +990,7 @@
         let gridHtml = '';
         const smallFields = [
             { label: '模型 (Model)', value: parsed.model },
+            { label: '算力档位 (Effort)', value: parsed.effort },
             { label: '种子 (Seed)', value: parsed.seed },
             { label: '采样器 (Sampler)', value: parsed.sampler },
             { label: 'CFG (Scale)', value: parsed.cfg },

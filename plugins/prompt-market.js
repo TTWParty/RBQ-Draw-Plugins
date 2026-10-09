@@ -55,9 +55,9 @@
         if (!s[STORAGE_KEY].serverUrl || s[STORAGE_KEY].serverUrl.includes('9.rbq.my')) {
             s[STORAGE_KEY].serverUrl = 'https://market.rbq.my';
         }
-        // 自动静默初始化专属创作者身份码 (开箱即用，零注册成本)
-        if (!s[STORAGE_KEY].creatorKey) {
-            s[STORAGE_KEY].creatorKey = generateCreatorKey();
+        // 创作者身份码默认留空，由用户在设置中自主创建或手动填入 (绝不静默硬塞)
+        if (s[STORAGE_KEY].creatorKey === undefined) {
+            s[STORAGE_KEY].creatorKey = '';
         }
         if (s[STORAGE_KEY].adminKey === undefined) s[STORAGE_KEY].adminKey = '';
         if (!Array.isArray(s[STORAGE_KEY].myUploadedIds)) s[STORAGE_KEY].myUploadedIds = [];
@@ -2103,6 +2103,13 @@
             return;
         }
 
+        // 校验是否已创建创作者个人码
+        if (!cfg.creatorKey || !cfg.creatorKey.trim()) {
+            toastr.warning('发布预设需要先设置你的专属创作者个人码（用于作品归属认领与随时下架管理）。\n已为你打开设置面板，请先创建个人码。');
+            openSettingsDialog();
+            return;
+        }
+
         const s = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
         const localPresets = s[PRESETS_STORAGE_KEY]?.presets || [];
 
@@ -2518,19 +2525,19 @@
                             <span style="font-size:12px; font-weight:700; color:#38bdf8; display:inline-flex; align-items:center; gap:6px;">
                                 <i class="fa-solid fa-id-card"></i> 创作者个人码 (Creator Key)
                             </span>
-                            <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">身份认证凭证</span>
+                            <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">可选 · 需发布/删除时使用</span>
                         </div>
                         <div style="display:flex; gap:6px; align-items:center;">
-                            <input id="rbq-pm-cfg-creator-key" type="text" value="${cfg.creatorKey || ''}" placeholder="RBQ-U-xxxxxxxx" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:13px; font-weight:700; outline:none; box-sizing:border-box;">
+                            <input id="rbq-pm-cfg-creator-key" type="text" value="${cfg.creatorKey || ''}" placeholder="未设置 (点击「随机生成」或手动输入自定义码)" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:12px; font-weight:700; outline:none; box-sizing:border-box;">
+                            <button id="rbq-pm-cfg-regen-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="随机生成专属个人身份码">
+                                <i class="fa-solid fa-dice"></i> 随机生成
+                            </button>
                             <button id="rbq-pm-cfg-copy-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="复制创作者个人码">
                                 <i class="fa-solid fa-copy"></i> 复制
                             </button>
-                            <button id="rbq-pm-cfg-regen-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="重新随机生成新的身份码">
-                                <i class="fa-solid fa-dice"></i> 重置
-                            </button>
                         </div>
                         <div style="font-size:11px; color:#94a3b8; margin-top:6px; line-height:1.45;">
-                            ✨ 发布预设时将自动与此码绑定，凭此码可在详情中<strong>随时下架删除你的作品</strong>。可将其复制并在手机或其他浏览器粘贴，实现跨端漫游同步！
+                            ✨ 用于发布预设时的作品归属与<strong>随时下架删除管理</strong>。你可以点击「随机生成」，也可以手动输入你喜欢的自定义暗号；复制到手机等其他设备粘贴即可跨端漫游！
                         </div>
                     </div>
 
@@ -2569,18 +2576,23 @@
         // 复制个人码
         overlay.querySelector('#rbq-pm-cfg-copy-key').onclick = async () => {
             const keyVal = overlay.querySelector('#rbq-pm-cfg-creator-key').value.trim();
-            if (!keyVal) return;
+            if (!keyVal) {
+                toastr.info('当前尚未设置个人码，请先点击「随机生成」或手动输入');
+                return;
+            }
             await copyToClipboard(keyVal);
             toastr.success('已复制创作者个人码到剪贴板！');
         };
 
-        // 重新生成个人码
+        // 随机生成个人码
         overlay.querySelector('#rbq-pm-cfg-regen-key').onclick = () => {
-            if (confirm('重新生成后，旧码发布的作品将无法通过新码删除（除非在设置中重新换回旧码）。确定重新生成吗？')) {
-                const newKey = generateCreatorKey();
-                overlay.querySelector('#rbq-pm-cfg-creator-key').value = newKey;
-                toastr.info('已生成新创作者码，请点击「保存设置」生效');
+            const inputEl = overlay.querySelector('#rbq-pm-cfg-creator-key');
+            if (inputEl.value.trim() && !confirm('当前已设置个人码，确定要覆盖生成新的身份码吗？\n（旧码发布的作品需用旧码才能删除）')) {
+                return;
             }
+            const newKey = generateCreatorKey();
+            inputEl.value = newKey;
+            toastr.success(`已生成专属创作者码「${newKey}」，请点击「保存设置」生效！`);
         };
 
         // 保存设置
@@ -2591,7 +2603,7 @@
 
             cfg.serverUrl = rawServer ? rawServer.replace(/\/+$/, '') : 'https://market.rbq.my';
             cfg.authorName = overlay.querySelector('#rbq-pm-cfg-author').value.trim();
-            cfg.creatorKey = creatorKeyVal || generateCreatorKey();
+            cfg.creatorKey = creatorKeyVal; // 尊重用户选择：输入了就保存，留空就保持为空，绝不强塞
             cfg.adminKey = adminKeyVal;
 
             saveConfig();

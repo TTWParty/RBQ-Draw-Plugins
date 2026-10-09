@@ -6,11 +6,12 @@
 
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
-        serverUrl: 'https://market.rbq.my', // 自建工坊服务器，例如 https://market.rbq.my
+        serverUrl: 'https://market.rbq.my', // 自建工坊服务器
         authorName: '',
         repo: 'TTWParty/RBQ-Prompt-Market',
         branch: 'main',
-        installedIds: []
+        installedIds: [],
+        likedIds: []
     };
 
     function getConfig() {
@@ -20,6 +21,8 @@
         if (!s[STORAGE_KEY].serverUrl || s[STORAGE_KEY].serverUrl.includes('9.rbq.my')) {
             s[STORAGE_KEY].serverUrl = 'https://market.rbq.my';
         }
+        if (!Array.isArray(s[STORAGE_KEY].installedIds)) s[STORAGE_KEY].installedIds = [];
+        if (!Array.isArray(s[STORAGE_KEY].likedIds)) s[STORAGE_KEY].likedIds = [];
         return s[STORAGE_KEY];
     }
 
@@ -53,9 +56,25 @@
     // 内置初始精品预设（即使完全离线时也立即可用）
     const BUILTIN_PRESETS = [
         {
+            id: 'kami-greenhouse-girl',
+            title: '复古花房·怀表麻花辫少女',
+            author: '卡密sama',
+            model: 'v5',
+            description: '测试提示词由卡密sama提供。温室玻璃花房、拱形彩绘玻璃、阳光丁达尔效应、精美双麻花与金发粉渐变。',
+            tags: ['NAI V5', 'NAI V4.5', '卡密sama', '复古花房', '唯美少女'],
+            positive: '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
+            negative: 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
+            previewUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&auto=format&fit=crop&q=80',
+            params: { scale: 6.0, sampler: 'k_euler_ancestral', steps: 28 },
+            likes: 521,
+            downloads: 1314,
+            createdAt: '2026-10-09'
+        },
+        {
             id: 'builtin-east-cg',
             title: '次世代东方写实御姐 CG',
             author: 'RBQ官方精选',
+            model: 'v5',
             description: '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。',
             tags: ['3D写实', '御姐', '电影光影', '次世代'],
             positive: 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
@@ -70,6 +89,7 @@
             id: 'builtin-shiny-pantyhose',
             title: '顶级油光高光透肉丝袜专精',
             author: 'RBQ官方精选',
+            model: 'v4.5',
             description: '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。',
             tags: ['油光丝袜', '美腿', '高光反光', '御姐'],
             positive: '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
@@ -84,6 +104,7 @@
             id: 'builtin-thick-skin',
             title: '顶级肉感厚涂与温润肉温',
             author: 'RBQ官方精选',
+            model: 'v4.5',
             description: '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。',
             tags: ['日系厚涂', '肉感', '微汗水光', '解剖学'],
             positive: '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
@@ -198,14 +219,185 @@
         toastr.success(`预设「${preset.title}」已成功装入你的本地预设库！`);
     }
 
+    // 点赞预设
+    async function likePreset(item, likeBtn, countSpan) {
+        const cfg = getConfig();
+        if (cfg.likedIds.includes(item.id)) {
+            toastr.info('你已经为该预设点过赞啦 ❤️');
+            return;
+        }
+
+        const endpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+        // 乐观更新 UI
+        item.likes = (item.likes || 0) + 1;
+        countSpan.textContent = item.likes;
+        likeBtn.classList.add('is-liked');
+        cfg.likedIds.push(item.id);
+        saveConfig();
+
+        toastr.success(`已为「${item.title}」点赞！`);
+
+        if (endpoint) {
+            try {
+                await fetch(`${endpoint}/api/like`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: item.id })
+                });
+            } catch (err) {
+                console.warn('[Prompt Market] 点赞网络上报异常:', err);
+            }
+        }
+    }
+
+    // ── 注入 Game-HUD 样式防御系统 ──
+    function ensureMarketStyles() {
+        if (document.getElementById('rbq-prompt-market-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'rbq-prompt-market-styles';
+        style.textContent = `
+            /* 宿主 .menu_button 挤压防御铁律 */
+            #rbq-pm-container .menu_button,
+            #rbq-pm-upload-dialog .menu_button,
+            #rbq-pm-detail-dialog .menu_button {
+                display: inline-flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 6px !important;
+                white-space: nowrap !important;
+                box-sizing: border-box !important;
+            }
+
+            /* 卡片与网格容器 Zero-CLS */
+            .rbq-pm-card {
+                background: #111827;
+                border: 1px solid rgba(255, 255, 255, 0.09);
+                border-radius: 12px;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+                transform: translateZ(0);
+                will-change: transform, box-shadow;
+                transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1), border-color 0.2s ease;
+            }
+            .rbq-pm-card:hover {
+                transform: translateY(-3px);
+                border-color: rgba(56, 189, 248, 0.45);
+                box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 16px rgba(56, 189, 248, 0.18);
+            }
+
+            /* 图片骨架屏预留 */
+            .rbq-pm-img-wrap {
+                width: 100%;
+                aspect-ratio: 16 / 10;
+                position: relative;
+                background: #090d16;
+                overflow: hidden;
+                cursor: pointer;
+            }
+            .rbq-pm-img-wrap img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                transition: transform 0.3s ease;
+            }
+            .rbq-pm-card:hover .rbq-pm-img-wrap img {
+                transform: scale(1.03);
+            }
+
+            /* 模型徽章 */
+            .rbq-pm-badge-model {
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                padding: 2px 7px;
+                border-radius: 5px;
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                text-transform: uppercase;
+            }
+            .rbq-pm-badge-v5 {
+                background: linear-gradient(135deg, rgba(217, 70, 239, 0.25), rgba(168, 85, 247, 0.3));
+                border: 1px solid rgba(217, 70, 239, 0.6);
+                color: #f0abfc;
+                box-shadow: 0 0 8px rgba(217, 70, 239, 0.25);
+            }
+            .rbq-pm-badge-v45 {
+                background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.3));
+                border: 1px solid rgba(56, 189, 248, 0.6);
+                color: #7dd3fc;
+                box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+            }
+            .rbq-pm-badge-gen {
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: #cbd5e1;
+            }
+
+            /* 互动按钮 */
+            .rbq-pm-like-btn {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                color: #94a3b8;
+                border-radius: 6px;
+                padding: 4px 9px;
+                font-size: 11px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                transition: all 0.15s ease;
+            }
+            .rbq-pm-like-btn:hover {
+                background: rgba(244, 63, 94, 0.12);
+                border-color: rgba(244, 63, 94, 0.4);
+                color: #f43f5e;
+            }
+            .rbq-pm-like-btn.is-liked {
+                background: rgba(244, 63, 94, 0.18);
+                border-color: #f43f5e;
+                color: #fb7185;
+            }
+            .rbq-pm-like-btn.is-liked i {
+                color: #f43f5e;
+                animation: rbq-heart-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+            @keyframes rbq-heart-pop {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.35); }
+                100% { transform: scale(1); }
+            }
+
+            /* 触控与移动端 */
+            @media (max-width: 640px) {
+                #rbq-pm-container {
+                    width: 96vw !important;
+                    height: 92dvh !important;
+                    border-radius: 10px !important;
+                }
+                #rbq-pm-card-grid {
+                    grid-template-columns: 1fr !important;
+                    padding: 12px !important;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     // ── UI Modal 构建 ──
     let marketModal = null;
+    let activeModelFilter = 'all'; // all | v5 | v4.5 | general
     let activeTag = '全部';
     let searchQuery = '';
     let sortMode = 'popular'; // popular | newest
     let cachedList = [];
 
     function openMarketModal() {
+        ensureMarketStyles();
+
         if (marketModal) {
             marketModal.style.display = 'flex';
             loadMarketData();
@@ -216,70 +408,82 @@
         marketModal.id = 'rbq-prompt-market-overlay';
         marketModal.style.cssText = `
             position: fixed; inset: 0; z-index: 99999;
-            background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px);
+            background: rgba(5, 7, 13, 0.82); backdrop-filter: blur(10px);
             display: flex; align-items: center; justify-content: center;
             font-family: inherit; color: #f1f5f9; box-sizing: border-box;
         `;
 
         marketModal.innerHTML = `
             <div id="rbq-pm-container" style="
-                width: 92vw; max-width: 1040px; height: 88vh; max-height: 820px;
-                background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.12);
-                border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+                width: 94vw; max-width: 1080px; height: 88vh; max-height: 840px;
+                background: #090d16; border: 1px solid rgba(255, 255, 255, 0.14);
+                border-radius: 16px; box-shadow: 0 25px 60px rgba(0,0,0,0.75), 0 0 30px rgba(56, 189, 248, 0.08);
                 display: flex; flex-direction: column; overflow: hidden;
             ">
-                <!-- Header -->
-                <div style="padding: 14px 20px; background: #1e293b; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #38bdf8, #818cf8); display: flex; align-items: center; justify-content: center; font-size: 16px; color: #fff;">
+                <!-- Header HUD -->
+                <div style="padding: 14px 20px; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #0284c7, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);">
                             <i class="fa-solid fa-store"></i>
                         </div>
                         <div>
-                            <div style="font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                            <div style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
                                 <span>提示词预设工坊</span>
-                                <span style="font-size: 11px; font-weight: 500; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 6px; border-radius: 4px;">Community Market</span>
+                                <span style="font-size: 10px; font-weight: 700; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 7px; border-radius: 4px;">PROMPT WORKSHOP</span>
                             </div>
-                            <div style="font-size: 11px; color: #94a3b8;">探索、分享与一键安装社区优质画师串与预设</div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">社区画师串与预设中心 · 支持所见即所得生图发布与一键安装</div>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 7px 15px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 10px rgba(2, 132, 199, 0.35);">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>发布我的预设</span>
+                            <span>发布预设 (支持现场出图)</span>
                         </button>
-                        <button id="rbq-pm-btn-settings" class="menu_button" title="工坊网关设置" style="padding: 6px 10px; font-size: 13px; color: #94a3b8;">
+                        <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 7px 11px; font-size: 13px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
                             <i class="fa-solid fa-gear"></i>
                         </button>
-                        <button id="rbq-pm-btn-close" style="background: transparent; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1;">
+                        <button id="rbq-pm-btn-close" style="background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1;">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
                 </div>
 
-                <!-- Filter & Search Toolbar -->
-                <div style="padding: 10px 20px; background: #131d31; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
-                    <!-- Tags -->
-                    <div id="rbq-pm-tag-bar" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;">
-                        <!-- Generated by renderTags -->
+                <!-- Model Filter & Category Toolbar -->
+                <div style="padding: 10px 20px; background: #0b1120; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+                    <!-- Line 1: Model Filter Tabs + Search & Sort -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+                        <!-- Model Tabs -->
+                        <div id="rbq-pm-model-tabs" style="display: flex; gap: 6px; align-items: center;">
+                            <span style="font-size: 11px; color: #64748b; font-weight: 600; margin-right: 2px;">模型:</span>
+                            <button class="rbq-pm-model-tab active" data-model="all" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.18); color: #38bdf8; cursor: pointer;">全部</button>
+                            <button class="rbq-pm-model-tab" data-model="v5" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(217, 70, 239, 0.35); background: rgba(255,255,255,0.04); color: #f0abfc; cursor: pointer;"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</button>
+                            <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer;"><i class="fa-solid fa-bolt"></i> NAI V4.5</button>
+                            <button class="rbq-pm-model-tab" data-model="general" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #cbd5e1; cursor: pointer;">通用/其他</button>
+                        </div>
+
+                        <!-- Search & Sort -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="position: relative;">
+                                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #64748b;"></i>
+                                <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 11.5px; color: #fff; width: 180px; outline: none;">
+                            </div>
+                            <select id="rbq-pm-sort-select" style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: #94a3b8; outline: none;">
+                                <option value="popular">🔥 热门/点赞</option>
+                                <option value="newest">🆕 最新上架</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <!-- Search & Sort -->
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="position: relative;">
-                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #64748b;"></i>
-                            <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 12px; color: #fff; width: 180px; outline: none;">
-                        </div>
-                        <select id="rbq-pm-sort-select" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; font-size: 12px; color: #94a3b8; outline: none;">
-                            <option value="popular">🔥 热门排行</option>
-                            <option value="newest">🆕 最新发布</option>
-                        </select>
+                    <!-- Line 2: Tags Filter -->
+                    <div id="rbq-pm-tag-bar" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;">
+                        <!-- Generated by renderTags -->
                     </div>
                 </div>
 
                 <!-- Main Content (Cards Grid) -->
                 <div id="rbq-pm-card-grid" style="
-                    flex: 1; overflow-y: auto; padding: 16px 20px;
-                    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    flex: 1; overflow-y: auto; padding: 18px 20px;
+                    display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
                     gap: 16px; align-content: start;
                 ">
                     <!-- Cards will be populated here -->
@@ -298,6 +502,20 @@
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
         marketModal.querySelector('#rbq-pm-btn-settings').onclick = () => openSettingsDialog();
 
+        // 模型 Filter 切换
+        marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(tab => {
+            tab.onclick = () => {
+                marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(t => {
+                    t.style.background = 'rgba(255,255,255,0.04)';
+                    t.style.borderColor = 'rgba(255,255,255,0.12)';
+                });
+                tab.style.background = 'rgba(56, 189, 248, 0.18)';
+                tab.style.borderColor = '#38bdf8';
+                activeModelFilter = tab.dataset.model;
+                renderCards();
+            };
+        });
+
         const searchInput = marketModal.querySelector('#rbq-pm-search-input');
         searchInput.oninput = (e) => {
             searchQuery = e.target.value.trim().toLowerCase();
@@ -314,7 +532,7 @@
         loadMarketData();
     }
 
-    const POPULAR_TAGS = ['全部', '3D写实', '油光丝袜', '日系厚涂', '二次元平涂', '赛博朋克', '光影氛围', '解剖学'];
+    const POPULAR_TAGS = ['全部', '卡密sama', '3D写实', '油光丝袜', '日系厚涂', '二次元平涂', '赛博朋克', '光影氛围', '解剖学'];
 
     function renderTags() {
         const tagBar = marketModal.querySelector('#rbq-pm-tag-bar');
@@ -323,11 +541,10 @@
             const btn = document.createElement('button');
             const isActive = tag === activeTag;
             btn.style.cssText = `
-                padding: 4px 10px; font-size: 11px; font-weight: 500; border-radius: 12px;
-                border: 1px solid ${isActive ? '#38bdf8' : 'rgba(255,255,255,0.1)'};
-                background: ${isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.04)'};
+                padding: 3px 9px; font-size: 11px; font-weight: 500; border-radius: 12px;
+                border: 1px solid ${isActive ? '#38bdf8' : 'rgba(255,255,255,0.08)'};
+                background: ${isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.03)'};
                 color: ${isActive ? '#38bdf8' : '#94a3b8'}; cursor: pointer; white-space: nowrap;
-                transition: all 0.15s;
             `;
             btn.textContent = tag;
             btn.onclick = () => {
@@ -341,7 +558,7 @@
 
     async function loadMarketData() {
         const grid = marketModal.querySelector('#rbq-pm-card-grid');
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 8px;"></i><div>正在获取社区预设...</div></div>';
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin" style="font-size: 26px; margin-bottom: 10px; color: #38bdf8;"></i><div>正在获取社区云端预设工坊...</div></div>';
 
         try {
             const list = await fetchCloudIndex();
@@ -358,6 +575,17 @@
         grid.innerHTML = '';
 
         let items = [...cachedList];
+
+        // 模型过滤
+        if (activeModelFilter !== 'all') {
+            items = items.filter(it => {
+                const m = (it.model || '').toLowerCase();
+                if (activeModelFilter === 'v5') return m === 'v5' || (it.tags || []).includes('NAI V5');
+                if (activeModelFilter === 'v4.5') return m === 'v4.5' || (it.tags || []).includes('NAI V4.5');
+                if (activeModelFilter === 'general') return m !== 'v5' && m !== 'v4.5';
+                return true;
+            });
+        }
 
         // 标签过滤
         if (activeTag !== '全部') {
@@ -376,13 +604,13 @@
 
         // 排序
         if (sortMode === 'popular') {
-            items.sort((a, b) => ((b.downloads || 0) + (b.likes || 0)) - ((a.downloads || 0) + (a.likes || 0)));
+            items.sort((a, b) => ((b.likes || 0) * 3 + (b.downloads || 0)) - ((a.likes || 0) * 3 + (a.downloads || 0)));
         } else {
             items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         }
 
         if (items.length === 0) {
-            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; color: #64748b;"><i class="fa-regular fa-folder-open" style="font-size: 32px; margin-bottom: 10px;"></i><div>未找到匹配的提示词预设</div></div>';
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 70px; color: #64748b;"><i class="fa-regular fa-folder-open" style="font-size: 34px; margin-bottom: 12px;"></i><div>当前筛选分类下暂无预设</div></div>';
             return;
         }
 
@@ -390,47 +618,66 @@
 
         items.forEach(item => {
             const isInstalled = cfg.installedIds.includes(item.id);
+            const isLiked = cfg.likedIds.includes(item.id);
             const card = document.createElement('div');
-            card.style.cssText = `
-                background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
-                overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, border-color 0.15s;
-            `;
-            card.onmouseenter = () => { card.style.borderColor = 'rgba(56, 189, 248, 0.4)'; card.style.transform = 'translateY(-2px)'; };
-            card.onmouseleave = () => { card.style.borderColor = 'rgba(255,255,255,0.08)'; card.style.transform = 'translateY(0)'; };
+            card.className = 'rbq-pm-card';
 
-            const previewSrc = item.previewUrl || 'https://via.placeholder.com/400x300/1e293b/64748b?text=RBQ+Prompt';
+            const previewSrc = item.previewUrl || 'https://via.placeholder.com/400x300/111827/64748b?text=RBQ+Preset';
+
+            // 模型 Badge 样式判定
+            const m = (item.model || '').toLowerCase();
+            let modelBadgeHtml = '';
+            if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
+                modelBadgeHtml = '<span class="rbq-pm-badge-model rbq-pm-badge-v5"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</span>';
+            } else if (m === 'v4.5' || (item.tags || []).includes('NAI V4.5')) {
+                modelBadgeHtml = '<span class="rbq-pm-badge-model rbq-pm-badge-v45"><i class="fa-solid fa-bolt"></i> NAI V4.5</span>';
+            } else {
+                modelBadgeHtml = '<span class="rbq-pm-badge-model rbq-pm-badge-gen">通用</span>';
+            }
 
             card.innerHTML = `
-                <div style="width: 100%; height: 160px; position: relative; background: #0f172a; overflow: hidden; cursor: pointer;">
-                    <img src="${previewSrc}" style="width: 100%; height: 100%; object-fit: cover;" alt="${item.title}" loading="lazy">
-                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 40px; background: linear-gradient(transparent, rgba(15,23,42,0.85));"></div>
-                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #38bdf8;">
+                <div class="rbq-pm-img-wrap">
+                    <img src="${previewSrc}" alt="${item.title}" loading="lazy">
+                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 48px; background: linear-gradient(transparent, rgba(17,24,39,0.95)); pointer-events: none;"></div>
+                    <div style="position: absolute; top: 8px; left: 8px;">
+                        ${modelBadgeHtml}
+                    </div>
+                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); font-size: 10px; padding: 2px 7px; border-radius: 5px; color: #38bdf8; display: flex; align-items: center; gap: 4px;">
                         <i class="fa-solid fa-download"></i> ${item.downloads || 0}
                     </div>
                 </div>
-                <div style="padding: 12px; flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                <div style="padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 8px;">
                     <div>
-                        <div style="font-size: 14px; font-weight: 700; color: #f8fafc; line-height: 1.3;">${item.title}</div>
-                        <div style="font-size: 11px; color: #64748b; margin-top: 2px;">作者: ${item.author || '匿名'}</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #f8fafc; line-height: 1.35;">${item.title}</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 3px; display: flex; align-items: center; gap: 4px;">
+                            <i class="fa-regular fa-user" style="font-size: 10px;"></i>
+                            <span>${item.author || '匿名'}</span>
+                        </div>
                     </div>
-                    <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 30px;">
+                    <div style="font-size: 11.5px; color: #94a3b8; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px;">
                         ${item.description || '暂无描述'}
                     </div>
                     <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                         ${(item.tags || []).map(t => `<span style="font-size: 10px; background: rgba(255,255,255,0.06); color: #cbd5e1; padding: 1px 6px; border-radius: 4px;">#${t}</span>`).join('')}
                     </div>
-                    <div style="margin-top: auto; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                        <button class="rbq-pm-detail-btn" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 11px; padding: 4px 8px; border-radius: 5px; cursor: pointer;">
-                            <i class="fa-solid fa-eye"></i> 详情
-                        </button>
-                        <button class="rbq-pm-install-btn" style="
+                    <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button class="rbq-pm-like-btn ${isLiked ? 'is-liked' : ''}" title="点赞预设">
+                                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
+                                <span class="rbq-pm-like-num">${item.likes || 0}</span>
+                            </button>
+                            <button class="rbq-pm-detail-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer;">
+                                <i class="fa-solid fa-eye"></i> 详情
+                            </button>
+                        </div>
+                        <button class="rbq-pm-install-btn menu_button" style="
                             background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
                             border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
                             color: ${isInstalled ? '#22c55e' : '#fff'};
-                            font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; gap: 4px;
+                            font-size: 11px; font-weight: 600; padding: 5px 11px; border-radius: 6px; cursor: pointer;
                         ">
                             <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
-                            <span>${isInstalled ? '已装' : '一键安装'}</span>
+                            <span>${isInstalled ? '已安装' : '一键安装'}</span>
                         </button>
                     </div>
                 </div>
@@ -438,6 +685,11 @@
 
             // 点击预览图放大
             card.querySelector('img').onclick = () => openImageZoom(previewSrc);
+
+            // 点赞
+            const likeBtn = card.querySelector('.rbq-pm-like-btn');
+            const likeNum = card.querySelector('.rbq-pm-like-num');
+            likeBtn.onclick = () => likePreset(item, likeBtn, likeNum);
 
             // 详情按钮
             card.querySelector('.rbq-pm-detail-btn').onclick = async () => {
@@ -453,7 +705,7 @@
                 installBtn.style.background = 'rgba(34, 197, 94, 0.15)';
                 installBtn.style.borderColor = '#22c55e';
                 installBtn.style.color = '#22c55e';
-                installBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>已装</span>';
+                installBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>已安装</span>';
             };
 
             grid.appendChild(card);
@@ -463,33 +715,38 @@
     // ── 详情弹窗 ──
     function openDetailDialog(item) {
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);';
+        overlay.id = 'rbq-pm-detail-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.78); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
         overlay.innerHTML = `
-            <div style="width:90vw; max-width:620px; max-height:85vh; background:#0f172a; border:1px solid rgba(255,255,255,0.15); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; color:#fff;">
-                <div style="padding:12px 16px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-size:15px; font-weight:700;">${item.title}</div>
+            <div style="width:90vw; max-width:640px; max-height:86vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.7);">
+                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                        <span>${item.title}</span>
+                        <span style="font-size:10px; background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px;">${(item.model || 'v5').toUpperCase()}</span>
+                    </div>
                     <button id="rbq-pm-detail-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div style="padding:16px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
+                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
                     <div>
-                        <div style="font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">正向提示词 (Positive)</div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:8px; font-size:12px; color:#e2e8f0; line-height:1.5; word-break:break-word; max-height:140px; overflow-y:auto;">
+                        <div style="font-size:12px; color:#38bdf8; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> 正向提示词 (Positive)</div>
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:160px; overflow-y:auto; user-select:text;">
                             ${item.positive || '(无)'}
                         </div>
                     </div>
                     <div>
-                        <div style="font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">负向提示词 (Negative)</div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:8px; font-size:12px; color:#f87171; line-height:1.5; word-break:break-word; max-height:100px; overflow-y:auto;">
+                        <div style="font-size:12px; color:#f87171; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 负向提示词 (Negative)</div>
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; max-height:100px; overflow-y:auto; user-select:text;">
                             ${item.negative || '(无)'}
                         </div>
                     </div>
-                    <div style="font-size:11px; color:#64748b; line-height:1.5;">
-                        <div>作者: ${item.author || '匿名'} | 标签: ${(item.tags || []).join(', ')}</div>
+                    <div style="font-size:11.5px; color:#64748b; line-height:1.6; background:rgba(0,0,0,0.2); padding:8px 12px; border-radius:6px;">
+                        <div>作者: <strong style="color:#94a3b8;">${item.author || '匿名'}</strong> | 点赞数: <strong style="color:#fb7185;">${item.likes || 0}</strong> | 下载: ${item.downloads || 0}</div>
+                        <div>标签: ${(item.tags || []).join(', ')}</div>
                     </div>
                 </div>
-                <div style="padding:12px 16px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
-                    <button id="rbq-pm-copy-pos" class="menu_button" style="font-size:12px; padding:6px 12px;"><i class="fa-solid fa-copy"></i> 复制正面词</button>
-                    <button id="rbq-pm-install-now" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 14px;"><i class="fa-solid fa-download"></i> 安装至本地预设</button>
+                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
+                    <button id="rbq-pm-copy-pos" class="menu_button" style="font-size:12px; padding:6px 14px; background:rgba(255,255,255,0.08);"><i class="fa-solid fa-copy"></i> 复制正面词</button>
+                    <button id="rbq-pm-install-now" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 16px; font-weight:600;"><i class="fa-solid fa-download"></i> 安装至本地预设</button>
                 </div>
             </div>
         `;
@@ -508,7 +765,7 @@
         };
     }
 
-    // ── 发布弹窗 ──
+    // ── 发布弹窗 (带工坊现场一键生图核心装置) ──
     function openUploadDialog() {
         const cfg = getConfig();
         const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
@@ -522,52 +779,89 @@
         const localPresets = s[PRESETS_STORAGE_KEY]?.presets || [];
 
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);';
+        overlay.id = 'rbq-pm-upload-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
         overlay.innerHTML = `
-            <div style="width:90vw; max-width:560px; max-height:85vh; background:#0f172a; border:1px solid rgba(255,255,255,0.15); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; color:#fff;">
-                <div style="padding:12px 16px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-size:15px; font-weight:700;"><i class="fa-solid fa-cloud-arrow-up"></i> 发布预设至工坊</div>
+            <div style="width:92vw; max-width:620px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
+                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-cloud-arrow-up" style="color:#38bdf8;"></i>
+                        <span>发布预设至工坊</span>
+                    </div>
                     <button id="rbq-pm-upload-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div style="padding:16px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
-                    <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">从本地已有预设导入 (可选)</label>
-                        <select id="rbq-pm-local-select" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px;">
-                            <option value="">-- 手动填写或选择预设 --</option>
-                            ${localPresets.map((p, idx) => `<option value="${idx}">${p.name || p.id}</option>`).join('')}
-                        </select>
+                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
+                    <!-- 快捷填充与导入 -->
+                    <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+                        <div style="flex:1;">
+                            <label style="font-size:11px; color:#94a3b8; display:block; margin-bottom:3px;">从本地已有预设快速导入</label>
+                            <select id="rbq-pm-local-select" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:5px; color:#fff; font-size:11.5px;">
+                                <option value="">-- 手动填写或从本地选择 --</option>
+                                ${localPresets.map((p, idx) => `<option value="${idx}">${p.name || p.id}</option>`).join('')}
+                            </select>
+                        </div>
+                        <button id="rbq-pm-fill-demo" type="button" class="menu_button" style="background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.35); color:#38bdf8; font-size:11px; padding:5px 9px; border-radius:6px; margin-top:14px;" title="填入卡密sama推荐测试词">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> 填入卡密sama测试词
+                        </button>
                     </div>
-                    <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设标题 *</label>
-                        <input id="rbq-pm-up-title" type="text" placeholder="例如: 赛博朋克霓虹御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+
+                    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设标题 *</label>
+                            <input id="rbq-pm-up-title" type="text" placeholder="例如: 赛博朋克霓虹御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">适配模型 *</label>
+                            <select id="rbq-pm-up-model" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                                <option value="v5">✨ NAI V5 (推荐)</option>
+                                <option value="v4.5">⚡ NAI V4.5</option>
+                                <option value="general">🌐 通用 / SDXL</option>
+                            </select>
+                        </div>
                     </div>
+
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
-                        <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
+
                     <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">正面提示词 *</label>
-                        <textarea id="rbq-pm-up-pos" rows="3" placeholder="masterpiece, 3d render..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <label style="font-size:12px; color:#94a3b8;">正面提示词 *</label>
+                            <button id="rbq-pm-run-draw" type="button" class="menu_button" style="background:linear-gradient(135deg, #a855f7, #6366f1); border:none; color:#fff; font-size:11px; font-weight:700; padding:4px 10px; border-radius:6px; box-shadow:0 2px 8px rgba(168,85,247,0.35);" title="所见即所得：现场用当前输入的词直接出图">
+                                <i class="fa-solid fa-paintbrush"></i> 🎨 立即生图并生成预览
+                            </button>
+                        </div>
+                        <textarea id="rbq-pm-up-pos" rows="3" placeholder="masterpiece, 3d render..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box; line-height:1.4;"></textarea>
                     </div>
+
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">负面提示词</label>
-                        <textarea id="rbq-pm-up-neg" rows="2" placeholder="lowres, bad anatomy..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
+                        <textarea id="rbq-pm-up-neg" rows="2" placeholder="lowres, bad anatomy..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
                     </div>
+
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">风格标签 (空格或逗号分隔)</label>
-                        <input id="rbq-pm-up-tags" type="text" placeholder="3D写实 油光丝袜 御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-up-tags" type="text" placeholder="3D写实 油光丝袜 御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
-                    <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">效果预览图 (自动前端压缩WebP)</label>
-                        <input id="rbq-pm-up-img" type="file" accept="image/*" style="font-size:12px; color:#cbd5e1;">
-                        <div id="rbq-pm-up-preview" style="margin-top:6px; display:none; max-height:120px; overflow:hidden; border-radius:6px;">
-                            <img id="rbq-pm-preview-img" style="max-height:120px; border-radius:6px;">
+
+                    <!-- 预览图区域（支持现场出图或本地上传） -->
+                    <div style="background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.15); border-radius:8px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <label style="font-size:12px; color:#cbd5e1; font-weight:600;"><i class="fa-solid fa-image"></i> 效果预览图 (必须是该串生成的图)</label>
+                            <span id="rbq-pm-img-status" style="font-size:11px; color:#94a3b8;">暂未选图</span>
+                        </div>
+                        <div style="margin-top:6px; display:flex; gap:10px; align-items:center;">
+                            <input id="rbq-pm-up-img" type="file" accept="image/*" style="font-size:11px; color:#cbd5e1; flex:1;">
+                        </div>
+                        <div id="rbq-pm-up-preview" style="margin-top:8px; display:none; max-height:150px; overflow:hidden; border-radius:8px; position:relative; background:#000;">
+                            <img id="rbq-pm-preview-img" style="max-height:150px; border-radius:8px; object-fit:contain; display:block; margin:0 auto;">
                         </div>
                     </div>
                 </div>
-                <div style="padding:12px 16px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
-                    <button id="rbq-pm-up-cancel" class="menu_button" style="font-size:12px; padding:6px 12px;">取消</button>
-                    <button id="rbq-pm-up-submit" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 16px; font-weight:600;"><i class="fa-solid fa-paper-plane"></i> 确认发布</button>
+                <div style="padding:14px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
+                    <button id="rbq-pm-up-cancel" class="menu_button" style="font-size:12px; padding:6px 14px;">取消</button>
+                    <button id="rbq-pm-up-submit" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 18px; font-weight:700;"><i class="fa-solid fa-paper-plane"></i> 确认发布至工坊</button>
                 </div>
             </div>
         `;
@@ -575,6 +869,18 @@
 
         overlay.querySelector('#rbq-pm-upload-close').onclick = () => overlay.remove();
         overlay.querySelector('#rbq-pm-up-cancel').onclick = () => overlay.remove();
+
+        // 填入卡密sama测试词
+        overlay.querySelector('#rbq-pm-fill-demo').onclick = () => {
+            const demo = BUILTIN_PRESETS[0];
+            overlay.querySelector('#rbq-pm-up-title').value = demo.title;
+            overlay.querySelector('#rbq-pm-up-author').value = '卡密sama';
+            overlay.querySelector('#rbq-pm-up-model').value = 'v5';
+            overlay.querySelector('#rbq-pm-up-pos').value = demo.positive;
+            overlay.querySelector('#rbq-pm-up-neg').value = demo.negative;
+            overlay.querySelector('#rbq-pm-up-tags').value = demo.tags.join(' ');
+            toastr.success('已填入卡密sama推荐测试词！可以点击「🎨 立即生图」出图测试');
+        };
 
         const localSelect = overlay.querySelector('#rbq-pm-local-select');
         localSelect.onchange = (e) => {
@@ -587,11 +893,31 @@
             }
         };
 
-        // 图片压缩转 Base64
+        // 图片压缩转 Base64 逻辑
         let compressedBase64 = '';
         const fileInput = overlay.querySelector('#rbq-pm-up-img');
         const previewWrap = overlay.querySelector('#rbq-pm-up-preview');
         const previewImg = overlay.querySelector('#rbq-pm-preview-img');
+        const imgStatus = overlay.querySelector('#rbq-pm-img-status');
+
+        function processImageObject(imgObj, sourceName = '本地上传') {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 720;
+            let width = imgObj.width;
+            let height = imgObj.height;
+            if (width > MAX_WIDTH) {
+                height = Math.round((height * MAX_WIDTH) / width);
+                width = MAX_WIDTH;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgObj, 0, 0, width, height);
+            compressedBase64 = canvas.toDataURL('image/webp', 0.82);
+            previewImg.src = compressedBase64;
+            previewWrap.style.display = 'block';
+            imgStatus.innerHTML = `<span style="color:#22c55e;"><i class="fa-solid fa-check"></i> 已绑定预览图 (${sourceName})</span>`;
+        }
 
         fileInput.onchange = (e) => {
             const file = e.target.files?.[0];
@@ -599,39 +925,91 @@
             const reader = new FileReader();
             reader.onload = (event) => {
                 const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 720;
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > MAX_WIDTH) {
-                        height = Math.round((height * MAX_WIDTH) / width);
-                        width = MAX_WIDTH;
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    compressedBase64 = canvas.toDataURL('image/webp', 0.82);
-                    previewImg.src = compressedBase64;
-                    previewWrap.style.display = 'block';
-                };
+                img.onload = () => processImageObject(img, '本地文件');
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         };
 
-        // 提交
+        // ── 🎨 核心装置：现场直接生图并绑定为预览图 ──
+        const drawBtn = overlay.querySelector('#rbq-pm-run-draw');
+        drawBtn.onclick = async () => {
+            const pos = overlay.querySelector('#rbq-pm-up-pos').value.trim();
+            const neg = overlay.querySelector('#rbq-pm-up-neg').value.trim();
+            if (!pos) {
+                toastr.warning('请先输入正面提示词后再进行生图！');
+                return;
+            }
+
+            if (typeof RBQ?.api?.generateImage !== 'function') {
+                toastr.error('酒馆当前未启用 RBQ 生图流水线，请检查生图插件是否正常激活');
+                return;
+            }
+
+            drawBtn.disabled = true;
+            const originalHtml = drawBtn.innerHTML;
+            drawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>正在向生图集群排队出图...</span>';
+            imgStatus.innerHTML = '<span style="color:#38bdf8;"><i class="fa-solid fa-spinner fa-spin"></i> 正在生成图片...</span>';
+
+            try {
+                const drawRes = await RBQ.api.generateImage(pos, 'market-preset-preview', { negative: neg }, (progress) => {
+                    if (progress) drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
+                });
+
+                if (!drawRes || !drawRes.url) {
+                    throw new Error('生图服务未返回有效图片地址');
+                }
+
+                // 载入生成的图片并转换为 WebP
+                const drawImg = new Image();
+                drawImg.crossOrigin = 'anonymous';
+                drawImg.onload = () => {
+                    processImageObject(drawImg, 'AI 现场生成');
+                    toastr.success('🎉 预览图生成成功并已绑定该提示词！所见即所得。');
+                };
+                drawImg.onerror = async () => {
+                    // Blob 降级方案
+                    try {
+                        const blobResp = await fetch(drawRes.url);
+                        const blob = await blobResp.blob();
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            const bImg = new Image();
+                            bImg.onload = () => processImageObject(bImg, 'AI 现场生成');
+                            bImg.src = ev.target.result;
+                        };
+                        reader.readAsDataURL(blob);
+                    } catch (e) {
+                        toastr.error('解析生成图片失败: ' + e.message);
+                    }
+                };
+                drawImg.src = drawRes.url;
+            } catch (err) {
+                toastr.error('现场生图失败: ' + (err.message || String(err)));
+                imgStatus.innerHTML = '<span style="color:#ef4444;">生图失败，可手动选择本地图片</span>';
+            } finally {
+                drawBtn.disabled = false;
+                drawBtn.innerHTML = originalHtml;
+            }
+        };
+
+        // 提交发布
         overlay.querySelector('#rbq-pm-up-submit').onclick = async () => {
             const title = overlay.querySelector('#rbq-pm-up-title').value.trim();
             const positive = overlay.querySelector('#rbq-pm-up-pos').value.trim();
             const author = overlay.querySelector('#rbq-pm-up-author').value.trim() || '匿名';
+            const model = overlay.querySelector('#rbq-pm-up-model').value || 'v5';
             const negative = overlay.querySelector('#rbq-pm-up-neg').value.trim();
             const rawTags = overlay.querySelector('#rbq-pm-up-tags').value.trim();
             const tags = rawTags.split(/[\s,，]+/).filter(Boolean);
 
             if (!title || !positive) {
                 toastr.warning('请填写标题和正面提示词！');
+                return;
+            }
+
+            if (!compressedBase64) {
+                toastr.warning('请提供一张预览图（点击「🎨 立即生图」或手动选择本地图片）！');
                 return;
             }
 
@@ -649,6 +1027,7 @@
                     body: JSON.stringify({
                         title,
                         author,
+                        model,
                         positive,
                         negative,
                         tags,
@@ -668,7 +1047,7 @@
                 toastr.error('请求网络错误: ' + (err.message || String(err)));
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 确认发布';
+                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 确认发布至工坊';
             }
         };
     }
@@ -677,25 +1056,25 @@
     function openSettingsDialog() {
         const cfg = getConfig();
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(5px);';
         overlay.innerHTML = `
             <div style="width:90vw; max-width:480px; background:#0f172a; border:1px solid rgba(255,255,255,0.15); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; color:#fff;">
-                <div style="padding:12px 16px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:14px; font-weight:700;"><i class="fa-solid fa-gear"></i> 预设工坊设置</div>
                     <button id="rbq-pm-set-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div style="padding:16px; display:flex; flex-direction:column; gap:12px;">
+                <div style="padding:16px 18px; display:flex; flex-direction:column; gap:12px;">
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">工坊服务器地址 (API 接口)</label>
-                        <input id="rbq-pm-cfg-server" type="text" placeholder="https://market.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-                        <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (https://market.rbq.my)。可直接上传和同步预设。</div>
+                        <input id="rbq-pm-cfg-server" type="text" placeholder="https://market.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (https://market.rbq.my)。</div>
                     </div>
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称 (默认发布者)</label>
-                        <input id="rbq-pm-cfg-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-cfg-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
                 </div>
-                <div style="padding:12px 16px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
+                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
                     <button id="rbq-pm-set-save" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 14px;"><i class="fa-solid fa-floppy-disk"></i> 保存设置</button>
                 </div>
             </div>
@@ -716,8 +1095,8 @@
     // ── 大图查看 ──
     function openImageZoom(url) {
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100001; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; cursor:zoom-out;';
-        overlay.innerHTML = `<img src="${url}" style="max-width:90vw; max-height:90vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.8);">`;
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100001; background:rgba(0,0,0,0.88); display:flex; align-items:center; justify-content:center; cursor:zoom-out;';
+        overlay.innerHTML = `<img src="${url}" style="max-width:92vw; max-height:92vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.85);">`;
         overlay.onclick = () => overlay.remove();
         document.body.appendChild(overlay);
     }

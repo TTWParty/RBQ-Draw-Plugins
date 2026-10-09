@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import time
+import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
@@ -13,12 +14,29 @@ PRESETS_FILE = os.path.join(DATA_DIR, 'presets.json')
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+DATA_LOCK = threading.Lock()
 
 INITIAL_PRESETS = [
+    {
+        'id': 'kami-greenhouse-girl',
+        'title': '复古花房·怀表麻花辫少女',
+        'author': '卡密sama',
+        'model': 'v5',
+        'description': '测试提示词由卡密sama提供。温室玻璃花房、拱形彩绘玻璃、阳光丁达尔效应、精美双麻花与金发粉渐变。',
+        'tags': ['NAI V5', 'NAI V4.5', '卡密sama', '复古花房', '唯美少女'],
+        'positive': '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
+        'negative': 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
+        'previewUrl': 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&auto=format&fit=crop&q=80',
+        'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 28},
+        'likes': 520,
+        'downloads': 1314,
+        'createdAt': '2026-10-09'
+    },
     {
         'id': 'builtin-east-cg',
         'title': '次世代东方写实御姐 CG',
         'author': 'RBQ官方精选',
+        'model': 'v5',
         'description': '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。',
         'tags': ['3D写实', '御姐', '电影光影', '次世代'],
         'positive': 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
@@ -33,6 +51,7 @@ INITIAL_PRESETS = [
         'id': 'builtin-shiny-pantyhose',
         'title': '顶级油光高光透肉丝袜专精',
         'author': 'RBQ官方精选',
+        'model': 'v4.5',
         'description': '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。',
         'tags': ['油光丝袜', '美腿', '高光反光', '御姐'],
         'positive': '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
@@ -47,6 +66,7 @@ INITIAL_PRESETS = [
         'id': 'builtin-thick-skin',
         'title': '顶级肉感厚涂与温润肉温',
         'author': 'RBQ官方精选',
+        'model': 'v4.5',
         'description': '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。',
         'tags': ['日系厚涂', '肉感', '微汗水光', '解剖学'],
         'positive': '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
@@ -65,7 +85,12 @@ def load_presets():
         return INITIAL_PRESETS
     try:
         with open(PRESETS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            presets = json.load(f)
+            # 确保卡密sama预设始终包含在内
+            if not any(p.get('id') == 'kami-greenhouse-girl' for p in presets):
+                presets.insert(0, INITIAL_PRESETS[0])
+                save_presets(presets)
+            return presets
     except Exception:
         return INITIAL_PRESETS
 
@@ -135,25 +160,62 @@ class MarketHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == '/api/upload':
-            content_length = int(self.headers.get('Content-Length', 0))
-            if content_length > 15 * 1024 * 1024:
-                self.send_response(413)
-                self.send_cors()
-                self.end_headers()
-                return
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length > 15 * 1024 * 1024:
+            self.send_response(413)
+            self.send_cors()
+            self.end_headers()
+            return
 
-            raw_body = self.rfile.read(content_length)
-            try:
-                data = json.loads(raw_body.decode('utf-8'))
-            except Exception:
+        raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
+        try:
+            data = json.loads(raw_body.decode('utf-8'))
+        except Exception:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json')
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode('utf-8'))
+            return
+
+        # ── 点赞 API ──
+        if parsed.path == '/api/like':
+            target_id = str(data.get('id', '')).strip()
+            if not target_id:
                 self.send_response(400)
                 self.send_header('Content-Type', 'application/json')
                 self.send_cors()
                 self.end_headers()
-                self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode('utf-8'))
+                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
                 return
 
+            with DATA_LOCK:
+                presets = load_presets()
+                found = None
+                for p in presets:
+                    if p.get('id') == target_id:
+                        p['likes'] = int(p.get('likes', 0)) + 1
+                        found = p
+                        break
+                if found:
+                    save_presets(presets)
+                    resp = json.dumps({'success': True, 'id': target_id, 'likes': found['likes']}).encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    return
+
+        # ── 上传发布 API ──
+        if parsed.path == '/api/upload':
             title = str(data.get('title', '')).strip()[:50]
             positive = str(data.get('positive', '')).strip()
             if not title or not positive:
@@ -164,12 +226,16 @@ class MarketHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': '标题与正面提示词不能为空'}).encode('utf-8'))
                 return
 
+            model = str(data.get('model', 'v5')).strip().lower()
+            if model not in ('v5', 'v4.5', 'v3', 'sdxl', 'general'):
+                model = 'v5'
+
             preset_id = 'pm-' + hex(int(time.time() * 1000))[2:] + os.urandom(2).hex()
             preview_url = ''
             preview_b64 = data.get('previewBase64')
             if preview_b64 and isinstance(preview_b64, str):
                 ext = 'webp'
-                if 'data:image/' in preview_b64:
+                if ',' in preview_b64:
                     header, b64_data = preview_b64.split(',', 1)
                     if 'jpeg' in header or 'jpg' in header:
                         ext = 'jpg'
@@ -193,6 +259,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 'id': preset_id,
                 'title': title,
                 'author': str(data.get('author', '匿名社友')).strip()[:30] or '匿名社友',
+                'model': model,
                 'description': str(data.get('description', '')).strip()[:200],
                 'tags': data.get('tags', []) if isinstance(data.get('tags'), list) else [],
                 'positive': positive,
@@ -204,9 +271,10 @@ class MarketHandler(BaseHTTPRequestHandler):
                 'createdAt': time.strftime('%Y-%m-%d %H:%M:%S')
             }
 
-            presets = load_presets()
-            presets.insert(0, item)
-            save_presets(presets)
+            with DATA_LOCK:
+                presets = load_presets()
+                presets.insert(0, item)
+                save_presets(presets)
 
             resp = json.dumps({'success': True, 'item': item}).encode('utf-8')
             self.send_response(200)

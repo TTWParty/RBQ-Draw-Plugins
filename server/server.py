@@ -27,7 +27,7 @@ INITIAL_PRESETS = [
         'tags': ['NAI V5', 'NAI V4.5', '卡密sama', '复古花房', '唯美少女'],
         'positive': '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
         'negative': 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
-        'previewUrl': 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&auto=format&fit=crop&q=80',
+        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
         'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 28},
         'likes': 520,
         'downloads': 1314,
@@ -38,11 +38,11 @@ INITIAL_PRESETS = [
         'title': '次世代东方写实御姐 CG',
         'author': 'RBQ官方精选',
         'model': 'v5',
-        'description': '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。',
-        'tags': ['3D写实', '御姐', '电影光影', '次世代'],
+        'description': '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。（测试预览图由卡密sama提示词渲染）',
+        'tags': ['3D写实', '御姐', '电影光影', '次世代', '卡密sama'],
         'positive': 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
         'negative': '2::2d, anime, cartoon, stylized, flat color, cute, chibi, big anime eyes, lineart, drawing, illustration::, 1.5::plastic skin, doll, toy, figurine, garage kit, oversaturated, bright daylight, flat lighting::, lowres, bad anatomy, bad hands, worst quality, blurry',
-        'previewUrl': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80',
+        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
         'params': {'scale': 6.0, 'sampler': 'k_dpmpp_2m_sde', 'steps': 25},
         'likes': 128,
         'downloads': 360,
@@ -53,11 +53,11 @@ INITIAL_PRESETS = [
         'title': '顶级油光高光透肉丝袜专精',
         'author': 'RBQ官方精选',
         'model': 'v4.5',
-        'description': '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。',
-        'tags': ['油光丝袜', '美腿', '高光反光', '御姐'],
+        'description': '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。（测试预览图由卡密sama提示词渲染）',
+        'tags': ['油光丝袜', '美腿', '高光反光', '御姐', '卡密sama'],
         'positive': '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
         'negative': 'opaque pantyhose, thick tights, matte pantyhose, black pantyhose, fishnet, ripped pantyhose, lowres, bad anatomy, bad hands',
-        'previewUrl': 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=600&auto=format&fit=crop&q=80',
+        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
         'params': {'scale': 5.5, 'sampler': 'k_euler_ancestral', 'steps': 23},
         'likes': 215,
         'downloads': 512,
@@ -68,11 +68,11 @@ INITIAL_PRESETS = [
         'title': '顶级肉感厚涂与温润肉温',
         'author': 'RBQ官方精选',
         'model': 'v4.5',
-        'description': '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。',
-        'tags': ['日系厚涂', '肉感', '微汗水光', '解剖学'],
+        'description': '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。（测试预览图由卡密sama提示词渲染）',
+        'tags': ['日系厚涂', '肉感', '微汗水光', '解剖学', '卡密sama'],
         'positive': '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
         'negative': 'lowres, bad anatomy, bad hands, worst quality, flat color, simplified',
-        'previewUrl': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+        'previewUrl': 'https://market.rbq.my/previews/kami-greenhouse-girl.webp',
         'params': {'scale': 6.0, 'sampler': 'k_euler_ancestral', 'steps': 25},
         'likes': 189,
         'downloads': 430,
@@ -87,10 +87,13 @@ def load_presets():
     try:
         with open(PRESETS_FILE, 'r', encoding='utf-8') as f:
             presets = json.load(f)
-            # 确保卡密sama预设始终包含在内
+            # 确保所有初始预设的预览图均统一使用该测试提示词真实渲染的图片
+            for p in presets:
+                if not p.get('previewUrl') or 'unsplash' in p.get('previewUrl', '') or 'placeholder' in p.get('previewUrl', '') or p.get('id', '').startswith('builtin-') or p.get('id') == 'kami-greenhouse-girl':
+                    p['previewUrl'] = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp'
             if not any(p.get('id') == 'kami-greenhouse-girl' for p in presets):
                 presets.insert(0, INITIAL_PRESETS[0])
-                save_presets(presets)
+            save_presets(presets)
             return presets
     except Exception:
         return INITIAL_PRESETS
@@ -100,6 +103,9 @@ def save_presets(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 class MarketHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.do_GET()
+
     def send_cors(self):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -232,9 +238,9 @@ class MarketHandler(BaseHTTPRequestHandler):
                 model = 'v5'
 
             preset_id = 'pm-' + hex(int(time.time() * 1000))[2:] + os.urandom(2).hex()
-            preview_url = ''
+            preview_url = str(data.get('previewUrl', '')).strip() or 'https://market.rbq.my/previews/kami-greenhouse-girl.webp'
             preview_b64 = data.get('previewBase64')
-            if preview_b64 and isinstance(preview_b64, str):
+            if preview_b64 and isinstance(preview_b64, str) and len(preview_b64) > 100:
                 ext = 'webp'
                 if ',' in preview_b64:
                     header, b64_data = preview_b64.split(',', 1)

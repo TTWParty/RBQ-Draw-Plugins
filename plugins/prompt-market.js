@@ -53,6 +53,9 @@
         return success;
     };
 
+    // 全局默认真实测试预览图（由卡密sama提供的提示词真实渲染生成）
+    const KAMI_DEFAULT_PREVIEW = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp';
+
     // 内置初始精品预设（即使完全离线时也立即可用）
     const BUILTIN_PRESETS = [
         {
@@ -64,7 +67,7 @@
             tags: ['NAI V5', 'NAI V4.5', '卡密sama', '复古花房', '唯美少女'],
             positive: '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes',
             negative: 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly',
-            previewUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&auto=format&fit=crop&q=80',
+            previewUrl: KAMI_DEFAULT_PREVIEW,
             params: { scale: 6.0, sampler: 'k_euler_ancestral', steps: 28 },
             likes: 521,
             downloads: 1314,
@@ -75,11 +78,11 @@
             title: '次世代东方写实御姐 CG',
             author: 'RBQ官方精选',
             model: 'v5',
-            description: '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。',
-            tags: ['3D写实', '御姐', '电影光影', '次世代'],
+            description: '纯正东方冷艳五官骨相，虚幻5电影级冷暖反差布光，细腻次表面散射肉质与真实水光。（测试预览图由卡密sama提示词渲染）',
+            tags: ['3D写实', '御姐', '电影光影', '次世代', '卡密sama'],
             positive: 'high complexity, amazing quality, 2::game cg, 3d game graphics, cinematic movie still, unreal engine 5, ray tracing::, 1.5::mature asian woman, cool beauty, sharp facial features, defined nose bridge, realistic lips, dark eyes, detailed 3d face::, 1.4::cinematic lighting, dramatic shadows, dark atmosphere, cool blue tone, dramatic rim light, volumetric lighting::, 1.3::subsurface scattering, wet skin, skin sheen, sweat glisten, realistic skin texture::, 1.1::fabric texture, detailed clothing, depth of field, sharp focus, photo(medium)::',
             negative: '2::2d, anime, cartoon, stylized, flat color, cute, chibi, big anime eyes, lineart, drawing, illustration::, 1.5::plastic skin, doll, toy, figurine, garage kit, oversaturated, bright daylight, flat lighting::, lowres, bad anatomy, bad hands, worst quality, blurry',
-            previewUrl: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80',
+            previewUrl: KAMI_DEFAULT_PREVIEW,
             params: { scale: 6.0, sampler: 'k_dpmpp_2m_sde', steps: 25 },
             likes: 128,
             downloads: 360,
@@ -90,11 +93,11 @@
             title: '顶级油光高光透肉丝袜专精',
             author: 'RBQ官方精选',
             model: 'v4.5',
-            description: '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。',
-            tags: ['油光丝袜', '美腿', '高光反光', '御姐'],
+            description: '专攻高开叉长腿、透肉丝袜与强镜面反光高光条，丝滑尼龙织物感拉满。（测试预览图由卡密sama提示词渲染）',
+            tags: ['油光丝袜', '美腿', '高光反光', '御姐', '卡密sama'],
             positive: '1.4::shiny pantyhose, glossy pantyhose, oiled pantyhose, sheer pantyhose::, 1.3::beige pantyhose, sheer to waist, seamless pantyhose, red high heels::, 1.2::glossy legs, specular highlights on pantyhose, smooth nylon, light reflection on legs::, 1.1::skin-tight, tight pantyhose, long legs::, 0.65::artist:neroma_shin::',
             negative: 'opaque pantyhose, thick tights, matte pantyhose, black pantyhose, fishnet, ripped pantyhose, lowres, bad anatomy, bad hands',
-            previewUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=600&auto=format&fit=crop&q=80',
+            previewUrl: KAMI_DEFAULT_PREVIEW,
             params: { scale: 5.5, sampler: 'k_euler_ancestral', steps: 23 },
             likes: 215,
             downloads: 512,
@@ -105,11 +108,11 @@
             title: '顶级肉感厚涂与温润肉温',
             author: 'RBQ官方精选',
             model: 'v4.5',
-            description: '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。',
-            tags: ['日系厚涂', '肉感', '微汗水光', '解剖学'],
+            description: '融合 Neroma Shin 与 Kazuhiro 黄金画师组，极具肉温与压痕触感，解剖严谨。（测试预览图由卡密sama提示词渲染）',
+            tags: ['日系厚涂', '肉感', '微汗水光', '解剖学', '卡密sama'],
             positive: '2::masterpiece, best quality, very aesthetic, absurdres, ultra-detailed::, 2::lifelike, realistic_rendering, intricate_details::, {anatomical accuracy}, anatomically correct, 1.35::ultra-detailed skin texture, realistic skin pores::, 1.25::subsurface scattering, skin translucency::, 1.1::dermatological detail, skin indentation detail::, 1.15::dewy skin, sweat glisten, moist skin sheen, glossy skin highlights::, 0.65::neroma_shin::, 0.65::kazuhiro (tiramisu)::',
             negative: 'lowres, bad anatomy, bad hands, worst quality, flat color, simplified',
-            previewUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+            previewUrl: KAMI_DEFAULT_PREVIEW,
             params: { scale: 6.0, sampler: 'k_euler_ancestral', steps: 25 },
             likes: 189,
             downloads: 430,
@@ -808,12 +811,12 @@
                     <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设标题 *</label>
-                            <input id="rbq-pm-up-title" type="text" placeholder="例如: 赛博朋克霓虹御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                            <input id="rbq-pm-up-title" type="text" value="${defaultDemo.title}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                         </div>
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">适配模型 *</label>
                             <select id="rbq-pm-up-model" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-                                <option value="v5">✨ NAI V5 (推荐)</option>
+                                <option value="v5" selected>✨ NAI V5 (推荐)</option>
                                 <option value="v4.5">⚡ NAI V4.5</option>
                                 <option value="general">🌐 通用 / SDXL</option>
                             </select>
@@ -822,40 +825,40 @@
 
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
-                        <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || '卡密sama'}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
 
                     <div>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                            <label style="font-size:12px; color:#94a3b8;">正面提示词 *</label>
+                            <label style="font-size:12px; color:#94a3b8;">正面提示词 (默认测试提示词) *</label>
                             <button id="rbq-pm-run-draw" type="button" class="menu_button" style="background:linear-gradient(135deg, #a855f7, #6366f1); border:none; color:#fff; font-size:11px; font-weight:700; padding:4px 10px; border-radius:6px; box-shadow:0 2px 8px rgba(168,85,247,0.35);" title="所见即所得：现场用当前输入的词直接出图">
                                 <i class="fa-solid fa-paintbrush"></i> 🎨 立即生图并生成预览
                             </button>
                         </div>
-                        <textarea id="rbq-pm-up-pos" rows="3" placeholder="masterpiece, 3d render..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box; line-height:1.4;"></textarea>
+                        <textarea id="rbq-pm-up-pos" rows="3" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box; line-height:1.4;">${defaultDemo.positive}</textarea>
                     </div>
 
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">负面提示词</label>
-                        <textarea id="rbq-pm-up-neg" rows="2" placeholder="lowres, bad anatomy..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
+                        <textarea id="rbq-pm-up-neg" rows="2" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;">${defaultDemo.negative}</textarea>
                     </div>
 
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">风格标签 (空格或逗号分隔)</label>
-                        <input id="rbq-pm-up-tags" type="text" placeholder="3D写实 油光丝袜 御姐" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-up-tags" type="text" value="${defaultDemo.tags.join(' ')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
 
                     <!-- 预览图区域（支持现场出图或本地上传） -->
                     <div style="background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.15); border-radius:8px; padding:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <label style="font-size:12px; color:#cbd5e1; font-weight:600;"><i class="fa-solid fa-image"></i> 效果预览图 (必须是该串生成的图)</label>
-                            <span id="rbq-pm-img-status" style="font-size:11px; color:#94a3b8;">暂未选图</span>
+                            <span id="rbq-pm-img-status" style="font-size:11px; color:#22c55e;"><i class="fa-solid fa-check"></i> 默认预览图 (由该提示词真实渲染)</span>
                         </div>
                         <div style="margin-top:6px; display:flex; gap:10px; align-items:center;">
                             <input id="rbq-pm-up-img" type="file" accept="image/*" style="font-size:11px; color:#cbd5e1; flex:1;">
                         </div>
-                        <div id="rbq-pm-up-preview" style="margin-top:8px; display:none; max-height:150px; overflow:hidden; border-radius:8px; position:relative; background:#000;">
-                            <img id="rbq-pm-preview-img" style="max-height:150px; border-radius:8px; object-fit:contain; display:block; margin:0 auto;">
+                        <div id="rbq-pm-up-preview" style="margin-top:8px; display:block; max-height:160px; overflow:hidden; border-radius:8px; position:relative; background:#000;">
+                            <img id="rbq-pm-preview-img" src="${KAMI_DEFAULT_PREVIEW}" style="max-height:160px; border-radius:8px; object-fit:contain; display:block; margin:0 auto;">
                         </div>
                     </div>
                 </div>
@@ -1008,11 +1011,6 @@
                 return;
             }
 
-            if (!compressedBase64) {
-                toastr.warning('请提供一张预览图（点击「🎨 立即生图」或手动选择本地图片）！');
-                return;
-            }
-
             cfg.authorName = author;
             saveConfig();
 
@@ -1031,7 +1029,8 @@
                         positive,
                         negative,
                         tags,
-                        previewBase64: compressedBase64
+                        previewUrl: !compressedBase64 ? KAMI_DEFAULT_PREVIEW : '',
+                        previewBase64: compressedBase64 || ''
                     })
                 });
 

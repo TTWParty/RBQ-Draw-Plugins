@@ -24,10 +24,23 @@
         }
     ];
 
+    // 生成专属创作者个人身份码 (RBQ-U-xxxxxxxx)
+    function generateCreatorKey() {
+        const chars = '0123456789abcdef';
+        let rand = '';
+        for (let i = 0; i < 8; i++) {
+            rand += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return 'RBQ-U-' + rand;
+    }
+
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
         serverUrl: 'https://market.rbq.my', // 自建工坊服务器
         authorName: '',
+        creatorKey: '', // 创作者身份码
+        adminKey: '', // 服主管理员密钥
+        myUploadedIds: [], // 本机发布的预设 ID 列表
         repo: 'TTWParty/RBQ-Prompt-Market',
         branch: 'main',
         installedIds: [],
@@ -42,6 +55,12 @@
         if (!s[STORAGE_KEY].serverUrl || s[STORAGE_KEY].serverUrl.includes('9.rbq.my')) {
             s[STORAGE_KEY].serverUrl = 'https://market.rbq.my';
         }
+        // 自动静默初始化专属创作者身份码 (开箱即用，零注册成本)
+        if (!s[STORAGE_KEY].creatorKey) {
+            s[STORAGE_KEY].creatorKey = generateCreatorKey();
+        }
+        if (s[STORAGE_KEY].adminKey === undefined) s[STORAGE_KEY].adminKey = '';
+        if (!Array.isArray(s[STORAGE_KEY].myUploadedIds)) s[STORAGE_KEY].myUploadedIds = [];
         if (!Array.isArray(s[STORAGE_KEY].installedIds)) s[STORAGE_KEY].installedIds = [];
         if (!Array.isArray(s[STORAGE_KEY].likedIds)) s[STORAGE_KEY].likedIds = [];
         if (!Array.isArray(s[STORAGE_KEY].testPrompts) || s[STORAGE_KEY].testPrompts.length === 0) {
@@ -397,14 +416,17 @@
                 flex-shrink: 0 !important;
             }
 
-            /* 卡片与网格容器 Zero-CLS */
+            /* 卡片与网格容器 Zero-CLS 防御体系 */
             .rbq-pm-card {
                 background: #0f172a;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 12px;
                 overflow: hidden;
-                display: flex;
-                flex-direction: column;
+                display: flex !important;
+                flex-direction: column !important;
+                height: auto !important;
+                align-self: start !important; /* 坚决禁止 Grid 垂直拉伸与均分压缩，由内容高度真实决定 */
+                flex-shrink: 0 !important;
                 box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
                 cursor: pointer;
                 transform: translateZ(0);
@@ -417,24 +439,40 @@
                 box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.18);
             }
 
-            /* 3:4 竖版立绘专精容器 (智能 15% 面部黄金构图，彻底防止切头) */
+            /* 3:4 竖版立绘专精容器 (智能 15% 面部黄金构图，彻底防止切头与压扁) */
             .rbq-pm-img-wrap {
-                width: 100%;
-                aspect-ratio: 3 / 4;
+                width: 100% !important;
+                aspect-ratio: 3 / 4 !important;
+                flex-shrink: 0 !important; /* 关键：坚决禁止立绘高度在 Flex 列布局中被挤压压缩 */
                 position: relative;
                 background: #070b13;
                 overflow: hidden;
+                min-height: 220px; /* 关键：兜底防塌陷安全高度 */
             }
             .rbq-pm-img-wrap img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                object-position: center 15%; /* 专为二次元/角色立绘优化：聚焦面部与上半身，绝不切头 */
-                display: block;
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
+                object-position: center 15% !important; /* 专为二次元/角色立绘优化：聚焦面部与上半身，绝不切头 */
+                display: block !important;
                 transition: transform 0.35s ease;
             }
             .rbq-pm-card:hover .rbq-pm-img-wrap img {
                 transform: scale(1.05);
+            }
+
+            /* 创作者专属「我的」金色标识 */
+            .rbq-pm-badge-author-mine {
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 3px !important;
+                background: rgba(234, 179, 8, 0.18) !important;
+                border: 1px solid rgba(234, 179, 8, 0.45) !important;
+                color: #fde047 !important;
+                font-size: 9.5px !important;
+                font-weight: 700 !important;
+                padding: 1px 5px !important;
+                border-radius: 4px !important;
             }
 
             /* 浮动半透明模型徽章 */
@@ -543,6 +581,9 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
                 max-width: 95px;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
             }
             .rbq-pm-install-btn {
                 font-size: 11px;
@@ -559,10 +600,11 @@
                 overflow-y: auto !important;
                 -webkit-overflow-scrolling: touch !important;
                 padding: 16px 20px;
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-                gap: 16px;
-                align-content: start;
+                display: grid !important;
+                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)) !important;
+                grid-auto-rows: max-content !important; /* 关键：坚决禁止 Grid 容器平分行高压扁卡片，严格由卡片内容撑开 */
+                gap: 16px !important;
+                align-content: start !important;
                 box-sizing: border-box !important;
             }
 
@@ -644,14 +686,20 @@
                     font-size: 10px !important;
                 }
 
-                /* 卡片网格：精致双列流，保证每屏完整展示 2~3 排卡片 */
+                /* 卡片网格：精致双列流，保证每屏完整展示 2~3 排卡片并自然滚动 */
                 #rbq-pm-card-grid {
                     grid-template-columns: repeat(2, 1fr) !important;
+                    grid-auto-rows: max-content !important;
                     gap: 8px !important;
                     padding: 8px !important;
                 }
                 .rbq-pm-card {
                     border-radius: 8px !important;
+                    align-self: start !important;
+                    height: auto !important;
+                }
+                .rbq-pm-img-wrap {
+                    min-height: 160px !important;
                 }
                 .rbq-pm-badge-model {
                     top: 5px !important;
@@ -1018,6 +1066,11 @@
         items.forEach(item => {
             const isInstalled = cfg.installedIds.includes(item.id);
             const isLiked = cfg.likedIds.includes(item.id);
+            const isMyWork = Boolean(
+                (item.creatorKey && cfg.creatorKey && item.creatorKey === cfg.creatorKey) ||
+                (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(item.id))
+            );
+            const isAdmin = Boolean(cfg.adminKey && cfg.adminKey.trim());
             const card = document.createElement('div');
             card.className = 'rbq-pm-card';
 
@@ -1054,7 +1107,10 @@
                     </div>
                     <div class="rbq-pm-card-meta">
                         <span class="rbq-pm-card-author" title="${item.author || '匿名'}">
-                            <i class="fa-regular fa-user" style="font-size: 9.5px;"></i> ${item.author || '匿名'}
+                            <i class="fa-regular fa-user" style="font-size: 9.5px;"></i>
+                            <span>${item.author || '匿名'}</span>
+                            ${isMyWork ? '<span class="rbq-pm-badge-author-mine" title="你发布的作品"><i class="fa-solid fa-crown"></i> 我的</span>' : ''}
+                            ${(isAdmin && !isMyWork) ? '<span title="管理员巡查模式" style="font-size:9.5px; opacity:0.75;">🛡️</span>' : ''}
                         </span>
                         <button class="rbq-pm-install-btn menu_button" style="
                             background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
@@ -1102,6 +1158,13 @@
 
     // ── 预设详情弹窗 (2-Column 视觉工作台 + NAI 生图参数罗盘) ──
     function openDetailDialog(item) {
+        const cfg = getConfig();
+        const isMyWork = Boolean(
+            (item.creatorKey && cfg.creatorKey && item.creatorKey === cfg.creatorKey) ||
+            (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(item.id))
+        );
+        const isAdmin = Boolean(cfg.adminKey && cfg.adminKey.trim());
+
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-detail-dialog';
         overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
@@ -1127,6 +1190,7 @@
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
                         <span>${item.title}</span>
                         ${modelBadge}
+                        ${isMyWork ? '<span class="rbq-pm-badge-author-mine"><i class="fa-solid fa-crown"></i> 我的作品</span>' : ''}
                     </div>
                     <button id="rbq-pm-detail-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
@@ -1202,8 +1266,14 @@
                     </div>
                 </div>
                 <div class="rbq-pm-detail-foot" style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                    <div style="font-size:11px; color:#64748b;">
+                    <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <span>预设ID: <code style="color:#94a3b8; font-size:10.5px;">${item.id || 'community'}</code></span>
+                        ${(isMyWork || isAdmin) ? `
+                            <button id="rbq-pm-detail-delete-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;" title="从工坊云端彻底下架删除此预设">
+                                <i class="fa-solid fa-trash-can"></i>
+                                <span>下架删除${(isAdmin && !isMyWork) ? ' (管理)' : ''}</span>
+                            </button>
+                        ` : ''}
                     </div>
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <button id="rbq-pm-btn-live-test" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:6px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:12px; padding:6px 16px; font-weight:700; box-shadow:0 2px 10px rgba(168,85,247,0.35); cursor:pointer;"><i class="fa-solid fa-wand-magic-sparkles"></i> 试用画师串</button>
@@ -1225,6 +1295,59 @@
                 lb.innerHTML = `<img src="${previewSrc}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
                 lb.onclick = () => lb.remove();
                 document.body.appendChild(lb);
+            };
+        }
+
+        // 下架删除操作 (作者本人凭 Creator Key 或 管理员凭 Admin Key 鉴权)
+        const deleteBtn = overlay.querySelector('#rbq-pm-detail-delete-btn');
+        if (deleteBtn) {
+            deleteBtn.onclick = async () => {
+                const confirmMsg = (isAdmin && !isMyWork)
+                    ? `🛡️ [服主管理] 确定要强制下架删除工坊预设「${item.title}」吗？`
+                    : `⚠️ 确定要从云端工坊彻底下架删除你的预设「${item.title}」吗？\n下架后无法撤销，所有社友将不再可见。`;
+                if (!confirm(confirmMsg)) return;
+
+                const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+                if (!uploadEndpoint) {
+                    toastr.error('未配置工坊服务器地址，无法执行下架');
+                    return;
+                }
+
+                deleteBtn.disabled = true;
+                deleteBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 下架中...';
+
+                try {
+                    const res = await fetch(`${uploadEndpoint}/api/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: item.id,
+                            creatorKey: cfg.creatorKey,
+                            adminKey: cfg.adminKey,
+                            author: item.author
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        toastr.success(`🎉 预设「${item.title}」已成功下架删除！`);
+                        cachedList = cachedList.filter(x => x.id !== item.id);
+                        if (Array.isArray(cfg.myUploadedIds)) {
+                            cfg.myUploadedIds = cfg.myUploadedIds.filter(id => id !== item.id);
+                            saveConfig();
+                        }
+                        overlay.remove();
+                        refreshDynamicTags();
+                        renderCards();
+                    } else {
+                        toastr.error('下架失败: ' + (data.error || '权限校验未通过'));
+                        deleteBtn.disabled = false;
+                        deleteBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span>下架删除</span>';
+                    }
+                } catch (err) {
+                    toastr.error('请求网络错误: ' + (err.message || String(err)));
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span>下架删除</span>';
+                }
             };
         }
 
@@ -2346,6 +2469,7 @@
                         tags,
                         params: uploadParams,
                         description: `基准测试预览由「卡密sama」提示词渲染`,
+                        creatorKey: cfg.creatorKey,
                         previewUrl: '',
                         previewBase64: compressedBase64
                     })
@@ -2353,6 +2477,10 @@
 
                 const data = await res.json();
                 if (res.ok && data.success) {
+                    if (data.item?.id && !cfg.myUploadedIds.includes(data.item.id)) {
+                        cfg.myUploadedIds.push(data.item.id);
+                        saveConfig();
+                    }
                     toastr.success('🎉 发布成功！你的预设已同步至云端工坊！');
                     overlay.remove();
                     loadMarketData();
@@ -2368,41 +2496,106 @@
         };
     }
 
-    // ── 设置弹窗 ──
+    // ── 设置弹窗 (集成创作者身份码与服主管理员密钥体系) ──
     function openSettingsDialog() {
         const cfg = getConfig();
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(5px);';
+        overlay.id = 'rbq-pm-settings-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.78); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
         overlay.innerHTML = `
-            <div style="width:90vw; max-width:480px; background:#0f172a; border:1px solid rgba(255,255,255,0.15); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; color:#fff;">
+            <div style="width:92vw; max-width:520px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-size:14px; font-weight:700;"><i class="fa-solid fa-gear"></i> 预设工坊设置</div>
+                    <div style="font-size:14.5px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-gear" style="color:#38bdf8;"></i>
+                        <span>工坊设置与创作者身份</span>
+                    </div>
                     <button id="rbq-pm-set-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div style="padding:16px 18px; display:flex; flex-direction:column; gap:12px;">
+                <div style="padding:16px 18px; display:flex; flex-direction:column; gap:14px; overflow-y:auto; flex:1;">
+                    <!-- 创作者个人码 (Creator Key) 专区 -->
+                    <div style="background:linear-gradient(135deg, rgba(2,132,199,0.1), rgba(139,92,246,0.1)); border:1px solid rgba(56,189,248,0.25); border-radius:10px; padding:12px 14px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-size:12px; font-weight:700; color:#38bdf8; display:inline-flex; align-items:center; gap:6px;">
+                                <i class="fa-solid fa-id-card"></i> 创作者个人码 (Creator Key)
+                            </span>
+                            <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">身份认证凭证</span>
+                        </div>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <input id="rbq-pm-cfg-creator-key" type="text" value="${cfg.creatorKey || ''}" placeholder="RBQ-U-xxxxxxxx" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:13px; font-weight:700; outline:none; box-sizing:border-box;">
+                            <button id="rbq-pm-cfg-copy-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="复制创作者个人码">
+                                <i class="fa-solid fa-copy"></i> 复制
+                            </button>
+                            <button id="rbq-pm-cfg-regen-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="重新随机生成新的身份码">
+                                <i class="fa-solid fa-dice"></i> 重置
+                            </button>
+                        </div>
+                        <div style="font-size:11px; color:#94a3b8; margin-top:6px; line-height:1.45;">
+                            ✨ 发布预设时将自动与此码绑定，凭此码可在详情中<strong>随时下架删除你的作品</strong>。可将其复制并在手机或其他浏览器粘贴，实现跨端漫游同步！
+                        </div>
+                    </div>
+
+                    <!-- 基础服务设置 -->
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">工坊服务器地址 (API 接口)</label>
                         <input id="rbq-pm-cfg-server" type="text" placeholder="https://market.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                         <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (https://market.rbq.my)。</div>
                     </div>
+
                     <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称 (默认发布者)</label>
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">默认作者署名</label>
                         <input id="rbq-pm-cfg-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                    </div>
+
+                    <!-- 服主管理员专区 -->
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 12px;">
+                        <label style="font-size:12px; color:#cbd5e1; display:flex; align-items:center; gap:6px; margin-bottom:4px; font-weight:600;">
+                            <i class="fa-solid fa-shield-halved" style="color:#ef4444;"></i> 服主管理密钥 (Admin Key - 普通用户留空)
+                        </label>
+                        <input id="rbq-pm-cfg-admin-key" type="password" placeholder="未设置 (仅服主/巡查管理员填写)" value="${cfg.adminKey || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:6px 10px; color:#fca5a5; font-size:12px; box-sizing:border-box;">
+                        <div style="font-size:11px; color:#64748b; margin-top:3px;">填入正确的服主密钥后，将激活全局巡查管理权限，可一键下架清理任何违规预设。</div>
                     </div>
                 </div>
                 <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
-                    <button id="rbq-pm-set-save" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 14px;"><i class="fa-solid fa-floppy-disk"></i> 保存设置</button>
+                    <button id="rbq-pm-set-cancel" class="menu_button" style="font-size:12px; padding:6px 14px;">取消</button>
+                    <button id="rbq-pm-set-save" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; font-weight:700; padding:6px 16px;"><i class="fa-solid fa-floppy-disk"></i> 保存设置</button>
                 </div>
             </div>
         `;
         document.body.appendChild(overlay);
+
         overlay.querySelector('#rbq-pm-set-close').onclick = () => overlay.remove();
+        overlay.querySelector('#rbq-pm-set-cancel').onclick = () => overlay.remove();
+
+        // 复制个人码
+        overlay.querySelector('#rbq-pm-cfg-copy-key').onclick = async () => {
+            const keyVal = overlay.querySelector('#rbq-pm-cfg-creator-key').value.trim();
+            if (!keyVal) return;
+            await copyToClipboard(keyVal);
+            toastr.success('已复制创作者个人码到剪贴板！');
+        };
+
+        // 重新生成个人码
+        overlay.querySelector('#rbq-pm-cfg-regen-key').onclick = () => {
+            if (confirm('重新生成后，旧码发布的作品将无法通过新码删除（除非在设置中重新换回旧码）。确定重新生成吗？')) {
+                const newKey = generateCreatorKey();
+                overlay.querySelector('#rbq-pm-cfg-creator-key').value = newKey;
+                toastr.info('已生成新创作者码，请点击「保存设置」生效');
+            }
+        };
+
+        // 保存设置
         overlay.querySelector('#rbq-pm-set-save').onclick = () => {
             const rawServer = overlay.querySelector('#rbq-pm-cfg-server').value.trim();
+            const creatorKeyVal = overlay.querySelector('#rbq-pm-cfg-creator-key').value.trim();
+            const adminKeyVal = overlay.querySelector('#rbq-pm-cfg-admin-key').value.trim();
+
             cfg.serverUrl = rawServer ? rawServer.replace(/\/+$/, '') : 'https://market.rbq.my';
             cfg.authorName = overlay.querySelector('#rbq-pm-cfg-author').value.trim();
+            cfg.creatorKey = creatorKeyVal || generateCreatorKey();
+            cfg.adminKey = adminKeyVal;
+
             saveConfig();
-            toastr.success('设置已保存！');
+            toastr.success('工坊设置已成功保存！');
             overlay.remove();
             loadMarketData();
         };

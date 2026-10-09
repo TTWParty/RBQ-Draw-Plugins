@@ -8,6 +8,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 PORT = int(os.environ.get('PORT', 3000))
+ADMIN_KEY = os.environ.get('MARKET_ADMIN_KEY', 'rbq_admin_secret')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 UPLOADS_DIR = os.path.join(BASE_DIR, 'uploads')
@@ -191,17 +192,80 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
                     return
 
-        # ── 删除预设 API (指定 ID 或 __ALL__ 清空) ──
+        # ── 删除预设 API (支持创作者身份码与管理员密钥严格鉴权) ──
         if parsed.path == '/api/delete':
             target_id = str(data.get('id', '')).strip()
+            req_creator_key = str(data.get('creatorKey', '')).strip()
+            req_admin_key = str(data.get('adminKey', '')).strip()
+
+            if not target_id:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                return
+
+            is_admin = bool(req_admin_key and req_admin_key == ADMIN_KEY)
+
             with DATA_LOCK:
                 presets = load_presets()
                 if target_id == '__ALL__':
+                    if not is_admin:
+                        self.send_response(403)
+                        self.send_header('Content-Type', 'application/json; charset=utf-8')
+                        self.send_cors()
+                        self.end_headers()
+                        self.wfile.write(json.dumps({'error': '清空全部工坊预设需要正确的管理员密钥'}).encode('utf-8'))
+                        return
                     presets = []
-                else:
-                    presets = [p for p in presets if p.get('id') != target_id]
+                    save_presets(presets)
+                    resp = json.dumps({'success': True, 'remaining': 0}).encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+
+                target_preset = next((p for p in presets if p.get('id') == target_id), None)
+                if not target_preset:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '预设不存在或已被删除'}).encode('utf-8'))
+                    return
+
+                # 权限鉴权逻辑：
+                # 1. 管理员密钥正确 -> 允许
+                # 2. 预设绑定了 creatorKey，且请求匹配 -> 允许
+                # 3. 历史无 creatorKey 的早期测试预设：若作者声明一致或为管理员 -> 允许
+                item_creator_key = target_preset.get('creatorKey', '')
+                authorized = False
+                if is_admin:
+                    authorized = True
+                elif item_creator_key and req_creator_key and req_creator_key == item_creator_key:
+                    authorized = True
+                elif not item_creator_key:
+                    req_author = str(data.get('author', '')).strip()
+                    if req_author and req_author == target_preset.get('author'):
+                        authorized = True
+                    elif is_admin:
+                        authorized = True
+
+                if not authorized:
+                    self.send_response(403)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '鉴权失败：无权删除他人作品。请在设置中检查创作者个人码或管理员密钥。'}).encode('utf-8'))
+                    return
+
+                presets = [p for p in presets if p.get('id') != target_id]
                 save_presets(presets)
-            resp = json.dumps({'success': True, 'remaining': len(presets)}).encode('utf-8')
+
+            resp = json.dumps({'success': True, 'remaining': len(presets), 'deletedId': target_id}).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_cors()
@@ -213,6 +277,7 @@ class MarketHandler(BaseHTTPRequestHandler):
         if parsed.path == '/api/upload':
             title = str(data.get('title', '')).strip()[:50]
             positive = str(data.get('positive', '')).strip()
+            creator_key = str(data.get('creatorKey', '')).strip()[:64]
             if not title or not positive:
                 self.send_response(400)
                 self.send_header('Content-Type', 'application/json')
@@ -260,6 +325,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 'title': title,
                 'author': str(data.get('author', '匿名社友')).strip()[:30] or '匿名社友',
                 'model': model,
+                'creatorKey': creator_key,
                 'description': str(data.get('description', '')).strip()[:200],
                 'tags': data.get('tags', []) if isinstance(data.get('tags'), list) else [],
                 'positive': positive,

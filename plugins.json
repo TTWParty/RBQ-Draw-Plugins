@@ -18,10 +18,10 @@
   {
     "id": "rbq-prompt-market",
     "name": "提示词预设工坊 (Prompt Market)",
-    "description": "社区画师串与提示词预设共享中心。全场预设基于卡密sama基准底模真实出图评测，区分 NAI V5 / V4.5 / 通用模型标签、卡片点赞互动、工坊现场一键生图绑定 720px 高保真预览、一键安装至本地提示词库。",
-    "version": "1.1.1",
+    "description": "社区画师串与提示词预设共享中心。3:4 竖版立绘纯净展厅，区分 NAI V5 / V4.5 / 通用模型标签、卡片点赞互动、工坊现场一键生图绑定 720px 高保真预览、一键安装至本地提示词库。",
+    "version": "1.1.2",
     "author": "TTWP-09",
-    "main": "plugins/prompt-market.js?v=1.1.1"
+    "main": "plugins/prompt-market.js?v=1.1.2"
   },
   {
     "id": "rbq-png-metadata",

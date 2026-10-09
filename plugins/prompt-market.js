@@ -280,97 +280,110 @@
 
             /* 卡片与网格容器 Zero-CLS */
             .rbq-pm-card {
-                background: #111827;
-                border: 1px solid rgba(255, 255, 255, 0.09);
+                background: #0f172a;
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 12px;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                cursor: pointer;
                 transform: translateZ(0);
                 will-change: transform, box-shadow;
                 transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1), border-color 0.2s ease;
             }
             .rbq-pm-card:hover {
-                transform: translateY(-3px);
+                transform: translateY(-4px);
                 border-color: rgba(56, 189, 248, 0.45);
-                box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 16px rgba(56, 189, 248, 0.18);
+                box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.18);
             }
 
-            /* 图片骨架屏预留 */
+            /* 3:4 竖版立绘专精容器 (零裁切展示完整立绘与面部表情) */
             .rbq-pm-img-wrap {
                 width: 100%;
-                aspect-ratio: 16 / 10;
+                aspect-ratio: 3 / 4;
                 position: relative;
-                background: #090d16;
+                background: #070b13;
                 overflow: hidden;
-                cursor: pointer;
             }
             .rbq-pm-img-wrap img {
                 width: 100%;
                 height: 100%;
                 object-fit: cover;
-                transition: transform 0.3s ease;
+                display: block;
+                transition: transform 0.35s ease;
             }
             .rbq-pm-card:hover .rbq-pm-img-wrap img {
-                transform: scale(1.03);
+                transform: scale(1.05);
             }
 
-            /* 模型徽章 */
+            /* 浮动半透明模型徽章 */
             .rbq-pm-badge-model {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                z-index: 2;
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
                 font-size: 10px;
                 font-weight: 700;
                 letter-spacing: 0.5px;
-                padding: 2px 7px;
+                padding: 2.5px 7px;
                 border-radius: 5px;
                 display: inline-flex;
                 align-items: center;
-                gap: 3px;
+                gap: 4px;
                 text-transform: uppercase;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.5);
             }
             .rbq-pm-badge-v5 {
-                background: linear-gradient(135deg, rgba(217, 70, 239, 0.25), rgba(168, 85, 247, 0.3));
+                background: rgba(217, 70, 239, 0.3);
                 border: 1px solid rgba(217, 70, 239, 0.6);
                 color: #f0abfc;
-                box-shadow: 0 0 8px rgba(217, 70, 239, 0.25);
             }
             .rbq-pm-badge-v45 {
-                background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.3));
+                background: rgba(56, 189, 248, 0.3);
                 border: 1px solid rgba(56, 189, 248, 0.6);
                 color: #7dd3fc;
-                box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
             }
             .rbq-pm-badge-gen {
-                background: rgba(255, 255, 255, 0.08);
+                background: rgba(30, 41, 59, 0.6);
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 color: #cbd5e1;
             }
 
-            /* 互动按钮 */
-            .rbq-pm-like-btn {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                color: #94a3b8;
+            /* 浮动半透明点赞按钮 */
+            .rbq-pm-card-like {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                z-index: 2;
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                background: rgba(15, 23, 42, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                color: #cbd5e1;
                 border-radius: 6px;
-                padding: 4px 9px;
+                padding: 3px 8px;
                 font-size: 11px;
                 cursor: pointer;
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.5);
                 transition: all 0.15s ease;
             }
-            .rbq-pm-like-btn:hover {
-                background: rgba(244, 63, 94, 0.12);
-                border-color: rgba(244, 63, 94, 0.4);
-                color: #f43f5e;
+            .rbq-pm-card-like:hover {
+                background: rgba(244, 63, 94, 0.25);
+                border-color: rgba(244, 63, 94, 0.5);
+                color: #fb7185;
             }
-            .rbq-pm-like-btn.is-liked {
-                background: rgba(244, 63, 94, 0.18);
+            .rbq-pm-card-like.is-liked {
+                background: rgba(244, 63, 94, 0.35);
                 border-color: #f43f5e;
                 color: #fb7185;
             }
-            .rbq-pm-like-btn.is-liked i {
+            .rbq-pm-card-like.is-liked i {
                 color: #f43f5e;
                 animation: rbq-heart-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             }
@@ -380,7 +393,18 @@
                 100% { transform: scale(1); }
             }
 
-            /* 触控与移动端 */
+            /* 网格布局：自适应 4~5 列 */
+            #rbq-pm-card-grid {
+                flex: 1;
+                overflow-y: auto;
+                padding: 16px 20px;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+                gap: 16px;
+                align-content: start;
+            }
+
+            /* 触控与移动端：2 列并排 */
             @media (max-width: 640px) {
                 #rbq-pm-container {
                     width: 96vw !important;
@@ -388,8 +412,9 @@
                     border-radius: 10px !important;
                 }
                 #rbq-pm-card-grid {
-                    grid-template-columns: 1fr !important;
-                    padding: 12px !important;
+                    grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 10px !important;
+                    padding: 10px !important;
                 }
             }
         `;
@@ -430,42 +455,31 @@
                 display: flex; flex-direction: column; overflow: hidden;
             ">
                 <!-- Header HUD -->
-                <div style="padding: 14px 20px; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #0284c7, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);">
+                <div style="padding: 12px 20px; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 36px; height: 36px; border-radius: 9px; background: linear-gradient(135deg, #0284c7, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 17px; color: #fff; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);">
                             <i class="fa-solid fa-store"></i>
                         </div>
                         <div>
-                            <div style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                            <div style="font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 7px;">
                                 <span>提示词预设工坊</span>
-                                <span style="font-size: 10px; font-weight: 700; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 7px; border-radius: 4px;">PROMPT WORKSHOP</span>
+                                <span style="font-size: 9.5px; font-weight: 700; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px;">PROMPT MARKET</span>
                             </div>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">社区画师串与预设中心 · 支持现场生图发布与一键安装</div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">社区画师串与预设中心 · 一键安装与现场生图</div>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 7px 15px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 10px rgba(2, 132, 199, 0.35);">
+                        <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 6px 14px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 10px rgba(2, 132, 199, 0.35);">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>发布预设 (现场出图)</span>
+                            <span>发布预设</span>
                         </button>
-                        <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 7px 11px; font-size: 13px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 6px 10px; font-size: 13px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
                             <i class="fa-solid fa-gear"></i>
                         </button>
                         <button id="rbq-pm-btn-close" style="background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1;">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                </div>
-
-                <!-- HUD Fair Benchmark Banner -->
-                <div style="padding: 8px 20px; background: linear-gradient(90deg, rgba(168, 85, 247, 0.12), rgba(56, 189, 248, 0.1)); border-bottom: 1px solid rgba(168, 85, 247, 0.25); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11.5px; flex-shrink: 0;">
-                    <div style="display: flex; align-items: center; gap: 8px; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        <span style="font-size: 13px; color: #f0abfc;">✨</span>
-                        <span><strong>公平基准测试底模：</strong>全场预设预览图均由各画师串叠加<strong>「卡密sama温室少女」</strong>统一基准测试词渲染生成 (<span style="color:#f0abfc; font-weight:600;">测试提示词由卡密sama提供</span>)，保证同框同人，拒绝照骗与开盲盒！</span>
-                    </div>
-                    <button id="rbq-pm-btn-view-bm" class="menu_button" style="background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); color: #7dd3fc; font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer; flex-shrink: 0;">
-                        <i class="fa-solid fa-scroll"></i> 查看底模词
-                    </button>
                 </div>
 
                 <!-- Model Filter & Category Toolbar -->
@@ -485,10 +499,10 @@
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div style="position: relative;">
                                 <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #64748b;"></i>
-                                <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 11.5px; color: #fff; width: 180px; outline: none;">
+                                <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 11.5px; color: #fff; width: 170px; outline: none;">
                             </div>
                             <select id="rbq-pm-sort-select" style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: #94a3b8; outline: none;">
-                                <option value="popular">🔥 热门/点赞</option>
+                                <option value="popular">🔥 热门点赞</option>
                                 <option value="newest">🆕 最新上架</option>
                             </select>
                         </div>
@@ -501,11 +515,7 @@
                 </div>
 
                 <!-- Main Content (Cards Grid) -->
-                <div id="rbq-pm-card-grid" style="
-                    flex: 1; overflow-y: auto; padding: 18px 20px;
-                    display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-                    gap: 16px; align-content: start;
-                ">
+                <div id="rbq-pm-card-grid">
                     <!-- Cards will be populated here -->
                 </div>
             </div>
@@ -521,7 +531,6 @@
 
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
         marketModal.querySelector('#rbq-pm-btn-settings').onclick = () => openSettingsDialog();
-        marketModal.querySelector('#rbq-pm-btn-view-bm').onclick = () => openBenchmarkInfoDialog();
 
         // 模型 Filter 切换
         marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(tab => {
@@ -647,154 +656,98 @@
 
             // 模型 Badge 样式判定
             const m = (item.model || '').toLowerCase();
-            let modelBadgeHtml = '';
+            let modelBadgeClass = 'rbq-pm-badge-gen';
+            let modelBadgeText = '通用';
+            let modelBadgeIcon = '';
             if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
-                modelBadgeHtml = '<span class="rbq-pm-badge-model rbq-pm-badge-v5"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</span>';
+                modelBadgeClass = 'rbq-pm-badge-v5';
+                modelBadgeText = 'NAI V5';
+                modelBadgeIcon = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
             } else if (m === 'v4.5' || (item.tags || []).includes('NAI V4.5')) {
-                modelBadgeHtml = '<span class="rbq-pm-badge-model rbq-pm-badge-v45"><i class="fa-solid fa-bolt"></i> NAI V4.5</span>';
-            } else {
-                modelBadgeHtml = '<span class="rbq-pm-badge-model rbq-pm-badge-gen">通用</span>';
+                modelBadgeClass = 'rbq-pm-badge-v45';
+                modelBadgeText = 'NAI V4.5';
+                modelBadgeIcon = '<i class="fa-solid fa-bolt"></i>';
             }
 
             card.innerHTML = `
                 <div class="rbq-pm-img-wrap">
                     <img src="${previewSrc}" alt="${item.title}" loading="lazy">
-                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 48px; background: linear-gradient(transparent, rgba(17,24,39,0.95)); pointer-events: none;"></div>
-                    <div style="position: absolute; top: 8px; left: 8px;">
-                        ${modelBadgeHtml}
-                    </div>
-                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.68); backdrop-filter: blur(4px); font-size: 10px; padding: 2px 7px; border-radius: 5px; color: #f0abfc; display: flex; align-items: center; gap: 4px; border: 1px solid rgba(217,70,239,0.25);">
-                        <i class="fa-solid fa-palette"></i> 基准实测
-                    </div>
+                    <div class="rbq-pm-badge-model ${modelBadgeClass}">${modelBadgeIcon} <span>${modelBadgeText}</span></div>
+                    <button class="rbq-pm-card-like ${isLiked ? 'is-liked' : ''}" title="点赞预设">
+                        <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
+                        <span class="rbq-pm-like-num">${item.likes || 0}</span>
+                    </button>
+                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 36px; background: linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events: none;"></div>
                 </div>
-                <div style="padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 8px;">
-                    <div>
-                        <div style="font-size: 14px; font-weight: 700; color: #f8fafc; line-height: 1.35;">${item.title}</div>
-                        <div style="font-size: 11px; color: #64748b; margin-top: 3px; display: flex; align-items: center; gap: 4px;">
-                            <i class="fa-regular fa-user" style="font-size: 10px;"></i>
-                            <span>${item.author || '匿名'}</span>
-                        </div>
+                <div style="padding: 10px 12px; background: #0f172a; display: flex; flex-direction: column; gap: 5px;">
+                    <div style="font-size: 13px; font-weight: 700; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.title}">
+                        ${item.title}
                     </div>
-                    <div style="font-size: 11.5px; color: #94a3b8; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px;">
-                        ${item.description || '暂无描述'}
-                    </div>
-                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                        ${(item.tags || []).map(t => `<span style="font-size: 10px; background: rgba(255,255,255,0.06); color: #cbd5e1; padding: 1px 6px; border-radius: 4px;">#${t}</span>`).join('')}
-                    </div>
-                    <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <button class="rbq-pm-like-btn ${isLiked ? 'is-liked' : ''}" title="点赞预设">
-                                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
-                                <span class="rbq-pm-like-num">${item.likes || 0}</span>
-                            </button>
-                            <button class="rbq-pm-detail-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer;">
-                                <i class="fa-solid fa-eye"></i> 详情
-                            </button>
-                        </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                        <span style="font-size: 11px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 95px;" title="${item.author || '匿名'}">
+                            <i class="fa-regular fa-user" style="font-size: 10px;"></i> ${item.author || '匿名'}
+                        </span>
                         <button class="rbq-pm-install-btn menu_button" style="
                             background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
                             border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
                             color: ${isInstalled ? '#22c55e' : '#fff'};
-                            font-size: 11px; font-weight: 600; padding: 5px 11px; border-radius: 6px; cursor: pointer;
+                            font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; flex-shrink: 0;
                         ">
                             <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
-                            <span>${isInstalled ? '已安装' : '一键安装'}</span>
+                            <span>${isInstalled ? '已装' : '安装'}</span>
                         </button>
                     </div>
                 </div>
             `;
 
-            // 点击预览图放大
-            card.querySelector('img').onclick = () => openImageZoom(previewSrc);
-
-            // 点赞
-            const likeBtn = card.querySelector('.rbq-pm-like-btn');
-            const likeNum = card.querySelector('.rbq-pm-like-num');
-            likeBtn.onclick = () => likePreset(item, likeBtn, likeNum);
-
-            // 详情按钮
-            card.querySelector('.rbq-pm-detail-btn').onclick = async () => {
+            // 点击卡片直接打开详情
+            card.onclick = async (e) => {
+                if (e.target.closest('.rbq-pm-card-like') || e.target.closest('.rbq-pm-install-btn')) return;
                 const full = await fetchPresetDetail(item);
                 openDetailDialog(full);
             };
 
+            // 点赞
+            const likeBtn = card.querySelector('.rbq-pm-card-like');
+            const likeNum = card.querySelector('.rbq-pm-like-num');
+            likeBtn.onclick = (e) => {
+                e.stopPropagation();
+                likePreset(item, likeBtn, likeNum);
+            };
+
             // 安装按钮
             const installBtn = card.querySelector('.rbq-pm-install-btn');
-            installBtn.onclick = async () => {
+            installBtn.onclick = async (e) => {
+                e.stopPropagation();
                 const full = await fetchPresetDetail(item);
                 installToLocalPresets(full);
                 installBtn.style.background = 'rgba(34, 197, 94, 0.15)';
                 installBtn.style.borderColor = '#22c55e';
                 installBtn.style.color = '#22c55e';
-                installBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>已安装</span>';
+                installBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>已装</span>';
             };
 
             grid.appendChild(card);
         });
     }
 
-    // ── 查看基准底模信息弹窗 ──
-    function openBenchmarkInfoDialog() {
-        const overlay = document.createElement('div');
-        overlay.id = 'rbq-pm-benchmark-dialog';
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
-        overlay.innerHTML = `
-            <div style="width:90vw; max-width:620px; max-height:86vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.75);">
-                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
-                        <i class="fa-solid fa-scroll" style="color:#f0abfc;"></i>
-                        <span>统一基准测试底模 (Benchmark Prompt)</span>
-                    </div>
-                    <button id="rbq-pm-bm-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
-                    <div style="background:linear-gradient(135deg, rgba(217,70,239,0.15), rgba(56,189,248,0.15)); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:10px 14px; font-size:12px; color:#f8fafc; line-height:1.5;">
-                        <div style="font-weight:700; color:#f0abfc; margin-bottom:4px;">🌟 评测底模说明：${BENCHMARK_CREDIT}</div>
-                        <div>为了保证工坊内每一个画师串、风格预设在视觉上的<strong>公平横向比对</strong>，所有上传作品必须以这组「温室怀表双麻花少女」作为基准主体。这样玩家一眼就能看出不同画师串的色彩、笔触、光影差异！</div>
-                    </div>
-                    <div>
-                        <div style="font-size:12px; color:#38bdf8; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-plus-circle"></i> 基准正向提示词 (Positive)</div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:150px; overflow-y:auto; user-select:text;">
-                            ${BENCHMARK_POSITIVE_PROMPT}
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size:12px; color:#f87171; margin-bottom:5px; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 基准负向提示词 (Negative)</div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; user-select:text;">
-                            ${BENCHMARK_NEGATIVE_PROMPT}
-                        </div>
-                    </div>
-                </div>
-                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
-                    <button id="rbq-pm-bm-copy" class="menu_button" style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 14px; font-weight:600;"><i class="fa-solid fa-copy"></i> 复制基准提示词</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-        overlay.querySelector('#rbq-pm-bm-close').onclick = () => overlay.remove();
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-        overlay.querySelector('#rbq-pm-bm-copy').onclick = async () => {
-            await copyToClipboard(BENCHMARK_POSITIVE_PROMPT);
-            toastr.success('基准测试底模词已复制！');
-        };
-    }
-
-    // ── 预设详情弹窗 ──
+    // ── 预设详情弹窗 (2-Column 视觉工作台) ──
     function openDetailDialog(item) {
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-detail-dialog';
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
-        
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
+
+        const previewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
         const m = (item.model || '').toLowerCase();
-        let modelBadge = '<span style="font-size:10px; background:rgba(255,255,255,0.1); color:#cbd5e1; padding:2px 6px; border-radius:4px;">通用</span>';
+        let modelBadge = '<span style="font-size:10px; background:rgba(255,255,255,0.1); color:#cbd5e1; padding:2px 7px; border-radius:4px;">通用</span>';
         if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
-            modelBadge = '<span style="font-size:10px; background:rgba(217,70,239,0.25); color:#f0abfc; padding:2px 6px; border-radius:4px; border:1px solid rgba(217,70,239,0.5);">NAI V5</span>';
+            modelBadge = '<span style="font-size:10px; background:rgba(217,70,239,0.25); color:#f0abfc; padding:2px 7px; border-radius:4px; border:1px solid rgba(217,70,239,0.5);"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</span>';
         } else if (m === 'v4.5' || (item.tags || []).includes('NAI V4.5')) {
-            modelBadge = '<span style="font-size:10px; background:rgba(56,189,248,0.25); color:#7dd3fc; padding:2px 6px; border-radius:4px; border:1px solid rgba(56,189,248,0.5);">NAI V4.5</span>';
+            modelBadge = '<span style="font-size:10px; background:rgba(56,189,248,0.25); color:#7dd3fc; padding:2px 7px; border-radius:4px; border:1px solid rgba(56,189,248,0.5);"><i class="fa-solid fa-bolt"></i> NAI V4.5</span>';
         }
 
         overlay.innerHTML = `
-            <div style="width:92vw; max-width:660px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.75);">
+            <div style="width:92vw; max-width:760px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
                         <span>${item.title}</span>
@@ -802,49 +755,61 @@
                     </div>
                     <button id="rbq-pm-detail-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
-                    <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                            <span style="font-size:12px; color:#38bdf8; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 画师/风格预设串 (Positive)</span>
-                            <button id="rbq-pm-copy-pos-only" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;">
-                                <i class="fa-solid fa-copy"></i> 复制预设词
-                            </button>
+                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-wrap:wrap; gap:16px;">
+                    <!-- Left Column: Portrait Artwork Preview -->
+                    <div style="width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:10px;">
+                        <div id="rbq-pm-detail-img-wrap" style="width:100%; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:#070b13; border:1px solid rgba(255,255,255,0.12); position:relative; cursor:zoom-in;" title="点击查看高清大图">
+                            <img src="${previewSrc}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                            <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); font-size:10px; padding:2px 6px; border-radius:4px; color:#cbd5e1;">
+                                <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
+                            </div>
                         </div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:120px; overflow-y:auto; user-select:text;">
-                            ${item.positive || '(无)'}
-                        </div>
-                    </div>
-
-                    ${item.negative ? `
-                    <div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                            <span style="font-size:12px; color:#f87171; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 负向提示词 (Negative)</span>
-                            <button id="rbq-pm-copy-neg-only" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;">
-                                <i class="fa-solid fa-copy"></i> 复制负向词
-                            </button>
-                        </div>
-                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; max-height:80px; overflow-y:auto; user-select:text;">
-                            ${item.negative}
-                        </div>
-                    </div>` : ''}
-
-                    <!-- 基准测试底模拼接说明 -->
-                    <div style="background:rgba(217,70,239,0.08); border:1px dashed rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px; line-height:1.55;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                            <span style="color:#f0abfc; font-weight:700;"><i class="fa-solid fa-vial"></i> 基准测试生成全串 (预设串 + 卡密sama基准底模)</span>
-                            <button id="rbq-pm-copy-full-combo" class="menu_button" style="background:rgba(217,70,239,0.2); border:1px solid rgba(217,70,239,0.4); color:#f0abfc; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
-                                <i class="fa-solid fa-clone"></i> 复制完整生图提示词
-                            </button>
-                        </div>
-                        <div style="color:#cbd5e1; font-size:11px;">
-                            预览图为真实出图效果。点击复制完整词可直接在生图面板或 Web 还原该预设样张。
-                            <div style="color:#94a3b8; margin-top:2px; font-size:10.5px;">* ${BENCHMARK_CREDIT}</div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px; font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:4px;">
+                            <div>作者: <strong style="color:#f1f5f9;">${item.author || '匿名'}</strong></div>
+                            <div>获赞: <strong style="color:#fb7185;">${item.likes || 0}</strong> | 下载: ${item.downloads || 0}</div>
+                            ${(item.tags && item.tags.length) ? `<div>标签: ${item.tags.map(t => '#' + t).join(' ')}</div>` : ''}
                         </div>
                     </div>
 
-                    <div style="font-size:11.5px; color:#64748b; line-height:1.6; background:rgba(0,0,0,0.25); padding:8px 12px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
-                        <div>作者: <strong style="color:#cbd5e1;">${item.author || '匿名'}</strong> | 获赞: <strong style="color:#fb7185;">${item.likes || 0}</strong></div>
-                        <div>标签: ${(item.tags || []).join(' ')}</div>
+                    <!-- Right Column: Prompts Inspector -->
+                    <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:12px;">
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                                <span style="font-size:12px; color:#38bdf8; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 画师/风格预设串 (Positive)</span>
+                                <button id="rbq-pm-copy-pos-only" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;">
+                                    <i class="fa-solid fa-copy"></i> 复制预设词
+                                </button>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:110px; overflow-y:auto; user-select:text;">
+                                ${item.positive || '(无)'}
+                            </div>
+                        </div>
+
+                        ${item.negative ? `
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                                <span style="font-size:12px; color:#f87171; font-weight:600;"><i class="fa-solid fa-minus-circle"></i> 负向提示词 (Negative)</span>
+                                <button id="rbq-pm-copy-neg-only" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;">
+                                    <i class="fa-solid fa-copy"></i> 复制负向词
+                                </button>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; max-height:75px; overflow-y:auto; user-select:text;">
+                                ${item.negative}
+                            </div>
+                        </div>` : ''}
+
+                        <!-- 基准测试拼接说明 -->
+                        <div style="background:rgba(217,70,239,0.08); border:1px dashed rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px; line-height:1.55;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <span style="color:#f0abfc; font-weight:700;"><i class="fa-solid fa-vial"></i> 完整测试提示词 (画师串 + 卡密sama基准底模)</span>
+                                <button id="rbq-pm-copy-full-combo" class="menu_button" style="background:rgba(217,70,239,0.2); border:1px solid rgba(217,70,239,0.4); color:#f0abfc; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
+                                    <i class="fa-solid fa-clone"></i> 复制全串
+                                </button>
+                            </div>
+                            <div style="color:#94a3b8; font-size:10.5px;">
+                                预览图真实由当前串与基准底模合并出图。* ${BENCHMARK_CREDIT}
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">

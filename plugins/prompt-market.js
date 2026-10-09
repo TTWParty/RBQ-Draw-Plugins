@@ -643,10 +643,11 @@
                 line-height: 1.35;
             }
             .rbq-pm-card-meta {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 6px;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                gap: 6px !important;
+                min-width: 0 !important;
             }
             .rbq-pm-card-author {
                 font-size: 11px;
@@ -654,17 +655,48 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
-                max-width: 95px;
+                max-width: 85px;
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
+                flex: 1 1 auto;
+                min-width: 0;
             }
+            .rbq-pm-card-actions {
+                display: flex !important;
+                align-items: center !important;
+                gap: 4px !important;
+                flex-shrink: 0 !important;
+            }
+            .rbq-pm-card-test-btn,
             .rbq-pm-install-btn {
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 9px;
-                border-radius: 6px;
-                flex-shrink: 0;
+                font-size: 11px !important;
+                font-weight: 600 !important;
+                padding: 3px 8px !important;
+                border-radius: 6px !important;
+                flex-shrink: 0 !important;
+                display: inline-flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 3.5px !important;
+                white-space: nowrap !important;
+                box-sizing: border-box !important;
+                cursor: pointer !important;
+                line-height: 1.2 !important;
+                touch-action: manipulation !important;
+            }
+            .rbq-pm-card-test-btn {
+                background: rgba(168, 85, 247, 0.16) !important;
+                border: 1px solid rgba(168, 85, 247, 0.45) !important;
+                color: #d8b4fe !important;
+                transition: all 0.2s ease !important;
+            }
+            .rbq-pm-card-test-btn:hover {
+                background: rgba(168, 85, 247, 0.3) !important;
+                color: #f0abfc !important;
+                border-color: rgba(217, 70, 239, 0.6) !important;
+                box-shadow: 0 0 10px rgba(168, 85, 247, 0.3) !important;
             }
 
             /* 网格布局：自适应 4~5 列，内置平滑滚动与 flex-shrink: 0 防御 */
@@ -801,13 +833,21 @@
                     font-size: 11px !important;
                     line-height: 1.25 !important;
                 }
+                .rbq-pm-card-meta {
+                    gap: 3px !important;
+                }
                 .rbq-pm-card-author {
                     font-size: 9.5px !important;
-                    max-width: 50px !important;
+                    max-width: 42px !important;
                 }
+                .rbq-pm-card-actions {
+                    gap: 2.5px !important;
+                }
+                .rbq-pm-card-test-btn,
                 .rbq-pm-install-btn {
-                    font-size: 10px !important;
-                    padding: 2px 6px !important;
+                    font-size: 9.5px !important;
+                    padding: 2px 5px !important;
+                    gap: 2px !important;
                 }
 
                 /* 详情模态弹窗移动端自适应 */
@@ -841,10 +881,6 @@
                 .rbq-pm-up-grid-2col {
                     grid-template-columns: 1fr !important;
                     gap: 8px !important;
-                }
-                .rbq-pm-up-params-grid {
-                    grid-template-columns: repeat(2, 1fr) !important;
-                    gap: 6px !important;
                 }
 
                 /* 试炼台模态弹窗移动端自适应 */
@@ -1234,22 +1270,28 @@
                             ${isMyWork ? '<span class="rbq-pm-badge-author-mine" title="你发布的作品"><i class="fa-solid fa-crown"></i> 我的</span>' : ''}
                             ${(isAdmin && !isMyWork) ? '<span title="管理员巡查模式" style="font-size:9.5px; opacity:0.75;">🛡️</span>' : ''}
                         </span>
-                        <button class="rbq-pm-install-btn menu_button" style="
-                            background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
-                            border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
-                            color: ${isInstalled ? '#22c55e' : '#fff'};
-                            cursor: pointer;
-                        ">
-                            <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
-                            <span>${isInstalled ? '已装' : '安装'}</span>
-                        </button>
+                        <div class="rbq-pm-card-actions">
+                            <button class="rbq-pm-card-test-btn menu_button" title="现场出图试用此画师串">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span>测试</span>
+                            </button>
+                            <button class="rbq-pm-install-btn menu_button" style="
+                                background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
+                                border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
+                                color: ${isInstalled ? '#22c55e' : '#fff'};
+                                cursor: pointer;
+                            ">
+                                <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
+                                <span>${isInstalled ? '已装' : '安装'}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
 
-            // 点击卡片直接打开详情
+            // 点击卡片直接打开详情 (排除点赞、测试、安装等交互按钮)
             card.onclick = async (e) => {
-                if (e.target.closest('.rbq-pm-card-like') || e.target.closest('.rbq-pm-install-btn')) return;
+                if (e.target.closest('.rbq-pm-card-like') || e.target.closest('.rbq-pm-install-btn') || e.target.closest('.rbq-pm-card-test-btn')) return;
                 const full = await fetchPresetDetail(item);
                 openDetailDialog(full);
             };
@@ -1261,6 +1303,16 @@
                 e.stopPropagation();
                 likePreset(item, likeBtn, likeNum);
             };
+
+            // 测试画师串按钮 (免点进详情，直接唤起现场试炼台)
+            const testBtn = card.querySelector('.rbq-pm-card-test-btn');
+            if (testBtn) {
+                testBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const full = await fetchPresetDetail(item);
+                    openLiveTestModal(full);
+                };
+            }
 
             // 安装按钮
             const installBtn = card.querySelector('.rbq-pm-install-btn');
@@ -2247,6 +2299,14 @@
         let activeSteps = s.naiSteps !== undefined && s.naiSteps !== null ? Number(s.naiSteps) : 28;
         let activeCfgRescale = s.naiCfgRescale !== undefined && s.naiCfgRescale !== null ? Number(s.naiCfgRescale) : 0;
 
+        // 真实绑定出图时的 NAI 参数（自动抓取，无需用户手动填写）
+        let capturedParams = {
+            scale: activeScale,
+            sampler: activeSampler,
+            steps: activeSteps,
+            cfgRescale: activeCfgRescale
+        };
+
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-upload-dialog';
         overlay.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);';
@@ -2306,34 +2366,6 @@
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">负面提示词 (可选)</label>
                         <textarea id="rbq-pm-up-neg" rows="2" placeholder="可选输入针对该风格的负向词，例如: flat color, simplified" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
-                    </div>
-
-                    <!-- NAI 生图参数设置绑定 -->
-                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <span style="font-size:12px; color:#c084fc; font-weight:600;"><i class="fa-solid fa-sliders"></i> 绑定当前 NAI 生图参数 (自动提取)</span>
-                            <button id="rbq-pm-up-refresh-params" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:2px 7px; border-radius:4px; cursor:pointer;" title="重新读取当前酒馆生图设置中的参数">
-                                <i class="fa-solid fa-arrows-rotate"></i> 重新读取设置
-                            </button>
-                        </div>
-                        <div class="rbq-pm-up-params-grid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px;">
-                            <div>
-                                <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">Scale (CFG)</label>
-                                <input id="rbq-pm-up-param-scale" type="number" step="0.5" value="${activeScale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:5px 6px; color:#38bdf8; font-size:11.5px; font-family:monospace; box-sizing:border-box;">
-                            </div>
-                            <div>
-                                <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">采样器 (Sampler)</label>
-                                <input id="rbq-pm-up-param-sampler" type="text" value="${activeSampler}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:5px 6px; color:#f0abfc; font-size:11.5px; font-family:monospace; box-sizing:border-box;">
-                            </div>
-                            <div>
-                                <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">步数 (Steps)</label>
-                                <input id="rbq-pm-up-param-steps" type="number" step="1" value="${activeSteps}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:5px 6px; color:#4ade80; font-size:11.5px; font-family:monospace; box-sizing:border-box;">
-                            </div>
-                            <div>
-                                <label style="font-size:10px; color:#94a3b8; display:block; margin-bottom:2px;">CFG Rescale</label>
-                                <input id="rbq-pm-up-param-rescale" type="number" step="0.05" value="${activeCfgRescale}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:5px; padding:5px 6px; color:#fbbf24; font-size:11.5px; font-family:monospace; box-sizing:border-box;">
-                            </div>
-                        </div>
                     </div>
 
                     <!-- 统一基准底模提示框 -->
@@ -2406,21 +2438,12 @@
                 overlay.querySelector('#rbq-pm-up-pos').value = p.positive || '';
                 overlay.querySelector('#rbq-pm-up-neg').value = p.negative || '';
                 if (p.params) {
-                    if (p.params.scale !== undefined) overlay.querySelector('#rbq-pm-up-param-scale').value = p.params.scale;
-                    if (p.params.sampler) overlay.querySelector('#rbq-pm-up-param-sampler').value = p.params.sampler;
-                    if (p.params.steps !== undefined) overlay.querySelector('#rbq-pm-up-param-steps').value = p.params.steps;
-                    if (p.params.cfgRescale !== undefined) overlay.querySelector('#rbq-pm-up-param-rescale').value = p.params.cfgRescale;
+                    if (p.params.scale !== undefined) capturedParams.scale = Number(p.params.scale);
+                    if (p.params.sampler) capturedParams.sampler = p.params.sampler;
+                    if (p.params.steps !== undefined) capturedParams.steps = Number(p.params.steps);
+                    if (p.params.cfgRescale !== undefined) capturedParams.cfgRescale = Number(p.params.cfgRescale);
                 }
             }
-        };
-
-        overlay.querySelector('#rbq-pm-up-refresh-params').onclick = () => {
-            const fresh = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
-            overlay.querySelector('#rbq-pm-up-param-scale').value = fresh.naiScale !== undefined ? fresh.naiScale : 6.0;
-            overlay.querySelector('#rbq-pm-up-param-sampler').value = fresh.naiSampler || 'k_euler_ancestral';
-            overlay.querySelector('#rbq-pm-up-param-steps').value = fresh.naiSteps !== undefined ? fresh.naiSteps : 28;
-            overlay.querySelector('#rbq-pm-up-param-rescale').value = fresh.naiCfgRescale !== undefined ? fresh.naiCfgRescale : 0;
-            toastr.info('已重新从当前酒馆生图设置中读取 NAI 参数！');
         };
 
         // 图片高保真压缩 (720px / 0.82 WebP)
@@ -2462,7 +2485,7 @@
 
             const approxKb = Math.round((compressedBase64.length * 3) / 4 / 1024);
             imgStatus.innerHTML = `<span style="color:#22c55e; font-weight:600;"><i class="fa-solid fa-check"></i> 已绑定真实预览 (${sourceName})</span>`;
-            imgSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+            imgSpec.textContent = `${width}x${height} WebP (~${approxKb}KB) | CFG: ${capturedParams.scale} 步数: ${capturedParams.steps}`;
         }
 
         fileInput.onchange = (e) => {
@@ -2496,16 +2519,14 @@
             const finalPrompt = [pos, BENCHMARK_POSITIVE_PROMPT].filter(Boolean).join(', ');
             const finalNegative = [neg, BENCHMARK_NEGATIVE_PROMPT].filter(Boolean).join(', ');
 
-            // 同步现场配置的生成参数到生图会话
-            const upScale = parseFloat(overlay.querySelector('#rbq-pm-up-param-scale').value);
-            const upSampler = overlay.querySelector('#rbq-pm-up-param-sampler').value.trim();
-            const upSteps = parseInt(overlay.querySelector('#rbq-pm-up-param-steps').value, 10);
-            const upRescale = parseFloat(overlay.querySelector('#rbq-pm-up-param-rescale').value);
-
-            if (!isNaN(upScale)) s.naiScale = upScale;
-            if (upSampler) s.naiSampler = upSampler;
-            if (!isNaN(upSteps)) s.naiSteps = upSteps;
-            if (!isNaN(upRescale)) s.naiCfgRescale = upRescale;
+            // 自动从酒馆当前生图会话中抓取真实生图参数绑定到预设
+            const currentSettings = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : s;
+            capturedParams = {
+                scale: currentSettings.naiScale !== undefined && currentSettings.naiScale !== null ? Number(currentSettings.naiScale) : (s.naiScale || 6.0),
+                sampler: currentSettings.naiSampler || s.naiSampler || 'k_euler_ancestral',
+                steps: currentSettings.naiSteps !== undefined && currentSettings.naiSteps !== null ? Number(currentSettings.naiSteps) : (s.naiSteps || 28),
+                cfgRescale: currentSettings.naiCfgRescale !== undefined && currentSettings.naiCfgRescale !== null ? Number(currentSettings.naiCfgRescale) : (s.naiCfgRescale || 0)
+            };
 
             drawBtn.disabled = true;
             const originalHtml = drawBtn.innerHTML;
@@ -2564,16 +2585,11 @@
             const rawTags = overlay.querySelector('#rbq-pm-up-tags').value.trim();
             const tags = rawTags.split(/[\s,，]+/).filter(Boolean);
 
-            const uploadScale = parseFloat(overlay.querySelector('#rbq-pm-up-param-scale').value);
-            const uploadSampler = overlay.querySelector('#rbq-pm-up-param-sampler').value.trim();
-            const uploadSteps = parseInt(overlay.querySelector('#rbq-pm-up-param-steps').value, 10);
-            const uploadCfgRescale = parseFloat(overlay.querySelector('#rbq-pm-up-param-rescale').value);
-
             const uploadParams = {
-                scale: !isNaN(uploadScale) ? uploadScale : 6.0,
-                sampler: uploadSampler || 'k_euler_ancestral',
-                steps: !isNaN(uploadSteps) ? uploadSteps : 28,
-                cfgRescale: !isNaN(uploadCfgRescale) ? uploadCfgRescale : 0
+                scale: capturedParams.scale !== undefined ? Number(capturedParams.scale) : 6.0,
+                sampler: capturedParams.sampler || 'k_euler_ancestral',
+                steps: capturedParams.steps !== undefined ? Number(capturedParams.steps) : 28,
+                cfgRescale: capturedParams.cfgRescale !== undefined ? Number(capturedParams.cfgRescale) : 0
             };
 
             if (!title || !positive) {
@@ -2828,5 +2844,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.12 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.13 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

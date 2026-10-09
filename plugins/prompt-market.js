@@ -4,9 +4,9 @@
     const STORAGE_KEY = '_promptMarketSettings';
     const PRESETS_STORAGE_KEY = '_promptPresets';
 
-    // 默认配置 (默认直连用户自建的 9.rbq.my 节点服务)
+    // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
-        serverUrl: 'http://9.rbq.my', // 自建工坊服务器，例如 http://9.rbq.my 或 http://38.47.113.1:3000
+        serverUrl: 'https://market.rbq.my', // 自建工坊服务器，例如 https://market.rbq.my
         authorName: '',
         repo: 'TTWParty/RBQ-Prompt-Market',
         branch: 'main',
@@ -16,9 +16,9 @@
     function getConfig() {
         const s = RBQ.api.getSettings();
         if (!s[STORAGE_KEY]) s[STORAGE_KEY] = { ...DEFAULT_CONFIG };
-        // 自动补充默认 serverUrl
-        if (!s[STORAGE_KEY].serverUrl && !s[STORAGE_KEY].workerUrl) {
-            s[STORAGE_KEY].serverUrl = 'http://9.rbq.my';
+        // 自动迁移旧的 9.rbq.my 并补充默认 serverUrl
+        if (!s[STORAGE_KEY].serverUrl || s[STORAGE_KEY].serverUrl.includes('9.rbq.my')) {
+            s[STORAGE_KEY].serverUrl = 'https://market.rbq.my';
         }
         return s[STORAGE_KEY];
     }
@@ -687,8 +687,8 @@
                 <div style="padding:16px; display:flex; flex-direction:column; gap:12px;">
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">工坊服务器地址 (API 接口)</label>
-                        <input id="rbq-pm-cfg-server" type="text" placeholder="http://9.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
-                        <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (http://9.rbq.my)。可直接上传和同步预设。</div>
+                        <input id="rbq-pm-cfg-server" type="text" placeholder="https://market.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (https://market.rbq.my)。可直接上传和同步预设。</div>
                     </div>
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称 (默认发布者)</label>
@@ -704,7 +704,7 @@
         overlay.querySelector('#rbq-pm-set-close').onclick = () => overlay.remove();
         overlay.querySelector('#rbq-pm-set-save').onclick = () => {
             const rawServer = overlay.querySelector('#rbq-pm-cfg-server').value.trim();
-            cfg.serverUrl = rawServer ? rawServer.replace(/\/+$/, '') : 'http://9.rbq.my';
+            cfg.serverUrl = rawServer ? rawServer.replace(/\/+$/, '') : 'https://market.rbq.my';
             cfg.authorName = overlay.querySelector('#rbq-pm-cfg-author').value.trim();
             saveConfig();
             toastr.success('设置已保存！');

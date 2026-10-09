@@ -183,7 +183,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                     img_name = f'{preset_id}.{ext}'
                     with open(os.path.join(UPLOADS_DIR, img_name), 'wb') as f:
                         f.write(img_bytes)
-                    host = self.headers.get('Host', '9.rbq.my')
+                    host = self.headers.get('Host', 'market.rbq.my')
                     proto = self.headers.get('X-Forwarded-Proto', 'https')
                     preview_url = f'{proto}://{host}/previews/{img_name}'
                 except Exception as e:

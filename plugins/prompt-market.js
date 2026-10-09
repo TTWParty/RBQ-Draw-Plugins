@@ -344,7 +344,7 @@
                 box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.18);
             }
 
-            /* 3:4 竖版立绘专精容器 (零裁切展示完整立绘与面部表情) */
+            /* 3:4 竖版立绘专精容器 (智能 15% 面部黄金构图，彻底防止切头) */
             .rbq-pm-img-wrap {
                 width: 100%;
                 aspect-ratio: 3 / 4;
@@ -356,6 +356,7 @@
                 width: 100%;
                 height: 100%;
                 object-fit: cover;
+                object-position: center 15%; /* 专为二次元/角色立绘优化：聚焦面部与上半身，绝不切头 */
                 display: block;
                 transition: transform 0.35s ease;
             }
@@ -439,6 +440,45 @@
                 100% { transform: scale(1); }
             }
 
+            /* 卡片信息区排版防护 */
+            .rbq-pm-card-info {
+                padding: 8px 10px;
+                background: #0f172a;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .rbq-pm-card-title {
+                font-size: 12.5px;
+                font-weight: 700;
+                color: #f8fafc;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                line-height: 1.35;
+            }
+            .rbq-pm-card-meta {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+            }
+            .rbq-pm-card-author {
+                font-size: 11px;
+                color: #64748b;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 95px;
+            }
+            .rbq-pm-install-btn {
+                font-size: 11px;
+                font-weight: 600;
+                padding: 3px 9px;
+                border-radius: 6px;
+                flex-shrink: 0;
+            }
+
             /* 网格布局：自适应 4~5 列 */
             #rbq-pm-card-grid {
                 flex: 1;
@@ -450,17 +490,133 @@
                 align-content: start;
             }
 
-            /* 触控与移动端：2 列并排 */
+            /* ── 📱 移动端与小屏极端工况深度适配 (彻底告别竖排挤压与臃肿) ── */
             @media (max-width: 640px) {
                 #rbq-pm-container {
                     width: 96vw !important;
-                    height: 92dvh !important;
-                    border-radius: 10px !important;
+                    height: 94dvh !important;
+                    max-height: 94dvh !important;
+                    border-radius: 12px !important;
                 }
+                
+                /* 顶部 HUD 紧凑排版：强制单行不换行，隐藏冗余小标题与英文徽章 */
+                #rbq-pm-header {
+                    padding: 8px 10px !important;
+                    gap: 8px !important;
+                }
+                #rbq-pm-hdr-title {
+                    font-size: 13.5px !important;
+                    white-space: nowrap !important;
+                }
+                #rbq-pm-hdr-sub, #rbq-pm-hdr-badge {
+                    display: none !important;
+                }
+                #rbq-pm-header-actions {
+                    gap: 4px !important;
+                }
+                #rbq-pm-header-actions .menu_button {
+                    padding: 4px 7px !important;
+                    font-size: 11px !important;
+                    gap: 3px !important;
+                }
+                .rbq-pm-desktop-only {
+                    display: none !important;
+                }
+
+                /* 筛选与搜索工具栏：双行流线化紧凑 HUD，节省 100px+ 纵向高度 */
+                #rbq-pm-toolbar {
+                    padding: 6px 10px !important;
+                    gap: 6px !important;
+                }
+                #rbq-pm-search-input {
+                    height: 30px !important;
+                    font-size: 11.5px !important;
+                }
+                #rbq-pm-sort-select {
+                    height: 30px !important;
+                    font-size: 11px !important;
+                    padding: 2px 4px !important;
+                }
+                #rbq-pm-filter-track {
+                    gap: 4px !important;
+                }
+                .rbq-pm-model-tab {
+                    padding: 2.5px 7px !important;
+                    font-size: 10px !important;
+                }
+
+                /* 卡片网格：精致双列流，保证每屏完整展示 2~3 排卡片 */
                 #rbq-pm-card-grid {
                     grid-template-columns: repeat(2, 1fr) !important;
-                    gap: 10px !important;
+                    gap: 8px !important;
+                    padding: 8px !important;
+                }
+                .rbq-pm-card {
+                    border-radius: 8px !important;
+                }
+                .rbq-pm-badge-model {
+                    top: 5px !important;
+                    left: 5px !important;
+                    font-size: 8.5px !important;
+                    padding: 1px 4.5px !important;
+                    letter-spacing: 0 !important;
+                }
+                .rbq-pm-card-like {
+                    top: 5px !important;
+                    right: 5px !important;
+                    font-size: 9.5px !important;
+                    padding: 2px 5px !important;
+                }
+                .rbq-pm-card-info {
+                    padding: 6px 7px !important;
+                    gap: 3px !important;
+                }
+                .rbq-pm-card-title {
+                    font-size: 11px !important;
+                    line-height: 1.25 !important;
+                }
+                .rbq-pm-card-author {
+                    font-size: 9.5px !important;
+                    max-width: 50px !important;
+                }
+                .rbq-pm-install-btn {
+                    font-size: 10px !important;
+                    padding: 2px 6px !important;
+                }
+
+                /* 详情/试炼台/词库模态弹窗移动端自适应 */
+                #rbq-pm-detail-dialog > div,
+                #rbq-pm-live-test-dialog > div,
+                #rbq-pm-upload-dialog > div,
+                #rbq-pm-test-dialog > div {
+                    width: 96vw !important;
+                    max-height: 94dvh !important;
+                    border-radius: 12px !important;
+                }
+                .rbq-pm-detail-body {
+                    flex-direction: column !important;
                     padding: 10px !important;
+                    gap: 10px !important;
+                }
+                .rbq-pm-detail-left {
+                    width: 100% !important;
+                    max-width: 200px !important;
+                    margin: 0 auto !important;
+                }
+                .rbq-pm-detail-right {
+                    min-width: 0 !important;
+                    width: 100% !important;
+                    gap: 8px !important;
+                }
+                .rbq-pm-detail-foot {
+                    padding: 8px 10px !important;
+                    flex-wrap: wrap !important;
+                    gap: 6px !important;
+                }
+                .rbq-pm-detail-foot .menu_button {
+                    font-size: 11px !important;
+                    padding: 5px 8px !important;
+                    flex: 1 1 auto !important;
                 }
             }
         `;
@@ -501,67 +657,69 @@
                 display: flex; flex-direction: column; overflow: hidden;
             ">
                 <!-- Header HUD -->
-                <div style="padding: 12px 20px; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="width: 36px; height: 36px; border-radius: 9px; background: linear-gradient(135deg, #0284c7, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 17px; color: #fff; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);">
+                <div id="rbq-pm-header" style="padding: 10px 16px; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0;">
+                        <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #0284c7, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; box-shadow: 0 4px 10px rgba(2, 132, 199, 0.4); flex-shrink: 0;">
                             <i class="fa-solid fa-store"></i>
                         </div>
-                        <div>
-                            <div style="font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 7px;">
-                                <span>提示词预设工坊</span>
-                                <span style="font-size: 9.5px; font-weight: 700; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px;">PROMPT MARKET</span>
+                        <div style="min-width: 0;">
+                            <div id="rbq-pm-hdr-title" style="font-size: 14.5px; font-weight: 800; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                                <span style="white-space: nowrap;">提示词<span class="rbq-pm-desktop-only">预设</span>工坊</span>
+                                <span id="rbq-pm-hdr-badge" style="font-size: 9.5px; font-weight: 700; background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(139, 92, 246, 0.2)); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 5px; border-radius: 4px;">MARKET</span>
                             </div>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">社区画师串与预设中心 · 一键安装与现场生图</div>
+                            <div id="rbq-pm-hdr-sub" style="font-size: 10.5px; color: #94a3b8; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">社区画师串与预设中心</div>
                         </div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <button id="rbq-pm-btn-test-prompts" class="menu_button" title="测串提示词库：管理用于测试画师串风格的专属底模" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.35); color: #c084fc; padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer;">
+                    <div id="rbq-pm-header-actions" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                        <button id="rbq-pm-btn-test-prompts" class="menu_button" title="测串提示词库" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.35); color: #c084fc; padding: 5px 9px; font-size: 11.5px; font-weight: 700; border-radius: 6px; cursor: pointer; white-space: nowrap !important;">
                             <i class="fa-solid fa-flask"></i>
-                            <span>测串词库</span>
+                            <span>测串<span class="rbq-pm-desktop-only">词库</span></span>
                         </button>
-                        <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 6px 14px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 10px rgba(2, 132, 199, 0.35);">
+                        <button id="rbq-pm-btn-upload" class="menu_button" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; padding: 5px 11px; font-size: 11.5px; font-weight: 700; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35); white-space: nowrap !important;">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>发布预设</span>
+                            <span>发布<span class="rbq-pm-desktop-only">预设</span></span>
                         </button>
-                        <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 6px 10px; font-size: 13px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 5px 8px; font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; white-space: nowrap !important;">
                             <i class="fa-solid fa-gear"></i>
                         </button>
-                        <button id="rbq-pm-btn-close" style="background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1;">
+                        <button id="rbq-pm-btn-close" style="background: transparent; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 2px 6px; line-height: 1; flex-shrink: 0;">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
                 </div>
 
                 <!-- Model Filter & Category Toolbar -->
-                <div style="padding: 10px 20px; background: #0b1120; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
-                    <!-- Line 1: Model Filter Tabs + Search & Sort -->
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
-                        <!-- Model Tabs -->
-                        <div id="rbq-pm-model-tabs" style="display: flex; gap: 6px; align-items: center;">
-                            <span style="font-size: 11px; color: #64748b; font-weight: 600; margin-right: 2px;">模型:</span>
-                            <button class="rbq-pm-model-tab active" data-model="all" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.18); color: #38bdf8; cursor: pointer;">全部</button>
-                            <button class="rbq-pm-model-tab" data-model="v5" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(217, 70, 239, 0.35); background: rgba(255,255,255,0.04); color: #f0abfc; cursor: pointer;"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</button>
-                            <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer;"><i class="fa-solid fa-bolt"></i> NAI V4.5</button>
-                            <button class="rbq-pm-model-tab" data-model="general" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #cbd5e1; cursor: pointer;">通用/其他</button>
+                <div id="rbq-pm-toolbar" style="padding: 8px 16px; background: #0b1120; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
+                    <!-- Line 1: Search & Sort HUD -->
+                    <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; width: 100%;">
+                        <div style="position: relative; flex: 1; min-width: 0;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #64748b;"></i>
+                            <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="width: 100%; box-sizing: border-box; background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 12px; color: #fff; outline: none; height: 32px;">
                         </div>
-
-                        <!-- Search & Sort -->
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="position: relative;">
-                                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #64748b;"></i>
-                                <input id="rbq-pm-search-input" type="text" placeholder="搜索画师/预设/标签..." style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 10px 5px 28px; font-size: 11.5px; color: #fff; width: 170px; outline: none;">
-                            </div>
-                            <select id="rbq-pm-sort-select" style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: #cbd5e1; outline: none; cursor: pointer;">
-                                <option value="likes">❤️ 点赞数</option>
-                                <option value="downloads">📥 下载量</option>
-                                <option value="newest">🆕 最新</option>
-                            </select>
-                        </div>
+                        <select id="rbq-pm-sort-select" style="background: #070b13; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 8px; font-size: 11.5px; color: #cbd5e1; outline: none; cursor: pointer; flex-shrink: 0; height: 32px;">
+                            <option value="likes">❤️ 点赞数</option>
+                            <option value="downloads">📥 下载量</option>
+                            <option value="newest">🆕 最新</option>
+                        </select>
                     </div>
 
-                    <!-- Line 2: Tags Filter -->
-                    <div id="rbq-pm-tag-bar" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;">
-                        <!-- Generated by renderTags -->
+                    <!-- Line 2: Silky Horizontal Scroll Track for Models & Tags -->
+                    <div id="rbq-pm-filter-track" style="display: flex; gap: 6px; align-items: center; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px;">
+                        <!-- Model Tabs -->
+                        <div id="rbq-pm-model-tabs" style="display: flex; gap: 5px; align-items: center; flex-shrink: 0;">
+                            <button class="rbq-pm-model-tab active" data-model="all" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.18); color: #38bdf8; cursor: pointer; white-space: nowrap;">全部模型</button>
+                            <button class="rbq-pm-model-tab" data-model="v5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(217, 70, 239, 0.35); background: rgba(255,255,255,0.04); color: #f0abfc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</button>
+                            <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-bolt"></i> NAI V4.5</button>
+                            <button class="rbq-pm-model-tab" data-model="general" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #cbd5e1; cursor: pointer; white-space: nowrap;">通用</button>
+                        </div>
+
+                        <!-- Divider -->
+                        <span style="color: rgba(255,255,255,0.18); font-size: 12px; margin: 0 1px; flex-shrink: 0;">|</span>
+
+                        <!-- Tag Pills Track -->
+                        <div id="rbq-pm-tag-bar" style="display: flex; gap: 5px; align-items: center; flex-shrink: 0;">
+                            <!-- Generated by renderTags -->
+                        </div>
                     </div>
                 </div>
 
@@ -734,21 +892,21 @@
                         <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
                         <span class="rbq-pm-like-num">${item.likes || 0}</span>
                     </button>
-                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 36px; background: linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events: none;"></div>
+                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 32px; background: linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events: none;"></div>
                 </div>
-                <div style="padding: 10px 12px; background: #0f172a; display: flex; flex-direction: column; gap: 5px;">
-                    <div style="font-size: 13px; font-weight: 700; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.title}">
+                <div class="rbq-pm-card-info">
+                    <div class="rbq-pm-card-title" title="${item.title}">
                         ${item.title}
                     </div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                        <span style="font-size: 11px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 95px;" title="${item.author || '匿名'}">
-                            <i class="fa-regular fa-user" style="font-size: 10px;"></i> ${item.author || '匿名'}
+                    <div class="rbq-pm-card-meta">
+                        <span class="rbq-pm-card-author" title="${item.author || '匿名'}">
+                            <i class="fa-regular fa-user" style="font-size: 9.5px;"></i> ${item.author || '匿名'}
                         </span>
                         <button class="rbq-pm-install-btn menu_button" style="
                             background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
                             border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
                             color: ${isInstalled ? '#22c55e' : '#fff'};
-                            font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; flex-shrink: 0;
+                            cursor: pointer;
                         ">
                             <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
                             <span>${isInstalled ? '已装' : '安装'}</span>
@@ -818,11 +976,11 @@
                     </div>
                     <button id="rbq-pm-detail-close" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-wrap:wrap; gap:16px;">
+                <div class="rbq-pm-detail-body" style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-wrap:wrap; gap:16px;">
                     <!-- Left Column: Portrait Artwork Preview -->
-                    <div style="width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:10px;">
+                    <div class="rbq-pm-detail-left" style="width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:10px;">
                         <div id="rbq-pm-detail-img-wrap" style="width:100%; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:#070b13; border:1px solid rgba(255,255,255,0.12); position:relative; cursor:zoom-in;" title="点击查看高清大图">
-                            <img src="${previewSrc}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                            <img src="${previewSrc}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block;">
                             <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); font-size:10px; padding:2px 6px; border-radius:4px; color:#cbd5e1;">
                                 <i class="fa-solid fa-magnifying-glass-plus"></i> 点击放大
                             </div>
@@ -835,7 +993,7 @@
                     </div>
 
                     <!-- Right Column: Prompts Inspector & NAI Telemetry -->
-                    <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:12px;">
+                    <div class="rbq-pm-detail-right" style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:12px;">
                         <div>
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                                 <span style="font-size:12px; color:#38bdf8; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 画师/风格预设串 (Positive)</span>
@@ -892,7 +1050,7 @@
                         </div>
                     </div>
                 </div>
-                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div class="rbq-pm-detail-foot" style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                     <div style="font-size:11px; color:#64748b;">
                         <i class="fa-solid fa-circle-check" style="color:#22c55e;"></i> NAI 参数已就绪
                     </div>
@@ -1281,26 +1439,26 @@
         overlay.innerHTML = `
             <div style="width:95vw; max-width:980px; height:88vh; max-height:840px; background:#090d16; border:1px solid rgba(255,255,255,0.16); border-radius:16px; box-shadow:0 25px 60px rgba(0,0,0,0.85), 0 0 30px rgba(168,85,247,0.1); display:flex; flex-direction:column; overflow:hidden; color:#fff;">
                 <!-- Header HUD -->
-                <div style="padding:12px 20px; background:#0f172a; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+                <div id="rbq-pm-live-header" style="padding:12px 20px; background:#0f172a; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <div style="width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg, #a855f7, #ec4899); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; box-shadow:0 3px 10px rgba(168,85,247,0.4);">
+                        <div style="width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg, #a855f7, #ec4899); display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; box-shadow:0 3px 10px rgba(168,85,247,0.4); flex-shrink:0;">
                             <i class="fa-solid fa-flask-vial"></i>
                         </div>
-                        <div>
-                            <div style="font-size:15px; font-weight:800; display:flex; align-items:center; gap:7px;">
+                        <div style="min-width:0;">
+                            <div style="font-size:15px; font-weight:800; display:flex; align-items:center; gap:7px; white-space:nowrap;">
                                 <span>画师串现场试炼台</span>
-                                <span style="font-size:9.5px; font-weight:700; background:rgba(217,70,239,0.2); color:#f0abfc; border:1px solid rgba(217,70,239,0.4); padding:1px 6px; border-radius:4px;">LIVE CRUCIBLE</span>
+                                <span class="rbq-pm-desktop-only" style="font-size:9.5px; font-weight:700; background:rgba(217,70,239,0.2); color:#f0abfc; border:1px solid rgba(217,70,239,0.4); padding:1px 6px; border-radius:4px;">LIVE CRUCIBLE</span>
                             </div>
-                            <div style="font-size:11px; color:#94a3b8; margin-top:1px;">预设「${preset.title || '未命名'}」 · 现场合成测串底模实时出图对比</div>
+                            <div class="rbq-pm-desktop-only" style="font-size:11px; color:#94a3b8; margin-top:1px;">预设「${preset.title || '未命名'}」 · 现场合成测串底模实时出图对比</div>
                         </div>
                     </div>
-                    <button id="rbq-pm-live-close" style="background:transparent; border:none; color:#94a3b8; font-size:20px; cursor:pointer; padding:4px 8px; line-height:1;"><i class="fa-solid fa-xmark"></i></button>
+                    <button id="rbq-pm-live-close" style="background:transparent; border:none; color:#94a3b8; font-size:20px; cursor:pointer; padding:4px 8px; line-height:1; flex-shrink:0;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
 
                 <!-- Body (Responsive 2 Columns) -->
-                <div style="display:flex; flex-direction:row; flex-wrap:wrap; flex:1; overflow-y:auto; padding:16px 20px; gap:20px;">
+                <div class="rbq-pm-live-body" style="display:flex; flex-direction:row; flex-wrap:wrap; flex:1; overflow-y:auto; padding:16px 20px; gap:20px;">
                     <!-- Left Column: Visual Showcase & Comparison -->
-                    <div style="flex:1 1 340px; min-width:280px; max-width:420px; display:flex; flex-direction:column; gap:10px;">
+                    <div class="rbq-pm-live-left" style="flex:1 1 340px; min-width:280px; max-width:420px; display:flex; flex-direction:column; gap:10px;">
                         <!-- A/B Tab Bar -->
                         <div style="display:flex; background:#0b1120; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:3px; gap:4px;">
                             <button id="rbq-pm-live-tab-live" class="menu_button" style="flex:1; font-size:11.5px; font-weight:700; padding:6px 10px; border-radius:6px; border:none; cursor:pointer; transition:all 0.2s;">
@@ -1331,7 +1489,7 @@
                     </div>
 
                     <!-- Right Column: Crucible Controls -->
-                    <div style="flex:2 1 360px; display:flex; flex-direction:column; gap:12px; min-width:290px;">
+                    <div class="rbq-pm-live-right" style="flex:2 1 360px; display:flex; flex-direction:column; gap:12px; min-width:290px;">
                         <!-- Section 1: 画师预设核心词 -->
                         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">

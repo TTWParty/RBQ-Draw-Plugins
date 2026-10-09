@@ -129,7 +129,178 @@
         return result.trim();
     }
 
-    function readPngMetadata(arrayBuffer) {
+    async function decompressBuffer(uint8Array, format = 'deflate') {
+        if (typeof DecompressionStream !== 'undefined') {
+            try {
+                const ds = new DecompressionStream(format);
+                const writer = ds.writable.getWriter();
+                writer.write(uint8Array);
+                writer.close();
+                const reader = ds.readable.getReader();
+                const chunks = [];
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                }
+                const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+                const res = new Uint8Array(totalLen);
+                let offset = 0;
+                for (const c of chunks) {
+                    res.set(c, offset);
+                    offset += c.length;
+                }
+                return res;
+            } catch (err) {
+                console.warn('[PNG Metadata Extractor] DecompressionStream failed:', err);
+            }
+        }
+
+        if (typeof window !== 'undefined') {
+            const pakoLib = window.pako || window.JSZip?.pako || window.JSZipInstance?.pako;
+            if (pakoLib) {
+                try {
+                    if (format === 'gzip') return pakoLib.ungzip(uint8Array);
+                    if (format === 'deflate') return pakoLib.inflate(uint8Array);
+                    if (format === 'deflate-raw') return pakoLib.inflateRaw(uint8Array);
+                } catch (err) {
+                    console.warn('[PNG Metadata Extractor] pako fallback failed:', err);
+                }
+            }
+        }
+
+        throw new Error('当前运行环境缺少解压缩支持 (需要 DecompressionStream 或 pako)');
+    }
+
+    function unfilterPng(uncompressedScanlines, width, height, bpp) {
+        const stride = width * bpp;
+        const uncompressed = new Uint8Array(width * height * bpp);
+        let srcPos = 0;
+        let dstPos = 0;
+
+        for (let y = 0; y < height; y++) {
+            const filter = uncompressedScanlines[srcPos++];
+            const lineStart = dstPos;
+            const prevLineStart = dstPos - stride;
+
+            for (let x = 0; x < stride; x++) {
+                const rawByte = uncompressedScanlines[srcPos++];
+                const a = (x >= bpp) ? uncompressed[lineStart + x - bpp] : 0;
+                const b = (y > 0) ? uncompressed[prevLineStart + x] : 0;
+                const c = (x >= bpp && y > 0) ? uncompressed[prevLineStart + x - bpp] : 0;
+
+                let val = 0;
+                switch (filter) {
+                    case 0: val = rawByte; break;
+                    case 1: val = (rawByte + a) & 0xff; break;
+                    case 2: val = (rawByte + b) & 0xff; break;
+                    case 3: val = (rawByte + Math.floor((a + b) / 2)) & 0xff; break;
+                    case 4: {
+                        const p = a + b - c;
+                        const pa = Math.abs(p - a);
+                        const pb = Math.abs(p - b);
+                        const pc = Math.abs(p - c);
+                        let pr;
+                        if (pa <= pb && pa <= pc) pr = a;
+                        else if (pb <= pc) pr = b;
+                        else pr = c;
+                        val = (rawByte + pr) & 0xff;
+                        break;
+                    }
+                    default:
+                        val = rawByte;
+                }
+                uncompressed[dstPos++] = val;
+            }
+        }
+        return uncompressed;
+    }
+
+    async function checkStealthPayload(bytes) {
+        if (!bytes || bytes.length < 20) return null;
+        const decoder = new TextDecoder();
+        const head = decoder.decode(bytes.slice(0, 32));
+
+        const magicComp = 'stealth_pngcomp';
+        const magicInfo = 'stealth_pnginfo';
+
+        if (head.startsWith(magicComp)) {
+            const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            const bitLen = dv.getUint32(magicComp.length);
+            const byteLen = Math.floor(bitLen / 8);
+            if (byteLen > 0 && magicComp.length + 4 + byteLen <= bytes.length) {
+                const payload = bytes.slice(magicComp.length + 4, magicComp.length + 4 + byteLen);
+                const jsonBytes = await decompressBuffer(payload, 'gzip');
+                return decoder.decode(jsonBytes);
+            }
+        } else if (head.startsWith(magicInfo)) {
+            const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            const bitLen = dv.getUint32(magicInfo.length);
+            const byteLen = Math.floor(bitLen / 8);
+            if (byteLen > 0 && magicInfo.length + 4 + byteLen <= bytes.length) {
+                const payload = bytes.slice(magicInfo.length + 4, magicInfo.length + 4 + byteLen);
+                return decoder.decode(payload);
+            }
+        }
+        return null;
+    }
+
+    async function extractStealthInfo(pixels, width, height, bpp) {
+        if (bpp === 4) {
+            // 1. NovelAI Alpha Column-Major (x outer loop, y inner loop)
+            const totalPixels = width * height;
+            const colAlphaBytes = new Uint8Array(Math.floor(totalPixels / 8));
+            let bitIndex = 0;
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const pixelOffset = (y * width + x) * 4;
+                    const alpha = pixels[pixelOffset + 3];
+                    const bit = alpha & 1;
+                    const bytePos = Math.floor(bitIndex / 8);
+                    const bitPos = 7 - (bitIndex % 8);
+                    if (bit) colAlphaBytes[bytePos] |= (1 << bitPos);
+                    bitIndex++;
+                }
+            }
+            const resCol = await checkStealthPayload(colAlphaBytes);
+            if (resCol) return resCol;
+
+            // 2. Alpha Row-Major
+            const rowAlphaBytes = new Uint8Array(Math.floor(totalPixels / 8));
+            bitIndex = 0;
+            for (let i = 0; i < totalPixels; i++) {
+                const alpha = pixels[i * 4 + 3];
+                const bit = alpha & 1;
+                const bytePos = Math.floor(bitIndex / 8);
+                const bitPos = 7 - (bitIndex % 8);
+                if (bit) rowAlphaBytes[bytePos] |= (1 << bitPos);
+                bitIndex++;
+            }
+            const resRow = await checkStealthPayload(rowAlphaBytes);
+            if (resRow) return resRow;
+        }
+
+        // 3. RGB Row-Major (Stable Diffusion stealth pnginfo)
+        const totalChannels = width * height * 3;
+        const rgbBytes = new Uint8Array(Math.floor(totalChannels / 8));
+        let bitIndex = 0;
+        for (let i = 0; i < width * height; i++) {
+            for (let c = 0; c < 3; c++) {
+                const ch = pixels[i * bpp + c];
+                const bit = ch & 1;
+                const bytePos = Math.floor(bitIndex / 8);
+                const bitPos = 7 - (bitIndex % 8);
+                if (bit) rgbBytes[bytePos] |= (1 << bitPos);
+                bitIndex++;
+            }
+        }
+        const resRgb = await checkStealthPayload(rgbBytes);
+        if (resRgb) return resRgb;
+
+        return null;
+    }
+
+    async function readPngMetadata(arrayBuffer) {
         const dataView = new DataView(arrayBuffer);
         if (dataView.getUint32(0) !== 0x89504E47 || dataView.getUint32(4) !== 0x0D0A1A0A) {
             throw new Error('该图片不是 PNG 格式');
@@ -137,6 +308,11 @@
 
         let offset = 8;
         const metadata = {};
+        const idatChunks = [];
+        let width = 0;
+        let height = 0;
+        let bitDepth = 8;
+        let colorType = 6;
 
         while (offset < dataView.byteLength) {
             const length = dataView.getUint32(offset);
@@ -147,25 +323,92 @@
                 dataView.getUint8(offset + 7)
             );
 
-            if (type === 'tEXt' || type === 'iTXt') {
+            if (type === 'IHDR') {
+                width = dataView.getUint32(offset + 8);
+                height = dataView.getUint32(offset + 12);
+                bitDepth = dataView.getUint8(offset + 16);
+                colorType = dataView.getUint8(offset + 17);
+            } else if (type === 'tEXt') {
                 const chunkData = new Uint8Array(arrayBuffer, offset + 8, length);
                 const text = new TextDecoder().decode(chunkData);
-                
                 const nullIdx = text.indexOf('\0');
                 if (nullIdx !== -1) {
-                    const key = text.slice(0, nullIdx);
-                    let value = text.slice(nullIdx + 1);
-                    if (type === 'iTXt') {
-                        const jsonStart = text.indexOf('{');
-                        if (jsonStart !== -1) {
-                            value = text.slice(jsonStart);
-                        }
-                    }
-                    metadata[key] = value;
+                    metadata[text.slice(0, nullIdx)] = text.slice(nullIdx + 1);
                 }
+            } else if (type === 'zTXt') {
+                const chunkData = new Uint8Array(arrayBuffer, offset + 8, length);
+                const nullIdx = chunkData.indexOf(0);
+                if (nullIdx !== -1) {
+                    const key = new TextDecoder().decode(chunkData.subarray(0, nullIdx));
+                    const compMethod = chunkData[nullIdx + 1];
+                    if (compMethod === 0) {
+                        try {
+                            const compressed = chunkData.subarray(nullIdx + 2);
+                            const decompressed = await decompressBuffer(compressed, 'deflate');
+                            metadata[key] = new TextDecoder().decode(decompressed);
+                        } catch (_err) {}
+                    }
+                }
+            } else if (type === 'iTXt') {
+                const chunkData = new Uint8Array(arrayBuffer, offset + 8, length);
+                const nullIdx = chunkData.indexOf(0);
+                if (nullIdx !== -1) {
+                    const key = new TextDecoder().decode(chunkData.subarray(0, nullIdx));
+                    const compFlag = chunkData[nullIdx + 1];
+                    let cur = nullIdx + 3;
+                    const langEnd = chunkData.indexOf(0, cur);
+                    cur = (langEnd !== -1 ? langEnd : cur) + 1;
+                    const transEnd = chunkData.indexOf(0, cur);
+                    cur = (transEnd !== -1 ? transEnd : cur) + 1;
+
+                    const textBytes = chunkData.subarray(cur);
+                    if (compFlag === 1) {
+                        try {
+                            const decompressed = await decompressBuffer(textBytes, 'deflate');
+                            metadata[key] = new TextDecoder().decode(decompressed);
+                        } catch (_err) {}
+                    } else {
+                        metadata[key] = new TextDecoder().decode(textBytes);
+                    }
+                }
+            } else if (type === 'IDAT') {
+                idatChunks.push(new Uint8Array(arrayBuffer, offset + 8, length));
             }
             offset += length + 12;
         }
+
+        // 若标准文本块未检索到提示词元数据，尝试通过 IDAT 像素最低有效位 (LSB) 提取隐写数据流 (Stealth PNGInfo)
+        const hasStandardMeta = metadata['Description'] || metadata['Comment'] || metadata['parameters'] || metadata['prompt'];
+        if (!hasStandardMeta && idatChunks.length > 0 && bitDepth === 8 && (colorType === 6 || colorType === 2)) {
+            try {
+                const totalIdatLen = idatChunks.reduce((acc, c) => acc + c.length, 0);
+                const allIdat = new Uint8Array(totalIdatLen);
+                let p = 0;
+                for (const chunk of idatChunks) {
+                    allIdat.set(chunk, p);
+                    p += chunk.length;
+                }
+                const uncompressedScanlines = await decompressBuffer(allIdat, 'deflate');
+                const bpp = colorType === 6 ? 4 : 3;
+                const pixels = unfilterPng(uncompressedScanlines, width, height, bpp);
+                const stealthStr = await extractStealthInfo(pixels, width, height, bpp);
+                if (stealthStr) {
+                    try {
+                        const stealthJson = JSON.parse(stealthStr);
+                        if (typeof stealthJson === 'object' && stealthJson !== null) {
+                            for (const [k, v] of Object.entries(stealthJson)) {
+                                metadata[k] = (typeof v === 'object' ? JSON.stringify(v) : String(v));
+                            }
+                        }
+                    } catch (_e) {
+                        metadata['parameters'] = stealthStr;
+                    }
+                }
+            } catch (stegErr) {
+                console.warn('[PNG Metadata Extractor] LSB 隐写数据流解析未命中或失败:', stegErr);
+            }
+        }
+
         return metadata;
     }
 
@@ -176,7 +419,11 @@
             try { rawJson = JSON.parse(metadata['Description']); } catch(e) {}
         }
         if (!rawJson && metadata['Comment']) {
-            try { rawJson = JSON.parse(metadata['Comment']); } catch(e) {}
+            if (typeof metadata['Comment'] === 'object' && metadata['Comment'] !== null) {
+                rawJson = metadata['Comment'];
+            } else if (typeof metadata['Comment'] === 'string') {
+                try { rawJson = JSON.parse(metadata['Comment']); } catch(e) {}
+            }
         }
 
         if (rawJson && (rawJson.prompt || rawJson.v4_prompt)) {
@@ -185,6 +432,9 @@
                 promptStr = reconstructV4Prompt(rawJson.v4_prompt);
             } else {
                 promptStr = rawJson.prompt || '';
+            }
+            if (!promptStr && typeof metadata['Description'] === 'string' && metadata['Description'].trim()) {
+                promptStr = metadata['Description'].trim();
             }
 
             let negativeStr = '';
@@ -927,7 +1177,7 @@
             const blob = await res.blob();
 
             const arrayBuffer = await blob.arrayBuffer();
-            const metadata = readPngMetadata(arrayBuffer);
+            const metadata = await readPngMetadata(arrayBuffer);
             const parsed = parseImageMetadata(metadata);
 
             if (parsed.source === 'NovelAI') {
@@ -1269,10 +1519,10 @@
         }
 
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = async function(e) {
             try {
                 const arrayBuffer = e.target.result;
-                const metadata = readPngMetadata(arrayBuffer);
+                const metadata = await readPngMetadata(arrayBuffer);
                 const parsed = parseImageMetadata(metadata);
                 renderInspectorResult(parsed);
                 toastr.success('解析成功！', 'Prompt Reader');

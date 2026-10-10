@@ -1009,6 +1009,10 @@
                         </div>
                     </div>
                     <div id="rbq-pm-header-actions" style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                        <button id="rbq-pm-btn-refresh" class="menu_button" title="刷新工坊最新预设与数据" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38bdf8; padding: 5px 9px; font-size: 11.5px; font-weight: 700; border-radius: 6px; cursor: pointer; white-space: nowrap !important;">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                            <span class="rbq-pm-desktop-only">刷新</span>
+                        </button>
                         <button id="rbq-pm-btn-test-prompts" class="menu_button" title="测串提示词库" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.35); color: #c084fc; padding: 5px 9px; font-size: 11.5px; font-weight: 700; border-radius: 6px; cursor: pointer; white-space: nowrap !important;">
                             <i class="fa-solid fa-flask"></i>
                             <span>测串<span class="rbq-pm-desktop-only">词库</span></span>
@@ -1087,6 +1091,25 @@
         };
         marketModal.addEventListener('click', handleBackdropClose);
         marketModal.addEventListener('pointerup', handleBackdropClose);
+
+        // 刷新工坊数据按钮
+        const refreshBtn = marketModal.querySelector('#rbq-pm-btn-refresh');
+        if (refreshBtn) {
+            refreshBtn.onclick = async () => {
+                const icon = refreshBtn.querySelector('i');
+                if (icon) icon.classList.add('fa-spin');
+                refreshBtn.disabled = true;
+                try {
+                    await loadMarketData();
+                    toastr.success('🎉 工坊预设已刷新至最新！');
+                } catch (e) {
+                    toastr.error('刷新失败: ' + (e.message || String(e)));
+                } finally {
+                    if (icon) icon.classList.remove('fa-spin');
+                    refreshBtn.disabled = false;
+                }
+            };
+        }
 
         marketModal.querySelector('#rbq-pm-btn-test-prompts').onclick = () => openTestPromptsDialog();
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
@@ -2634,14 +2657,36 @@
                             <span id="rbq-pm-img-spec" style="color:#64748b;">规格: 720px WebP (0.82)</span>
                         </div>
 
-                        <!-- 预览图展示区：未生成前展示空状态引导，绝不预填默认图开盲盒 -->
-                        <div id="rbq-pm-up-preview" style="margin-top:10px; min-height:120px; border-radius:8px; position:relative; background:#070b13; border:1px dashed rgba(255,255,255,0.14); display:flex; align-items:center; justify-content:center; overflow:hidden;">
-                            <div id="rbq-pm-preview-empty" style="padding:24px 16px; text-align:center; color:#64748b;">
+                        <!-- 预览图展示区：未生成前展示空状态引导；绑定后展示 3:4 实机卡片展台 -->
+                        <div id="rbq-pm-up-preview-wrap" style="margin-top:10px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                            <!-- 未生成时的空状态引导框 -->
+                            <div id="rbq-pm-preview-empty" style="width:100%; box-sizing:border-box; padding:24px 16px; border-radius:10px; background:#070b13; border:1px dashed rgba(255,255,255,0.16); text-align:center; color:#64748b;">
                                 <i class="fa-solid fa-image" style="font-size:28px; opacity:0.35; margin-bottom:6px; display:block;"></i>
                                 <div style="font-size:12px; color:#94a3b8; font-weight:600;">尚未生成基准预览图</div>
                                 <div style="font-size:11px; color:#475569; margin-top:3px;">请先点击上方「🎨 立即生图并生成预览」出图后方可发布</div>
                             </div>
-                            <img id="rbq-pm-preview-img" src="" style="display:none; max-height:180px; border-radius:8px; object-fit:contain; margin:0 auto;">
+
+                            <!-- 已绑定后的 3:4 实机卡片展台 (所见即所得，与展厅卡片 1:1 黄金构图) -->
+                            <div id="rbq-pm-preview-card-box" style="display:none; flex-direction:column; align-items:center; gap:10px; width:100%; padding:4px 0;">
+                                <div id="rbq-pm-preview-card" style="width:190px; aspect-ratio:3/4; border-radius:12px; overflow:hidden; background:#070b13; border:1.5px solid rgba(56,189,248,0.5); box-shadow:0 12px 32px rgba(0,0,0,0.7), 0 0 20px rgba(56,189,248,0.16); position:relative; cursor:zoom-in;" title="点击放大查看高清大图">
+                                    <img id="rbq-pm-preview-img" src="" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:transform 0.3s ease;">
+                                    <div style="position:absolute; top:7px; left:7px; background:linear-gradient(135deg, rgba(56,189,248,0.85), rgba(168,85,247,0.85)); color:#fff; font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4);">
+                                        <i class="fa-solid fa-store"></i> 展厅效果
+                                    </div>
+                                    <div style="position:absolute; bottom:7px; right:7px; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); font-size:10px; padding:2px 7px; border-radius:4px; color:#e2e8f0; border:1px solid rgba(255,255,255,0.15);">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 点击放大
+                                    </div>
+                                    <div style="position:absolute; bottom:0; inset-inline:0; height:32px; background:linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events:none;"></div>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <button type="button" id="rbq-pm-preview-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); color:#cbd5e1; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
+                                    </button>
+                                    <button type="button" id="rbq-pm-preview-clear-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;" title="清除当前预览，重新出图">
+                                        <i class="fa-solid fa-rotate-left"></i> 重选/清除
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
@@ -2688,10 +2733,35 @@
         // 图片高保真压缩 (720px / 0.82 WebP)
         let compressedBase64 = '';
         const fileInput = overlay.querySelector('#rbq-pm-up-img');
-        const previewWrap = overlay.querySelector('#rbq-pm-up-preview');
+        const emptyEl = overlay.querySelector('#rbq-pm-preview-empty');
+        const previewCardBox = overlay.querySelector('#rbq-pm-preview-card-box');
+        const previewCard = overlay.querySelector('#rbq-pm-preview-card');
         const previewImg = overlay.querySelector('#rbq-pm-preview-img');
+        const zoomBtn = overlay.querySelector('#rbq-pm-preview-zoom-btn');
+        const clearBtn = overlay.querySelector('#rbq-pm-preview-clear-btn');
         const imgStatus = overlay.querySelector('#rbq-pm-img-status');
         const imgSpec = overlay.querySelector('#rbq-pm-img-spec');
+        const submitBtn = overlay.querySelector('#rbq-pm-up-submit');
+
+        function clearPreview() {
+            compressedBase64 = '';
+            previewImg.src = '';
+            if (previewCardBox) previewCardBox.style.display = 'none';
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (fileInput) fileInput.value = '';
+            if (imgStatus) imgStatus.innerHTML = '<i class="fa-regular fa-clock"></i> 尚未生成当前串的基准预览图';
+            if (imgSpec) imgSpec.textContent = '规格: 720px WebP (0.82)';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.45';
+                submitBtn.style.cursor = 'not-allowed';
+                submitBtn.innerHTML = '<i class="fa-solid fa-ban"></i> 需先生成测试预览图';
+            }
+        }
+
+        if (clearBtn) clearBtn.onclick = clearPreview;
+        if (zoomBtn) zoomBtn.onclick = () => { if (compressedBase64) openImageZoom(compressedBase64); };
+        if (previewCard) previewCard.onclick = () => { if (compressedBase64) openImageZoom(compressedBase64); };
 
         function processImageObject(imgObj, sourceName = '本地上传') {
             const canvas = document.createElement('canvas');
@@ -2708,12 +2778,10 @@
             ctx.drawImage(imgObj, 0, 0, width, height);
             compressedBase64 = canvas.toDataURL('image/webp', 0.82);
             previewImg.src = compressedBase64;
-            previewImg.style.display = 'block';
-            const emptyEl = overlay.querySelector('#rbq-pm-preview-empty');
             if (emptyEl) emptyEl.style.display = 'none';
+            if (previewCardBox) previewCardBox.style.display = 'flex';
 
             // 成功绑定真实预览后，解锁发布按钮
-            const submitBtn = overlay.querySelector('#rbq-pm-up-submit');
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';

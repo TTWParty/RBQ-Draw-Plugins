@@ -192,6 +192,62 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
                     return
 
+        # ── 历史预设无感自动认领/补绑 API ──
+        if parsed.path == '/api/claim':
+            target_id = str(data.get('id', '')).strip()
+            req_creator_key = str(data.get('creatorKey', '')).strip()
+            req_author = str(data.get('author', '')).strip()
+            req_admin_key = str(data.get('adminKey', '')).strip()
+
+            if not target_id or not req_creator_key:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': '缺少预设 ID 或创作者个人码'}).encode('utf-8'))
+                return
+
+            is_admin = bool(req_admin_key and req_admin_key == ADMIN_KEY)
+
+            with DATA_LOCK:
+                presets = load_presets()
+                target_preset = next((p for p in presets if p.get('id') == target_id), None)
+                if not target_preset:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    return
+
+                existing_key = target_preset.get('creatorKey')
+                if existing_key and not is_admin:
+                    if existing_key == req_creator_key:
+                        resp = json.dumps({'success': True, 'message': '已属于当前创作者', 'id': target_id}).encode('utf-8')
+                        self.send_response(200)
+                    else:
+                        resp = json.dumps({'success': False, 'error': '该预设已被其他创作者绑定', 'id': target_id}).encode('utf-8')
+                        self.send_response(403)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+
+                target_preset['creatorKey'] = req_creator_key
+                if req_author and target_preset.get('author') in ('匿名', '匿名社友', ''):
+                    target_preset['author'] = req_author[:30]
+
+                save_presets(presets)
+
+            resp = json.dumps({'success': True, 'message': '成功认领并固化创作者个人码', 'id': target_id}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(resp)
+            return
+
         # ── 删除预设 API (支持创作者身份码与管理员密钥严格鉴权) ──
         if parsed.path == '/api/delete':
             target_id = str(data.get('id', '')).strip()

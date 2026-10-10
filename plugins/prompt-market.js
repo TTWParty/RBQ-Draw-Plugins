@@ -1178,6 +1178,48 @@
         });
     }
 
+    // ── 历史预设静默无感自动认领 ──
+    async function silentlyClaimMyHistoricalPresets(list) {
+        if (!Array.isArray(list) || list.length === 0) return;
+        const cfg = getConfig();
+        if (!cfg.creatorKey || !Array.isArray(cfg.myUploadedIds) || cfg.myUploadedIds.length === 0) return;
+        const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+        if (!uploadEndpoint) return;
+
+        // 筛选出本地记录了上传凭据、但云端尚未绑定创作者码的预设
+        const unclaimed = list.filter(item =>
+            cfg.myUploadedIds.includes(item.id) && (!item.creatorKey || !item.creatorKey.trim())
+        );
+
+        if (unclaimed.length === 0) return;
+
+        let claimedAny = false;
+        for (const item of unclaimed) {
+            try {
+                const res = await fetch(`${uploadEndpoint}/api/claim`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: item.id,
+                        creatorKey: cfg.creatorKey,
+                        author: cfg.authorName || ''
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    item.creatorKey = cfg.creatorKey;
+                    claimedAny = true;
+                    console.log(`[RBQ-Market] 静默认领成功: 预设「${item.title}」已永久固化至创作者码`);
+                }
+            } catch (e) {
+                console.warn('[RBQ-Market] 静默认领请求跳过:', e);
+            }
+        }
+        if (claimedAny) {
+            renderCards();
+        }
+    }
+
     async function loadMarketData() {
         const grid = marketModal.querySelector('#rbq-pm-card-grid');
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; color: #64748b;"><i class="fa-solid fa-spinner fa-spin" style="font-size: 26px; margin-bottom: 10px; color: #38bdf8;"></i><div>正在获取社区云端预设工坊...</div></div>';
@@ -1187,6 +1229,7 @@
             cachedList = Array.isArray(list) ? list : BUILTIN_PRESETS;
             refreshDynamicTags();
             renderCards();
+            silentlyClaimMyHistoricalPresets(cachedList);
         } catch (_err) {
             cachedList = BUILTIN_PRESETS;
             refreshDynamicTags();

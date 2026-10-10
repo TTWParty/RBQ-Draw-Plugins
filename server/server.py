@@ -55,12 +55,42 @@ class MarketHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path in ('/', '/api/health'):
+        if path == '/api/health':
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_cors()
             self.end_headers()
             self.wfile.write(json.dumps({'status': 'ok', 'service': 'RBQ Prompt Market Node'}).encode('utf-8'))
+            return
+
+        if path in ('/', '/index.html'):
+            index_path = os.path.join(BASE_DIR, 'index.html')
+            if os.path.exists(index_path):
+                with open(index_path, 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(content)))
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            else:
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({'status': 'ok', 'service': 'RBQ Prompt Market Node'}).encode('utf-8'))
+                return
+
+        if path == '/favicon.ico':
+            svg_fav = b'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="#a855f7"/><path d="M30 50 L45 65 L72 35" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'''
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/svg+xml')
+            self.send_header('Cache-Control', 'public, max-age=86400')
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(svg_fav)
             return
 
         if path == '/api/presets':

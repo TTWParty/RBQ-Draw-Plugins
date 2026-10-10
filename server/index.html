@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>RBQ 提示词工坊 | Prompt Market</title>
+  <link rel="icon" href="/favicon.ico">
+  <!-- Font Awesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    :root {
+      --bg-base: #07090e;
+      --bg-card: rgba(18, 24, 38, 0.85);
+      --bg-card-hover: rgba(28, 38, 62, 0.95);
+      --bg-glass: rgba(15, 23, 42, 0.75);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(168, 85, 247, 0.4);
+      --primary: #a855f7;
+      --primary-glow: rgba(168, 85, 247, 0.35);
+      --accent-cyan: #38bdf8;
+      --accent-gold: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-emerald: #10b981;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-base);
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 20%, rgba(56, 189, 248, 0.07) 0%, transparent 45%),
+        radial-gradient(circle at 50% 80%, rgba(244, 63, 94, 0.05) 0%, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ── 顶部导航栏 ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(7, 9, 14, 0.82);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 12px 24px;
+    }
+
+    .header-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #fff;
+      box-shadow: 0 4px 16px var(--primary-glow);
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 30%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 500;
+      margin-top: 1px;
+    }
+
+    /* 搜索栏 */
+    .search-bar {
+      flex: 1;
+      max-width: 440px;
+      min-width: 200px;
+      position: relative;
+    }
+
+    .search-bar input {
+      width: 100%;
+      height: 40px;
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 0 16px 0 38px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.25s ease;
+    }
+
+    .search-bar input:focus {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .search-bar i {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    /* 导航右侧按钮群 */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border-subtle);
+      background: rgba(30, 41, 59, 0.6);
+      color: var(--text-main);
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      background: rgba(51, 65, 85, 0.8);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #9333ea, #4f46e5);
+      box-shadow: 0 6px 16px rgba(168, 85, 247, 0.5);
+    }
+
+    .btn-gold {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.3));
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+    }
+
+    .btn-gold:hover {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(217, 119, 6, 0.45));
+      border-color: #f59e0b;
+    }
+
+    /* ── 工具过滤条 ── */
+    .toolbar-section {
+      max-width: 1440px;
+      margin: 16px auto 0;
+      padding: 0 24px;
+      width: 100%;
+    }
+
+    .toolbar-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .model-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+
+    .model-tabs::-webkit-scrollbar { display: none; }
+
+    .tab-item {
+      padding: 7px 15px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(30, 41, 59, 0.45);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .tab-item:hover {
+      color: #fff;
+      background: rgba(51, 65, 85, 0.6);
+    }
+
+    .tab-item.active {
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .tab-item.mine-tab.active {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+    }
+
+    .sub-filter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .tag-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+
+    .tag-pill {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: #cbd5e1;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+
+    .tag-pill:hover, .tag-pill.active {
+      background: rgba(168, 85, 247, 0.2);
+      border-color: rgba(168, 85, 247, 0.6);
+      color: #e9d5ff;
+    }
+
+    .sort-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sort-select {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid var(--border-subtle);
+      color: #cbd5e1;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .sort-select option {
+      background: #0f172a;
+      color: #fff;
+    }
+
+    .stats-badge {
+      font-size: 12px;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    /* ── 瀑布流/展厅网格 ── */
+    main {
+      max-width: 1440px;
+      margin: 16px auto 40px;
+      padding: 0 24px;
+      width: 100%;
+      flex: 1;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      header { padding: 10px 14px; }
+      .toolbar-section, main { padding: 0 14px; }
+    }
+
+    .preset-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .preset-card:hover {
+      transform: translateY(-5px);
+      background: var(--bg-card-hover);
+      border-color: var(--border-hover);
+      box-shadow: 0 12px 30px rgba(168, 85, 247, 0.18);
+    }
+
+    .card-media {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      background: #0f172a;
+      overflow: hidden;
+    }
+
+    .card-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+      display: block;
+    }
+
+    .preset-card:hover .card-media img {
+      transform: scale(1.04);
+    }
+
+    /* 悬浮角标 */
+    .media-badge-top-left {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      padding: 3px 7px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    .media-badge-top-left.v5 { color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
+    .media-badge-top-left.v4 { color: #34d399; border-color: rgba(52, 211, 153, 0.3); }
+    .media-badge-top-left.comfyui { color: #fb923c; border-color: rgba(251, 146, 60, 0.3); }
+
+    .media-badge-top-right {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.9), rgba(217, 119, 6, 0.95));
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      padding: 3px 7px;
+      font-size: 10px;
+      font-weight: 800;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    }
+
+    /* 卡片悬浮快捷操作栏 */
+    .card-hover-actions {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px;
+      background: linear-gradient(to top, rgba(7, 9, 14, 0.92) 0%, rgba(7, 9, 14, 0.5) 70%, transparent 100%);
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: all 0.2s ease;
+      z-index: 5;
+    }
+
+    .preset-card:hover .card-hover-actions {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .action-icon-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .action-icon-btn:hover {
+      background: var(--primary);
+      border-color: transparent;
+      transform: scale(1.08);
+    }
+
+    .card-info {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .card-author {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+    }
+
+    .card-author i { font-size: 10px; }
+
+    .card-stats {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-stat-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .card-stat-item.liked { color: var(--accent-rose); font-weight: 700; }
+    .card-stat-item i { font-size: 11px; }
+
+    /* ── 详情弹窗 (Modal) ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.78);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 960px;
+      max-height: 90vh;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      display: flex;
+      overflow: hidden;
+      position: relative;
+      transform: scale(0.96);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-overlay.open .modal-card {
+      transform: scale(1);
+    }
+
+    @media (max-width: 820px) {
+      .modal-card {
+        flex-direction: column;
+        max-height: 94vh;
+        overflow-y: auto;
+      }
+    }
+
+    .modal-preview-pane {
+      flex: 0 0 380px;
+      background: #020617;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    @media (max-width: 820px) {
+      .modal-preview-pane {
+        flex: none;
+        width: 100%;
+        max-height: 380px;
+      }
+    }
+
+    .modal-preview-pane img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      cursor: zoom-in;
+    }
+
+    .modal-content-pane {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      background: #0b1120;
+    }
+
+    .modal-close-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 13px;
+      z-index: 10;
+      transition: all 0.2s;
+    }
+
+    .modal-close-btn:hover {
+      background: #f43f5e;
+      transform: rotate(90deg);
+    }
+
+    .prompt-box {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 12px;
+      position: relative;
+    }
+
+    .prompt-box-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .prompt-box-header.pos { color: #38bdf8; }
+    .prompt-box-header.neg { color: #f43f5e; }
+
+    .prompt-box-text {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      max-height: 110px;
+      overflow-y: auto;
+      word-break: break-all;
+      white-space: pre-wrap;
+      user-select: text;
+    }
+
+    .copy-sm-btn {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #94a3b8;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .copy-sm-btn:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .params-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .param-box {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .param-box-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .param-box-val {
+      font-size: 13px;
+      color: #fff;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    /* ── Toast 提示 ── */
+    #toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast-msg {
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      pointer-events: auto;
+      animation: toastIn 0.25s ease forwards;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toast-msg.success { border-left-color: var(--accent-emerald); }
+    .toast-msg.error { border-left-color: var(--accent-rose); }
+    .toast-msg.info { border-left-color: var(--accent-cyan); }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── 空状态与加载中 ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+    }
+    .empty-state i { font-size: 44px; margin-bottom: 12px; opacity: 0.5; }
+    .empty-state p { font-size: 14px; font-weight: 500; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+      background: rgba(7, 9, 14, 0.6);
+      margin-top: auto;
+    }
+
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部导航 -->
+  <header>
+    <div class="header-container">
+      <a href="/" class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </div>
+        <div>
+          <div class="brand-title">RBQ 提示词工坊</div>
+          <div class="brand-subtitle">Prompt Market · Web Portal</div>
+        </div>
+      </a>
+
+      <!-- 搜索框 -->
+      <div class="search-bar">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="search-input" placeholder="搜索画师串、标题、标签或作者...">
+      </div>
+
+      <!-- 右侧动作 -->
+      <div class="header-actions">
+        <button id="btn-creator-center" class="btn btn-gold">
+          <i class="fa-solid fa-crown"></i>
+          <span id="creator-btn-text">创作者中心</span>
+        </button>
+        <button id="btn-refresh" class="btn">
+          <i class="fa-solid fa-rotate-right"></i>
+          <span>刷新</span>
+        </button>
+        <a href="https://github.com/TTWParty/SillyTavern-RBQ-Draw" target="_blank" class="btn">
+          <i class="fa-brands fa-github"></i>
+          <span>酒馆插件</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 工具过滤条 -->
+  <section class="toolbar-section">
+    <div class="toolbar-container">
+      <!-- 模型分类 Tabs -->
+      <div class="model-tabs" id="model-tabs">
+        <div class="tab-item active" data-model="all">🌌 全部预设</div>
+        <div class="tab-item" data-model="v5">✨ NAI V5</div>
+        <div class="tab-item" data-model="v4">🎨 NAI V4/4.5</div>
+        <div class="tab-item" data-model="comfyui">⚡ ComfyUI</div>
+        <div class="tab-item mine-tab" data-model="mine">👑 我的上传</div>
+      </div>
+
+      <!-- 二级过滤与排序 -->
+      <div class="sub-filter-row">
+        <!-- 标签胶囊列表 -->
+        <div class="tag-pills" id="tag-pills-container">
+          <span class="tag-pill active" data-tag="all">全部标签</span>
+        </div>
+
+        <!-- 排序选择 -->
+        <div class="sort-control">
+          <select id="sort-select" class="sort-select">
+            <option value="likes">🔥 最多点赞</option>
+            <option value="downloads">📥 最多下载</option>
+            <option value="newest" selected>🕒 最新发布</option>
+          </select>
+          <div class="stats-badge" id="stats-badge">共 0 个预设</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 主体卡片展厅 -->
+  <main>
+    <div class="cards-grid" id="cards-container">
+      <!-- 动态卡片 -->
+    </div>
+    <div class="empty-state" id="empty-state" style="display:none;">
+      <i class="fa-solid fa-box-open"></i>
+      <p>没有找到符合条件的提示词预设</p>
+    </div>
+  </main>
+
+  <!-- 预设详情弹窗 -->
+  <div class="modal-overlay" id="detail-modal">
+    <div class="modal-card">
+      <button class="modal-close-btn" id="modal-close-btn">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <!-- 左侧预览图 -->
+      <div class="modal-preview-pane">
+        <img id="modal-img" src="" alt="预览立绘">
+      </div>
+
+      <!-- 右侧信息内容 -->
+      <div class="modal-content-pane">
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <h2 id="modal-title" style="font-size: 20px; font-weight: 800; color: #fff;"></h2>
+            <span id="modal-model-badge" style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38bdf8;"></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px; font-size: 12px; color: var(--text-dim);">
+            <span><i class="fa-solid fa-user"></i> <strong id="modal-author" style="color: #cbd5e1;"></strong></span>
+            <span><i class="fa-regular fa-clock"></i> <span id="modal-date"></span></span>
+            <span><i class="fa-solid fa-heart" style="color: var(--accent-rose);"></i> <span id="modal-likes"></span></span>
+            <span><i class="fa-solid fa-download" style="color: #38bdf8;"></i> <span id="modal-downloads"></span></span>
+          </div>
+        </div>
+
+        <!-- 标签列表 -->
+        <div id="modal-tags" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+
+        <!-- 正面词 -->
+        <div class="prompt-box">
+          <div class="prompt-box-header pos">
+            <span><i class="fa-solid fa-wand-magic-sparkles"></i> 正面预设词 (Positive)</span>
+            <button class="copy-sm-btn" id="modal-copy-pos"><i class="fa-regular fa-copy"></i> 复制</button>
+          </div>
+          <div class="prompt-box-text" id="modal-pos"></div>
+        </div>
+
+        <!-- 负面词 -->
+        <div class="prompt-box" id="modal-neg-container">
+          <div class="prompt-box-header neg">
+            <span><i class="fa-solid fa-shield-halved"></i> 负面预设词 (Negative)</span>
+            <button class="copy-sm-btn" id="modal-copy-neg"><i class="fa-regular fa-copy"></i> 复制</button>
+          </div>
+          <div class="prompt-box-text" id="modal-neg"></div>
+        </div>
+
+        <!-- 推荐参数卡片 -->
+        <div>
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase;">推荐生图参数</div>
+          <div class="params-grid">
+            <div class="param-box">
+              <div class="param-box-label">CFG Scale</div>
+              <div class="param-box-val" id="modal-p-scale">-</div>
+            </div>
+            <div class="param-box">
+              <div class="param-box-label">Sampler</div>
+              <div class="param-box-val" id="modal-p-sampler" style="font-size: 11px;">-</div>
+            </div>
+            <div class="param-box">
+              <div class="param-box-label">Steps</div>
+              <div class="param-box-val" id="modal-p-steps">-</div>
+            </div>
+            <div class="param-box">
+              <div class="param-box-label">Rescale</div>
+              <div class="param-box-val" id="modal-p-rescale">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部主操作条 -->
+        <div style="display: flex; gap: 8px; margin-top: auto; padding-top: 10px; flex-wrap: wrap;">
+          <button id="modal-btn-like" class="btn btn-primary" style="flex: 1; justify-content: center;">
+            <i class="fa-solid fa-heart"></i>
+            <span>点赞 (<span id="modal-like-count">0</span>)</span>
+          </button>
+          <button id="modal-btn-download" class="btn btn-gold" style="flex: 1; justify-content: center;">
+            <i class="fa-solid fa-file-arrow-down"></i>
+            <span>导出酒馆预设 (.json)</span>
+          </button>
+          <button id="modal-btn-edit" class="btn" style="display: none; background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+            <i class="fa-solid fa-pen-to-square"></i>
+            <span>编辑</span>
+          </button>
+          <button id="modal-btn-del" class="btn" style="display: none; background: rgba(244, 63, 94, 0.2); border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+            <i class="fa-solid fa-trash"></i>
+            <span>下架</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创作者个人码配置弹窗 -->
+  <div class="modal-overlay" id="creator-modal">
+    <div class="modal-card" style="max-width: 480px; flex-direction: column; padding: 24px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h3 style="font-size: 18px; font-weight: 800; color: #fbbf24; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-crown"></i> 创作者中心
+        </h3>
+        <button class="modal-close-btn" id="creator-close-btn" style="position: static;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-bottom: 16px;">
+        创作者个人身份码（Creator Key）是你在工坊认领和管理自己作品的唯一凭据。绑定后可查看「我的上传」、在线编辑标签与标题或下架预设。
+      </p>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px;">我的专属身份码</label>
+        <input type="text" id="creator-input" placeholder="例如: RBQ-U-xxxxxxxx" style="width: 100%; height: 38px; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0 12px; color: #fff; font-family: monospace; font-size: 13px; outline: none;">
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button id="creator-gen-btn" class="btn" style="font-size: 12px;">
+          <i class="fa-solid fa-wand-magic"></i> 随机生成新码
+        </button>
+        <button id="creator-save-btn" class="btn btn-primary" style="font-size: 12px;">
+          <i class="fa-solid fa-check"></i> 保存并生效
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑预设弹窗 -->
+  <div class="modal-overlay" id="edit-modal">
+    <div class="modal-card" style="max-width: 540px; flex-direction: column; padding: 24px; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h3 style="font-size: 18px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-pen-to-square"></i> 编辑预设信息
+        </h3>
+        <button class="modal-close-btn" id="edit-close-btn" style="position: static;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">预设标题</label>
+          <input type="text" id="edit-title" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">作者署名</label>
+          <input type="text" id="edit-author" placeholder="匿名" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">分类标签 (逗号分隔)</label>
+          <input type="text" id="edit-tags" placeholder="例如: Q版, 厚涂, 水彩" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">正面提示词 (Positive)</label>
+          <textarea id="edit-pos" rows="4" style="width: 100%; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; font-family: monospace; resize: vertical;"></textarea>
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">负面提示词 (Negative)</label>
+          <textarea id="edit-neg" rows="3" style="width: 100%; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; font-family: monospace; resize: vertical;"></textarea>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+        <button id="edit-save-btn" class="btn btn-primary">
+          <i class="fa-solid fa-cloud-arrow-up"></i> 保存更新
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div id="toast-container"></div>
+
+  <!-- 页脚 -->
+  <footer>
+    <div style="max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 6px;">
+      <div>RBQ Prompt Market · 社区画师串与提示词预设共享中心</div>
+      <div>Designed for <a href="https://github.com/SillyTavern/SillyTavern" target="_blank">SillyTavern</a> &amp; <a href="https://github.com/TTWParty/SillyTavern-RBQ-Draw" target="_blank">RBQ 生图扩展生态</a></div>
+    </div>
+  </footer>
+
+  <!-- 核心逻辑脚本 -->
+  <script>
+    (function () {
+      let allPresets = [];
+      let currentFilterModel = 'all';
+      let currentFilterTag = 'all';
+      let currentSearchQuery = '';
+      let currentSort = 'newest';
+      let activePreset = null;
+
+      const CREATOR_KEY_STORAGE = 'rbq_creator_key';
+      const LIKED_STORAGE = 'rbq_liked_ids';
+
+      function getCreatorKey() {
+        return localStorage.getItem(CREATOR_KEY_STORAGE) || '';
+      }
+
+      function setCreatorKey(key) {
+        localStorage.setItem(CREATOR_KEY_STORAGE, key.trim());
+        updateCreatorButtonState();
+      }
+
+      function getLikedIds() {
+        try {
+          return JSON.parse(localStorage.getItem(LIKED_STORAGE) || '[]');
+        } catch { return []; }
+      }
+
+      function addLikedId(id) {
+        const list = getLikedIds();
+        if (!list.includes(id)) {
+          list.push(id);
+          localStorage.setItem(LIKED_STORAGE, JSON.stringify(list));
+        }
+      }
+
+      function toast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        el.className = `toast-msg ${type}`;
+        const icon = type === 'success' ? 'circle-check' : (type === 'error' ? 'circle-exclamation' : 'circle-info');
+        el.innerHTML = `<i class="fa-solid fa-${icon}"></i> <span>${escapeHtml(message)}</span>`;
+        container.appendChild(el);
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(-10px)';
+          setTimeout(() => el.remove(), 250);
+        }, 2600);
+      }
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>"']/g, m => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[m]));
+      }
+
+      async function copyText(text, successMsg = '已复制到剪贴板！') {
+        if (!text) return toast('复制内容为空', 'error');
+        try {
+          await navigator.clipboard.writeText(text);
+          toast(successMsg, 'success');
+        } catch {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          toast(successMsg, 'success');
+        }
+      }
+
+      function updateCreatorButtonState() {
+        const key = getCreatorKey();
+        const btnText = document.getElementById('creator-btn-text');
+        if (key) {
+          btnText.textContent = key.slice(0, 10) + '...';
+        } else {
+          btnText.textContent = '创作者中心';
+        }
+      }
+
+      // 获取数据
+      async function fetchPresets() {
+        try {
+          const res = await fetch(`/api/presets?_t=${Date.now()}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          allPresets = await res.json();
+          renderTagPills();
+          renderCards();
+        } catch (err) {
+          toast(`加载工坊预设失败: ${err.message}`, 'error');
+        }
+      }
+
+      // 提取全部可用标签生成过滤胶囊
+      function renderTagPills() {
+        const container = document.getElementById('tag-pills-container');
+        const tagMap = new Map();
+        allPresets.forEach(p => {
+          if (Array.isArray(p.tags)) {
+            p.tags.forEach(t => {
+              const tag = String(t).trim();
+              if (tag) tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+            });
+          }
+        });
+
+        // 按频次排序
+        const sortedTags = Array.from(tagMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
+        let html = `<span class="tag-pill ${currentFilterTag === 'all' ? 'active' : ''}" data-tag="all">全部标签</span>`;
+        sortedTags.forEach(([tag, count]) => {
+          const isActive = currentFilterTag === tag ? 'active' : '';
+          html += `<span class="tag-pill ${isActive}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)} <small style="opacity:0.6;">(${count})</small></span>`;
+        });
+        container.innerHTML = html;
+
+        container.querySelectorAll('.tag-pill').forEach(pill => {
+          pill.onclick = () => {
+            currentFilterTag = pill.dataset.tag;
+            container.querySelectorAll('.tag-pill').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            renderCards();
+          };
+        });
+      }
+
+      // 渲染卡片网格
+      function renderCards() {
+        const container = document.getElementById('cards-container');
+        const emptyState = document.getElementById('empty-state');
+        const myKey = getCreatorKey();
+        const likedIds = getLikedIds();
+
+        // 过滤
+        let filtered = allPresets.filter(p => {
+          // 模型维度
+          if (currentFilterModel === 'mine') {
+            if (!myKey || p.creatorKey !== myKey) return false;
+          } else if (currentFilterModel !== 'all') {
+            if (String(p.model || '').toLowerCase() !== currentFilterModel) return false;
+          }
+
+          // 标签维度
+          if (currentFilterTag !== 'all') {
+            if (!Array.isArray(p.tags) || !p.tags.includes(currentFilterTag)) return false;
+          }
+
+          // 搜索关键词
+          if (currentSearchQuery) {
+            const q = currentSearchQuery.toLowerCase();
+            const title = String(p.title || '').toLowerCase();
+            const author = String(p.author || '').toLowerCase();
+            const pos = String(p.positive || '').toLowerCase();
+            const tags = (p.tags || []).join(' ').toLowerCase();
+            if (!title.includes(q) && !author.includes(q) && !pos.includes(q) && !tags.includes(q)) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+
+        // 排序
+        filtered.sort((a, b) => {
+          if (currentSort === 'likes') return (b.likes || 0) - (a.likes || 0);
+          if (currentSort === 'downloads') return (b.downloads || 0) - (a.downloads || 0);
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        });
+
+        document.getElementById('stats-badge').textContent = `共 ${filtered.length} 个预设`;
+
+        if (filtered.length === 0) {
+          container.innerHTML = '';
+          emptyState.style.display = 'block';
+          return;
+        }
+
+        emptyState.style.display = 'none';
+
+        let html = '';
+        filtered.forEach(p => {
+          const isMine = myKey && p.creatorKey === myKey;
+          const isLiked = likedIds.includes(p.id);
+          const modelType = String(p.model || 'v5').toLowerCase();
+          const previewImg = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+
+          html += `
+            <div class="preset-card" data-id="${p.id}">
+              <div class="card-media">
+                <img src="${escapeHtml(previewImg)}" loading="lazy" alt="${escapeHtml(p.title)}">
+                <div class="media-badge-top-left ${modelType}">${escapeHtml(p.model || 'V5')}</div>
+                ${isMine ? '<div class="media-badge-top-right"><i class="fa-solid fa-crown"></i> 我的</div>' : ''}
+                
+                <div class="card-hover-actions" onclick="event.stopPropagation()">
+                  <button class="action-icon-btn copy-pos-quick" title="复制正面提示词" data-id="${p.id}">
+                    <i class="fa-regular fa-copy"></i>
+                  </button>
+                  <button class="action-icon-btn copy-neg-quick" title="复制负面提示词" data-id="${p.id}">
+                    <i class="fa-solid fa-shield-halved"></i>
+                  </button>
+                  <button class="action-icon-btn like-quick ${isLiked ? 'liked' : ''}" title="点赞" data-id="${p.id}">
+                    <i class="fa-solid fa-heart" style="${isLiked ? 'color:#f43f5e;' : ''}"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="card-info">
+                <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
+                <div class="card-meta-row">
+                  <div class="card-author" title="${escapeHtml(p.author || '匿名')}">
+                    <i class="fa-solid fa-user-pen"></i>
+                    <span>${escapeHtml(p.author || '匿名')}</span>
+                  </div>
+                  <div class="card-stats">
+                    <div class="card-stat-item ${isLiked ? 'liked' : ''}">
+                      <i class="fa-solid fa-heart"></i>
+                      <span>${p.likes || 0}</span>
+                    </div>
+                    <div class="card-stat-item">
+                      <i class="fa-solid fa-download"></i>
+                      <span>${p.downloads || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+
+        // 绑定卡片交互
+        container.querySelectorAll('.preset-card').forEach(card => {
+          card.onclick = () => {
+            const id = card.dataset.id;
+            const p = allPresets.find(x => x.id === id);
+            if (p) openDetailModal(p);
+          };
+        });
+
+        // 快速复制正面
+        container.querySelectorAll('.copy-pos-quick').forEach(btn => {
+          btn.onclick = () => {
+            const p = allPresets.find(x => x.id === btn.dataset.id);
+            if (p) copyText(p.positive, `已复制「${p.title}」正面提示词！`);
+          };
+        });
+
+        // 快速复制负面
+        container.querySelectorAll('.copy-neg-quick').forEach(btn => {
+          btn.onclick = () => {
+            const p = allPresets.find(x => x.id === btn.dataset.id);
+            if (p) copyText(p.negative, `已复制「${p.title}」负面提示词！`);
+          };
+        });
+
+        // 快速点赞
+        container.querySelectorAll('.like-quick').forEach(btn => {
+          btn.onclick = async () => {
+            const p = allPresets.find(x => x.id === btn.dataset.id);
+            if (p) await handleLike(p);
+          };
+        });
+      }
+
+      // 点赞处理
+      async function handleLike(p) {
+        try {
+          const res = await fetch('/api/like', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: p.id })
+          });
+          const data = await res.json();
+          if (data.success) {
+            p.likes = data.likes;
+            addLikedId(p.id);
+            toast(`感谢支持！已为「${p.title}」点赞`, 'success');
+            renderCards();
+            if (activePreset && activePreset.id === p.id) {
+              document.getElementById('modal-likes').textContent = p.likes;
+              document.getElementById('modal-like-count').textContent = p.likes;
+            }
+          }
+        } catch (err) {
+          toast(`点赞失败: ${err.message}`, 'error');
+        }
+      }
+
+      // 下载预设 JSON (100% 适配 SillyTavern RBQ 格式)
+      async function handleDownload(p) {
+        try {
+          fetch('/api/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: p.id })
+          }).then(r => r.json()).then(d => {
+            if (d.success) {
+              p.downloads = d.downloads;
+              renderCards();
+              if (activePreset && activePreset.id === p.id) {
+                document.getElementById('modal-downloads').textContent = p.downloads;
+              }
+            }
+          }).catch(() => {});
+
+          const exportObj = {
+            id: p.id,
+            name: p.title,
+            author: p.author || '匿名',
+            positive: p.positive || '',
+            negative: p.negative || '',
+            tags: p.tags || [],
+            model: p.model || 'v5',
+            params: p.params || {},
+            exportedAt: new Date().toISOString()
+          };
+
+          const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `rbq-preset-${(p.title || 'preset').replace(/[\/\\?%*:|"<>]/g, '_')}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          toast(`已导出「${p.title}」预设 JSON，可在酒馆中直接导入！`, 'success');
+        } catch (err) {
+          toast(`导出失败: ${err.message}`, 'error');
+        }
+      }
+
+      // 打开详情弹窗
+      function openDetailModal(p) {
+        activePreset = p;
+        const modal = document.getElementById('detail-modal');
+        const myKey = getCreatorKey();
+        const isMine = myKey && p.creatorKey === myKey;
+
+        document.getElementById('modal-title').textContent = p.title;
+        document.getElementById('modal-author').textContent = p.author || '匿名';
+        document.getElementById('modal-date').textContent = p.createdAt || '未知日期';
+        document.getElementById('modal-likes').textContent = p.likes || 0;
+        document.getElementById('modal-downloads').textContent = p.downloads || 0;
+        document.getElementById('modal-like-count').textContent = p.likes || 0;
+
+        const badge = document.getElementById('modal-model-badge');
+        badge.textContent = p.model || 'V5';
+
+        document.getElementById('modal-img').src = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+        document.getElementById('modal-pos').textContent = p.positive || '(无)';
+        
+        const negEl = document.getElementById('modal-neg');
+        const negBox = document.getElementById('modal-neg-container');
+        if (p.negative) {
+          negBox.style.display = 'block';
+          negEl.textContent = p.negative;
+        } else {
+          negBox.style.display = 'none';
+        }
+
+        // 参数
+        const params = p.params || {};
+        document.getElementById('modal-p-scale').textContent = params.scale ?? '-';
+        document.getElementById('modal-p-sampler').textContent = params.sampler ?? '-';
+        document.getElementById('modal-p-steps').textContent = params.steps ?? '-';
+        document.getElementById('modal-p-rescale').textContent = params.cfgRescale ?? '-';
+
+        // 标签
+        const tagsContainer = document.getElementById('modal-tags');
+        if (Array.isArray(p.tags) && p.tags.length > 0) {
+          tagsContainer.innerHTML = p.tags.map(t => `<span class="tag-pill" style="cursor:default;"># ${escapeHtml(t)}</span>`).join('');
+        } else {
+          tagsContainer.innerHTML = '<span style="font-size:11px; color:#64748b;">(无标签)</span>';
+        }
+
+        // 作者本人编辑/下架权限按钮
+        const editBtn = document.getElementById('modal-btn-edit');
+        const delBtn = document.getElementById('modal-btn-del');
+        if (isMine) {
+          editBtn.style.display = 'inline-flex';
+          delBtn.style.display = 'inline-flex';
+        } else {
+          editBtn.style.display = 'none';
+          delBtn.style.display = 'none';
+        }
+
+        modal.classList.add('open');
+      }
+
+      function closeDetailModal() {
+        document.getElementById('detail-modal').classList.remove('open');
+      }
+
+      // 事件监听绑定
+      document.getElementById('modal-close-btn').onclick = closeDetailModal;
+      document.getElementById('detail-modal').onclick = (e) => {
+        if (e.target.id === 'detail-modal') closeDetailModal();
+      };
+
+      document.getElementById('modal-copy-pos').onclick = () => {
+        if (activePreset) copyText(activePreset.positive, '已复制正面提示词！');
+      };
+      document.getElementById('modal-copy-neg').onclick = () => {
+        if (activePreset) copyText(activePreset.negative, '已复制负面提示词！');
+      };
+      document.getElementById('modal-btn-like').onclick = async () => {
+        if (activePreset) await handleLike(activePreset);
+      };
+      document.getElementById('modal-btn-download').onclick = async () => {
+        if (activePreset) await handleDownload(activePreset);
+      };
+
+      // 搜索实时过滤
+      const searchInput = document.getElementById('search-input');
+      let searchDebounce = null;
+      searchInput.oninput = (e) => {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => {
+          currentSearchQuery = e.target.value.trim();
+          renderCards();
+        }, 150);
+      };
+
+      // 模型 Tab 切换
+      document.querySelectorAll('#model-tabs .tab-item').forEach(tab => {
+        tab.onclick = () => {
+          document.querySelectorAll('#model-tabs .tab-item').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          currentFilterModel = tab.dataset.model;
+          renderCards();
+        };
+      });
+
+      // 排序选择
+      document.getElementById('sort-select').onchange = (e) => {
+        currentSort = e.target.value;
+        renderCards();
+      };
+
+      // 刷新按钮
+      document.getElementById('btn-refresh').onclick = () => {
+        toast('正在刷新预设列表...', 'info');
+        fetchPresets();
+      };
+
+      // 创作者中心弹窗
+      const creatorModal = document.getElementById('creator-modal');
+      document.getElementById('btn-creator-center').onclick = () => {
+        document.getElementById('creator-input').value = getCreatorKey();
+        creatorModal.classList.add('open');
+      };
+      document.getElementById('creator-close-btn').onclick = () => creatorModal.classList.remove('open');
+      creatorModal.onclick = (e) => { if (e.target.id === 'creator-modal') creatorModal.classList.remove('open'); };
+
+      document.getElementById('creator-gen-btn').onclick = () => {
+        const chars = '0123456789abcdef';
+        let rand = '';
+        for (let i = 0; i < 8; i++) rand += chars[Math.floor(Math.random() * chars.length)];
+        document.getElementById('creator-input').value = 'RBQ-U-' + rand;
+      };
+
+      document.getElementById('creator-save-btn').onclick = () => {
+        const val = document.getElementById('creator-input').value.trim();
+        setCreatorKey(val);
+        creatorModal.classList.remove('open');
+        toast(val ? `已绑定身份码: ${val}` : '已清空身份码', 'success');
+        renderCards();
+      };
+
+      // 编辑弹窗
+      const editModal = document.getElementById('edit-modal');
+      document.getElementById('modal-btn-edit').onclick = () => {
+        if (!activePreset) return;
+        document.getElementById('edit-title').value = activePreset.title || '';
+        document.getElementById('edit-author').value = activePreset.author || '';
+        document.getElementById('edit-tags').value = (activePreset.tags || []).join(', ');
+        document.getElementById('edit-pos').value = activePreset.positive || '';
+        document.getElementById('edit-neg').value = activePreset.negative || '';
+        closeDetailModal();
+        editModal.classList.add('open');
+      };
+
+      document.getElementById('edit-close-btn').onclick = () => editModal.classList.remove('open');
+      editModal.onclick = (e) => { if (e.target.id === 'edit-modal') editModal.classList.remove('open'); };
+
+      document.getElementById('edit-save-btn').onclick = async () => {
+        if (!activePreset) return;
+        const myKey = getCreatorKey();
+        const newTitle = document.getElementById('edit-title').value.trim();
+        const newAuthor = document.getElementById('edit-author').value.trim();
+        const rawTags = document.getElementById('edit-tags').value;
+        const newPos = document.getElementById('edit-pos').value.trim();
+        const newNeg = document.getElementById('edit-neg').value.trim();
+
+        const tagsArr = rawTags.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
+
+        try {
+          const res = await fetch('/api/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: activePreset.id,
+              creatorKey: myKey,
+              title: newTitle || activePreset.title,
+              author: newAuthor || '匿名',
+              tags: tagsArr,
+              positive: newPos,
+              negative: newNeg
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            toast('预设信息已更新成功！', 'success');
+            editModal.classList.remove('open');
+            await fetchPresets();
+          } else {
+            toast(`更新失败: ${data.error || '未授权'}`, 'error');
+          }
+        } catch (err) {
+          toast(`网络错误: ${err.message}`, 'error');
+        }
+      };
+
+      // 下架预设
+      document.getElementById('modal-btn-del').onclick = async () => {
+        if (!activePreset) return;
+        if (!confirm(`确定要永久下架并删除预设「${activePreset.title}」吗？此操作不可恢复。`)) return;
+        const myKey = getCreatorKey();
+
+        try {
+          const res = await fetch('/api/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: activePreset.id,
+              creatorKey: myKey
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            toast(`预设「${activePreset.title}」已下架删除！`, 'success');
+            closeDetailModal();
+            await fetchPresets();
+          } else {
+            toast(`删除失败: ${data.error || '未授权'}`, 'error');
+          }
+        } catch (err) {
+          toast(`删除失败: ${err.message}`, 'error');
+        }
+      };
+
+      // 初始化
+      updateCreatorButtonState();
+      fetchPresets();
+    })();
+  </script>
+</body>
+</html>

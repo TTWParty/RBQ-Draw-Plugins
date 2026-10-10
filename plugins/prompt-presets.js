@@ -254,7 +254,7 @@
 
     function combineParts(...parts) {
         return parts
-            .map(p => (p || '').trim())
+            .map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim())
             .filter(Boolean)
             .join(', ');
     }

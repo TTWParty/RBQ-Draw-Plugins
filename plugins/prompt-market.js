@@ -2551,11 +2551,11 @@
                 `;
             }
             if (mergedPos) {
-                const combinedPos = [preset.positive, curBm?.positive].filter(Boolean).join(', ');
+                const combinedPos = [preset.positive, curBm?.positive].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
                 mergedPos.textContent = combinedPos || '(无)';
             }
             if (mergedNeg) {
-                const combinedNeg = [preset.negative, curBm?.negative].filter(Boolean).join(', ');
+                const combinedNeg = [preset.negative, curBm?.negative].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
                 mergedNeg.value = combinedNeg || '';
             }
         };
@@ -3086,8 +3086,8 @@
             }
 
             // 核心机制：画师串 + 卡密sama基准底模提示词自动合并
-            const finalPrompt = [pos, BENCHMARK_POSITIVE_PROMPT].filter(Boolean).join(', ');
-            const finalNegative = [neg, BENCHMARK_NEGATIVE_PROMPT].filter(Boolean).join(', ');
+            const finalPrompt = [pos, BENCHMARK_POSITIVE_PROMPT].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
+            const finalNegative = [neg, BENCHMARK_NEGATIVE_PROMPT].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
 
             // 自动从酒馆当前生图会话中抓取真实生图参数绑定到预设
             const currentSettings = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : s;

@@ -1042,6 +1042,18 @@
         updateCreatorButtonState();
       }
 
+      function getClientId() {
+        let cid = localStorage.getItem('rbq_client_id');
+        if (!cid) {
+          const chars = '0123456789abcdef';
+          let rand = '';
+          for (let i = 0; i < 16; i++) rand += chars[Math.floor(Math.random() * chars.length)];
+          cid = 'c-' + rand;
+          localStorage.setItem('rbq_client_id', cid);
+        }
+        return cid;
+      }
+
       function getLikedIds() {
         try {
           return JSON.parse(localStorage.getItem(LIKED_STORAGE) || '[]');
@@ -1054,6 +1066,12 @@
           list.push(id);
           localStorage.setItem(LIKED_STORAGE, JSON.stringify(list));
         }
+      }
+
+      function removeLikedId(id) {
+        let list = getLikedIds();
+        list = list.filter(x => x !== id);
+        localStorage.setItem(LIKED_STORAGE, JSON.stringify(list));
       }
 
       function toast(message, type = 'info') {
@@ -1286,27 +1304,47 @@
         });
       }
 
-      // 点赞处理
+      // 点赞处理 (支持防刷与 Toggle 点赞/取消)
+      let isLiking = false;
       async function handleLike(p) {
+        if (isLiking) return;
+        isLiking = true;
         try {
           const res = await fetch('/api/like', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: p.id })
+            body: JSON.stringify({ id: p.id, clientId: getClientId() })
           });
           const data = await res.json();
           if (data.success) {
             p.likes = data.likes;
-            addLikedId(p.id);
-            toast(`感谢支持！已为「${p.title}」点赞`, 'success');
+            if (data.action === 'liked') {
+              addLikedId(p.id);
+              toast(`已为「${p.title}」点赞 ❤️`, 'success');
+            } else {
+              removeLikedId(p.id);
+              toast(`已取消「${p.title}」的点赞 🤍`, 'info');
+            }
             renderCards();
             if (activePreset && activePreset.id === p.id) {
               document.getElementById('modal-likes').textContent = p.likes;
               document.getElementById('modal-like-count').textContent = p.likes;
+              const likeBtn = document.getElementById('modal-btn-like');
+              if (data.action === 'liked') {
+                likeBtn.classList.add('liked');
+                likeBtn.querySelector('span').textContent = `已点赞 (${p.likes})`;
+              } else {
+                likeBtn.classList.remove('liked');
+                likeBtn.querySelector('span').textContent = `点赞 (${p.likes})`;
+              }
             }
+          } else {
+            toast(`操作失败: ${data.error || '网络异常'}`, 'error');
           }
         } catch (err) {
-          toast(`点赞失败: ${err.message}`, 'error');
+          toast(`点赞操作异常: ${err.message}`, 'error');
+        } finally {
+          isLiking = false;
         }
       }
 
@@ -1405,6 +1443,19 @@
         } else {
           editBtn.style.display = 'none';
           delBtn.style.display = 'none';
+        }
+
+        // 点赞按钮初始态
+        const isLiked = getLikedIds().includes(p.id);
+        const modalLikeBtn = document.getElementById('modal-btn-like');
+        if (isLiked) {
+          modalLikeBtn.classList.add('btn-gold');
+          modalLikeBtn.classList.remove('btn-primary');
+          modalLikeBtn.querySelector('span').textContent = `已点赞 (${p.likes || 0})`;
+        } else {
+          modalLikeBtn.classList.add('btn-primary');
+          modalLikeBtn.classList.remove('btn-gold');
+          modalLikeBtn.querySelector('span').textContent = `点赞 (${p.likes || 0})`;
         }
 
         modal.classList.add('open');

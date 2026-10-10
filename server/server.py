@@ -95,7 +95,12 @@ class MarketHandler(BaseHTTPRequestHandler):
 
         if path == '/api/presets':
             presets = load_presets()
-            body = json.dumps(presets, ensure_ascii=False).encode('utf-8')
+            clean_presets = []
+            for p in presets:
+                p_copy = dict(p)
+                p_copy.pop('liked_by', None)
+                clean_presets.append(p_copy)
+            body = json.dumps(clean_presets, ensure_ascii=False).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
@@ -150,7 +155,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode('utf-8'))
             return
 
-        # ── 点赞 API ──
+        # ── 点赞 API (防刷 & 智能 Toggle 点赞/取消) ──
         if parsed.path == '/api/like':
             target_id = str(data.get('id', '')).strip()
             if not target_id:
@@ -161,17 +166,50 @@ class MarketHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
                 return
 
+            client_id = str(data.get('clientId', '')).strip()
+            raw_ip = self.headers.get('CF-Connecting-IP') or self.headers.get('X-Forwarded-For', '').split(',')[0] or self.client_address[0]
+            client_ip = str(raw_ip).strip()
+            voter_id = client_id if client_id else f"ip:{client_ip}"
+
             with DATA_LOCK:
                 presets = load_presets()
                 found = None
                 for p in presets:
                     if p.get('id') == target_id:
-                        p['likes'] = int(p.get('likes', 0)) + 1
                         found = p
                         break
                 if found:
-                    save_presets(presets)
-                    resp = json.dumps({'success': True, 'id': target_id, 'likes': found['likes']}).encode('utf-8')
+                    liked_by = found.setdefault('liked_by', [])
+                    if not isinstance(liked_by, list):
+                        liked_by = []
+                        found['liked_by'] = liked_by
+
+                    current_likes = int(found.get('likes', 0))
+                    if voter_id in liked_by:
+                        # 已经点过赞 -> 取消点赞 (Toggle Unlike)
+                        liked_by.remove(voter_id)
+                        found['likes'] = max(0, current_likes - 1)
+                        save_presets(presets)
+                        resp = json.dumps({
+                            'success': True,
+                            'action': 'unliked',
+                            'isLiked': False,
+                            'id': target_id,
+                            'likes': found['likes']
+                        }).encode('utf-8')
+                    else:
+                        # 未点赞 -> 增加点赞 (Toggle Like)
+                        liked_by.append(voter_id)
+                        found['likes'] = current_likes + 1
+                        save_presets(presets)
+                        resp = json.dumps({
+                            'success': True,
+                            'action': 'liked',
+                            'isLiked': True,
+                            'id': target_id,
+                            'likes': found['likes']
+                        }).encode('utf-8')
+
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json; charset=utf-8')
                     self.send_cors()

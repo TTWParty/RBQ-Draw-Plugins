@@ -347,34 +347,39 @@
         toastr.success(`预设「${preset.title}」已成功装入你的本地预设库！`);
     }
 
-    // 点赞预设
+    // 点赞预设 (支持防刷与 Toggle 点赞/取消)
     async function likePreset(item, likeBtn, countSpan) {
         const cfg = getConfig();
-        if (cfg.likedIds.includes(item.id)) {
-            toastr.info('你已经为该预设点过赞啦 ❤️');
-            return;
-        }
-
         const endpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
-        // 乐观更新 UI
-        item.likes = (item.likes || 0) + 1;
-        countSpan.textContent = item.likes;
-        likeBtn.classList.add('is-liked');
-        cfg.likedIds.push(item.id);
-        saveConfig();
+        const clientId = cfg.creatorKey || cfg.clientId || 'u-tavern';
 
-        toastr.success(`已为「${item.title}」点赞！`);
+        if (!endpoint) return;
 
-        if (endpoint) {
-            try {
-                await fetch(`${endpoint}/api/like`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: item.id })
-                });
-            } catch (err) {
-                console.warn('[Prompt Market] 点赞网络上报异常:', err);
+        try {
+            const res = await fetch(`${endpoint}/api/like`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: item.id, clientId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                item.likes = data.likes;
+                if (countSpan) countSpan.textContent = item.likes;
+                if (data.action === 'liked') {
+                    if (!cfg.likedIds.includes(item.id)) cfg.likedIds.push(item.id);
+                    if (likeBtn) likeBtn.classList.add('is-liked');
+                    toastr.success(`已为「${item.title}」点赞 ❤️`);
+                } else {
+                    cfg.likedIds = cfg.likedIds.filter(x => x !== item.id);
+                    if (likeBtn) likeBtn.classList.remove('is-liked');
+                    toastr.info(`已取消「${item.title}」的点赞 🤍`);
+                }
+                saveConfig();
+            } else {
+                toastr.warning(data.error || '点赞操作失败');
             }
+        } catch (err) {
+            console.warn('[Prompt Market] 点赞网络上报异常:', err);
         }
     }
 

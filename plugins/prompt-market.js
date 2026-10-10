@@ -5,7 +5,7 @@
     const PRESETS_STORAGE_KEY = '_promptPresets';
 
     // 默认基准测试底模提示词（卡密sama倾情提供）
-    const BENCHMARK_POSITIVE_PROMPT = '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, messy bangs, hair between eyes, ahoge, purple eyes, intricate pupils, gentle smile, parted lips, light blush, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black sheer thighhighs, zettai ryouiki, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams, dappled light, dust motes';
+    const BENCHMARK_POSITIVE_PROMPT = '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, center-parted bangs, parted hair, purple eyes, intricate pupils, gentle smile, parted lips, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black thighhighs, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams';
 
     const BENCHMARK_NEGATIVE_PROMPT = 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly';
 
@@ -103,6 +103,13 @@
         if (!Array.isArray(cfg.testPrompts) || cfg.testPrompts.length === 0) {
             cfg.testPrompts = JSON.parse(JSON.stringify(DEFAULT_TEST_PROMPTS));
             saveConfig();
+        } else {
+            // 自动同步官方基准底模提示词最新更新
+            const builtin = cfg.testPrompts.find(tp => tp.id === 'kami-greenhouse' || tp.isBuiltin);
+            if (builtin && builtin.positive !== BENCHMARK_POSITIVE_PROMPT) {
+                builtin.positive = BENCHMARK_POSITIVE_PROMPT;
+                saveConfig();
+            }
         }
         return cfg.testPrompts;
     }

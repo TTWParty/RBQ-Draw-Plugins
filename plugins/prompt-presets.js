@@ -307,8 +307,21 @@
         return sanitizeNaiWeightSyntax(combineParts(global, preset, orig));
     }
 
+    function isIsolatedRequest(context) {
+        if (!context) return false;
+        if (context.meta?.isolate || context.meta?.skipPresets) return true;
+        const isolatedReasons = ['market-live-test', 'market-preset-preview', 'benchmark', 'market-test'];
+        if (isolatedReasons.includes(context.reason) || isolatedReasons.includes(context.meta?.reason)) return true;
+        return false;
+    }
+
     // ── Payload Hooks ──
-    RBQ.on('buildNaiV4Payload', (payload) => {
+    RBQ.on('buildNaiV4Payload', (payload, context) => {
+        if (isIsolatedRequest(context)) {
+            console.info('[Prompt Presets] 🧪 检测到工坊/基准独立测试环境 (Isolated Mode)，纯净跳过本地提示词预设与全局提示词注入');
+            return payload;
+        }
+
         const store = getStore();
         const preset = getActivePreset();
         const pos = store.position || 'prepend';
@@ -343,7 +356,12 @@
         return payload;
     });
 
-    RBQ.on('buildGeneratePayload', (payload) => {
+    RBQ.on('buildGeneratePayload', (payload, context) => {
+        if (isIsolatedRequest(context)) {
+            console.info('[Prompt Presets] 🧪 检测到工坊/基准独立测试环境 (Isolated Mode)，纯净跳过本地提示词预设与全局提示词注入');
+            return payload;
+        }
+
         const store = getStore();
         const preset = getActivePreset();
         const pos = store.position || 'prepend';
@@ -364,7 +382,12 @@
         return payload;
     });
 
-    RBQ.on('buildComfyUiWorkflow', (payload) => {
+    RBQ.on('buildComfyUiWorkflow', (payload, context) => {
+        if (isIsolatedRequest(context)) {
+            console.info('[Prompt Presets] 🧪 检测到工坊/基准独立测试环境 (Isolated Mode)，纯净跳过本地提示词预设与全局提示词注入');
+            return payload;
+        }
+
         const store = getStore();
         const preset = getActivePreset();
         const pos = store.position || 'prepend';

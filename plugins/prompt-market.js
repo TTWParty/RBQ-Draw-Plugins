@@ -2747,6 +2747,9 @@
 
             try {
                 const meta = {
+                    isolate: true,
+                    skipPresets: true,
+                    skipPrefixSuffix: true,
                     negative: finalNegative,
                     scale: !isNaN(liveScale) ? liveScale : undefined,
                     sampler: liveSampler || undefined,
@@ -3094,7 +3097,17 @@
             imgStatus.innerHTML = '<span style="color:#38bdf8;"><i class="fa-solid fa-spinner fa-spin"></i> 正在生成图片...</span>';
 
             try {
-                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-preview', { negative: finalNegative }, (progress) => {
+                const uploadMeta = {
+                    isolate: true,
+                    skipPresets: true,
+                    skipPrefixSuffix: true,
+                    negative: finalNegative,
+                    scale: capturedParams.scale,
+                    sampler: capturedParams.sampler,
+                    steps: capturedParams.steps,
+                    cfgRescale: capturedParams.cfgRescale
+                };
+                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-preview', uploadMeta, (progress) => {
                     if (progress) drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
                 });
 

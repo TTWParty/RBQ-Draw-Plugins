@@ -155,7 +155,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode('utf-8'))
             return
 
-        # ── 点赞 API (防刷 & 智能 Toggle 点赞/取消) ──
+        # ── 点赞 / 取消点赞 API (Toggle 收藏防刷) ──
         if parsed.path == '/api/like':
             target_id = str(data.get('id', '')).strip()
             if not target_id:
@@ -186,7 +186,7 @@ class MarketHandler(BaseHTTPRequestHandler):
 
                     current_likes = int(found.get('likes', 0))
                     if voter_id in liked_by:
-                        # 已经点过赞 -> 取消点赞 (Toggle Unlike)
+                        # 已经点过赞 -> 取消点赞 (Toggle Unlike / 取消收藏)
                         liked_by.remove(voter_id)
                         found['likes'] = max(0, current_likes - 1)
                         save_presets(presets)
@@ -198,7 +198,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                             'likes': found['likes']
                         }).encode('utf-8')
                     else:
-                        # 未点赞 -> 增加点赞 (Toggle Like)
+                        # 未点赞 -> 增加点赞 (Toggle Like / 收藏)
                         liked_by.append(voter_id)
                         found['likes'] = current_likes + 1
                         save_presets(presets)
@@ -221,7 +221,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.send_header('Content-Type', 'application/json')
                     self.send_cors()
                     self.end_headers()
-                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    self.wfile.write(json.dumps({'error': '未找到对应预设'}).encode('utf-8'))
                     return
 
         # ── 下载/安装计数 API ──

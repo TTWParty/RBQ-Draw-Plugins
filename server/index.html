@@ -251,6 +251,11 @@
       box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
     }
 
+    .tab-item.liked-tab.active {
+      background: linear-gradient(135deg, #f43f5e, #e11d48);
+      box-shadow: 0 4px 12px rgba(244, 63, 94, 0.35);
+    }
+
     .sub-filter-row {
       display: flex;
       align-items: center;
@@ -806,8 +811,8 @@
         <div class="tab-item active" data-model="all">🌌 全部预设</div>
         <div class="tab-item" data-model="v5">✨ NAI V5</div>
         <div class="tab-item" data-model="v4">🎨 NAI V4/4.5</div>
-        <div class="tab-item" data-model="comfyui">⚡ ComfyUI</div>
         <div class="tab-item mine-tab" data-model="mine">👑 我的上传</div>
+        <div class="tab-item liked-tab" data-model="liked">❤️ 已点赞</div>
       </div>
 
       <!-- 二级过滤与排序 -->
@@ -1178,6 +1183,8 @@
           // 模型维度
           if (currentFilterModel === 'mine') {
             if (!myKey || p.creatorKey !== myKey) return false;
+          } else if (currentFilterModel === 'liked') {
+            if (!likedIds.includes(p.id)) return false;
           } else if (currentFilterModel !== 'all') {
             if (String(p.model || '').toLowerCase() !== currentFilterModel) return false;
           }
@@ -1214,6 +1221,24 @@
         if (filtered.length === 0) {
           container.innerHTML = '';
           emptyState.style.display = 'block';
+          if (currentFilterModel === 'liked') {
+            emptyState.innerHTML = `
+              <i class="fa-solid fa-heart" style="color: #f43f5e; font-size: 36px; margin-bottom: 12px;"></i>
+              <p style="font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 6px;">暂无已点赞预设</p>
+              <p style="font-size: 12px; color: #64748b;">去展厅点击卡片右上角 ❤️ 即可收藏喜欢的预设作品！</p>
+            `;
+          } else if (currentFilterModel === 'mine') {
+            emptyState.innerHTML = `
+              <i class="fa-solid fa-crown" style="color: #f59e0b; font-size: 36px; margin-bottom: 12px;"></i>
+              <p style="font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 6px;">暂未找到你发布的作品</p>
+              <p style="font-size: 12px; color: #64748b;">点击上方「👑 创作者中心」绑定个人码即可管理属于你的作品！</p>
+            `;
+          } else {
+            emptyState.innerHTML = `
+              <i class="fa-solid fa-box-open" style="font-size: 36px; margin-bottom: 12px;"></i>
+              <p style="font-size: 14px; color: #94a3b8;">没有找到符合条件的提示词预设</p>
+            `;
+          }
           return;
         }
 
@@ -1304,7 +1329,25 @@
         });
       }
 
-      // 点赞处理 (支持防刷与 Toggle 点赞/取消)
+      // 更新弹窗点赞按钮状态（统一安全更新，防 DOM 缺失异常）
+      function updateModalLikeButton(p, isLiked) {
+        const mLike = document.getElementById('modal-likes');
+        if (mLike) mLike.textContent = p.likes || 0;
+        const btn = document.getElementById('modal-btn-like');
+        if (!btn) return;
+        const count = p.likes || 0;
+        if (isLiked) {
+          btn.classList.add('btn-gold');
+          btn.classList.remove('btn-primary');
+          btn.innerHTML = `<i class="fa-solid fa-heart"></i> <span>已点赞 (${count})</span>`;
+        } else {
+          btn.classList.add('btn-primary');
+          btn.classList.remove('btn-gold');
+          btn.innerHTML = `<i class="fa-solid fa-heart"></i> <span>点赞 (${count})</span>`;
+        }
+      }
+
+      // 点赞处理 (支持 Toggle 收藏 / 取消收藏，并彻底防御 null 异常)
       let isLiking = false;
       async function handleLike(p) {
         if (isLiking) return;
@@ -1318,7 +1361,8 @@
           const data = await res.json();
           if (data.success) {
             p.likes = data.likes;
-            if (data.action === 'liked') {
+            const isNowLiked = (data.action === 'liked');
+            if (isNowLiked) {
               addLikedId(p.id);
               toast(`已为「${p.title}」点赞 ❤️`, 'success');
             } else {
@@ -1327,16 +1371,7 @@
             }
             renderCards();
             if (activePreset && activePreset.id === p.id) {
-              document.getElementById('modal-likes').textContent = p.likes;
-              document.getElementById('modal-like-count').textContent = p.likes;
-              const likeBtn = document.getElementById('modal-btn-like');
-              if (data.action === 'liked') {
-                likeBtn.classList.add('liked');
-                likeBtn.querySelector('span').textContent = `已点赞 (${p.likes})`;
-              } else {
-                likeBtn.classList.remove('liked');
-                likeBtn.querySelector('span').textContent = `点赞 (${p.likes})`;
-              }
+              updateModalLikeButton(p, isNowLiked);
             }
           } else {
             toast(`操作失败: ${data.error || '网络异常'}`, 'error');
@@ -1447,16 +1482,7 @@
 
         // 点赞按钮初始态
         const isLiked = getLikedIds().includes(p.id);
-        const modalLikeBtn = document.getElementById('modal-btn-like');
-        if (isLiked) {
-          modalLikeBtn.classList.add('btn-gold');
-          modalLikeBtn.classList.remove('btn-primary');
-          modalLikeBtn.querySelector('span').textContent = `已点赞 (${p.likes || 0})`;
-        } else {
-          modalLikeBtn.classList.add('btn-primary');
-          modalLikeBtn.classList.remove('btn-gold');
-          modalLikeBtn.querySelector('span').textContent = `点赞 (${p.likes || 0})`;
-        }
+        updateModalLikeButton(p, isLiked);
 
         modal.classList.add('open');
       }

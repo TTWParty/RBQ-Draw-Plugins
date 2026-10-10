@@ -347,7 +347,7 @@
         toastr.success(`预设「${preset.title}」已成功装入你的本地预设库！`);
     }
 
-    // 点赞预设 (支持防刷与 Toggle 点赞/取消)
+    // 点赞预设 (支持 Toggle 收藏 / 取消收藏)
     async function likePreset(item, likeBtn, countSpan) {
         const cfg = getConfig();
         const endpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
@@ -375,6 +375,9 @@
                     toastr.info(`已取消「${item.title}」的点赞 🤍`);
                 }
                 saveConfig();
+                if (activeModelFilter === 'liked') {
+                    renderCards();
+                }
             } else {
                 toastr.warning(data.error || '点赞操作失败');
             }
@@ -1099,6 +1102,7 @@
                             <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-bolt"></i> NAI V4.5</button>
                             <button class="rbq-pm-model-tab" data-model="general" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #cbd5e1; cursor: pointer; white-space: nowrap;">通用</button>
                             <button class="rbq-pm-model-tab" data-model="mine" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.45); background: rgba(255,255,255,0.04); color: #fbbf24; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-crown"></i> 我的上传</button>
+                            <button class="rbq-pm-model-tab" data-model="liked" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(244, 63, 94, 0.45); background: rgba(255,255,255,0.04); color: #fb7185; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-heart"></i> 已点赞</button>
                         </div>
 
                         <!-- Divider -->
@@ -1167,14 +1171,18 @@
                 marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(t => {
                     t.classList.remove('active');
                     t.style.background = 'rgba(255,255,255,0.04)';
-                    t.style.borderColor = (t.dataset.model === 'mine') ? 'rgba(245, 158, 11, 0.45)' : (t.dataset.model === 'v5' ? 'rgba(217, 70, 239, 0.35)' : (t.dataset.model === 'v4.5' ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255,255,255,0.12)'));
-                    t.style.color = (t.dataset.model === 'mine') ? '#fbbf24' : (t.dataset.model === 'v5' ? '#f0abfc' : (t.dataset.model === 'v4.5' ? '#7dd3fc' : (t.dataset.model === 'general' ? '#cbd5e1' : '#38bdf8')));
+                    t.style.borderColor = (t.dataset.model === 'mine') ? 'rgba(245, 158, 11, 0.45)' : (t.dataset.model === 'liked' ? 'rgba(244, 63, 94, 0.45)' : (t.dataset.model === 'v5' ? 'rgba(217, 70, 239, 0.35)' : (t.dataset.model === 'v4.5' ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255,255,255,0.12)')));
+                    t.style.color = (t.dataset.model === 'mine') ? '#fbbf24' : (t.dataset.model === 'liked' ? '#fb7185' : (t.dataset.model === 'v5' ? '#f0abfc' : (t.dataset.model === 'v4.5' ? '#7dd3fc' : (t.dataset.model === 'general' ? '#cbd5e1' : '#38bdf8'))));
                 });
                 tab.classList.add('active');
                 if (tab.dataset.model === 'mine') {
                     tab.style.background = 'rgba(245, 158, 11, 0.22)';
                     tab.style.borderColor = '#f59e0b';
                     tab.style.color = '#fef08a';
+                } else if (tab.dataset.model === 'liked') {
+                    tab.style.background = 'rgba(244, 63, 94, 0.22)';
+                    tab.style.borderColor = '#f43f5e';
+                    tab.style.color = '#fda4af';
                 } else if (tab.dataset.model === 'v5') {
                     tab.style.background = 'rgba(217, 70, 239, 0.22)';
                     tab.style.borderColor = '#d946ef';
@@ -1355,6 +1363,8 @@
                         (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(it.id))
                     );
                 });
+            } else if (activeModelFilter === 'liked') {
+                items = items.filter(it => Array.isArray(cfg.likedIds) && cfg.likedIds.includes(it.id));
             } else {
                 items = items.filter(it => {
                     const m = (it.model || '').toLowerCase();
@@ -1408,6 +1418,18 @@
                 if (claimBtn) {
                     claimBtn.onclick = () => openSettingsDialog();
                 }
+                return;
+            }
+            if (activeModelFilter === 'liked') {
+                grid.innerHTML = `
+                    <div style="grid-column: 1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 60px 20px; color:#94a3b8; text-align:center;">
+                        <div style="font-size:38px; margin-bottom:12px; color:#fb7185;"><i class="fa-solid fa-heart"></i></div>
+                        <div style="font-size:15px; font-weight:700; color:#f1f5f9; margin-bottom:6px;">暂无已点赞预设</div>
+                        <div style="font-size:12px; color:#64748b; max-width:440px; line-height:1.6;">
+                            在工坊浏览时，点击卡片右上角的 ❤️ 即可将喜欢的预设收藏至此，方便随时重访与一键装入！
+                        </div>
+                    </div>
+                `;
                 return;
             }
             const emptyHtml = cachedList.length === 0
@@ -3476,5 +3498,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.21 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.22 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

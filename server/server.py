@@ -248,6 +248,82 @@ class MarketHandler(BaseHTTPRequestHandler):
             self.wfile.write(resp)
             return
 
+        # ── 编辑/更新预设 API (修改标签、标题、署名、提示词等) ──
+        if parsed.path == '/api/update':
+            target_id = str(data.get('id', '')).strip()
+            req_creator_key = str(data.get('creatorKey', '')).strip()
+            req_admin_key = str(data.get('adminKey', '')).strip()
+
+            if not target_id:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                return
+
+            is_admin = bool(req_admin_key and req_admin_key == ADMIN_KEY)
+
+            with DATA_LOCK:
+                presets = load_presets()
+                target_preset = next((p for p in presets if p.get('id') == target_id), None)
+                if not target_preset:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    return
+
+                # 鉴权：管理员、创作者码匹配、或历史未绑定者作者名匹配
+                item_creator_key = target_preset.get('creatorKey', '')
+                authorized = False
+                if is_admin:
+                    authorized = True
+                elif item_creator_key and req_creator_key and req_creator_key == item_creator_key:
+                    authorized = True
+                elif not item_creator_key:
+                    req_author = str(data.get('author', '')).strip()
+                    orig_author = str(data.get('originalAuthor', '')).strip() or req_author
+                    if orig_author and orig_author == target_preset.get('author'):
+                        authorized = True
+
+                if not authorized:
+                    self.send_response(403)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': '鉴权失败：无权修改他人作品。请检查创作者个人码。'}).encode('utf-8'))
+                    return
+
+                # 更新允许修改的字段
+                if 'title' in data and str(data['title']).strip():
+                    target_preset['title'] = str(data['title']).strip()[:50]
+                if 'author' in data and str(data['author']).strip():
+                    target_preset['author'] = str(data['author']).strip()[:30]
+                if 'tags' in data and isinstance(data['tags'], list):
+                    target_preset['tags'] = [str(t).strip() for t in data['tags'] if str(t).strip()][:15]
+                if 'description' in data:
+                    target_preset['description'] = str(data['description']).strip()[:200]
+                if 'positive' in data and str(data['positive']).strip():
+                    target_preset['positive'] = str(data['positive']).strip()
+                if 'negative' in data:
+                    target_preset['negative'] = str(data['negative']).strip()
+                if 'model' in data and str(data['model']).strip():
+                    m = str(data['model']).strip().lower()
+                    if m in ('v5', 'v4.5', 'v3', 'sdxl', 'general'):
+                        target_preset['model'] = m
+
+                save_presets(presets)
+
+            resp = json.dumps({'success': True, 'item': target_preset}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(resp)
+            return
+
         # ── 删除预设 API (支持创作者身份码与管理员密钥严格鉴权) ──
         if parsed.path == '/api/delete':
             target_id = str(data.get('id', '')).strip()

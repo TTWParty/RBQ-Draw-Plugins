@@ -57,7 +57,7 @@
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
         serverUrl: 'https://market.rbq.my', // 自建工坊服务器
-        authorName: '',
+        authorName: '匿名',
         creatorKey: '', // 创作者身份码
         adminKey: '', // 服主管理员密钥
         myUploadedIds: [], // 本机发布的预设 ID 列表
@@ -74,6 +74,10 @@
         // 自动迁移旧的 9.rbq.my 并补充默认 serverUrl
         if (!s[STORAGE_KEY].serverUrl || s[STORAGE_KEY].serverUrl.includes('9.rbq.my')) {
             s[STORAGE_KEY].serverUrl = 'https://market.rbq.my';
+        }
+        // 默认作者署名严格为「匿名」，用户可随时自行修改；清理历史遗留的脏数据
+        if (!s[STORAGE_KEY].authorName || s[STORAGE_KEY].authorName === '卡密' || s[STORAGE_KEY].authorName === '卡密RBQ' || s[STORAGE_KEY].authorName === '卡密sama') {
+            s[STORAGE_KEY].authorName = '匿名';
         }
         // 创作者身份码默认留空，由用户在设置中自主创建或手动填入 (绝不静默硬塞)
         if (s[STORAGE_KEY].creatorKey === undefined) {
@@ -604,6 +608,29 @@
                 color: #cbd5e1;
             }
 
+            /* 浮动「我的作品」专属 Game HUD 徽章 (立绘右上角红心旁，彻底解决底栏挤压变形) */
+            .rbq-pm-badge-mine {
+                position: absolute;
+                top: 8px;
+                right: 48px;
+                z-index: 2;
+                background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(217, 119, 6, 0.95));
+                border: 1px solid rgba(251, 191, 36, 0.7);
+                color: #ffffff;
+                font-size: 9.5px;
+                font-weight: 700;
+                padding: 2.5px 7px;
+                border-radius: 12px;
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+                display: inline-flex;
+                align-items: center;
+                gap: 3.5px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+                letter-spacing: 0.3px;
+                pointer-events: none;
+            }
+
             /* 浮动半透明点赞按钮 */
             .rbq-pm-card-like {
                 position: absolute;
@@ -845,6 +872,12 @@
                     font-size: 9.5px !important;
                     padding: 2px 5px !important;
                 }
+                .rbq-pm-badge-mine {
+                    top: 5px !important;
+                    right: 42px !important;
+                    font-size: 8px !important;
+                    padding: 1.5px 5px !important;
+                }
                 .rbq-pm-card-info {
                     padding: 6px 7px !important;
                     gap: 3px !important;
@@ -1053,6 +1086,7 @@
                             <button class="rbq-pm-model-tab" data-model="v5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(217, 70, 239, 0.35); background: rgba(255,255,255,0.04); color: #f0abfc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</button>
                             <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-bolt"></i> NAI V4.5</button>
                             <button class="rbq-pm-model-tab" data-model="general" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #cbd5e1; cursor: pointer; white-space: nowrap;">通用</button>
+                            <button class="rbq-pm-model-tab" data-model="mine" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.45); background: rgba(255,255,255,0.04); color: #fbbf24; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-crown"></i> 我的上传</button>
                         </div>
 
                         <!-- Divider -->
@@ -1115,15 +1149,33 @@
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
         marketModal.querySelector('#rbq-pm-btn-settings').onclick = () => openSettingsDialog();
 
-        // 模型 Filter 切换
+        // 模型与专属分类 Filter 切换
         marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(tab => {
             tab.onclick = () => {
                 marketModal.querySelectorAll('.rbq-pm-model-tab').forEach(t => {
+                    t.classList.remove('active');
                     t.style.background = 'rgba(255,255,255,0.04)';
-                    t.style.borderColor = 'rgba(255,255,255,0.12)';
+                    t.style.borderColor = (t.dataset.model === 'mine') ? 'rgba(245, 158, 11, 0.45)' : (t.dataset.model === 'v5' ? 'rgba(217, 70, 239, 0.35)' : (t.dataset.model === 'v4.5' ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255,255,255,0.12)'));
+                    t.style.color = (t.dataset.model === 'mine') ? '#fbbf24' : (t.dataset.model === 'v5' ? '#f0abfc' : (t.dataset.model === 'v4.5' ? '#7dd3fc' : (t.dataset.model === 'general' ? '#cbd5e1' : '#38bdf8')));
                 });
-                tab.style.background = 'rgba(56, 189, 248, 0.18)';
-                tab.style.borderColor = '#38bdf8';
+                tab.classList.add('active');
+                if (tab.dataset.model === 'mine') {
+                    tab.style.background = 'rgba(245, 158, 11, 0.22)';
+                    tab.style.borderColor = '#f59e0b';
+                    tab.style.color = '#fef08a';
+                } else if (tab.dataset.model === 'v5') {
+                    tab.style.background = 'rgba(217, 70, 239, 0.22)';
+                    tab.style.borderColor = '#d946ef';
+                    tab.style.color = '#f0abfc';
+                } else if (tab.dataset.model === 'v4.5') {
+                    tab.style.background = 'rgba(56, 189, 248, 0.22)';
+                    tab.style.borderColor = '#38bdf8';
+                    tab.style.color = '#7dd3fc';
+                } else {
+                    tab.style.background = 'rgba(56, 189, 248, 0.18)';
+                    tab.style.borderColor = '#38bdf8';
+                    tab.style.color = '#38bdf8';
+                }
                 activeModelFilter = tab.dataset.model;
                 renderCards();
             };
@@ -1250,6 +1302,20 @@
         try {
             const list = await fetchCloudIndex();
             cachedList = Array.isArray(list) ? list : BUILTIN_PRESETS;
+            // 自动同步属于当前创作者个人码的预设到本地缓存，跨端/跨浏览器即时认领点亮
+            const cfg = getConfig();
+            if (cfg.creatorKey && Array.isArray(cachedList)) {
+                let syncedAny = false;
+                cachedList.forEach(item => {
+                    if (item.creatorKey && item.creatorKey === cfg.creatorKey) {
+                        if (!cfg.myUploadedIds.includes(item.id)) {
+                            cfg.myUploadedIds.push(item.id);
+                            syncedAny = true;
+                        }
+                    }
+                });
+                if (syncedAny) saveConfig();
+            }
             refreshDynamicTags();
             renderCards();
             silentlyClaimMyHistoricalPresets(cachedList);
@@ -1266,15 +1332,26 @@
 
         let items = [...cachedList];
 
-        // 模型过滤
+        const cfg = getConfig();
+
+        // 模型与专属分类过滤
         if (activeModelFilter !== 'all') {
-            items = items.filter(it => {
-                const m = (it.model || '').toLowerCase();
-                if (activeModelFilter === 'v5') return m === 'v5' || (it.tags || []).includes('NAI V5');
-                if (activeModelFilter === 'v4.5') return m === 'v4.5' || (it.tags || []).includes('NAI V4.5');
-                if (activeModelFilter === 'general') return m !== 'v5' && m !== 'v4.5';
-                return true;
-            });
+            if (activeModelFilter === 'mine') {
+                items = items.filter(it => {
+                    return Boolean(
+                        (it.creatorKey && cfg.creatorKey && it.creatorKey === cfg.creatorKey) ||
+                        (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(it.id))
+                    );
+                });
+            } else {
+                items = items.filter(it => {
+                    const m = (it.model || '').toLowerCase();
+                    if (activeModelFilter === 'v5') return m === 'v5' || (it.tags || []).includes('NAI V5');
+                    if (activeModelFilter === 'v4.5') return m === 'v4.5' || (it.tags || []).includes('NAI V4.5');
+                    if (activeModelFilter === 'general') return m !== 'v5' && m !== 'v4.5';
+                    return true;
+                });
+            }
         }
 
         // 标签过滤
@@ -1302,14 +1379,31 @@
         }
 
         if (items.length === 0) {
+            if (activeModelFilter === 'mine') {
+                grid.innerHTML = `
+                    <div style="grid-column: 1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 60px 20px; color:#94a3b8; text-align:center;">
+                        <div style="font-size:38px; margin-bottom:12px; color:#fbbf24;"><i class="fa-solid fa-crown"></i></div>
+                        <div style="font-size:15px; font-weight:700; color:#f1f5f9; margin-bottom:6px;">暂未找到你发布的作品</div>
+                        <div style="font-size:12px; color:#64748b; max-width:440px; line-height:1.6; margin-bottom:16px;">
+                            ${cfg.creatorKey ? `当前创作者身份码为 <code>${escapeHtml(cfg.creatorKey)}</code>，该身份码下暂无作品。` : `如果你曾在本设备或其他设备上绑定过个人码（例如：<code>RBQ-U-d31879f4</code>），点击下方填入即可瞬间认领并管理属于你的全部云端作品！`}
+                        </div>
+                        <button id="rbq-pm-empty-claim-btn" class="menu_button" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#fff; font-size:12px; font-weight:700; padding:6px 18px; border-radius:6px; cursor:pointer;">
+                            <i class="fa-solid fa-key"></i> 填入个人码 / 管理作品
+                        </button>
+                    </div>
+                `;
+                const claimBtn = grid.querySelector('#rbq-pm-empty-claim-btn');
+                if (claimBtn) {
+                    claimBtn.onclick = () => openSettingsDialog();
+                }
+                return;
+            }
             const emptyHtml = cachedList.length === 0
                 ? '<i class="fa-regular fa-folder-open" style="font-size: 38px; margin-bottom: 14px; color: #475569;"></i><div style="font-size: 13.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">工坊展厅目前暂无预设</div><div style="font-size: 12px; color: #64748b;">点击右上角「发布预设」，快来成为第一个分享神仙画师串的人吧！</div>'
                 : '<i class="fa-regular fa-folder-open" style="font-size: 34px; margin-bottom: 12px; color: #475569;"></i><div style="font-size: 13px; color: #94a3b8;">当前筛选分类下暂无预设</div>';
             grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 70px 20px; color: #64748b;">${emptyHtml}</div>`;
             return;
         }
-
-        const cfg = getConfig();
 
         items.forEach(item => {
             const isInstalled = cfg.installedIds.includes(item.id);
@@ -1343,6 +1437,7 @@
                 <div class="rbq-pm-img-wrap">
                     <img src="${previewSrc}" alt="${item.title}" loading="lazy">
                     <div class="rbq-pm-badge-model ${modelBadgeClass}">${modelBadgeIcon} <span>${modelBadgeText}</span></div>
+                    ${isMyWork ? '<div class="rbq-pm-badge-mine" title="你发布的作品"><i class="fa-solid fa-crown"></i> <span>我的</span></div>' : ''}
                     <button class="rbq-pm-card-like ${isLiked ? 'is-liked' : ''}" title="点赞预设">
                         <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
                         <span class="rbq-pm-like-num">${item.likes || 0}</span>
@@ -1357,7 +1452,6 @@
                         <span class="rbq-pm-card-author" title="${item.author || '匿名'}">
                             <i class="fa-regular fa-user" style="font-size: 9.5px;"></i>
                             <span>${item.author || '匿名'}</span>
-                            ${isMyWork ? '<span class="rbq-pm-badge-author-mine" title="你发布的作品"><i class="fa-solid fa-crown"></i> 我的</span>' : ''}
                             ${(isAdmin && !isMyWork) ? '<span title="管理员巡查模式" style="font-size:9.5px; opacity:0.75;">🛡️</span>' : ''}
                         </span>
                         <div class="rbq-pm-card-actions">
@@ -1418,6 +1512,153 @@
 
             grid.appendChild(card);
         });
+    }
+
+    // ── 编辑预设与风格标签弹窗 ──
+    function openEditPresetDialog(item, parentOverlay) {
+        const cfg = getConfig();
+        const overlay = document.createElement('div');
+        overlay.id = 'rbq-pm-edit-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:100010; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
+
+        const existingTagsStr = (item.tags || []).join(' ');
+        const m = (item.model || 'v5').toLowerCase();
+
+        overlay.innerHTML = `
+            <div style="width:92vw; max-width:620px; max-height:90vh; background:#0f172a; border:1px solid rgba(56,189,248,0.3); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
+                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px; color:#38bdf8;">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        <span>编辑预设与风格标签</span>
+                    </div>
+                    <button id="rbq-pm-edit-close" class="rbq-pm-close-btn" title="关闭"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <div style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
+                    <div class="rbq-pm-up-grid-2col" style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设标题 *</label>
+                            <input id="rbq-pm-edit-title" type="text" value="${escapeHtml(item.title || '')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">适配模型 *</label>
+                            <select id="rbq-pm-edit-model" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px; color:#fff; font-size:12px; box-sizing:border-box;">
+                                <option value="v5" ${m === 'v5' ? 'selected' : ''}>✨ NAI V5</option>
+                                <option value="v4.5" ${m === 'v4.5' ? 'selected' : ''}>⚡ NAI V4.5</option>
+                                <option value="general" ${(m !== 'v5' && m !== 'v4.5') ? 'selected' : ''}>🌐 通用 / SDXL</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="rbq-pm-up-grid-2col" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                        <div>
+                            <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
+                            <input id="rbq-pm-edit-author" type="text" placeholder="匿名" value="${escapeHtml(item.author || cfg.authorName || '匿名')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px; color:#fbbf24; font-weight:600; display:block; margin-bottom:4px;">
+                                <i class="fa-solid fa-tags"></i> 风格标签 (空格分隔追加)
+                            </label>
+                            <input id="rbq-pm-edit-tags" type="text" placeholder="例如: 3D 写实 御姐 油光丝袜" value="${escapeHtml(existingTagsStr)}" style="width:100%; background:#1e293b; border:1px solid rgba(245,158,11,0.4); border-radius:6px; padding:6px 10px; color:#fef08a; font-size:12px; box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="font-size:12px; color:#38bdf8; display:block; margin-bottom:4px; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 用户画师 / 风格预设词 (Positive) *</label>
+                        <textarea id="rbq-pm-edit-pos" rows="3" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box; line-height:1.4;">${escapeHtml(item.positive || '')}</textarea>
+                    </div>
+
+                    <div>
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">负面提示词 (可选)</label>
+                        <textarea id="rbq-pm-edit-neg" rows="2" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;">${escapeHtml(item.negative || '')}</textarea>
+                    </div>
+
+                    <div>
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设描述 / 介绍说明 (可选)</label>
+                        <input id="rbq-pm-edit-desc" type="text" placeholder="简短描述该画师串的风格特色..." value="${escapeHtml(item.description || '')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                    </div>
+                </div>
+
+                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
+                    <button id="rbq-pm-edit-cancel" class="menu_button" style="font-size:12px; padding:6px 14px;">取消</button>
+                    <button id="rbq-pm-edit-submit" class="menu_button" style="background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; font-size:12px; font-weight:700; padding:6px 18px; cursor:pointer;">
+                        <i class="fa-solid fa-floppy-disk"></i> 保存修改
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        bindFastClose(overlay.querySelector('#rbq-pm-edit-close'), () => overlay.remove());
+        bindFastClose(overlay.querySelector('#rbq-pm-edit-cancel'), () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.addEventListener('pointerup', (e) => { if (e.target === overlay) overlay.remove(); });
+
+        overlay.querySelector('#rbq-pm-edit-submit').onclick = async () => {
+            const title = overlay.querySelector('#rbq-pm-edit-title').value.trim();
+            const positive = overlay.querySelector('#rbq-pm-edit-pos').value.trim();
+            const author = overlay.querySelector('#rbq-pm-edit-author').value.trim() || '匿名';
+            const model = overlay.querySelector('#rbq-pm-edit-model').value || 'v5';
+            const negative = overlay.querySelector('#rbq-pm-edit-neg').value.trim();
+            const description = overlay.querySelector('#rbq-pm-edit-desc').value.trim();
+            const rawTags = overlay.querySelector('#rbq-pm-edit-tags').value.trim();
+            const tags = rawTags.split(/[\s,，#]+/).map(t => t.trim()).filter(Boolean);
+
+            if (!title || !positive) {
+                toastr.warning('标题与正面预设词不能为空！');
+                return;
+            }
+
+            const submitBtn = overlay.querySelector('#rbq-pm-edit-submit');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 保存中...';
+
+            const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+            try {
+                const res = await fetch(`${uploadEndpoint}/api/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: item.id,
+                        creatorKey: cfg.creatorKey,
+                        adminKey: cfg.adminKey,
+                        originalAuthor: item.author || '',
+                        author,
+                        title,
+                        tags,
+                        model,
+                        positive,
+                        negative,
+                        description
+                    })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    item.title = title;
+                    item.author = author;
+                    item.tags = tags;
+                    item.model = model;
+                    item.positive = positive;
+                    item.negative = negative;
+                    item.description = description;
+
+                    toastr.success('🎉 预设与风格标签已更新成功！');
+                    overlay.remove();
+                    if (parentOverlay) parentOverlay.remove();
+                    refreshDynamicTags();
+                    renderCards();
+                    openDetailDialog(item);
+                } else {
+                    toastr.error('更新失败: ' + (data.error || '未知错误'));
+                }
+            } catch (err) {
+                toastr.error('网络请求错误: ' + (err.message || String(err)));
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 保存修改';
+            }
+        };
     }
 
     // ── 预设详情弹窗 (2-Column 视觉工作台 + NAI 生图参数罗盘) ──
@@ -1533,6 +1774,10 @@
                     <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <span>预设ID: <code style="color:#94a3b8; font-size:10.5px;">${item.id || 'community'}</code></span>
                         ${(isMyWork || isAdmin) ? `
+                            <button id="rbq-pm-detail-edit-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.45); color:#7dd3fc; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;" title="修改预设信息、追加标签或编辑提示词">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                                <span>编辑预设/标签</span>
+                            </button>
                             <button id="rbq-pm-detail-delete-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fca5a5; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;" title="从工坊云端彻底下架删除此预设">
                                 <i class="fa-solid fa-trash-can"></i>
                                 <span>下架删除${(isAdmin && !isMyWork) ? ' (管理)' : ''}</span>
@@ -1561,6 +1806,14 @@
                 lb.innerHTML = `<img src="${previewSrc}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
                 bindFastClose(lb, () => lb.remove());
                 document.body.appendChild(lb);
+            };
+        }
+
+        // 编辑预设/追加修改标签 (作者本人凭 Creator Key 或 管理员凭 Admin Key 鉴权)
+        const editBtn = overlay.querySelector('#rbq-pm-detail-edit-btn');
+        if (editBtn) {
+            editBtn.onclick = () => {
+                openEditPresetDialog(item, overlay);
             };
         }
 
@@ -1978,10 +2231,10 @@
         let selectedBenchmarkId = testPrompts.find(tp => tp.isDefault)?.id || testPrompts[0]?.id || 'kami-greenhouse';
 
         let liveImageUrl = '';
-        let currentTab = 'live'; // 'live' | 'original'
+        let currentTab = 'original'; // 默认直接呈现工坊原展示图，出图后自动切至现场实测
         let isGenerating = false;
 
-        const originalSrc = preset.preview || preset.image || KAMI_DEFAULT_PREVIEW;
+        const originalSrc = preset.previewUrl || preset.preview || preset.previewBase64 || preset.image || KAMI_DEFAULT_PREVIEW;
 
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-live-test-dialog';
@@ -2611,7 +2864,7 @@
                     <div class="rbq-pm-up-grid-2col" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">作者昵称</label>
-                            <input id="rbq-pm-up-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                            <input id="rbq-pm-up-author" type="text" placeholder="匿名" value="${escapeHtml(cfg.authorName || '匿名')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                         </div>
                         <div>
                             <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">风格标签 (空格分隔)</label>
@@ -2982,7 +3235,7 @@
                             <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">可选 · 需发布/删除时使用</span>
                         </div>
                         <div style="display:flex; gap:6px; align-items:center;">
-                            <input id="rbq-pm-cfg-creator-key" type="text" value="${cfg.creatorKey || ''}" placeholder="未设置 (点击「随机生成」或手动输入自定义码)" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:12px; font-weight:700; outline:none; box-sizing:border-box;">
+                            <input id="rbq-pm-cfg-creator-key" type="text" value="${escapeHtml(cfg.creatorKey || '')}" placeholder="未设置 (例如: RBQ-U-d31879f4，或点击随机生成)" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:12px; font-weight:700; outline:none; box-sizing:border-box;">
                             <button id="rbq-pm-cfg-regen-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="随机生成专属个人身份码">
                                 <i class="fa-solid fa-dice"></i> 随机生成
                             </button>
@@ -2991,7 +3244,7 @@
                             </button>
                         </div>
                         <div style="font-size:11px; color:#94a3b8; margin-top:6px; line-height:1.45;">
-                            ✨ 用于发布预设时的作品归属与<strong>随时下架删除管理</strong>。你可以点击「随机生成」，也可以手动输入你喜欢的自定义暗号；复制到手机等其他设备粘贴即可跨端漫游！
+                            ✨ 用于发布预设时的作品归属与<strong>随时下架删除/在线编辑</strong>。输入你的专属身份码（例如：<code>RBQ-U-d31879f4</code>）即可同步认领并管理历史作品；也可点击「随机生成」；复制到其他设备即可漫游！
                         </div>
                     </div>
 
@@ -3003,8 +3256,8 @@
                     </div>
 
                     <div>
-                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">默认作者署名</label>
-                        <input id="rbq-pm-cfg-author" type="text" placeholder="你的署名" value="${cfg.authorName || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">默认作者署名 (发布作品时的默认昵称，可随时修改)</label>
+                        <input id="rbq-pm-cfg-author" type="text" placeholder="匿名" value="${escapeHtml(cfg.authorName || '匿名')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
 
                     <!-- 服主管理员专区 -->
@@ -3058,7 +3311,7 @@
             const adminKeyVal = overlay.querySelector('#rbq-pm-cfg-admin-key').value.trim();
 
             cfg.serverUrl = rawServer ? rawServer.replace(/\/+$/, '') : 'https://market.rbq.my';
-            cfg.authorName = overlay.querySelector('#rbq-pm-cfg-author').value.trim();
+            cfg.authorName = overlay.querySelector('#rbq-pm-cfg-author').value.trim() || '匿名';
             cfg.creatorKey = creatorKeyVal; // 尊重用户选择：输入了就保存，留空就保持为空，绝不强塞
             cfg.adminKey = adminKeyVal;
 
@@ -3125,6 +3378,7 @@
             // 先尝试关闭最顶层子弹窗或 Lightbox
             const subOverlays = [
                 document.getElementById('rbq-pm-lightbox'),
+                document.getElementById('rbq-pm-edit-dialog'),
                 document.getElementById('rbq-pm-test-edit-dialog'),
                 document.getElementById('rbq-pm-settings-dialog'),
                 document.getElementById('rbq-pm-upload-dialog'),
@@ -3151,5 +3405,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.14 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.17 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

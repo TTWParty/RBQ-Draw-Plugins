@@ -921,7 +921,7 @@
         <div style="display: flex; gap: 8px; margin-top: auto; padding-top: 10px; flex-wrap: wrap;">
           <button id="modal-btn-like" class="btn btn-primary" style="flex: 1; justify-content: center;">
             <i class="fa-solid fa-heart"></i>
-            <span>点赞 (<span id="modal-like-count">0</span>)</span>
+            <span>点赞 (0)</span>
           </button>
           <button id="modal-btn-download" class="btn btn-gold" style="flex: 1; justify-content: center;">
             <i class="fa-solid fa-file-arrow-down"></i>
@@ -1427,64 +1427,67 @@
 
       // 打开详情弹窗
       function openDetailModal(p) {
-        activePreset = p;
-        const modal = document.getElementById('detail-modal');
-        const myKey = getCreatorKey();
-        const isMine = myKey && p.creatorKey === myKey;
+        try {
+          activePreset = p;
+          const modal = document.getElementById('detail-modal');
+          const myKey = getCreatorKey();
+          const isMine = myKey && p.creatorKey === myKey;
 
-        document.getElementById('modal-title').textContent = p.title;
-        document.getElementById('modal-author').textContent = p.author || '匿名';
-        document.getElementById('modal-date').textContent = p.createdAt || '未知日期';
-        document.getElementById('modal-likes').textContent = p.likes || 0;
-        document.getElementById('modal-downloads').textContent = p.downloads || 0;
-        document.getElementById('modal-like-count').textContent = p.likes || 0;
+          document.getElementById('modal-title').textContent = p.title || '';
+          document.getElementById('modal-author').textContent = p.author || '匿名';
+          document.getElementById('modal-date').textContent = p.createdAt || '未知日期';
+          document.getElementById('modal-likes').textContent = p.likes || 0;
+          document.getElementById('modal-downloads').textContent = p.downloads || 0;
 
-        const badge = document.getElementById('modal-model-badge');
-        badge.textContent = p.model || 'V5';
+          const badge = document.getElementById('modal-model-badge');
+          if (badge) badge.textContent = p.model || 'V5';
 
-        document.getElementById('modal-img').src = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
-        document.getElementById('modal-pos').textContent = p.positive || '(无)';
-        
-        const negEl = document.getElementById('modal-neg');
-        const negBox = document.getElementById('modal-neg-container');
-        if (p.negative) {
-          negBox.style.display = 'block';
-          negEl.textContent = p.negative;
-        } else {
-          negBox.style.display = 'none';
+          document.getElementById('modal-img').src = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+          document.getElementById('modal-pos').textContent = p.positive || '(无)';
+          
+          const negEl = document.getElementById('modal-neg');
+          const negBox = document.getElementById('modal-neg-container');
+          if (p.negative) {
+            negBox.style.display = 'block';
+            negEl.textContent = p.negative;
+          } else {
+            negBox.style.display = 'none';
+          }
+
+          // 参数
+          const params = p.params || {};
+          document.getElementById('modal-p-scale').textContent = params.scale ?? '-';
+          document.getElementById('modal-p-sampler').textContent = params.sampler ?? '-';
+          document.getElementById('modal-p-steps').textContent = params.steps ?? '-';
+          document.getElementById('modal-p-rescale').textContent = params.cfgRescale ?? '-';
+
+          // 标签
+          const tagsContainer = document.getElementById('modal-tags');
+          if (Array.isArray(p.tags) && p.tags.length > 0) {
+            tagsContainer.innerHTML = p.tags.map(t => `<span class="tag-pill" style="cursor:default;"># ${escapeHtml(t)}</span>`).join('');
+          } else {
+            tagsContainer.innerHTML = '<span style="font-size:11px; color:#64748b;">(无标签)</span>';
+          }
+
+          // 作者本人编辑/下架权限按钮
+          const editBtn = document.getElementById('modal-btn-edit');
+          const delBtn = document.getElementById('modal-btn-del');
+          if (isMine) {
+            editBtn.style.display = 'inline-flex';
+            delBtn.style.display = 'inline-flex';
+          } else {
+            editBtn.style.display = 'none';
+            delBtn.style.display = 'none';
+          }
+
+          // 点赞按钮初始态
+          const isLiked = getLikedIds().includes(p.id);
+          updateModalLikeButton(p, isLiked);
+
+          modal.classList.add('open');
+        } catch (err) {
+          console.error('[Detail Modal] 打开弹窗异常:', err);
         }
-
-        // 参数
-        const params = p.params || {};
-        document.getElementById('modal-p-scale').textContent = params.scale ?? '-';
-        document.getElementById('modal-p-sampler').textContent = params.sampler ?? '-';
-        document.getElementById('modal-p-steps').textContent = params.steps ?? '-';
-        document.getElementById('modal-p-rescale').textContent = params.cfgRescale ?? '-';
-
-        // 标签
-        const tagsContainer = document.getElementById('modal-tags');
-        if (Array.isArray(p.tags) && p.tags.length > 0) {
-          tagsContainer.innerHTML = p.tags.map(t => `<span class="tag-pill" style="cursor:default;"># ${escapeHtml(t)}</span>`).join('');
-        } else {
-          tagsContainer.innerHTML = '<span style="font-size:11px; color:#64748b;">(无标签)</span>';
-        }
-
-        // 作者本人编辑/下架权限按钮
-        const editBtn = document.getElementById('modal-btn-edit');
-        const delBtn = document.getElementById('modal-btn-del');
-        if (isMine) {
-          editBtn.style.display = 'inline-flex';
-          delBtn.style.display = 'inline-flex';
-        } else {
-          editBtn.style.display = 'none';
-          delBtn.style.display = 'none';
-        }
-
-        // 点赞按钮初始态
-        const isLiked = getLikedIds().includes(p.id);
-        updateModalLikeButton(p, isLiked);
-
-        modal.classList.add('open');
       }
 
       function closeDetailModal() {

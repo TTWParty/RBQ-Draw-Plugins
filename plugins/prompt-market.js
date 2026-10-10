@@ -3359,42 +3359,88 @@
     // ── 注入入口按钮至提示词预设面板 ──
     function injectMarketEntry() {
         const check = () => {
-            const presetPanel = document.getElementById('rbq-prompt-presets-panel');
-            if (presetPanel && !document.getElementById('rbq-pm-entry-btn')) {
-                const btn = document.createElement('button');
-                btn.id = 'rbq-pm-entry-btn';
-                btn.className = 'menu_button';
-                btn.style.cssText = 'font-size: 12px; padding: 4px 10px; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: #fff; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin-left: 6px;';
-                btn.innerHTML = '<i class="fa-solid fa-store"></i> <span>预设工坊</span>';
-                btn.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openMarketModal();
-                };
-
-                const titleSpan = presetPanel.querySelector('.st-scene-trigger-subpanel-title');
-                if (titleSpan) {
-                    titleSpan.appendChild(btn);
-                }
+            // 彻底清理悬浮球入口 (避免视觉污染与冗余)
+            const oldFloatBtn = document.getElementById('rbq-pm-float-btn');
+            if (oldFloatBtn) {
+                oldFloatBtn.remove();
             }
 
-            // 悬浮球快捷入口 (如果存在悬浮菜单)
-            const floatMenu = document.getElementById('st-scene-trigger-floating-menu');
-            if (floatMenu && !document.getElementById('rbq-pm-float-btn')) {
-                const fItem = document.createElement('div');
-                fItem.id = 'rbq-pm-float-btn';
-                fItem.className = 'st-scene-trigger-floating-item';
-                fItem.style.cssText = 'padding: 8px 10px; cursor: pointer; color: #38bdf8;';
-                fItem.innerHTML = '<i class="fa-solid fa-store" style="width:14px;"></i><span>预设工坊市场</span>';
-                fItem.onclick = (e) => {
-                    e.stopPropagation();
-                    openMarketModal();
-                };
-                floatMenu.appendChild(fItem);
+            const presetPanel = document.getElementById('rbq-prompt-presets-panel');
+            if (presetPanel) {
+                // 1. 优先注入在【提示词预设】卡片标题栏右侧 (利用横向留白，最高辨识度且不占纵向高度)
+                const header = presetPanel.querySelector('.rbq-pp-header');
+                if (header && !document.getElementById('rbq-pm-header-entry-btn')) {
+                    const btn = document.createElement('button');
+                    btn.id = 'rbq-pm-header-entry-btn';
+                    btn.type = 'button';
+                    btn.style.cssText = 'background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(37, 99, 235, 0.22)); border: 1px solid rgba(56, 189, 248, 0.45); color: #38bdf8; padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; box-shadow: 0 0 12px rgba(56, 189, 248, 0.18); transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); white-space: nowrap; flex-shrink: 0; outline: none;';
+                    btn.innerHTML = '<i class="fa-solid fa-store" style="color: #38bdf8; font-size: 12.5px;"></i><span>预设工坊市场</span><span style="font-size: 9.5px; opacity: 0.75; font-family: monospace; letter-spacing: 0.5px; background: rgba(56,189,248,0.22); padding: 1px 5px; border-radius: 4px; font-weight: 700;">MARKET</span>';
+                    
+                    btn.onmouseenter = () => {
+                        btn.style.borderColor = 'rgba(56, 189, 248, 0.85)';
+                        btn.style.boxShadow = '0 0 18px rgba(56, 189, 248, 0.45)';
+                        btn.style.transform = 'translateY(-1px)';
+                        btn.style.color = '#7dd3fc';
+                    };
+                    btn.onmouseleave = () => {
+                        btn.style.borderColor = 'rgba(56, 189, 248, 0.45)';
+                        btn.style.boxShadow = '0 0 12px rgba(56, 189, 248, 0.18)';
+                        btn.style.transform = 'none';
+                        btn.style.color = '#38bdf8';
+                    };
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openMarketModal();
+                    };
+                    header.appendChild(btn);
+                }
+
+                // 2. 同时在【预设操作工具栏】注入辅助按钮 (与新建/导入/导出并列)
+                const toolbar = presetPanel.querySelector('.rbq-pp-toolbar');
+                if (toolbar && !document.getElementById('rbq-pm-toolbar-entry-btn')) {
+                    const tbBtn = document.createElement('button');
+                    tbBtn.id = 'rbq-pm-toolbar-entry-btn';
+                    tbBtn.type = 'button';
+                    tbBtn.className = 'rbq-pp-btn rbq-pp-btn-secondary';
+                    tbBtn.style.cssText = 'border-color: rgba(56,189,248,0.35); color: #38bdf8; background: rgba(56,189,248,0.08);';
+                    tbBtn.innerHTML = '<i class="fa-solid fa-store"></i> <span>工坊市场</span>';
+                    tbBtn.onclick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openMarketModal();
+                    };
+                    const batchDel = toolbar.querySelector('#rbq-pp-batch-delete');
+                    if (batchDel) {
+                        toolbar.insertBefore(tbBtn, batchDel);
+                    } else {
+                        toolbar.appendChild(tbBtn);
+                    }
+                }
+            } else {
+                // 3. 兜底回退：如果未加载预设插件，尝试注入到提示词面板标题
+                const promptPanel = document.querySelector('[data-kite-panel="prompt"]');
+                if (promptPanel && !document.getElementById('rbq-pm-fallback-entry-btn')) {
+                    const titleEl = promptPanel.querySelector('.st-scene-trigger-panel-title');
+                    if (titleEl) {
+                        const fbBtn = document.createElement('button');
+                        fbBtn.id = 'rbq-pm-fallback-entry-btn';
+                        fbBtn.type = 'button';
+                        fbBtn.style.cssText = 'margin-left: auto; background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(37, 99, 235, 0.22)); border: 1px solid rgba(56, 189, 248, 0.45); color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;';
+                        fbBtn.innerHTML = '<i class="fa-solid fa-store"></i> <span>预设工坊市场</span>';
+                        fbBtn.onclick = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openMarketModal();
+                        };
+                        titleEl.appendChild(fbBtn);
+                    }
+                }
             }
         };
 
         setInterval(check, 1000);
+        check();
     }
 
     // ── 全局 ESC 键关闭任意活动弹窗 (依照反向层级递进退出) ──
@@ -3430,5 +3476,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.17 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.21 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

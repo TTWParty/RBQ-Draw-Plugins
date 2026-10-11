@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.25';
+    const PLUGIN_VERSION = '6.5.26';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6010,19 +6010,8 @@ ${getCharacterMemoryTagSpecification()}
     }
 
     function checkUrlSafety(url) {
-        if (!url) return;
-        if (window.location.protocol === 'https:' && String(url).startsWith('http://')) {
-            let hostname = '';
-            try {
-                hostname = new URL(url).hostname;
-            } catch (e) {
-                const match = String(url).match(/^http:\/\/([^:/]+)/);
-                if (match) hostname = match[1];
-            }
-            if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '[::1]') {
-                throw new Error(`[Mixed Content] 当前网页为 HTTPS，但配置的 API 为 HTTP (${url})。浏览器已安全拦截。请改用 HTTPS 接口地址，或使用 HTTP 协议访问当前网页。`);
-            }
-        }
+        // 不再强制抛错阻断发包。Mixed Content 与异源跨域统一由 smartFetch 自动感知并无缝转交酒馆 /proxy/ 服务端代理打通。
+        return;
     }
 
     function logTaggerPayload(label, data) {
@@ -11048,6 +11037,27 @@ SCHEMA:
     }
 
     async function smartFetch(url, options = {}) {
+        const isMixedContent = typeof window !== 'undefined' && window.location?.protocol === 'https:' && String(url).startsWith('http://');
+
+        // 若当前网页为 HTTPS，目标 API 为明文 HTTP，浏览器安全策略强制阻断 Mixed Content 直连
+        // 此时直接无缝转交酒馆后端内置代理 (/proxy/) 发起服务端请求
+        if (isMixedContent) {
+            console.info(`[${PLUGIN_NAME}] 当前网页为 HTTPS，目标为 HTTP 接口 (${url})，自动切换至酒馆内置代理转发 (/proxy/)`);
+            try {
+                const proxyUrl = `/proxy/${url}`;
+                const proxyResponse = await fetch(proxyUrl, options);
+                if (proxyResponse.ok || (proxyResponse.status !== 404 && proxyResponse.status < 500)) {
+                    return proxyResponse;
+                }
+                if (proxyResponse.status === 404) {
+                    throw new Error(`酒馆内置代理未生效 (HTTP 404)。请确保酒馆 config.yaml 中已配置 enableCorsProxy: true 并已重启酒馆服务。`);
+                }
+            } catch (proxyErr) {
+                console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
+                throw new Error(`[Mixed Content] 当前网页为 HTTPS，无法直接连接 HTTP 接口 (${url})。通过酒馆代理 (/proxy/) 转发亦失败: ${proxyErr.message}。请确认已在 config.yaml 开启 enableCorsProxy: true 并重启酒馆。`);
+            }
+        }
+
         let response;
         let isCorsError = false;
         try {
@@ -11066,13 +11076,17 @@ SCHEMA:
             try {
                 const proxyUrl = `/proxy/${url}`;
                 const proxyResponse = await fetch(proxyUrl, options);
-                if (proxyResponse.ok || proxyResponse.status < 500) {
+                if (proxyResponse.ok || (proxyResponse.status !== 404 && proxyResponse.status < 500)) {
                     return proxyResponse;
+                }
+                if (proxyResponse.status === 404) {
+                    throw new Error(`酒馆内置代理未开启 (HTTP 404)。请在酒馆 config.yaml 中配置 enableCorsProxy: true 并重启酒馆。`);
                 }
             } catch (proxyErr) {
                 console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
+                throw proxyErr;
             }
-            throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制。请尝试安装 Allow CORS 浏览器扩展或在 config.yaml 开启 enableCorsProxy。`);
+            throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制或代理不可用。请确认酒馆 config.yaml 中已开启 enableCorsProxy: true 并已重启酒馆。`);
         }
 
         return response;

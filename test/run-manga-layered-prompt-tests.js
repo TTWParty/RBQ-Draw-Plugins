@@ -12,6 +12,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const story = '艾达把文件交给贝丝，说：“资料已收到。”贝丝回答：“请放到桌上。”随后两人走到会议室门口。';
 const styleA = { id: 'style-a', name: 'STYLE_A_NAME', positive: 'STYLE_A_LITERAL watercolor, soft edges', negative: 'STYLE_A_NEGATIVE harsh strokes' };
 const styleB = { id: 'style-b', name: 'STYLE_B_NAME', positive: 'STYLE_B_LITERAL woodcut, crosshatching', negative: 'STYLE_B_NEGATIVE pastel' };
+const TOOL_INPUT_MARKER = '\n\n[Task Input JSON]\n';
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS ' + name); }
 function host(mode = 'structured', ec = ID) {
@@ -35,6 +36,7 @@ function host(mode = 'structured', ec = ID) {
     };
     load('    async function callOpenAiCompatible(', '    async function callCustomHttp(');
     load('    async function callCustomHttp(', '    async function callStructuredCompletion(');
+    load('    async function callStructuredCompletion(', '    async function callTagger(');
     load('    function collectMangaReferenceData(', '    async function importCharacterFromCurrentCard(');
     load('    async function parseTaggerSegment(', '    RBQ.api.parseWithTagger =');
     load('    async function submitManualDraw(', '    /* ── 🗂️ 剧情漫画时间轴');
@@ -81,9 +83,31 @@ function assertTrace(trace, task, responseKind, transport) {
     if (transport) assert.equal(trace.transport, transport);
     assert.equal(trace.planningMode, task.startsWith('refine_') ? 'preserve' : 'adapt');
 }
+function toolDescriptionInput(body) {
+    const description = body.tools?.find(tool => tool.function?.name === 'generate_draw_spec')?.function.description || '';
+    const index = description.indexOf(TOOL_INPUT_MARKER);
+    return index < 0 ? null : JSON.parse(description.slice(index + TOOL_INPUT_MARKER.length));
+}
 function requestParts(body, provider) {
-    const request = provider === 'custom' && !body.messages ? body : JSON.parse(body.messages.find(message => message.role === 'user').content);
+    const request = provider === 'custom' && !body.messages ? body
+        : toolDescriptionInput(body) || JSON.parse(body.messages.find(message => message.role === 'user').content);
     return { request, instruction: provider === 'custom' && !body.messages ? body.mangaInstruction : systemText(body) };
+}
+let descriptionInputUserInstruction;
+function assertTaskInputRoute(body, expected, enabled) {
+    const described = toolDescriptionInput(body);
+    if (enabled) {
+        assert.deepEqual(described, clone(expected), 'the entire assembled payload is preserved in tool description');
+        const users = body.messages.filter(message => message.role === 'user');
+        assert.equal(users.length, 1);
+        assert.ok(!users[0].content.includes(expected.currentMessage.content), 'story is not duplicated in the user message');
+        assert.ok(!users[0].content.includes('"currentMessage"'), 'user message no longer serializes the payload');
+        if (descriptionInputUserInstruction === undefined) descriptionInputUserInstruction = users[0].content;
+        assert.equal(users[0].content, descriptionInputUserInstruction, 'all entry points use the same fixed reading instruction');
+    } else {
+        assert.equal(described, null);
+        assert.deepEqual(JSON.parse(body.messages.find(message => message.role === 'user').content), clone(expected));
+    }
 }
 function assertStyleData(request) {
     assert.deepEqual(clone(request.stylePreset), { name: styleA.name, positive: styleA.positive, negative: styleA.negative });
@@ -94,10 +118,29 @@ function installReply(h, channel, data, inspect = () => {}) {
         const reply = channel === 'custom' ? clone(data) : channel === 'tool'
             ? { choices: [{ message: { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: JSON.stringify(data) } }] } }] }
             : { choices: [{ message: { content: JSON.stringify(data) } }] };
-        return { ok: true, headers: { get: () => 'application/json' }, json: async () => reply };
+        return { ok: true, headers: { get: () => 'application/json' }, json: async () => reply,
+            text: async () => JSON.stringify(reply) };
     };
     h.sdt.smartFetch = async (_url, options) => receive(JSON.parse(options.body));
     h.sdt.callApiWithJsonFallback = async (_url, _options, body) => receive(body);
+}
+function assertDrawTransport(body, provider, toolMode) {
+    if (provider === 'custom') {
+        assert.equal(body.tools, undefined, 'custom HTTP keeps its payload protocol');
+        assert.equal(body.messages, undefined);
+        assert.equal(body.response_format, undefined);
+    } else if (toolMode) {
+        assert.equal(body.tools.length, 1);
+        assert.equal(body.tools[0].function.name, 'generate_draw_spec');
+        assert.deepEqual(clone(body.tool_choice), { type: 'function', function: { name: 'generate_draw_spec' } });
+        assert.equal(body.stream, true);
+        assert.equal(body.response_format, undefined, 'tool requests cannot silently use JSON response mode');
+    } else {
+        assert.equal(body.tools, undefined);
+        assert.equal(body.tool_choice, undefined);
+        assert.equal(body.response_format.type, 'json_object');
+        assert.equal(body.stream, false, 'disabled Tool Call preserves the previous non-streaming JSON request');
+    }
 }
 function bundleInput(h, task = 'adapt_message', responseKind = 'story', transport = 'json') {
     return { presetDescriptor: h.protocol.resolvePromptPreset(ID), task, settingsSnapshot: clone(h.settings._mangaMode),
@@ -250,7 +293,8 @@ function fixedStudioPage(count) {
             const h = host(mode), provider = channel === 'custom' ? 'custom' : 'openai';
             let builds = 0; const originalBuild = h.protocol.buildPromptBundle;
             h.protocol.buildPromptBundle = options => { builds++; return originalBuild(options); };
-            Object.assign(h.settings._smartDrawTrigger, { provider, toolCallMode: channel === 'tool' });
+            Object.assign(h.settings._smartDrawTrigger, { provider, toolCallMode: channel === 'tool' || provider === 'custom',
+                toolInputInDescription: provider === 'custom' });
             installReply(h, channel, { shouldDraw: true, reason: '完整呈现问答与转场。', segments: pages(mode) }, body => {
                 const { request, instruction } = requestParts(body, provider);
                 assertLayers(instruction); assertStyleData(request);
@@ -275,39 +319,167 @@ function fixedStudioPage(count) {
             }
         });
     }
-    for (const provider of ['custom', 'openai']) {
-        await test(`${provider} test-page parser selects a single-page task and preserves its plain JSON transport`, async () => {
-            const h = host(); Object.assign(h.settings._smartDrawTrigger, { provider, toolCallMode: true });
-            installReply(h, provider === 'custom' ? 'custom' : 'json', { shouldDraw: true, reason: '当前一页。', segments: [pages()[0]] }, body => {
-                const { request, instruction } = requestParts(body, provider); assertLayers(instruction);
-                assert.equal(request.currentMessage.content, story); assert.deepEqual(clone(request.recentMessages), []);
-                assertTrace(request.mangaPromptTrace, 'test_page', 'story', 'json');
-                assert.equal(request.mangaPromptTrace.limits.maxPages, 1);
-                assert.equal(request.outputSchema.properties.segments.maxItems, 1);
-                assert.equal(request.manualInstruction, undefined, 'a second legacy planning instruction cannot conflict with the bundle task');
-                if (provider === 'openai') { assert.equal(body.tools, undefined); assert.equal(body.response_format.type, 'json_object'); }
+    for (const route of [
+        { name: 'default JSON', toolMode: false },
+        { name: 'JSON with inactive description input', toolMode: false, descriptionInput: true },
+        { name: 'tool with user input', toolMode: true, descriptionInput: false },
+        { name: 'tool with description input', toolMode: true, descriptionInput: true }
+    ]) for (const entry of ['auto', 'manual', 'test']) {
+        await test(`ordinary illustration ${entry} uses ${route.name}`, async () => {
+            const { toolMode, descriptionInput } = route;
+            const h = host('structured', 'off'), description = '会议室里有一张木桌，窗边放着绿植。\n标牌写着“Room A\\B”。';
+            Object.assign(h.settings._smartDrawTrigger, { _mangaActive: false, enhancedContext: 'off',
+                toolCallMode: toolMode, injectPresetsToTagger: false });
+            if (descriptionInput !== undefined) h.settings._smartDrawTrigger.toolInputInDescription = descriptionInput;
+            h.settings._mangaMode.enabled = false;
+            h.sdt.getMessageSnapshot = () => ({ mes: description, name: 'Narrator' });
+            let assembledPayload;
+            h.sdt.logTaggerPayload = (label, value) => { if (label.includes('request')) assembledPayload = clone(value); };
+            const submitted = [], data = { shouldDraw: true, reason: '会议室环境。',
+                segments: [{ anchor: { text: description }, scene: 'meeting room, wooden table, window, potted plant', characters: [] }] };
+            if (entry === 'manual') {
+                const fields = { 'rbq-sdt-manual-input': { value: description }, 'rbq-sdt-manual-status': {},
+                    'rbq-sdt-manual-submit': {}, 'rbq-sdt-manual-use-context': { checked: false } };
+                Object.assign(h.sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
+                    toastr: { warning(message) { throw new Error(message); }, error(message) { throw new Error(message); }, success() {} },
+                    PLUGIN_NAME: 'test', closeManualDrawDialog() {}, generateSdtImage: async segment => submitted.push(segment) });
+            }
+            installReply(h, toolMode ? 'tool' : 'json', data, body => {
+                assertDrawTransport(body, 'openai', toolMode);
+                const { request, instruction } = requestParts(body, 'openai');
+                assertTaskInputRoute(body, assembledPayload, !!(toolMode && descriptionInput));
+                assert.equal(request.currentMessage.content, description);
+                assert.equal(request.mangaPromptTrace, undefined);
+                if (toolMode) {
+                    assert.match(instruction, /Submit final results via generate_draw_spec/);
+                    assert.ok(body.tools[0].function.parameters.properties.segments.items.properties.scene);
+                    assert.equal(body.tools[0].function.parameters.properties.segments.items.properties.panels, undefined);
+                    const baseline = h.sdt.getDrawSpecTool({ ...h.settings._smartDrawTrigger, toolInputInDescription: false });
+                    assert.deepEqual(clone(body.tools[0].function.parameters), clone(baseline.function.parameters));
+                }
             });
-            const result = await h.sdt.parseTaggerSegment(story);
+            if (entry === 'manual') {
+                await h.sdt.submitManualDraw();
+                assert.equal(submitted.length, 1);
+                assert.match(submitted[0].scene, /meeting room/);
+            } else {
+                const result = entry === 'auto' ? await h.sdt.callOpenAiCompatible(1, { type: 'auto' }) : await h.sdt.parseTaggerSegment(description);
+                assert.match((entry === 'auto' ? result.segments[0] : result.segment).scene, /meeting room/);
+            }
             assert.equal(h.calls(), 1); assert.equal(h.images(), 0);
-            assert.match(result.segment.characters[1].caption, /Text: 请放到桌上。$/);
         });
-        await test(`${provider} manual submission adapts the whole supplied story in one completion`, async () => {
-            const h = host(); Object.assign(h.settings._smartDrawTrigger, { provider, toolCallMode: true });
-            const fields = { 'rbq-sdt-manual-input': { value: story }, 'rbq-sdt-manual-status': {},
-                'rbq-sdt-manual-submit': {}, 'rbq-sdt-manual-use-context': { checked: false } }, submitted = [];
-            Object.assign(h.sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
-                toastr: { warning(message) { throw new Error(message); }, error(message) { throw new Error(message); }, success() {} },
-                PLUGIN_NAME: 'test', closeManualDrawDialog() {}, generateSdtImage: async segment => submitted.push(segment) });
-            installReply(h, provider === 'custom' ? 'custom' : 'json', { shouldDraw: true, reason: '完整正文两页。', segments: pages() }, body => {
-                const { request, instruction } = requestParts(body, provider); assertLayers(instruction); assertStyleData(request);
-                assertTrace(request.mangaPromptTrace, 'adapt_manual', 'story', 'json');
-                assert.equal(request.minSegments, undefined); assert.deepEqual(clone(request.recentMessages), []);
-                if (provider === 'openai') assert.equal(body.tools, undefined);
+    }
+    await test('description input preserves all payload fields without mutating a shared tool or a later request', () => {
+        const h = host('structured', 'off');
+        const baseStore = { ...h.settings._smartDrawTrigger, _mangaActive: false, enhancedContext: 'off', toolCallMode: true };
+        const baseline = clone(h.sdt.getDrawSpecTool(baseStore));
+        const payload = {
+            currentMessage: { role: 'assistant', name: 'Narrator', content: '她翻开标记为“资料\\2026”的文件。\n第二行保留。' },
+            recentMessages: [{ id: 2, role: 'user', name: 'Reader', content: '请看窗边那张桌子。' }],
+            segmentInstruction: '从当前正文选择原文锚点。',
+            lorebook: [{ name: 'Office', keys: ['窗边'], tags: 'north-facing window, maple desk' }],
+            characterCardInfo: [{ name: 'Ada', description: 'Adult office worker.', characterBookEntries: [] }],
+            characterMemory: [{ name: 'Ada', base: 'adult, black hair', outfit: 'white shirt' }],
+            characterWardrobes: [{ character: 'Ada', wardrobe: [{ name: 'Office', outfit: 'white shirt', triggers: ['office'] }] }],
+            stylePreset: clone(styleA), outputSchema: { shouldDraw: 'boolean', segments: [] },
+            optionalTaskData: { zero: 0, disabled: false, empty: '', nested: [null, '引号 " 与斜线 \\'] }
+        };
+        const before = clone(payload), routedStore = { ...baseStore, toolInputInDescription: true };
+        assert.deepEqual(clone(h.sdt.getDrawSpecTool(baseStore, null, payload)), baseline, 'missing setting keeps the old tool');
+        const first = h.sdt.getDrawSpecTool(routedStore, null, payload);
+        assert.deepEqual(toolDescriptionInput({ tools: [first] }), before);
+        assert.deepEqual(clone(first.function.parameters), baseline.function.parameters);
+        assert.deepEqual(clone(payload), before, 'serialization leaves the input object untouched');
+        first.function.parameters.properties.shouldDraw.description = 'mutated fixture';
+        assert.deepEqual(clone(h.sdt.getDrawSpecTool(baseStore)), baseline, 'routed tool has a separate schema object');
+        const secondPayload = { currentMessage: { content: '另一次请求只描述一个空文件夹。' } };
+        const second = h.sdt.getDrawSpecTool(routedStore, null, secondPayload);
+        assert.deepEqual(toolDescriptionInput({ tools: [second] }), secondPayload);
+        assert.equal(second.function.description.includes('optionalTaskData'), false, 'previous payload cannot leak into a later tool');
+        for (const store of [{ ...routedStore, toolCallMode: false }, { ...routedStore, provider: 'custom' }]) {
+            assert.deepEqual(clone(h.sdt.getDrawSpecTool(store, null, payload)), baseline, 'inactive routes never attach task data');
+        }
+    });
+    for (const entry of ['auto', 'manual', 'test']) {
+        await test(`layered ${entry} description input preserves the original task, payload and tool schema`, async () => {
+            let control;
+            for (const descriptionInput of [false, true]) {
+                const h = host(), task = { auto: 'adapt_message', manual: 'adapt_manual', test: 'test_page' }[entry];
+                Object.assign(h.settings._smartDrawTrigger, { toolCallMode: true, toolInputInDescription: descriptionInput });
+                let assembledPayload, sent;
+                h.sdt.logTaggerPayload = (label, value) => { if (label.includes('request')) assembledPayload = clone(value); };
+                const submitted = [];
+                if (entry === 'manual') {
+                    const fields = { 'rbq-sdt-manual-input': { value: story }, 'rbq-sdt-manual-status': {},
+                        'rbq-sdt-manual-submit': {}, 'rbq-sdt-manual-use-context': { checked: false } };
+                    Object.assign(h.sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
+                        toastr: { warning(message) { throw new Error(message); }, error(message) { throw new Error(message); }, success() {} },
+                        PLUGIN_NAME: 'test', closeManualDrawDialog() {}, generateSdtImage: async segment => submitted.push(segment) });
+                }
+                installReply(h, 'tool', { shouldDraw: true, reason: '按任务范围呈现办公室剧情。', segments: entry === 'test' ? [pages()[0]] : pages() }, body => {
+                    sent = clone(body);
+                    assertDrawTransport(body, 'openai', true);
+                    assertTaskInputRoute(body, assembledPayload, descriptionInput);
+                    const { request, instruction } = requestParts(body, 'openai');
+                    assertLayers(instruction); assertStyleData(request);
+                    assertTrace(request.mangaPromptTrace, task, 'story', 'tool');
+                    assert.deepEqual(clone(body.tools[0].function.parameters), clone(request.outputSchema));
+                    if (entry === 'test') assert.equal(request.outputSchema.properties.segments.maxItems, 1);
+                });
+                if (entry === 'auto') await h.sdt.callOpenAiCompatible(1, { type: 'auto' });
+                else if (entry === 'test') await h.sdt.parseTaggerSegment(story);
+                else { await h.sdt.submitManualDraw(); assert.equal(submitted.length, 2); }
+                if (!descriptionInput) control = sent;
+                else {
+                    assert.deepEqual(toolDescriptionInput(sent), requestParts(control, 'openai').request);
+                    assert.deepEqual(sent.tools[0].function.parameters, control.tools[0].function.parameters);
+                    assert.equal(systemText(sent), systemText(control), 'dynamic input routing does not migrate system instructions');
+                }
+                assert.equal(h.calls(), 1); assert.equal(h.images(), 0);
+            }
+        });
+    }
+    for (const provider of ['custom', 'openai']) {
+        for (const toolMode of [false, true]) {
+            const transport = provider !== 'custom' && toolMode ? 'tool' : 'json';
+            const channel = provider === 'custom' ? 'custom' : transport;
+            await test(`${provider} test-page parser with Tool Call ${toolMode ? 'on' : 'off'} selects a single-page task and ${transport} transport`, async () => {
+                const h = host(); Object.assign(h.settings._smartDrawTrigger, { provider, toolCallMode: toolMode,
+                    toolInputInDescription: provider === 'custom' });
+                installReply(h, channel, { shouldDraw: true, reason: '当前一页。', segments: [pages()[0]] }, body => {
+                    const { request, instruction } = requestParts(body, provider); assertLayers(instruction);
+                    assert.equal(request.currentMessage.content, story); assert.deepEqual(clone(request.recentMessages), []);
+                    assertTrace(request.mangaPromptTrace, 'test_page', 'story', transport);
+                    assert.equal(request.mangaPromptTrace.limits.maxPages, 1);
+                    assert.equal(request.outputSchema.properties.segments.maxItems, 1);
+                    assert.equal(request.manualInstruction, undefined, 'a second legacy planning instruction cannot conflict with the bundle task');
+                    assertDrawTransport(body, provider, toolMode);
+                    if (transport === 'tool') assert.deepEqual(clone(body.tools[0].function.parameters), clone(request.outputSchema));
+                });
+                const result = await h.sdt.parseTaggerSegment(story);
+                assert.equal(h.calls(), 1); assert.equal(h.images(), 0);
+                assert.match(result.segment.characters[1].caption, /Text: 请放到桌上。$/);
             });
-            await h.sdt.submitManualDraw();
-            assert.equal(h.calls(), 1); assert.equal(submitted.length, 2); assert.equal(h.images(), 0);
-            assert.match(submitted[0].characters[1].caption, /Text: 请放到桌上。$/);
-        });
+            await test(`${provider} manual submission with Tool Call ${toolMode ? 'on' : 'off'} adapts the whole story using ${transport} transport`, async () => {
+                const h = host(); Object.assign(h.settings._smartDrawTrigger, { provider, toolCallMode: toolMode,
+                    toolInputInDescription: provider === 'custom' });
+                const fields = { 'rbq-sdt-manual-input': { value: story }, 'rbq-sdt-manual-status': {},
+                    'rbq-sdt-manual-submit': {}, 'rbq-sdt-manual-use-context': { checked: false } }, submitted = [];
+                Object.assign(h.sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
+                    toastr: { warning(message) { throw new Error(message); }, error(message) { throw new Error(message); }, success() {} },
+                    PLUGIN_NAME: 'test', closeManualDrawDialog() {}, generateSdtImage: async segment => submitted.push(segment) });
+                installReply(h, channel, { shouldDraw: true, reason: '完整正文两页。', segments: pages() }, body => {
+                    const { request, instruction } = requestParts(body, provider); assertLayers(instruction); assertStyleData(request);
+                    assertTrace(request.mangaPromptTrace, 'adapt_manual', 'story', transport);
+                    assert.equal(request.minSegments, undefined); assert.deepEqual(clone(request.recentMessages), []);
+                    assertDrawTransport(body, provider, toolMode);
+                    if (transport === 'tool') assert.deepEqual(clone(body.tools[0].function.parameters), clone(request.outputSchema));
+                });
+                await h.sdt.submitManualDraw();
+                assert.equal(h.calls(), 1); assert.equal(submitted.length, 2); assert.equal(h.images(), 0);
+                assert.match(submitted[0].characters[1].caption, /Text: 请放到桌上。$/);
+            });
+        }
         await test(`${provider} page refinement uses preserve planning and leaves explicit clears authoritative`, async () => {
             const h = host(); h.settings._smartDrawTrigger.provider = provider;
             const original = h.sdt.normalizeMangaSegment(pages()[0]), returned = pages()[0];

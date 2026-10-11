@@ -853,9 +853,20 @@
         <i class="fa-solid fa-xmark"></i>
       </button>
 
-      <!-- 左侧预览图 -->
+      <!-- 左侧预览图 (Dual-View HUD) -->
       <div class="modal-preview-pane">
+        <div id="modal-view-tabs" style="display: none; position: absolute; top: 12px; left: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); padding: 4px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12); gap: 6px;">
+          <button id="modal-tab-bm" class="btn" style="flex: 1; padding: 5px 8px; font-size: 11px; font-weight: 700; border-radius: 6px; border: none; background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; transition: all 0.2s;">
+            <i class="fa-solid fa-flask"></i> 官方基准图
+          </button>
+          <button id="modal-tab-ref" class="btn" style="flex: 1; padding: 5px 8px; font-size: 11px; font-weight: 700; border-radius: 6px; border: none; background: transparent; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; transition: all 0.2s;">
+            <i class="fa-solid fa-image"></i> 自制参考图
+          </button>
+        </div>
         <img id="modal-img" src="" alt="预览立绘">
+        <div id="modal-img-badge" style="display: none; position: absolute; bottom: 12px; left: 12px; z-index: 10; background: linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9)); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+          <i class="fa-solid fa-flask"></i> 官方基准图
+        </div>
       </div>
 
       <!-- 右侧信息内容 -->
@@ -1003,6 +1014,29 @@
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">负面提示词 (Negative)</label>
           <textarea id="edit-neg" rows="3" style="width: 100%; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; font-family: monospace; resize: vertical;"></textarea>
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: #7dd3fc; margin-bottom: 4px;">
+            <i class="fa-solid fa-image"></i> 自制效果参考图 (可选伴生图)
+          </label>
+          <div style="display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.25); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 10px;">
+            <div id="edit-ref-thumb" style="width: 60px; aspect-ratio: 3/4; border-radius: 6px; overflow: hidden; background: #070b13; border: 1px solid rgba(56, 189, 248, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <img id="edit-ref-img" src="" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+              <i id="edit-ref-placeholder" class="fa-solid fa-image" style="color: #64748b; font-size: 20px;"></i>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <div id="edit-ref-status" style="font-size: 11px; color: #94a3b8;">暂未设置参考图</div>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" id="edit-ref-pick-btn" class="btn" style="padding: 4px 10px; font-size: 11px; background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.4); color: #7dd3fc;">
+                  <i class="fa-solid fa-folder-open"></i> 选择图片
+                </button>
+                <button type="button" id="edit-ref-clear-btn" class="btn" style="padding: 4px 10px; font-size: 11px; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.35); color: #fca5a5; display: none;">
+                  <i class="fa-solid fa-trash-can"></i> 移除
+                </button>
+                <input id="edit-ref-file-input" type="file" accept="image/*" style="display: none;">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1257,6 +1291,7 @@
                 <img src="${escapeHtml(previewImg)}" loading="lazy" alt="${escapeHtml(p.title)}">
                 <div class="media-badge-top-left ${modelType}">${escapeHtml(p.model || 'V5')}</div>
                 ${isMine ? '<div class="media-badge-top-right"><i class="fa-solid fa-crown"></i> 我的</div>' : ''}
+                ${(p.referenceUrl && p.referenceUrl.trim()) ? '<div class="media-badge-bottom-left" style="position: absolute; bottom: 8px; left: 8px; background: rgba(56, 189, 248, 0.85); backdrop-filter: blur(4px); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px; z-index: 2; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"><i class="fa-solid fa-image"></i> 附参考图</div>' : ''}
                 
                 <div class="card-hover-actions" onclick="event.stopPropagation()">
                   <button class="action-icon-btn copy-pos-quick" title="复制正面提示词" data-id="${p.id}">
@@ -1454,7 +1489,58 @@
             }
           }
 
-          document.getElementById('modal-img').src = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+          const modalImg = document.getElementById('modal-img');
+          const viewTabs = document.getElementById('modal-view-tabs');
+          const imgBadge = document.getElementById('modal-img-badge');
+          const tabBm = document.getElementById('modal-tab-bm');
+          const tabRef = document.getElementById('modal-tab-ref');
+
+          const bmSrc = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+          modalImg.src = bmSrc;
+
+          if (p.referenceUrl && p.referenceUrl.trim()) {
+            if (viewTabs) viewTabs.style.display = 'flex';
+            if (imgBadge) {
+              imgBadge.style.display = 'inline-flex';
+              imgBadge.innerHTML = '<i class="fa-solid fa-flask"></i> 官方基准图';
+              imgBadge.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9))';
+            }
+            if (tabBm && tabRef) {
+              tabBm.style.background = 'linear-gradient(135deg, #a855f7, #ec4899)';
+              tabBm.style.color = '#fff';
+              tabRef.style.background = 'transparent';
+              tabRef.style.color = '#94a3b8';
+
+              tabBm.onclick = (e) => {
+                e.stopPropagation();
+                modalImg.src = bmSrc;
+                tabBm.style.background = 'linear-gradient(135deg, #a855f7, #ec4899)';
+                tabBm.style.color = '#fff';
+                tabRef.style.background = 'transparent';
+                tabRef.style.color = '#94a3b8';
+                if (imgBadge) {
+                  imgBadge.innerHTML = '<i class="fa-solid fa-flask"></i> 官方基准图';
+                  imgBadge.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9))';
+                }
+              };
+
+              tabRef.onclick = (e) => {
+                e.stopPropagation();
+                modalImg.src = p.referenceUrl;
+                tabRef.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
+                tabRef.style.color = '#fff';
+                tabBm.style.background = 'transparent';
+                tabBm.style.color = '#94a3b8';
+                if (imgBadge) {
+                  imgBadge.innerHTML = '<i class="fa-solid fa-image"></i> 自制参考图';
+                  imgBadge.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.9), rgba(37,99,235,0.9))';
+                }
+              };
+            }
+          } else {
+            if (viewTabs) viewTabs.style.display = 'none';
+            if (imgBadge) imgBadge.style.display = 'none';
+          }
           document.getElementById('modal-pos').textContent = p.positive || '(无)';
           
           const negEl = document.getElementById('modal-neg');
@@ -1583,7 +1669,15 @@
       };
 
       // 编辑弹窗
+      let editWebRefBase64 = null;
       const editModal = document.getElementById('edit-modal');
+      const editRefImg = document.getElementById('edit-ref-img');
+      const editRefPlaceholder = document.getElementById('edit-ref-placeholder');
+      const editRefStatus = document.getElementById('edit-ref-status');
+      const editRefClearBtn = document.getElementById('edit-ref-clear-btn');
+      const editRefPickBtn = document.getElementById('edit-ref-pick-btn');
+      const editRefFileInput = document.getElementById('edit-ref-file-input');
+
       document.getElementById('modal-btn-edit').onclick = () => {
         if (!activePreset) return;
         document.getElementById('edit-title').value = activePreset.title || '';
@@ -1591,9 +1685,73 @@
         document.getElementById('edit-tags').value = (activePreset.tags || []).join(', ');
         document.getElementById('edit-pos').value = activePreset.positive || '';
         document.getElementById('edit-neg').value = activePreset.negative || '';
+
+        editWebRefBase64 = null;
+        if (activePreset.referenceUrl && activePreset.referenceUrl.trim()) {
+          editRefImg.src = activePreset.referenceUrl;
+          editRefImg.style.display = 'block';
+          editRefPlaceholder.style.display = 'none';
+          editRefStatus.textContent = '当前已绑定自制参考图';
+          editRefClearBtn.style.display = 'inline-flex';
+        } else {
+          editRefImg.src = '';
+          editRefImg.style.display = 'none';
+          editRefPlaceholder.style.display = 'block';
+          editRefStatus.textContent = '暂未设置参考图 (可选)';
+          editRefClearBtn.style.display = 'none';
+        }
+
         closeDetailModal();
         editModal.classList.add('open');
       };
+
+      if (editRefPickBtn) editRefPickBtn.onclick = () => editRefFileInput.click();
+      if (editRefFileInput) {
+        editRefFileInput.onchange = (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              if (width > 720) {
+                height = Math.round((height * 720) / width);
+                width = 720;
+              }
+              canvas.width = width;
+              canvas.height = height;
+              canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+              const b64 = canvas.toDataURL('image/webp', 0.82);
+
+              editWebRefBase64 = b64;
+              editRefImg.src = b64;
+              editRefImg.style.display = 'block';
+              editRefPlaceholder.style.display = 'none';
+              editRefStatus.textContent = `新选中的参考图: ${file.name}`;
+              editRefClearBtn.style.display = 'inline-flex';
+              toast(`已选择「${file.name}」作为新参考图`, 'success');
+            };
+            img.src = ev.target.result;
+          };
+          reader.readAsDataURL(file);
+        };
+      }
+
+      if (editRefClearBtn) {
+        editRefClearBtn.onclick = () => {
+          editWebRefBase64 = '';
+          editRefImg.src = '';
+          editRefImg.style.display = 'none';
+          editRefPlaceholder.style.display = 'block';
+          editRefStatus.textContent = '已标记为移除（保存后生效）';
+          editRefClearBtn.style.display = 'none';
+          if (editRefFileInput) editRefFileInput.value = '';
+          toast('已标记移除参考图', 'info');
+        };
+      }
 
       document.getElementById('edit-close-btn').onclick = () => editModal.classList.remove('open');
       editModal.onclick = (e) => { if (e.target.id === 'edit-modal') editModal.classList.remove('open'); };
@@ -1609,25 +1767,33 @@
 
         const tagsArr = rawTags.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
 
+        const payload = {
+          id: activePreset.id,
+          creatorKey: myKey,
+          title: newTitle || activePreset.title,
+          author: newAuthor || '匿名',
+          tags: tagsArr,
+          positive: newPos,
+          negative: newNeg
+        };
+        if (editWebRefBase64 !== null) {
+          payload.referenceBase64 = editWebRefBase64;
+        }
+
         try {
           const res = await fetch('/api/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: activePreset.id,
-              creatorKey: myKey,
-              title: newTitle || activePreset.title,
-              author: newAuthor || '匿名',
-              tags: tagsArr,
-              positive: newPos,
-              negative: newNeg
-            })
+            body: JSON.stringify(payload)
           });
           const data = await res.json();
           if (data.success) {
             toast('预设信息已更新成功！', 'success');
             editModal.classList.remove('open');
             await fetchPresets();
+            if (data.item) {
+              openDetailModal(data.item);
+            }
           } else {
             toast(`更新失败: ${data.error || '未授权'}`, 'error');
           }

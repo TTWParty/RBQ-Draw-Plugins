@@ -382,6 +382,56 @@ class MarketHandler(BaseHTTPRequestHandler):
                     if m in ('v5', 'v4.5', 'v3', 'sdxl', 'general'):
                         target_preset['model'] = m
 
+                # 更新自制参考图 (可选伴生图)
+                if 'referenceBase64' in data:
+                    ref_b64 = data.get('referenceBase64')
+                    if ref_b64 and isinstance(ref_b64, str) and len(ref_b64) > 100:
+                        ref_ext = 'webp'
+                        if ',' in ref_b64:
+                            ref_header, ref_b64_data = ref_b64.split(',', 1)
+                            if 'jpeg' in ref_header or 'jpg' in ref_header:
+                                ref_ext = 'jpg'
+                            elif 'png' in ref_header:
+                                ref_ext = 'png'
+                        else:
+                            ref_b64_data = ref_b64
+                        try:
+                            ref_bytes = base64.b64decode(ref_b64_data)
+                            ref_name = f'{target_id}_ref.{ref_ext}'
+                            with open(os.path.join(UPLOADS_DIR, ref_name), 'wb') as f:
+                                f.write(ref_bytes)
+                            host = self.headers.get('Host', 'market.rbq.my')
+                            proto = self.headers.get('X-Forwarded-Proto', 'https')
+                            target_preset['referenceUrl'] = f'{proto}://{host}/previews/{ref_name}'
+                        except Exception as e:
+                            print('Error saving updated reference image:', e)
+                    elif ref_b64 == '' or ref_b64 is None:
+                        target_preset['referenceUrl'] = ''
+
+                # 更新基准测试图 (封面)
+                if 'previewBase64' in data:
+                    prev_b64 = data.get('previewBase64')
+                    if prev_b64 and isinstance(prev_b64, str) and len(prev_b64) > 100:
+                        prev_ext = 'webp'
+                        if ',' in prev_b64:
+                            prev_header, prev_b64_data = prev_b64.split(',', 1)
+                            if 'jpeg' in prev_header or 'jpg' in prev_header:
+                                prev_ext = 'jpg'
+                            elif 'png' in prev_header:
+                                prev_ext = 'png'
+                        else:
+                            prev_b64_data = prev_b64
+                        try:
+                            prev_bytes = base64.b64decode(prev_b64_data)
+                            prev_name = f'{target_id}.{prev_ext}'
+                            with open(os.path.join(UPLOADS_DIR, prev_name), 'wb') as f:
+                                f.write(prev_bytes)
+                            host = self.headers.get('Host', 'market.rbq.my')
+                            proto = self.headers.get('X-Forwarded-Proto', 'https')
+                            target_preset['previewUrl'] = f'{proto}://{host}/previews/{prev_name}'
+                        except Exception as e:
+                            print('Error saving updated preview image:', e)
+
                 save_presets(presets)
 
             resp = json.dumps({'success': True, 'item': target_preset}).encode('utf-8')
@@ -465,6 +515,17 @@ class MarketHandler(BaseHTTPRequestHandler):
                 presets = [p for p in presets if p.get('id') != target_id]
                 save_presets(presets)
 
+                # 同步清理服务器磁盘上的图片文件，杜绝孤儿占盘
+                try:
+                    for f in os.listdir(UPLOADS_DIR):
+                        if f.startswith(f"{target_id}.") or f.startswith(f"{target_id}_ref."):
+                            try:
+                                os.remove(os.path.join(UPLOADS_DIR, f))
+                            except Exception:
+                                pass
+                except Exception as e:
+                    print('Error cleaning image files on delete:', e)
+
             resp = json.dumps({'success': True, 'remaining': len(presets), 'deletedId': target_id}).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -491,6 +552,8 @@ class MarketHandler(BaseHTTPRequestHandler):
                 model = 'v5'
 
             preset_id = 'pm-' + hex(int(time.time() * 1000))[2:] + os.urandom(2).hex()
+
+            # 1. 官方基准测试图 (封面 · 必填)
             preview_url = str(data.get('previewUrl', '')).strip() or 'https://market.rbq.my/previews/kami-greenhouse-girl.webp'
             preview_b64 = data.get('previewBase64')
             if preview_b64 and isinstance(preview_b64, str) and len(preview_b64) > 100:
@@ -518,7 +581,34 @@ class MarketHandler(BaseHTTPRequestHandler):
                         proto = self.headers.get('X-Forwarded-Proto', 'https')
                         preview_url = f'{proto}://{host}/previews/{img_name}'
                 except Exception as e:
-                    print('Error saving image:', e)
+                    print('Error saving benchmark image:', e)
+
+            # 2. 作者自制参考图 (可选伴生图)
+            reference_url = str(data.get('referenceUrl', '')).strip()
+            ref_b64 = data.get('referenceBase64')
+            if ref_b64 and isinstance(ref_b64, str) and len(ref_b64) > 100:
+                ref_ext = 'webp'
+                if ',' in ref_b64:
+                    ref_header, ref_b64_data = ref_b64.split(',', 1)
+                    if 'jpeg' in ref_header or 'jpg' in ref_header:
+                        ref_ext = 'jpg'
+                    elif 'png' in ref_header:
+                        ref_ext = 'png'
+                else:
+                    ref_b64_data = ref_b64
+
+                try:
+                    _, _, free_bytes = shutil.disk_usage(BASE_DIR)
+                    if free_bytes >= 80 * 1024 * 1024:
+                        ref_bytes = base64.b64decode(ref_b64_data)
+                        ref_name = f'{preset_id}_ref.{ref_ext}'
+                        with open(os.path.join(UPLOADS_DIR, ref_name), 'wb') as f:
+                            f.write(ref_bytes)
+                        host = self.headers.get('Host', 'market.rbq.my')
+                        proto = self.headers.get('X-Forwarded-Proto', 'https')
+                        reference_url = f'{proto}://{host}/previews/{ref_name}'
+                except Exception as e:
+                    print('Error saving reference image:', e)
 
             item = {
                 'id': preset_id,
@@ -532,6 +622,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 'negative': str(data.get('negative', '')).strip(),
                 'params': data.get('params', {}),
                 'previewUrl': preview_url,
+                'referenceUrl': reference_url or '',
                 'likes': 0,
                 'downloads': 0,
                 'createdAt': time.strftime('%Y-%m-%d %H:%M:%S')

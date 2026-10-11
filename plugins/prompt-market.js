@@ -54,6 +54,24 @@
             .replace(/'/g, '&#039;');
     }
 
+    // 图片高保真压缩通用函数 (720px / 0.82 WebP)
+    function compressToWebp(imgObj, maxWidth = 720, quality = 0.82) {
+        const canvas = document.createElement('canvas');
+        let width = imgObj.width;
+        let height = imgObj.height;
+        if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgObj, 0, 0, width, height);
+        const b64 = canvas.toDataURL('image/webp', quality);
+        const approxKb = Math.round((b64.length * 3) / 4 / 1024);
+        return { b64, width, height, approxKb };
+    }
+
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
     const DEFAULT_CONFIG = {
         serverUrl: 'https://market.rbq.my', // 自建工坊服务器
@@ -1576,6 +1594,10 @@
                         <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
                         <span class="rbq-pm-like-num">${item.likes || 0}</span>
                     </button>
+                    ${item.referenceUrl ? `
+                    <div class="rbq-pm-badge-ref" title="附带作者自制效果参考图" style="position:absolute; bottom:6px; left:6px; background:rgba(0,0,0,0.72); backdrop-filter:blur(4px); font-size:9.5px; padding:2px 6px; border-radius:4px; color:#38bdf8; border:1px solid rgba(56,189,248,0.35); z-index:2; display:flex; align-items:center; gap:3px; font-weight:600;">
+                        <i class="fa-solid fa-images"></i> 附参考图
+                    </div>` : ''}
                     <div style="position: absolute; bottom: 0; inset-inline: 0; height: 32px; background: linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events: none;"></div>
                 </div>
                 <div class="rbq-pm-card-info">
@@ -1658,12 +1680,15 @@
         const existingTagsStr = (item.tags || []).join(' ');
         const m = (item.model || 'v5').toLowerCase();
 
+        let editRefBase64 = null; // null: 未改动, '': 清空/移除, 'data:...': 新替换图片
+        let editBmBase64 = null;  // null: 未改动, 'data:...': 新替换官方基准图
+
         overlay.innerHTML = `
-            <div style="width:92vw; max-width:620px; max-height:90vh; background:#0f172a; border:1px solid rgba(56,189,248,0.3); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
+            <div style="width:92vw; max-width:640px; max-height:90vh; background:#0f172a; border:1px solid rgba(56,189,248,0.3); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px; color:#38bdf8;">
                         <i class="fa-solid fa-pen-to-square"></i>
-                        <span>编辑预设与风格标签</span>
+                        <span>编辑预设与展示图片</span>
                     </div>
                     <button id="rbq-pm-edit-close" class="rbq-pm-close-btn" title="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
@@ -1711,6 +1736,83 @@
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">预设描述 / 介绍说明 (可选)</label>
                         <input id="rbq-pm-edit-desc" type="text" placeholder="简短描述该画师串的风格特色..." value="${escapeHtml(item.description || '')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
+
+                    <!-- 封面基准图管理卡片 (官方标准) -->
+                    <div style="background:linear-gradient(135deg, rgba(217,70,239,0.06), rgba(168,85,247,0.06)); border:1.5px solid rgba(217,70,239,0.3); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                            <label style="font-size:12px; color:#f0abfc; font-weight:700; margin:0; display:inline-flex; align-items:center; gap:5px;">
+                                <i class="fa-solid fa-flask"></i> 封面基准测试图 (官方基准)
+                            </label>
+                            <span id="rbq-pm-edit-bm-spec" style="font-size:10px; color:#94a3b8;">720px WebP 封面</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:12px; background:rgba(0,0,0,0.25); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:8px 10px;">
+                            <div id="rbq-pm-edit-bm-card" style="width:70px; aspect-ratio:3/4; border-radius:6px; overflow:hidden; background:#070b13; border:1px solid rgba(217,70,239,0.5); position:relative; cursor:zoom-in; flex-shrink:0;" title="点击放大">
+                                <img id="rbq-pm-edit-bm-img" src="${escapeHtml(item.previewUrl || KAMI_DEFAULT_PREVIEW)}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                            </div>
+                            <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                                <div id="rbq-pm-edit-bm-status" style="font-size:11px; color:#f0abfc; font-weight:600;">
+                                    <i class="fa-solid fa-circle-check"></i> 当前官方基准测试封面
+                                </div>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" id="rbq-pm-edit-bm-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
+                                    </button>
+                                    <button type="button" id="rbq-pm-edit-bm-draw-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 重新实测出图
+                                    </button>
+                                    <button type="button" id="rbq-pm-edit-bm-change-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-folder-open"></i> 上传替换
+                                    </button>
+                                    <input id="rbq-pm-edit-file-bm" type="file" accept="image/*" style="display:none;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 自制参考图管理卡片 (可选伴生图) -->
+                    <div style="background:linear-gradient(135deg, rgba(56,189,248,0.06), rgba(37,99,235,0.06)); border:1.5px solid rgba(56,189,248,0.3); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                            <label style="font-size:12px; color:#7dd3fc; font-weight:700; margin:0; display:inline-flex; align-items:center; gap:5px;">
+                                <i class="fa-solid fa-image"></i> 自制效果参考图 (可选伴生图)
+                            </label>
+                            <span id="rbq-pm-edit-ref-spec" style="font-size:10px; color:#94a3b8;">${item.referenceUrl ? '已绑定' : '未设置 (可选)'}</span>
+                        </div>
+                        <div style="font-size:11px; color:#cbd5e1; line-height:1.4;">
+                            可在详情页与官方基准图无缝切换，用于展示该预设的个性化画面。
+                        </div>
+
+                        <!-- 参考图空态 (未设置或已被移除) -->
+                        <div id="rbq-pm-edit-ref-empty" style="display:${item.referenceUrl ? 'none' : 'flex'}; flex-direction:column; gap:6px; background:rgba(0,0,0,0.25); border:1.5px dashed rgba(56,189,248,0.4); border-radius:8px; padding:10px; text-align:center; align-items:center; justify-content:center; cursor:pointer;">
+                            <div style="font-size:11.5px; color:#7dd3fc; font-weight:600;"><i class="fa-solid fa-cloud-arrow-up"></i> 点击或拖拽上传自制参考图</div>
+                            <button id="rbq-pm-edit-pick-ref-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; font-size:11px; font-weight:600; padding:4px 12px; border-radius:5px; cursor:pointer;">
+                                <i class="fa-solid fa-folder-open"></i> 选择图片
+                            </button>
+                            <input id="rbq-pm-edit-file-ref" type="file" accept="image/*" style="display:none;">
+                        </div>
+
+                        <!-- 参考图展示态 (已有或新选中) -->
+                        <div id="rbq-pm-edit-ref-card-box" style="display:${item.referenceUrl ? 'flex' : 'none'}; align-items:center; gap:12px; background:rgba(0,0,0,0.25); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:8px 10px;">
+                            <div id="rbq-pm-edit-ref-card" style="width:70px; aspect-ratio:3/4; border-radius:6px; overflow:hidden; background:#070b13; border:1px solid rgba(56,189,248,0.5); position:relative; cursor:zoom-in; flex-shrink:0;" title="点击放大">
+                                <img id="rbq-pm-edit-ref-img" src="${escapeHtml(item.referenceUrl || '')}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                            </div>
+                            <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                                <div id="rbq-pm-edit-ref-status" style="font-size:11px; color:#7dd3fc; font-weight:600;">
+                                    <i class="fa-solid fa-circle-check"></i> ${item.referenceUrl ? '当前已绑定参考图' : '新选中的参考图'}
+                                </div>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" id="rbq-pm-edit-ref-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
+                                    </button>
+                                    <button type="button" id="rbq-pm-edit-ref-change-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.4); color:#7dd3fc; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-folder-open"></i> 更换图片
+                                    </button>
+                                    <button type="button" id="rbq-pm-edit-ref-clear-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.35); color:#fca5a5; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-trash-can"></i> 移除参考图
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
@@ -1726,6 +1828,196 @@
         bindFastClose(overlay.querySelector('#rbq-pm-edit-close'), () => closeSubDialog(overlay));
         bindFastClose(overlay.querySelector('#rbq-pm-edit-cancel'), () => closeSubDialog(overlay));
         bindDialogBackdropClose(overlay);
+
+        // ── 封面基准图交互 ──
+        const editBmImg = overlay.querySelector('#rbq-pm-edit-bm-img');
+        const editBmStatus = overlay.querySelector('#rbq-pm-edit-bm-status');
+        const editBmSpec = overlay.querySelector('#rbq-pm-edit-bm-spec');
+        const editBmZoomBtn = overlay.querySelector('#rbq-pm-edit-bm-zoom-btn');
+        const editBmDrawBtn = overlay.querySelector('#rbq-pm-edit-bm-draw-btn');
+        const editBmChangeBtn = overlay.querySelector('#rbq-pm-edit-bm-change-btn');
+        const editBmFileInput = overlay.querySelector('#rbq-pm-edit-file-bm');
+        const editBmCard = overlay.querySelector('#rbq-pm-edit-bm-card');
+
+        if (editBmCard) editBmCard.onclick = () => { if (editBmImg.src) openImageZoom(editBmImg.src); };
+        if (editBmZoomBtn) editBmZoomBtn.onclick = () => { if (editBmImg.src) openImageZoom(editBmImg.src); };
+        if (editBmChangeBtn) editBmChangeBtn.onclick = () => editBmFileInput.click();
+
+        editBmFileInput.onchange = (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const { b64, width, height, approxKb } = compressToWebp(img);
+                    editBmBase64 = b64;
+                    editBmImg.src = b64;
+                    editBmStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 新选中的基准封面 (${file.name})`;
+                    editBmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                    toastr.success(`🎉 已将「${file.name}」选为新的官方基准测试封面！`);
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        if (editBmDrawBtn) {
+            editBmDrawBtn.onclick = async () => {
+                const pos = overlay.querySelector('#rbq-pm-edit-pos').value.trim();
+                const neg = overlay.querySelector('#rbq-pm-edit-neg').value.trim();
+                if (!pos) {
+                    toastr.warning('请先输入正面提示词！');
+                    return;
+                }
+                if (typeof RBQ?.api?.generateImage !== 'function') {
+                    toastr.error('酒馆当前未启用 RBQ 生图流水线');
+                    return;
+                }
+                const finalPrompt = [pos, BENCHMARK_POSITIVE_PROMPT].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
+                const finalNegative = [neg, BENCHMARK_NEGATIVE_PROMPT].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
+
+                const origHtml = editBmDrawBtn.innerHTML;
+                editBmDrawBtn.disabled = true;
+                editBmDrawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 实测中...';
+                try {
+                    const currentSettings = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
+                    const uploadMeta = {
+                        isolate: true,
+                        skipPresets: true,
+                        skipPrefixSuffix: true,
+                        negative: finalNegative,
+                        scale: currentSettings.naiScale !== undefined && currentSettings.naiScale !== null ? Number(currentSettings.naiScale) : 6.0,
+                        sampler: currentSettings.naiSampler || 'k_euler_ancestral',
+                        steps: currentSettings.naiSteps !== undefined && currentSettings.naiSteps !== null ? Number(currentSettings.naiSteps) : 28,
+                        cfgRescale: currentSettings.naiCfgRescale !== undefined && currentSettings.naiCfgRescale !== null ? Number(currentSettings.naiCfgRescale) : 0
+                    };
+                    const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-benchmark-edit', uploadMeta);
+                    if (!drawRes || !drawRes.url) throw new Error('生图未返回有效地址');
+
+                    const drawImg = new Image();
+                    drawImg.crossOrigin = 'anonymous';
+                    drawImg.onload = () => {
+                        const { b64, width, height, approxKb } = compressToWebp(drawImg);
+                        editBmBase64 = b64;
+                        editBmImg.src = b64;
+                        editBmStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> 现场重新实测出的基准图';
+                        editBmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                        toastr.success('🎉 现场基准生图成功！保存后生效。');
+                    };
+                    drawImg.onerror = async () => {
+                        try {
+                            const blobResp = await fetch(drawRes.url);
+                            const blob = await blobResp.blob();
+                            const r = new FileReader();
+                            r.onload = (e2) => {
+                                const bImg = new Image();
+                                bImg.onload = () => {
+                                    const { b64, width, height, approxKb } = compressToWebp(bImg);
+                                    editBmBase64 = b64;
+                                    editBmImg.src = b64;
+                                    editBmStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> 现场重新实测出的基准图';
+                                    editBmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                                    toastr.success('🎉 现场基准生图成功！保存后生效。');
+                                };
+                                bImg.src = e2.target.result;
+                            };
+                            r.readAsDataURL(blob);
+                        } catch (err) {
+                            toastr.error('读取生图数据失败: ' + err.message);
+                        }
+                    };
+                    drawImg.src = drawRes.url;
+                } catch (err) {
+                    toastr.error('现场基准生图失败: ' + (err.message || String(err)));
+                } finally {
+                    editBmDrawBtn.disabled = false;
+                    editBmDrawBtn.innerHTML = origHtml;
+                }
+            };
+        }
+
+        // ── 自制参考图交互 ──
+        const refEmptyEl = overlay.querySelector('#rbq-pm-edit-ref-empty');
+        const refCardBox = overlay.querySelector('#rbq-pm-edit-ref-card-box');
+        const refCard = overlay.querySelector('#rbq-pm-edit-ref-card');
+        const refImg = overlay.querySelector('#rbq-pm-edit-ref-img');
+        const refStatus = overlay.querySelector('#rbq-pm-edit-ref-status');
+        const refSpec = overlay.querySelector('#rbq-pm-edit-ref-spec');
+        const refFileInput = overlay.querySelector('#rbq-pm-edit-file-ref');
+        const refPickBtn = overlay.querySelector('#rbq-pm-edit-pick-ref-btn');
+        const refChangeBtn = overlay.querySelector('#rbq-pm-edit-ref-change-btn');
+        const refClearBtn = overlay.querySelector('#rbq-pm-edit-ref-clear-btn');
+        const refZoomBtn = overlay.querySelector('#rbq-pm-edit-ref-zoom-btn');
+
+        function handleEditRefFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const { b64, width, height, approxKb } = compressToWebp(img);
+                    editRefBase64 = b64;
+                    refImg.src = b64;
+                    refEmptyEl.style.display = 'none';
+                    refCardBox.style.display = 'flex';
+                    refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 新选中的参考图 (${file.name})`;
+                    refSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                    toastr.success(`🎉 已选择「${file.name}」作为新参考图！`);
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        if (refCard) refCard.onclick = () => { if (refImg.src) openImageZoom(refImg.src); };
+        if (refZoomBtn) refZoomBtn.onclick = () => { if (refImg.src) openImageZoom(refImg.src); };
+        if (refPickBtn) refPickBtn.onclick = (e) => { e.stopPropagation(); refFileInput.click(); };
+        if (refChangeBtn) refChangeBtn.onclick = (e) => { e.stopPropagation(); refFileInput.click(); };
+
+        if (refClearBtn) {
+            refClearBtn.onclick = () => {
+                editRefBase64 = ''; // 标记清空
+                refImg.src = '';
+                refCardBox.style.display = 'none';
+                refEmptyEl.style.display = 'flex';
+                refFileInput.value = '';
+                refSpec.textContent = '已移除';
+                toastr.info('已将参考图标记为移除（保存修改后生效）');
+            };
+        }
+
+        refFileInput.onchange = (e) => {
+            const file = e.target.files?.[0];
+            if (file) handleEditRefFile(file);
+        };
+
+        if (refEmptyEl) {
+            refEmptyEl.onclick = (e) => {
+                if (e.target !== refPickBtn) refFileInput.click();
+            };
+            refEmptyEl.ondragover = (e) => {
+                e.preventDefault();
+                refEmptyEl.style.borderColor = '#38bdf8';
+                refEmptyEl.style.background = 'rgba(56, 189, 248, 0.16)';
+            };
+            refEmptyEl.ondragleave = (e) => {
+                e.preventDefault();
+                refEmptyEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                refEmptyEl.style.background = 'rgba(0,0,0,0.25)';
+            };
+            refEmptyEl.ondrop = (e) => {
+                e.preventDefault();
+                refEmptyEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                refEmptyEl.style.background = 'rgba(0,0,0,0.25)';
+                const file = e.dataTransfer?.files?.[0];
+                if (file && file.type.startsWith('image/')) {
+                    handleEditRefFile(file);
+                } else {
+                    toastr.warning('请拖拽有效的图片文件 (PNG / JPG / WebP)');
+                }
+            };
+        }
 
         overlay.querySelector('#rbq-pm-edit-submit').onclick = async () => {
             const title = overlay.querySelector('#rbq-pm-edit-title').value.trim();
@@ -1748,35 +2040,47 @@
 
             const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
             try {
+                const payload = {
+                    id: item.id,
+                    creatorKey: cfg.creatorKey,
+                    adminKey: cfg.adminKey,
+                    originalAuthor: item.author || '',
+                    author,
+                    title,
+                    tags,
+                    model,
+                    positive,
+                    negative,
+                    description
+                };
+                if (editRefBase64 !== null) {
+                    payload.referenceBase64 = editRefBase64;
+                }
+                if (editBmBase64 !== null) {
+                    payload.previewBase64 = editBmBase64;
+                }
+
                 const res = await fetch(`${uploadEndpoint}/api/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: item.id,
-                        creatorKey: cfg.creatorKey,
-                        adminKey: cfg.adminKey,
-                        originalAuthor: item.author || '',
-                        author,
-                        title,
-                        tags,
-                        model,
-                        positive,
-                        negative,
-                        description
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    item.title = title;
-                    item.author = author;
-                    item.tags = tags;
-                    item.model = model;
-                    item.positive = positive;
-                    item.negative = negative;
-                    item.description = description;
+                    if (data.item) {
+                        Object.assign(item, data.item);
+                    } else {
+                        item.title = title;
+                        item.author = author;
+                        item.tags = tags;
+                        item.model = model;
+                        item.positive = positive;
+                        item.negative = negative;
+                        item.description = description;
+                    }
 
-                    toastr.success('🎉 预设与风格标签已更新成功！');
+                    toastr.success('🎉 预设与图片已更新成功！');
                     closeSubDialog(overlay);
                     if (parentOverlay) closeSubDialog(parentOverlay);
                     refreshDynamicTags();
@@ -1808,6 +2112,8 @@
         overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483642; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
 
         const previewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
+        let currentViewSrc = previewSrc;
+        const hasReference = Boolean(item.referenceUrl && item.referenceUrl.trim());
         const m = (item.model || '').toLowerCase();
         let modelBadge = '<span style="font-size:10px; background:rgba(255,255,255,0.1); color:#cbd5e1; padding:2px 7px; border-radius:4px;">通用</span>';
         if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
@@ -1833,10 +2139,23 @@
                     <button id="rbq-pm-detail-close" class="rbq-pm-close-btn" title="关闭详情" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
                 </div>
                 <div class="rbq-pm-detail-body" style="padding:16px 18px; overflow-y:auto; flex:1; display:flex; flex-wrap:wrap; gap:16px;">
-                    <!-- Left Column: Portrait Artwork Preview -->
-                    <div class="rbq-pm-detail-left" style="width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:10px;">
+                    <!-- Left Column: Portrait Artwork Preview (Dual-View HUD) -->
+                    <div class="rbq-pm-detail-left" style="width:220px; flex-shrink:0; display:flex; flex-direction:column; gap:8px;">
+                        ${hasReference ? `
+                        <div id="rbq-pm-detail-view-tabs" style="display:flex; background:#0b1120; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:3px; gap:4px;">
+                            <button id="rbq-pm-detail-tab-bm" class="menu_button active" style="flex:1; font-size:11px; font-weight:700; padding:5px 6px; border-radius:6px; border:none; cursor:pointer; background:linear-gradient(135deg, #a855f7, #ec4899); color:#fff; display:inline-flex; align-items:center; justify-content:center; gap:4px; transition:all 0.2s;">
+                                <i class="fa-solid fa-flask"></i> 官方基准图
+                            </button>
+                            <button id="rbq-pm-detail-tab-ref" class="menu_button" style="flex:1; font-size:11px; font-weight:700; padding:5px 6px; border-radius:6px; border:none; cursor:pointer; background:transparent; color:#94a3b8; display:inline-flex; align-items:center; justify-content:center; gap:4px; transition:all 0.2s;">
+                                <i class="fa-solid fa-image"></i> 自制参考图
+                            </button>
+                        </div>
+                        ` : ''}
                         <div id="rbq-pm-detail-img-wrap" style="width:100%; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:#070b13; border:1px solid rgba(255,255,255,0.12); position:relative; cursor:zoom-in;" title="点击查看高清大图">
-                            <img src="${previewSrc}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block;">
+                            <img id="rbq-pm-detail-main-img" src="${currentViewSrc}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:opacity 0.2s ease;">
+                            <div id="rbq-pm-detail-img-badge" style="position:absolute; top:7px; left:7px; background:linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9)); color:#fff; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4);">
+                                <i class="fa-solid fa-flask"></i> 官方基准图
+                            </div>
                             <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); font-size:10px; padding:2px 6px; border-radius:4px; color:#cbd5e1;">
                                 <i class="fa-solid fa-magnifying-glass-plus"></i> 点击放大
                             </div>
@@ -1928,6 +2247,38 @@
         bindFastClose(overlay.querySelector('#rbq-pm-detail-close'), () => closeSubDialog(overlay));
         bindDialogBackdropClose(overlay);
 
+        // 双图切换逻辑 (官方基准测试图 vs 作者自制参考图)
+        const tabBm = overlay.querySelector('#rbq-pm-detail-tab-bm');
+        const tabRef = overlay.querySelector('#rbq-pm-detail-tab-ref');
+        const mainImg = overlay.querySelector('#rbq-pm-detail-main-img');
+        const imgBadge = overlay.querySelector('#rbq-pm-detail-img-badge');
+        if (tabBm && tabRef && mainImg) {
+            tabBm.onclick = () => {
+                currentViewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
+                mainImg.src = currentViewSrc;
+                tabBm.style.background = 'linear-gradient(135deg, #a855f7, #ec4899)';
+                tabBm.style.color = '#fff';
+                tabRef.style.background = 'transparent';
+                tabRef.style.color = '#94a3b8';
+                if (imgBadge) {
+                    imgBadge.innerHTML = '<i class="fa-solid fa-flask"></i> 官方基准图';
+                    imgBadge.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9))';
+                }
+            };
+            tabRef.onclick = () => {
+                currentViewSrc = item.referenceUrl;
+                mainImg.src = currentViewSrc;
+                tabRef.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
+                tabRef.style.color = '#fff';
+                tabBm.style.background = 'transparent';
+                tabBm.style.color = '#94a3b8';
+                if (imgBadge) {
+                    imgBadge.innerHTML = '<i class="fa-solid fa-image"></i> 自制参考图';
+                    imgBadge.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.9), rgba(37,99,235,0.9))';
+                }
+            };
+        }
+
         // 点击预览图放大 Lightbox
         const imgWrap = overlay.querySelector('#rbq-pm-detail-img-wrap');
         if (imgWrap) {
@@ -1935,7 +2286,7 @@
                 const lb = document.createElement('div');
                 lb.id = 'rbq-pm-lightbox';
                 lb.style.cssText = 'position:fixed; inset:0; z-index:2147483646; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; backdrop-filter:blur(10px);';
-                lb.innerHTML = `<img src="${previewSrc}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
+                lb.innerHTML = `<img src="${currentViewSrc}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
                 bindFastClose(lb, () => closeSubDialog(lb));
                 bindDialogBackdropClose(lb);
                 document.body.appendChild(lb);
@@ -2921,7 +3272,7 @@
         renderVisualFrame();
     }
 
-    // ── 发布弹窗 (带工坊现场一键生图核心装置) ──
+    // ── 发布弹窗 (带工坊现场一键生图核心装置 & 官方基准+自制双舱展台) ──
     function openUploadDialog() {
         const cfg = getConfig();
         const uploadEndpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
@@ -2958,7 +3309,7 @@
         overlay.id = 'rbq-pm-upload-dialog';
         overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483643; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
         overlay.innerHTML = `
-            <div style="width:92vw; max-width:660px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
+            <div style="width:92vw; max-width:680px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
                         <i class="fa-solid fa-cloud-arrow-up" style="color:#38bdf8;"></i>
@@ -3015,92 +3366,134 @@
                         <textarea id="rbq-pm-up-neg" rows="2" placeholder="可选输入针对该风格的负向词，例如: flat color, simplified" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
                     </div>
 
-                    <!-- 统一基准底模提示框 (仅供实测对比参考) -->
+                    <!-- 统一基准底模提示框 (说明与复制) -->
                     <div style="background:linear-gradient(135deg, rgba(217,70,239,0.1), rgba(56,189,248,0.1)); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span style="font-weight:700; color:#f0abfc;"><i class="fa-solid fa-vial"></i> 官方基准测试底模 (由卡密sama提供)</span>
-                            <button id="rbq-pm-up-copy-bm" type="button" class="menu_button" style="background:rgba(217,70,239,0.25); border:1px solid rgba(217,70,239,0.5); color:#f0abfc; font-size:11px; font-weight:600; padding:2px 9px; border-radius:5px; cursor:pointer;" title="点击复制卡密sama基准测试词">
+                            <button id="rbq-pm-up-copy-bm" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(217,70,239,0.25); border:1px solid rgba(217,70,239,0.5); color:#f0abfc; font-size:11px; font-weight:600; padding:3px 9px; border-radius:5px; cursor:pointer;" title="点击复制卡密sama基准测试词">
                                 <i class="fa-solid fa-copy"></i> 复制基准词
                             </button>
                         </div>
                         <div style="color:#cbd5e1; margin-top:4px; font-size:11px; line-height:1.45;">
-                            你可以直接<strong>上传自己已生成的精美参考图</strong>作为工坊展示封面；也可以点击右下方「立即生图实测」与官方基准底模自动合并排队出图。
+                            工坊封面<strong>必须为官方基准测试图</strong>（保障全场预设横向客观对比）；你也可以<strong>额外上传一张自制参考图</strong>展示该预设的个性化画面。
                         </div>
                     </div>
 
-                    <!-- 预览图生成与绑定核心区域 (双擎展台：支持用户上传本地参考图 / 现场实测生图) -->
-                    <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                            <div style="font-size:12.5px; color:#f1f5f9; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                                <i class="fa-solid fa-image" style="color:#38bdf8;"></i> 封面与效果参考图绑定 *
+                    <!-- 双舱展示台：槽位 1 官方基准图 (封面 · 必传 *) + 槽位 2 自制参考图 (可选 +) -->
+                    <div class="rbq-pm-up-slots-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+                        <!-- 槽位 1: 官方基准测试图 (封面 · 必传 *) -->
+                        <div style="background:linear-gradient(135deg, rgba(217,70,239,0.06), rgba(168,85,247,0.06)); border:1.5px solid rgba(217,70,239,0.35); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                                <div style="font-size:12.5px; color:#f0abfc; font-weight:700; display:inline-flex; align-items:center; gap:5px;">
+                                    <i class="fa-solid fa-flask"></i> 封面基准图 (官方 · 必传 *)
+                                </div>
+                                <span id="rbq-pm-bm-spec" style="font-size:10px; color:#94a3b8;">720px WebP 封面</span>
                             </div>
-                            <span id="rbq-pm-img-spec" style="font-size:11px; color:#64748b;">规格: 720px WebP (0.82) 高保真</span>
-                        </div>
-
-                        <!-- 状态 1: 未绑定图片时的双擎选择展台 -->
-                        <div id="rbq-pm-preview-empty" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
-                            <!-- Option A: 上传本地生成图 -->
-                            <div id="rbq-pm-drop-zone-local" style="background:linear-gradient(135deg, rgba(56,189,248,0.06), rgba(37,99,235,0.08)); border:1.5px dashed rgba(56,189,248,0.45); border-radius:10px; padding:14px 12px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; cursor:pointer; transition:all 0.2s ease;">
-                                <div style="width:40px; height:40px; border-radius:10px; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.3); display:flex; align-items:center; justify-content:center; color:#38bdf8; font-size:18px;">
-                                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                                </div>
-                                <div>
-                                    <div style="font-size:13px; font-weight:700; color:#7dd3fc;">上传本地参考图 (推荐)</div>
-                                    <div style="font-size:11px; color:#94a3b8; margin-top:2px; line-height:1.35;">拖拽图片至此处，或点选上传你已生成的实机作品<br><span style="color:#64748b; font-size:10px;">(支持 PNG / JPG / WebP)</span></div>
-                                </div>
-                                <button type="button" id="rbq-pm-btn-pick-file" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer; pointer-events:auto; margin-top:2px;">
-                                    <i class="fa-solid fa-folder-open"></i> 选择本地图片
-                                </button>
-                                <input id="rbq-pm-up-img" type="file" accept="image/*" style="display:none;">
+                            <div style="font-size:11px; color:#cbd5e1; line-height:1.35;">
+                                使用卡密sama底模渲染，作为工坊全场统一封面。
                             </div>
 
-                            <!-- Option B: 现场生图实测 -->
-                            <div style="background:linear-gradient(135deg, rgba(168,85,247,0.06), rgba(236,72,153,0.08)); border:1.5px dashed rgba(168,85,247,0.4); border-radius:10px; padding:14px 12px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; transition:all 0.2s ease;">
-                                <div style="width:40px; height:40px; border-radius:10px; background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.3); display:flex; align-items:center; justify-content:center; color:#c084fc; font-size:18px;">
+                            <!-- 槽位 1 未绑定态 -->
+                            <div id="rbq-pm-bm-empty" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.25); border:1.5px dashed rgba(217,70,239,0.4); border-radius:8px; padding:12px; text-align:center; align-items:center; justify-content:center; min-height:160px;">
+                                <div style="width:36px; height:36px; border-radius:8px; background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.35); display:flex; align-items:center; justify-content:center; color:#f0abfc; font-size:16px;">
                                     <i class="fa-solid fa-wand-magic-sparkles"></i>
                                 </div>
-                                <div>
-                                    <div style="font-size:13px; font-weight:700; color:#f0abfc;">现场基准出图测试</div>
-                                    <div style="font-size:11px; color:#94a3b8; margin-top:2px; line-height:1.35;">与卡密sama基准底模词合并现场排队实测<br><span style="color:#64748b; font-size:10px;">保障全场预设横向客观对比</span></div>
+                                <div style="font-size:12px; font-weight:700; color:#f0abfc;">现场实测 或 上传已跑基准图</div>
+                                <div style="display:flex; flex-direction:column; gap:6px; width:100%; max-width:220px;">
+                                    <button id="rbq-pm-run-draw" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:6px 12px; border-radius:6px; cursor:pointer; box-shadow:0 2px 10px rgba(168,85,247,0.35);">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 立即生图实测 (推荐)
+                                    </button>
+                                    <button id="rbq-pm-pick-bm-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:5px 12px; border-radius:6px; cursor:pointer;">
+                                        <i class="fa-solid fa-folder-open"></i> 上传已跑出的基准图
+                                    </button>
                                 </div>
-                                <button id="rbq-pm-run-draw" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer; margin-top:2px; box-shadow:0 2px 10px rgba(168,85,247,0.35);">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> 立即生图实测
-                                </button>
+                                <input id="rbq-pm-file-bm" type="file" accept="image/*" style="display:none;">
+                            </div>
+
+                            <!-- 槽位 1 已绑定态 -->
+                            <div id="rbq-pm-bm-card-box" style="display:none; flex-direction:column; align-items:center; gap:8px;">
+                                <div id="rbq-pm-bm-card" style="width:160px; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:#070b13; border:1.5px solid rgba(217,70,239,0.6); position:relative; cursor:zoom-in; box-shadow:0 8px 24px rgba(0,0,0,0.6);" title="点击放大">
+                                    <img id="rbq-pm-bm-img" src="" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block;">
+                                    <div style="position:absolute; top:6px; left:6px; background:linear-gradient(135deg, rgba(217,70,239,0.9), rgba(168,85,247,0.9)); color:#fff; font-size:9px; font-weight:700; padding:2px 6px; border-radius:4px;">
+                                        <i class="fa-solid fa-flask"></i> 官方基准图 (封面)
+                                    </div>
+                                    <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); font-size:9.5px; padding:2px 6px; border-radius:4px; color:#e2e8f0;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
+                                    </div>
+                                </div>
+                                <div id="rbq-pm-bm-status" style="font-size:10.5px; color:#4ade80; text-align:center;"></div>
+                                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;">
+                                    <button type="button" id="rbq-pm-bm-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
+                                    </button>
+                                    <button type="button" id="rbq-pm-bm-redraw-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.4); color:#f0abfc; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-rotate"></i> 重新实测
+                                    </button>
+                                    <button type="button" id="rbq-pm-bm-change-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-folder-open"></i> 更换文件
+                                    </button>
+                                    <button type="button" id="rbq-pm-bm-clear-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-trash-can"></i> 清除
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- 状态 2: 已绑定后的 3:4 实机卡片展台 -->
-                        <div id="rbq-pm-preview-card-box" style="display:none; flex-direction:column; align-items:center; gap:10px; width:100%; padding:4px 0;">
-                            <div id="rbq-pm-preview-card" style="width:190px; aspect-ratio:3/4; border-radius:12px; overflow:hidden; background:#070b13; border:1.5px solid rgba(56,189,248,0.5); box-shadow:0 12px 32px rgba(0,0,0,0.7), 0 0 20px rgba(56,189,248,0.16); position:relative; cursor:zoom-in;" title="点击放大查看高清大图">
-                                <img id="rbq-pm-preview-img" src="" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:transform 0.3s ease;">
-                                <div id="rbq-pm-preview-badge" style="position:absolute; top:7px; left:7px; background:linear-gradient(135deg, rgba(56,189,248,0.9), rgba(37,99,235,0.9)); color:#fff; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4);">
-                                    <i class="fa-solid fa-image"></i> 本地效果参考图
+                        <!-- 槽位 2: 作者自制参考图 (作品展示 · 可选 +) -->
+                        <div style="background:linear-gradient(135deg, rgba(56,189,248,0.06), rgba(37,99,235,0.06)); border:1.5px solid rgba(56,189,248,0.35); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                                <div style="font-size:12.5px; color:#7dd3fc; font-weight:700; display:inline-flex; align-items:center; gap:5px;">
+                                    <i class="fa-solid fa-image"></i> 自制参考图 (效果展示 · 可选)
                                 </div>
-                                <div style="position:absolute; bottom:7px; right:7px; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); font-size:10px; padding:2px 7px; border-radius:4px; color:#e2e8f0; border:1px solid rgba(255,255,255,0.15);">
-                                    <i class="fa-solid fa-magnifying-glass-plus"></i> 点击放大
+                                <span id="rbq-pm-ref-spec" style="font-size:10px; color:#64748b;">支持 PNG/JPG/WebP</span>
+                            </div>
+                            <div style="font-size:11px; color:#cbd5e1; line-height:1.35;">
+                                可选上传一张使用该预设生成的个性化实机美图。
+                            </div>
+
+                            <!-- 槽位 2 未绑定态 -->
+                            <div id="rbq-pm-ref-empty" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.25); border:1.5px dashed rgba(56,189,248,0.4); border-radius:8px; padding:12px; text-align:center; align-items:center; justify-content:center; min-height:160px; cursor:pointer;">
+                                <div style="width:36px; height:36px; border-radius:8px; background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.35); display:flex; align-items:center; justify-content:center; color:#38bdf8; font-size:16px;">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
                                 </div>
-                                <div style="position:absolute; bottom:0; inset-inline:0; height:32px; background:linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events:none;"></div>
+                                <div style="font-size:12px; font-weight:700; color:#7dd3fc;">上传自制参考图 (可选)</div>
+                                <div style="font-size:10.5px; color:#94a3b8; line-height:1.35;">拖拽图片至此处，或点选文件<br><span style="color:#64748b; font-size:9.5px;">(不上传亦可正常发布预设)</span></div>
+                                <button id="rbq-pm-pick-ref-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer;">
+                                    <i class="fa-solid fa-folder-open"></i> 选择自制参考图
+                                </button>
+                                <input id="rbq-pm-file-ref" type="file" accept="image/*" style="display:none;">
                             </div>
-                            <div style="font-size:11px; color:#94a3b8; text-align:center;">
-                                <span id="rbq-pm-img-status"></span>
-                            </div>
-                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center;">
-                                <button type="button" id="rbq-pm-preview-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); color:#cbd5e1; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;">
-                                    <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
-                                </button>
-                                <button type="button" id="rbq-pm-preview-change-file-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.35); color:#7dd3fc; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;">
-                                    <i class="fa-solid fa-folder-open"></i> 更换参考图
-                                </button>
-                                <button type="button" id="rbq-pm-preview-clear-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;" title="清除当前预览，重新选择或出图">
-                                    <i class="fa-solid fa-rotate-left"></i> 重选/清除
-                                </button>
+
+                            <!-- 槽位 2 已绑定态 -->
+                            <div id="rbq-pm-ref-card-box" style="display:none; flex-direction:column; align-items:center; gap:8px;">
+                                <div id="rbq-pm-ref-card" style="width:160px; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:#070b13; border:1.5px solid rgba(56,189,248,0.6); position:relative; cursor:zoom-in; box-shadow:0 8px 24px rgba(0,0,0,0.6);" title="点击放大">
+                                    <img id="rbq-pm-ref-img" src="" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block;">
+                                    <div style="position:absolute; top:6px; left:6px; background:linear-gradient(135deg, rgba(56,189,248,0.9), rgba(37,99,235,0.9)); color:#fff; font-size:9px; font-weight:700; padding:2px 6px; border-radius:4px;">
+                                        <i class="fa-solid fa-image"></i> 自制参考图
+                                    </div>
+                                    <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); font-size:9.5px; padding:2px 6px; border-radius:4px; color:#e2e8f0;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 放大
+                                    </div>
+                                </div>
+                                <div id="rbq-pm-ref-status" style="font-size:10.5px; color:#38bdf8; text-align:center;"></div>
+                                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;">
+                                    <button type="button" id="rbq-pm-ref-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
+                                    </button>
+                                    <button type="button" id="rbq-pm-ref-change-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.35); color:#7dd3fc; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-folder-open"></i> 更换图片
+                                    </button>
+                                    <button type="button" id="rbq-pm-ref-clear-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-trash-can"></i> 移除参考图
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div style="padding:14px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
                     <button id="rbq-pm-up-cancel" class="menu_button" style="font-size:12px; padding:6px 14px;">取消</button>
-                    <button id="rbq-pm-up-submit" class="menu_button" disabled style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 18px; font-weight:700; opacity:0.45; cursor:not-allowed;" title="必须先上传参考图或生成预览图"><i class="fa-solid fa-ban"></i> 需先上传参考图或生成预览</button>
+                    <button id="rbq-pm-up-submit" class="menu_button" disabled style="background:#0284c7; border:none; color:#fff; font-size:12px; padding:6px 18px; font-weight:700; opacity:0.45; cursor:not-allowed;" title="必须先获取官方基准测试图作为封面"><i class="fa-solid fa-ban"></i> 需先提供官方基准测试图 (封面)</button>
                 </div>
             </div>
         `;
@@ -3132,162 +3525,102 @@
             }
         };
 
-        // 图片高保真压缩 (720px / 0.82 WebP)
-        let compressedBase64 = '';
-        let previewSourceType = 'local'; // 'local' | 'benchmark'
-        const fileInput = overlay.querySelector('#rbq-pm-up-img');
-        const emptyEl = overlay.querySelector('#rbq-pm-preview-empty');
-        const previewCardBox = overlay.querySelector('#rbq-pm-preview-card-box');
-        const previewCard = overlay.querySelector('#rbq-pm-preview-card');
-        const previewImg = overlay.querySelector('#rbq-pm-preview-img');
-        const previewBadge = overlay.querySelector('#rbq-pm-preview-badge');
-        const zoomBtn = overlay.querySelector('#rbq-pm-preview-zoom-btn');
-        const changeFileBtn = overlay.querySelector('#rbq-pm-preview-change-file-btn');
-        const clearBtn = overlay.querySelector('#rbq-pm-preview-clear-btn');
-        const imgStatus = overlay.querySelector('#rbq-pm-img-status');
-        const imgSpec = overlay.querySelector('#rbq-pm-img-spec');
-        const submitBtn = overlay.querySelector('#rbq-pm-up-submit');
-        const pickBtn = overlay.querySelector('#rbq-pm-btn-pick-file');
-        const dropZone = overlay.querySelector('#rbq-pm-drop-zone-local');
+        // 双图状态储存
+        let bmCompressedBase64 = ''; // 官方基准测试图 (封面 · 必传)
+        let refCompressedBase64 = ''; // 作者自制参考图 (可选)
 
-        function clearPreview() {
-            compressedBase64 = '';
-            previewImg.src = '';
-            if (previewCardBox) previewCardBox.style.display = 'none';
-            if (emptyEl) emptyEl.style.display = 'grid';
-            if (fileInput) fileInput.value = '';
-            if (imgStatus) imgStatus.innerHTML = '';
-            if (imgSpec) imgSpec.textContent = '规格: 720px WebP (0.82) 高保真';
-            if (submitBtn) {
+        const submitBtn = overlay.querySelector('#rbq-pm-up-submit');
+
+        function updateSubmitButtonState() {
+            if (!submitBtn) return;
+            if (!bmCompressedBase64) {
                 submitBtn.disabled = true;
                 submitBtn.style.opacity = '0.45';
                 submitBtn.style.cursor = 'not-allowed';
-                submitBtn.innerHTML = '<i class="fa-solid fa-ban"></i> 需先上传参考图或生成预览';
-            }
-        }
-
-        if (clearBtn) clearBtn.onclick = clearPreview;
-        if (zoomBtn) zoomBtn.onclick = () => { if (compressedBase64) openImageZoom(compressedBase64); };
-        if (previewCard) previewCard.onclick = () => { if (compressedBase64) openImageZoom(compressedBase64); };
-        if (pickBtn) pickBtn.onclick = (e) => { e.stopPropagation(); fileInput.click(); };
-        if (changeFileBtn) changeFileBtn.onclick = (e) => { e.stopPropagation(); fileInput.click(); };
-
-        // 拖拽上传支持
-        if (dropZone) {
-            dropZone.onclick = (e) => {
-                if (e.target !== pickBtn) fileInput.click();
-            };
-            dropZone.ondragover = (e) => {
-                e.preventDefault();
-                dropZone.style.borderColor = '#38bdf8';
-                dropZone.style.background = 'rgba(56, 189, 248, 0.16)';
-            };
-            dropZone.ondragleave = (e) => {
-                e.preventDefault();
-                dropZone.style.borderColor = 'rgba(56, 189, 248, 0.45)';
-                dropZone.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.06), rgba(37,99,235,0.08))';
-            };
-            dropZone.ondrop = (e) => {
-                e.preventDefault();
-                dropZone.style.borderColor = 'rgba(56, 189, 248, 0.45)';
-                dropZone.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.06), rgba(37,99,235,0.08))';
-                const file = e.dataTransfer?.files?.[0];
-                if (file && file.type.startsWith('image/')) {
-                    handleImageFile(file);
-                } else {
-                    toastr.warning('请拖拽有效的图片文件 (PNG / JPG / WebP)');
-                }
-            };
-        }
-
-        function processImageObject(imgObj, sourceName = '本地上传', type = 'local') {
-            previewSourceType = type;
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 720; // 原始高保真尺寸
-            let width = imgObj.width;
-            let height = imgObj.height;
-            if (width > MAX_WIDTH) {
-                height = Math.round((height * MAX_WIDTH) / width);
-                width = MAX_WIDTH;
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(imgObj, 0, 0, width, height);
-            compressedBase64 = canvas.toDataURL('image/webp', 0.82);
-            previewImg.src = compressedBase64;
-
-            if (previewBadge) {
-                if (type === 'local') {
-                    previewBadge.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.9), rgba(37,99,235,0.9))';
-                    previewBadge.innerHTML = '<i class="fa-solid fa-image"></i> 本地效果参考图';
-                } else {
-                    previewBadge.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9))';
-                    previewBadge.innerHTML = '<i class="fa-solid fa-flask"></i> 现场基准实测图';
-                }
-            }
-
-            if (emptyEl) emptyEl.style.display = 'none';
-            if (previewCardBox) previewCardBox.style.display = 'flex';
-
-            // 成功绑定真实预览后，解锁发布按钮
-            if (submitBtn) {
+                submitBtn.innerHTML = '<i class="fa-solid fa-ban"></i> 需先提供官方基准测试图 (封面)';
+            } else {
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';
                 submitBtn.style.cursor = 'pointer';
-                submitBtn.title = '发布预设至工坊';
-                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 确认发布预设至工坊';
+                submitBtn.innerHTML = refCompressedBase64 
+                    ? '<i class="fa-solid fa-paper-plane"></i> 确认发布预设 (含自制参考图)'
+                    : '<i class="fa-solid fa-paper-plane"></i> 确认发布预设至工坊';
             }
-
-            const approxKb = Math.round((compressedBase64.length * 3) / 4 / 1024);
-            imgStatus.innerHTML = `<span style="color:#22c55e; font-weight:600;"><i class="fa-solid fa-check"></i> 已绑定真实预览 (${sourceName})</span>`;
-            imgSpec.textContent = `${width}x${height} WebP (~${approxKb}KB) | CFG: ${capturedParams.scale} 步数: ${capturedParams.steps}`;
         }
 
-        function handleImageFile(file) {
+        // ── 槽位 1 控制绑定：官方基准测试图 (封面) ──
+        const bmEmptyEl = overlay.querySelector('#rbq-pm-bm-empty');
+        const bmCardBox = overlay.querySelector('#rbq-pm-bm-card-box');
+        const bmCard = overlay.querySelector('#rbq-pm-bm-card');
+        const bmImg = overlay.querySelector('#rbq-pm-bm-img');
+        const bmStatus = overlay.querySelector('#rbq-pm-bm-status');
+        const bmSpec = overlay.querySelector('#rbq-pm-bm-spec');
+        const bmFileInput = overlay.querySelector('#rbq-pm-file-bm');
+        const bmPickBtn = overlay.querySelector('#rbq-pm-pick-bm-btn');
+        const bmDrawBtn = overlay.querySelector('#rbq-pm-run-draw');
+        const bmRedrawBtn = overlay.querySelector('#rbq-pm-bm-redraw-btn');
+        const bmChangeBtn = overlay.querySelector('#rbq-pm-bm-change-btn');
+        const bmClearBtn = overlay.querySelector('#rbq-pm-bm-clear-btn');
+        const bmZoomBtn = overlay.querySelector('#rbq-pm-bm-zoom-btn');
+
+        function bindBenchmarkImage(imgObj, sourceName = '现场实测出图') {
+            const { b64, width, height, approxKb } = compressToWebp(imgObj);
+            bmCompressedBase64 = b64;
+            bmImg.src = b64;
+            bmEmptyEl.style.display = 'none';
+            bmCardBox.style.display = 'flex';
+            bmStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定基准封面 (${sourceName})`;
+            bmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+            updateSubmitButtonState();
+        }
+
+        function clearBenchmarkImage() {
+            bmCompressedBase64 = '';
+            bmImg.src = '';
+            bmCardBox.style.display = 'none';
+            bmEmptyEl.style.display = 'flex';
+            bmFileInput.value = '';
+            bmSpec.textContent = '720px WebP 封面';
+            updateSubmitButtonState();
+        }
+
+        if (bmClearBtn) bmClearBtn.onclick = clearBenchmarkImage;
+        if (bmZoomBtn) bmZoomBtn.onclick = () => { if (bmCompressedBase64) openImageZoom(bmCompressedBase64); };
+        if (bmCard) bmCard.onclick = () => { if (bmCompressedBase64) openImageZoom(bmCompressedBase64); };
+        if (bmPickBtn) bmPickBtn.onclick = (e) => { e.stopPropagation(); bmFileInput.click(); };
+        if (bmChangeBtn) bmChangeBtn.onclick = (e) => { e.stopPropagation(); bmFileInput.click(); };
+
+        bmFileInput.onchange = (e) => {
+            const file = e.target.files?.[0];
             if (!file) return;
-            const titleInput = overlay.querySelector('#rbq-pm-up-title');
-            if (titleInput && !titleInput.value.trim()) {
-                const autoTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
-                if (autoTitle) titleInput.value = autoTitle;
-            }
             const reader = new FileReader();
             reader.onload = (event) => {
                 const img = new Image();
                 img.onload = () => {
-                    processImageObject(img, '本地生成参考图', 'local');
-                    toastr.success(`🎉 已成功导入参考图「${file.name}」！`);
+                    bindBenchmarkImage(img, `本地上传: ${file.name}`);
+                    toastr.success(`🎉 已将「${file.name}」绑定为官方基准测试封面！`);
                 };
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
-        }
-
-        fileInput.onchange = (e) => {
-            const file = e.target.files?.[0];
-            if (file) handleImageFile(file);
         };
 
-        // ── 🎨 核心装置：现场直接生图并绑定为预览图 ──
-        const drawBtn = overlay.querySelector('#rbq-pm-run-draw');
-        drawBtn.onclick = async () => {
+        // 槽位 1 现场生图核心逻辑 (与卡密sama底模提示词合并)
+        async function runBenchmarkLiveDraw() {
             const pos = overlay.querySelector('#rbq-pm-up-pos').value.trim();
             const neg = overlay.querySelector('#rbq-pm-up-neg').value.trim();
             if (!pos) {
-                toastr.warning('请先输入你的画师串/正面提示词！');
+                toastr.warning('请先输入你的正面画师串/预设提示词！');
                 return;
             }
-
             if (typeof RBQ?.api?.generateImage !== 'function') {
                 toastr.error('酒馆当前未启用 RBQ 生图流水线，请检查生图插件是否正常激活');
                 return;
             }
 
-            // 核心机制：画师串 + 卡密sama基准底模提示词自动合并
             const finalPrompt = [pos, BENCHMARK_POSITIVE_PROMPT].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
             const finalNegative = [neg, BENCHMARK_NEGATIVE_PROMPT].map(p => (p || '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
 
-            // 自动从酒馆当前生图会话中抓取真实生图参数绑定到预设
             const currentSettings = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : s;
             capturedParams = {
                 scale: currentSettings.naiScale !== undefined && currentSettings.naiScale !== null ? Number(currentSettings.naiScale) : (s.naiScale || 6.0),
@@ -3296,10 +3629,13 @@
                 cfgRescale: currentSettings.naiCfgRescale !== undefined && currentSettings.naiCfgRescale !== null ? Number(currentSettings.naiCfgRescale) : (s.naiCfgRescale || 0)
             };
 
-            drawBtn.disabled = true;
-            const originalHtml = drawBtn.innerHTML;
-            drawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>正在向生图集群排队出图...</span>';
-            imgStatus.innerHTML = '<span style="color:#38bdf8;"><i class="fa-solid fa-spinner fa-spin"></i> 正在生成图片...</span>';
+            const origHtml = bmDrawBtn.innerHTML;
+            bmDrawBtn.disabled = true;
+            bmDrawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>正在排队出图...</span>';
+            if (bmRedrawBtn) {
+                bmRedrawBtn.disabled = true;
+                bmRedrawBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 出图中...';
+            }
 
             try {
                 const uploadMeta = {
@@ -3312,30 +3648,31 @@
                     steps: capturedParams.steps,
                     cfgRescale: capturedParams.cfgRescale
                 };
-                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-preview', uploadMeta, (progress) => {
-                    if (progress) drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
+                const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-benchmark', uploadMeta, (progress) => {
+                    if (progress) bmDrawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
                 });
 
                 if (!drawRes || !drawRes.url) {
                     throw new Error('生图服务未返回有效图片地址');
                 }
 
-                // 载入生成的图片并转换为 720px @ 0.82 WebP
                 const drawImg = new Image();
                 drawImg.crossOrigin = 'anonymous';
                 drawImg.onload = () => {
-                    processImageObject(drawImg, '当前串+卡密sama底模 现场实测', 'benchmark');
-                    toastr.success('🎉 预览图生成成功并已绑定该提示词！所见即所得。');
+                    bindBenchmarkImage(drawImg, '现场基准实测出图');
+                    toastr.success('🎉 官方基准测试图生成成功并已绑定为封面！所见即所得。');
                 };
                 drawImg.onerror = async () => {
-                    // Blob 降级方案
                     try {
                         const blobResp = await fetch(drawRes.url);
                         const blob = await blobResp.blob();
                         const reader = new FileReader();
                         reader.onload = (ev) => {
                             const bImg = new Image();
-                            bImg.onload = () => processImageObject(bImg, '当前串+卡密sama底模 现场实测', 'benchmark');
+                            bImg.onload = () => {
+                                bindBenchmarkImage(bImg, '现场基准实测出图');
+                                toastr.success('🎉 官方基准测试图生成成功并已绑定为封面！');
+                            };
                             bImg.src = ev.target.result;
                         };
                         reader.readAsDataURL(blob);
@@ -3345,12 +3682,109 @@
                 };
                 drawImg.src = drawRes.url;
             } catch (err) {
-                toastr.error('现场生图失败: ' + (err.message || String(err)));
-                imgStatus.innerHTML = '<span style="color:#ef4444;">生图失败，可手动选择本地图片</span>';
+                toastr.error('现场基准生图失败: ' + (err.message || String(err)));
             } finally {
-                drawBtn.disabled = false;
-                drawBtn.innerHTML = originalHtml;
+                bmDrawBtn.disabled = false;
+                bmDrawBtn.innerHTML = origHtml;
+                if (bmRedrawBtn) {
+                    bmRedrawBtn.disabled = false;
+                    bmRedrawBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> 重新实测';
+                }
             }
+        }
+
+        if (bmDrawBtn) bmDrawBtn.onclick = runBenchmarkLiveDraw;
+        if (bmRedrawBtn) bmRedrawBtn.onclick = runBenchmarkLiveDraw;
+
+        // ── 槽位 2 控制绑定：作者自制参考图 (可选) ──
+        const refEmptyEl = overlay.querySelector('#rbq-pm-ref-empty');
+        const refCardBox = overlay.querySelector('#rbq-pm-ref-card-box');
+        const refCard = overlay.querySelector('#rbq-pm-ref-card');
+        const refImg = overlay.querySelector('#rbq-pm-ref-img');
+        const refStatus = overlay.querySelector('#rbq-pm-ref-status');
+        const refSpec = overlay.querySelector('#rbq-pm-ref-spec');
+        const refFileInput = overlay.querySelector('#rbq-pm-file-ref');
+        const refPickBtn = overlay.querySelector('#rbq-pm-pick-ref-btn');
+        const refChangeBtn = overlay.querySelector('#rbq-pm-ref-change-btn');
+        const refClearBtn = overlay.querySelector('#rbq-pm-ref-clear-btn');
+        const refZoomBtn = overlay.querySelector('#rbq-pm-ref-zoom-btn');
+
+        function bindReferenceImage(imgObj, fileName = '自制美图') {
+            const { b64, width, height, approxKb } = compressToWebp(imgObj);
+            refCompressedBase64 = b64;
+            refImg.src = b64;
+            refEmptyEl.style.display = 'none';
+            refCardBox.style.display = 'flex';
+            refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定自制参考图 (${fileName})`;
+            refSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+            updateSubmitButtonState();
+        }
+
+        function clearReferenceImage() {
+            refCompressedBase64 = '';
+            refImg.src = '';
+            refCardBox.style.display = 'none';
+            refEmptyEl.style.display = 'flex';
+            refFileInput.value = '';
+            refSpec.textContent = '支持 PNG/JPG/WebP';
+            updateSubmitButtonState();
+        }
+
+        if (refClearBtn) refClearBtn.onclick = clearReferenceImage;
+        if (refZoomBtn) refZoomBtn.onclick = () => { if (refCompressedBase64) openImageZoom(refCompressedBase64); };
+        if (refCard) refCard.onclick = () => { if (refCompressedBase64) openImageZoom(refCompressedBase64); };
+        if (refPickBtn) refPickBtn.onclick = (e) => { e.stopPropagation(); refFileInput.click(); };
+        if (refChangeBtn) refChangeBtn.onclick = (e) => { e.stopPropagation(); refFileInput.click(); };
+
+        if (refEmptyEl) {
+            refEmptyEl.onclick = (e) => {
+                if (e.target !== refPickBtn) refFileInput.click();
+            };
+            refEmptyEl.ondragover = (e) => {
+                e.preventDefault();
+                refEmptyEl.style.borderColor = '#38bdf8';
+                refEmptyEl.style.background = 'rgba(56, 189, 248, 0.16)';
+            };
+            refEmptyEl.ondragleave = (e) => {
+                e.preventDefault();
+                refEmptyEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                refEmptyEl.style.background = 'rgba(0,0,0,0.25)';
+            };
+            refEmptyEl.ondrop = (e) => {
+                e.preventDefault();
+                refEmptyEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                refEmptyEl.style.background = 'rgba(0,0,0,0.25)';
+                const file = e.dataTransfer?.files?.[0];
+                if (file && file.type.startsWith('image/')) {
+                    handleRefFile(file);
+                } else {
+                    toastr.warning('请拖拽有效的图片文件 (PNG / JPG / WebP)');
+                }
+            };
+        }
+
+        function handleRefFile(file) {
+            if (!file) return;
+            const titleInput = overlay.querySelector('#rbq-pm-up-title');
+            if (titleInput && !titleInput.value.trim()) {
+                const autoTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+                if (autoTitle) titleInput.value = autoTitle;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    bindReferenceImage(img, file.name);
+                    toastr.success(`🎉 已成功导入作者自制参考图「${file.name}」！`);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        refFileInput.onchange = (e) => {
+            const file = e.target.files?.[0];
+            if (file) handleRefFile(file);
         };
 
         // 提交发布
@@ -3375,20 +3809,19 @@
                 return;
             }
 
-            // 严禁未生成或未上传测试图直接发布
-            if (!compressedBase64) {
-                toastr.warning('必须先上传自制参考图或现场生成基准预览图！');
+            // 严格要求：封面基准测试图为必选！
+            if (!bmCompressedBase64) {
+                toastr.warning('封面用的官方基准测试图为必传项！请现场生图或上传基准图。');
                 return;
             }
 
             cfg.authorName = author;
             saveConfig();
 
-            const submitBtn = overlay.querySelector('#rbq-pm-up-submit');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 发布中...';
 
-            const descriptionText = (previewSourceType === 'local') ? '用户上传实机效果参考图' : '基准测试预览由「卡密sama」提示词渲染';
+            const descriptionText = refCompressedBase64 ? '包含官方基准测试封面与作者自制效果参考图' : '官方基准测试封面由「卡密sama」提示词渲染';
 
             try {
                 const res = await fetch(`${uploadEndpoint}/api/upload`, {
@@ -3405,7 +3838,8 @@
                         description: descriptionText,
                         creatorKey: cfg.creatorKey,
                         previewUrl: '',
-                        previewBase64: compressedBase64
+                        previewBase64: bmCompressedBase64,
+                        referenceBase64: refCompressedBase64 || ''
                     })
                 });
 
@@ -3425,7 +3859,7 @@
                 toastr.error('请求网络错误: ' + (err.message || String(err)));
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 确认发布预设至工坊';
+                updateSubmitButtonState();
             }
         };
     }
@@ -3673,5 +4107,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.23 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.24 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

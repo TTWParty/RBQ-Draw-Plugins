@@ -205,39 +205,304 @@
         RBQ.api.refreshNaiVibeUi?.();
     }
 
+    function ensureDialogStyles() {
+        if (document.getElementById('rbq-pp-dialog-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'rbq-pp-dialog-styles';
+        style.textContent = `
+            .rbq-pp-dialog-overlay {
+                position: fixed !important;
+                inset: 0 !important;
+                z-index: 100000 !important;
+                display: flex !important;
+                background: rgba(0, 0, 0, 0.72) !important;
+                backdrop-filter: blur(6px) !important;
+                -webkit-backdrop-filter: blur(6px) !important;
+                box-sizing: border-box !important;
+                padding: max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;
+                overflow-y: auto !important;
+                overscroll-behavior: contain !important;
+            }
+            .rbq-pp-dialog-box {
+                background: #18191d !important;
+                border: 1px solid rgba(255, 255, 255, 0.12) !important;
+                border-radius: 12px !important;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+                width: min(94vw, 520px) !important;
+                max-height: min(86dvh, 720px) !important;
+                display: flex !important;
+                flex-direction: column !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+                color: #f7f8f8 !important;
+                margin: auto !important;
+            }
+            .rbq-pp-dialog-header {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                padding: 13px 16px !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+                background: rgba(255, 255, 255, 0.02) !important;
+                flex-shrink: 0 !important;
+                gap: 10px !important;
+            }
+            .rbq-pp-dialog-title {
+                font-size: 14.5px !important;
+                font-weight: 600 !important;
+                color: #fff !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                min-width: 0 !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+                flex: 1 !important;
+            }
+            .rbq-pp-dialog-title i {
+                color: #828fff !important;
+                flex-shrink: 0 !important;
+            }
+            .rbq-pp-dialog-close {
+                width: 28px !important;
+                height: 28px !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                border-radius: 6px !important;
+                border: none !important;
+                background: transparent !important;
+                color: rgba(255, 255, 255, 0.45) !important;
+                cursor: pointer !important;
+                transition: all 0.15s ease !important;
+                padding: 0 !important;
+                flex-shrink: 0 !important;
+                font-size: 14px !important;
+            }
+            .rbq-pp-dialog-close:hover {
+                color: #fff !important;
+                background: rgba(255, 255, 255, 0.08) !important;
+            }
+            .rbq-pp-dialog-toolbar {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                padding: 8px 16px !important;
+                background: rgba(0, 0, 0, 0.18) !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+                flex-shrink: 0 !important;
+                gap: 8px !important;
+            }
+            .rbq-pp-dialog-count-badge {
+                font-size: 11px !important;
+                font-weight: 600 !important;
+                padding: 2px 8px !important;
+                border-radius: 999px !important;
+                background: rgba(94, 106, 210, 0.15) !important;
+                color: #a5b4fc !important;
+                border: 1px solid rgba(94, 106, 210, 0.3) !important;
+                white-space: nowrap !important;
+            }
+            .rbq-pp-dialog-body {
+                flex: 1 1 auto !important;
+                min-height: 0 !important;
+                overflow-y: auto !important;
+                padding: 10px 14px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 6px !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+            .rbq-pp-dialog-item {
+                display: flex !important;
+                align-items: flex-start !important;
+                gap: 10px !important;
+                padding: 9px 12px !important;
+                border-radius: 8px !important;
+                background: rgba(255, 255, 255, 0.03) !important;
+                border: 1px solid rgba(255, 255, 255, 0.06) !important;
+                cursor: pointer !important;
+                user-select: none !important;
+                -webkit-user-select: none !important;
+                transition: background 0.15s ease, border-color 0.15s ease !important;
+                box-sizing: border-box !important;
+            }
+            .rbq-pp-dialog-item:hover {
+                background: rgba(255, 255, 255, 0.06) !important;
+                border-color: rgba(255, 255, 255, 0.12) !important;
+            }
+            .rbq-pp-dialog-item.selected {
+                background: rgba(94, 106, 210, 0.08) !important;
+                border-color: rgba(94, 106, 210, 0.35) !important;
+            }
+            .rbq-pp-dialog-checkbox {
+                margin-top: 2px !important;
+                width: 17px !important;
+                height: 17px !important;
+                accent-color: #5e6ad2 !important;
+                cursor: pointer !important;
+                flex-shrink: 0 !important;
+            }
+            .rbq-pp-dialog-item-info {
+                flex: 1 1 auto !important;
+                min-width: 0 !important;
+            }
+            .rbq-pp-dialog-item-name {
+                font-size: 13px !important;
+                font-weight: 500 !important;
+                color: #fff !important;
+                line-height: 1.4 !important;
+                word-break: break-all !important;
+            }
+            .rbq-pp-dialog-item-tag {
+                font-size: 11px !important;
+                margin-top: 2px !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                white-space: nowrap !important;
+                line-height: 1.4 !important;
+            }
+            .rbq-pp-dialog-item-tag.pos {
+                color: rgba(255, 255, 255, 0.55) !important;
+            }
+            .rbq-pp-dialog-item-tag.neg {
+                color: rgba(248, 113, 113, 0.65) !important;
+            }
+            .rbq-pp-dialog-footer {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: flex-end !important;
+                gap: 8px !important;
+                padding: 12px 16px !important;
+                border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+                background: rgba(255, 255, 255, 0.02) !important;
+                flex-shrink: 0 !important;
+            }
+            .rbq-pp-dialog-btn {
+                display: inline-flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 6px !important;
+                white-space: nowrap !important;
+                box-sizing: border-box !important;
+                min-height: 38px !important;
+                padding: 8px 16px !important;
+                font-size: 13px !important;
+                font-weight: 500 !important;
+                line-height: 1 !important;
+                border-radius: 7px !important;
+                cursor: pointer !important;
+                text-align: center !important;
+                text-decoration: none !important;
+                border: 1px solid transparent !important;
+                transition: all 0.15s ease !important;
+                font-family: inherit !important;
+            }
+            .rbq-pp-dialog-btn:active {
+                transform: scale(0.98) !important;
+            }
+            .rbq-pp-dialog-btn-primary {
+                background: linear-gradient(135deg, #5e6ad2, #7170ff) !important;
+                color: #ffffff !important;
+                box-shadow: 0 2px 6px rgba(94, 106, 210, 0.25) !important;
+                border-color: rgba(255, 255, 255, 0.15) !important;
+            }
+            .rbq-pp-dialog-btn-primary:hover {
+                background: linear-gradient(135deg, #6c78e0, #8281ff) !important;
+                box-shadow: 0 3px 10px rgba(94, 106, 210, 0.4) !important;
+            }
+            .rbq-pp-dialog-btn-primary:disabled {
+                opacity: 0.5 !important;
+                cursor: not-allowed !important;
+                transform: none !important;
+            }
+            .rbq-pp-dialog-btn-secondary {
+                background: rgba(255, 255, 255, 0.06) !important;
+                border-color: rgba(255, 255, 255, 0.1) !important;
+                color: #f7f8f8 !important;
+            }
+            .rbq-pp-dialog-btn-secondary:hover {
+                background: rgba(255, 255, 255, 0.1) !important;
+                border-color: rgba(255, 255, 255, 0.18) !important;
+            }
+            .rbq-pp-dialog-btn-danger {
+                background: rgba(239, 68, 68, 0.15) !important;
+                border-color: rgba(239, 68, 68, 0.35) !important;
+                color: #fca5a5 !important;
+            }
+            .rbq-pp-dialog-btn-danger:hover {
+                background: rgba(239, 68, 68, 0.25) !important;
+                border-color: rgba(239, 68, 68, 0.5) !important;
+                color: #ef4444 !important;
+            }
+            .rbq-pp-dialog-btn-danger:disabled {
+                opacity: 0.5 !important;
+                cursor: not-allowed !important;
+                transform: none !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     function showVibeSaveDialog(onSelect) {
+        ensureDialogStyles();
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);';
+        overlay.className = 'rbq-pp-dialog-overlay';
+
         const dialog = document.createElement('div');
-        dialog.style.cssText = 'background:#1e1e2e;border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:16px;min-width:320px;max-width:520px;display:flex;flex-direction:column;gap:12px;color:#fff;box-shadow:0 12px 40px rgba(0,0,0,0.5);';
+        dialog.className = 'rbq-pp-dialog-box';
+        dialog.style.maxWidth = '460px';
+
+        const closeDialog = () => {
+            document.removeEventListener('keydown', onKeyDown);
+            overlay.remove();
+        };
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') closeDialog();
+        };
+        document.addEventListener('keydown', onKeyDown);
+
         dialog.innerHTML = `
-            <div style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;">
-                <i class="fa-solid fa-box-archive"></i>
-                <span>保存氛围文件状态</span>
+            <div class="rbq-pp-dialog-header">
+                <div class="rbq-pp-dialog-title">
+                    <i class="fa-solid fa-box-archive"></i>
+                    <span>保存氛围文件状态</span>
+                </div>
+                <button type="button" class="rbq-pp-dialog-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div style="font-size:13px;color:rgba(255,255,255,0.72);line-height:1.6;">
-                当前 NAI 面板里检测到氛围文件。请选择保存方式：
+            <div class="rbq-pp-dialog-body" style="gap: 12px; padding: 14px 16px;">
+                <div style="font-size:13px;color:rgba(255,255,255,0.85);line-height:1.6;">
+                    当前 NAI 面板里检测到氛围文件。请选择保存方式：
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;">
+                    <button id="rbq-pp-save-compact" class="rbq-pp-dialog-btn rbq-pp-dialog-btn-primary" type="button" style="padding:10px 14px;flex-direction:column;gap:4px;">
+                        <span style="font-size:13px;font-weight:600;"><i class="fa-solid fa-minimize"></i> 压缩保存</span>
+                        <span style="font-size:11px;opacity:0.8;font-weight:normal;">仅存特征，体积轻巧</span>
+                    </button>
+                    <button id="rbq-pp-save-full" class="rbq-pp-dialog-btn rbq-pp-dialog-btn-secondary" type="button" style="padding:10px 14px;flex-direction:column;gap:4px;">
+                        <span style="font-size:13px;font-weight:600;"><i class="fa-solid fa-floppy-disk"></i> 完整保存</span>
+                        <span style="font-size:11px;opacity:0.8;font-weight:normal;">保留全量 Base64 数据</span>
+                    </button>
+                </div>
+                <div style="font-size:11.5px;color:rgba(255,255,255,0.5);line-height:1.5;background:rgba(255,255,255,0.03);padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);">
+                    压缩保存：优先保留 tensor、strength、info，不保留大图 base64；完整保存：保留当前全部可用数据，体积更大。
+                </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button id="rbq-pp-save-compact" class="menu_button" type="button" style="flex:1;min-width:150px;">
-                    <i class="fa-solid fa-minimize"></i> 压缩保存
-                </button>
-                <button id="rbq-pp-save-full" class="menu_button" type="button" style="flex:1;min-width:150px;">
-                    <i class="fa-solid fa-floppy-disk"></i> 完整保存
-                </button>
-            </div>
-            <div style="font-size:12px;color:rgba(255,255,255,0.52);line-height:1.6;">
-                压缩保存：优先保留 tensor、strength、info，不保留大图 base64；完整保存：保留当前全部可用数据，体积更大。
-            </div>
-            <div style="display:flex;justify-content:flex-end;">
-                <button id="rbq-pp-save-cancel" class="menu_button" type="button" style="font-size:12px;padding:4px 14px;">取消</button>
+            <div class="rbq-pp-dialog-footer">
+                <button id="rbq-pp-save-cancel" class="rbq-pp-dialog-btn rbq-pp-dialog-btn-secondary" type="button">取消</button>
             </div>
         `;
+
         overlay.appendChild(dialog);
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-        dialog.querySelector('#rbq-pp-save-compact')?.addEventListener('click', () => { overlay.remove(); onSelect('compact'); });
-        dialog.querySelector('#rbq-pp-save-full')?.addEventListener('click', () => { overlay.remove(); onSelect('full'); });
-        dialog.querySelector('#rbq-pp-save-cancel')?.addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
+        dialog.querySelector('.rbq-pp-dialog-close')?.addEventListener('click', closeDialog);
+        dialog.querySelector('#rbq-pp-save-cancel')?.addEventListener('click', closeDialog);
+        dialog.querySelector('#rbq-pp-save-compact')?.addEventListener('click', () => { closeDialog(); onSelect('compact'); });
+        dialog.querySelector('#rbq-pp-save-full')?.addEventListener('click', () => { closeDialog(); onSelect('full'); });
+
         document.body.appendChild(overlay);
     }
 
@@ -479,75 +744,189 @@
 
     // ── Checkbox Dialog ──
     function showCheckboxDialog(title, items, onConfirm) {
+        ensureDialogStyles();
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);';
+        overlay.className = 'rbq-pp-dialog-overlay';
+
         const dialog = document.createElement('div');
-        dialog.style.cssText = 'background:#1e1e2e;border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:16px;min-width:320px;max-width:480px;max-height:70vh;display:flex;flex-direction:column;gap:10px;color:#fff;box-shadow:0 12px 40px rgba(0,0,0,0.5);';
+        dialog.className = 'rbq-pp-dialog-box';
+
+        const isDelete = typeof title === 'string' && title.includes('删除');
+        const confirmBtnClass = isDelete ? 'rbq-pp-dialog-btn-danger' : 'rbq-pp-dialog-btn-primary';
+
+        const closeDialog = () => {
+            document.removeEventListener('keydown', onKeyDown);
+            overlay.remove();
+        };
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') closeDialog();
+        };
+        document.addEventListener('keydown', onKeyDown);
 
         const header = document.createElement('div');
-        header.style.cssText = 'font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px;';
-        header.innerHTML = '<i class="fa-solid fa-list-check"></i> ' + title;
+        header.className = 'rbq-pp-dialog-header';
+        header.innerHTML = `
+            <div class="rbq-pp-dialog-title" title="${escapeHtml(title)}">
+                <i class="fa-solid fa-list-check"></i>
+                <span>${escapeHtml(title)}</span>
+            </div>
+            <button type="button" class="rbq-pp-dialog-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
+        `;
+        header.querySelector('.rbq-pp-dialog-close')?.addEventListener('click', closeDialog);
 
-        const selectAllRow = document.createElement('div');
-        selectAllRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.1);';
+        const toolbar = document.createElement('div');
+        toolbar.className = 'rbq-pp-dialog-toolbar';
+
+        const selectAllWrap = document.createElement('label');
+        selectAllWrap.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;-webkit-user-select:none;font-size:12px;color:rgba(255,255,255,0.7);margin:0;';
         const selectAllCb = document.createElement('input');
         selectAllCb.type = 'checkbox';
+        selectAllCb.className = 'rbq-pp-dialog-checkbox';
         selectAllCb.checked = true;
-        const selectAllLabel = document.createElement('span');
-        selectAllLabel.textContent = '全选 / 取消全选';
-        selectAllLabel.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.6);';
-        selectAllRow.append(selectAllCb, selectAllLabel);
+        const selectAllText = document.createElement('span');
+        selectAllText.textContent = '全选 / 取消全选';
+        selectAllWrap.append(selectAllCb, selectAllText);
+
+        const countBadge = document.createElement('span');
+        countBadge.className = 'rbq-pp-dialog-count-badge';
+
+        toolbar.append(selectAllWrap, countBadge);
 
         const listDiv = document.createElement('div');
-        listDiv.style.cssText = 'overflow-y:auto;max-height:40vh;display:flex;flex-direction:column;gap:4px;';
+        listDiv.className = 'rbq-pp-dialog-body';
 
         const checkboxes = [];
-        for (const item of items) {
-            const row = document.createElement('label');
-            row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.04);cursor:pointer;';
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = true;
-            cb.dataset.itemId = item.id;
-            cb.style.marginTop = '3px';
-            const info = document.createElement('div');
-            info.style.cssText = 'flex:1;';
-            info.innerHTML = '<div style="font-size:13px;font-weight:500;">' + (item.name || item.id) + '</div>'
-                + (item.positive ? '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">正: ' + item.positive.slice(0, 80) + '</div>' : '')
-                + (item.negative ? '<div style="font-size:11px;color:rgba(255,200,200,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:350px;">负: ' + item.negative.slice(0, 80) + '</div>' : '');
-            row.append(cb, info);
-            listDiv.appendChild(row);
-            checkboxes.push(cb);
+        const itemRows = [];
+
+        function updateCounter() {
+            const selectedCount = checkboxes.filter(cb => cb.checked).length;
+            const totalCount = checkboxes.length;
+            countBadge.textContent = `已选 ${selectedCount} / ${totalCount} 项`;
+            if (selectedCount === 0) {
+                selectAllCb.checked = false;
+                selectAllCb.indeterminate = false;
+            } else if (selectedCount === totalCount) {
+                selectAllCb.checked = true;
+                selectAllCb.indeterminate = false;
+            } else {
+                selectAllCb.checked = false;
+                selectAllCb.indeterminate = true;
+            }
+            if (btnOk) {
+                btnOk.disabled = selectedCount === 0;
+            }
+        }
+
+        let btnOk;
+
+        if (!items || items.length === 0) {
+            const emptyEl = document.createElement('div');
+            emptyEl.style.cssText = 'text-align:center;padding:24px 0;color:rgba(255,255,255,0.4);font-size:12px;';
+            emptyEl.textContent = '无可选项目';
+            listDiv.appendChild(emptyEl);
+        } else {
+            for (const item of items) {
+                const row = document.createElement('div');
+                row.className = 'rbq-pp-dialog-item selected';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'rbq-pp-dialog-checkbox';
+                cb.checked = true;
+                cb.dataset.itemId = item.id;
+
+                const info = document.createElement('div');
+                info.className = 'rbq-pp-dialog-item-info';
+
+                let infoHtml = `<div class="rbq-pp-dialog-item-name">${escapeHtml(item.name || item.id)}</div>`;
+                if (item.positive) {
+                    infoHtml += `<div class="rbq-pp-dialog-item-tag pos" title="${escapeHtml(item.positive)}">正前: ${escapeHtml(item.positive.slice(0, 80))}</div>`;
+                }
+                if (item.positiveSuffix) {
+                    infoHtml += `<div class="rbq-pp-dialog-item-tag pos" style="color:rgba(232, 121, 249, 0.7) !important;" title="${escapeHtml(item.positiveSuffix)}">正后: ${escapeHtml(item.positiveSuffix.slice(0, 80))}</div>`;
+                }
+                if (item.negative) {
+                    infoHtml += `<div class="rbq-pp-dialog-item-tag neg" title="${escapeHtml(item.negative)}">负: ${escapeHtml(item.negative.slice(0, 80))}</div>`;
+                }
+                if (Array.isArray(item.vibes) && item.vibes.length > 0) {
+                    infoHtml += `<div class="rbq-pp-dialog-item-tag" style="color:rgba(129, 140, 248, 0.8) !important;"><i class="fa-solid fa-box-archive"></i> 氛围特征 × ${item.vibes.length}</div>`;
+                }
+                info.innerHTML = infoHtml;
+
+                row.append(cb, info);
+
+                row.addEventListener('click', (e) => {
+                    if (e.target !== cb) {
+                        cb.checked = !cb.checked;
+                    }
+                    if (cb.checked) {
+                        row.classList.add('selected');
+                    } else {
+                        row.classList.remove('selected');
+                    }
+                    updateCounter();
+                });
+
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        row.classList.add('selected');
+                    } else {
+                        row.classList.remove('selected');
+                    }
+                    updateCounter();
+                });
+
+                listDiv.appendChild(row);
+                checkboxes.push(cb);
+                itemRows.push(row);
+            }
         }
 
         selectAllCb.addEventListener('change', () => {
-            checkboxes.forEach(cb => cb.checked = selectAllCb.checked);
+            const isChecked = selectAllCb.checked;
+            checkboxes.forEach((cb, idx) => {
+                cb.checked = isChecked;
+                if (isChecked) {
+                    itemRows[idx]?.classList.add('selected');
+                } else {
+                    itemRows[idx]?.classList.remove('selected');
+                }
+            });
+            updateCounter();
         });
 
-        const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:4px;';
+        const footer = document.createElement('div');
+        footer.className = 'rbq-pp-dialog-footer';
+
         const btnCancel = document.createElement('button');
-        btnCancel.className = 'menu_button';
-        btnCancel.style.cssText = 'font-size:12px;padding:4px 14px;';
+        btnCancel.type = 'button';
+        btnCancel.className = 'rbq-pp-dialog-btn rbq-pp-dialog-btn-secondary';
         btnCancel.textContent = '取消';
-        btnCancel.onclick = () => overlay.remove();
-        const btnOk = document.createElement('button');
-        btnOk.className = 'menu_button';
-        btnOk.style.cssText = 'font-size:12px;padding:4px 14px;';
-        btnOk.textContent = '确认';
+        btnCancel.onclick = closeDialog;
+
+        btnOk = document.createElement('button');
+        btnOk.type = 'button';
+        btnOk.className = `rbq-pp-dialog-btn ${confirmBtnClass}`;
+        btnOk.textContent = isDelete ? '确认删除' : '确认';
         btnOk.onclick = () => {
             const selectedIds = checkboxes.filter(cb => cb.checked).map(cb => cb.dataset.itemId);
-            overlay.remove();
+            closeDialog();
             onConfirm(selectedIds);
         };
-        btnRow.append(btnCancel, btnOk);
 
-        dialog.append(header, selectAllRow, listDiv, btnRow);
+        footer.append(btnCancel, btnOk);
+
+        updateCounter();
+
+        dialog.append(header, toolbar, listDiv, footer);
         overlay.appendChild(dialog);
+
         // CRITICAL: stop bubbling from dialog elements too
         overlay.addEventListener('change', (e) => e.stopPropagation());
         overlay.addEventListener('input', (e) => e.stopPropagation());
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
+
         document.body.appendChild(overlay);
     }
 

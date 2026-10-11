@@ -400,6 +400,111 @@ function fixedStudioPage(count) {
             assert.deepEqual(clone(h.sdt.getDrawSpecTool(store, null, payload)), baseline, 'inactive routes never attach task data');
         }
     });
+    await test('the standard request builder preserves rules and structured input in their message roles', () => {
+        const h = host('structured', 'off');
+        const store = { ...h.settings._smartDrawTrigger, _mangaActive: false, enhancedContext: 'off',
+            geminiJailbreak: false, postProcessEnabled: false, toolInputInDescription: false, toolCallMode: true };
+        const instruction = 'Extract visual details. Keep literal anchors and return the specified fields.';
+        const input = { currentMessage: { role: 'assistant', name: 'Narrator', content: '资料 "A\\B"\n放在桌上。' },
+            recentMessages: [{ role: 'user', content: '请找会议室的桌子。' }], optionalTaskData: { zero: 0, disabled: false, nested: [null, ''] } };
+        const before = clone(input), beforeStore = clone(store);
+        const request = h.sdt.buildStandardDrawRequest(instruction, input, store);
+        assert.deepEqual(clone(request.messages), [
+            { role: 'system', content: instruction }, { role: 'user', content: JSON.stringify(input, null, 2) }
+        ]);
+        assert.equal(request.tool.function.name, 'generate_draw_spec');
+        assert.equal(toolDescriptionInput({ tools: [request.tool] }), null);
+        assert.ok(!request.tool.function.description.includes(input.currentMessage.content));
+        assert.deepEqual(clone(request.tool.function.parameters), clone(h.sdt.getDrawSpecTool(store).function.parameters));
+        assert.deepEqual(clone(input), before); assert.deepEqual(clone(store), beforeStore);
+        const jsonRequest = h.sdt.buildStandardDrawRequest(instruction, input, { ...store, toolCallMode: false });
+        assert.deepEqual(clone(jsonRequest.messages), clone(request.messages));
+        assert.equal(jsonRequest.tool, null, 'JSON output does not attach a function tool');
+    });
+    await test('the standard request builder returns independent tool schemas for consecutive calls', () => {
+        const h = host('structured', 'off');
+        const store = { ...h.settings._smartDrawTrigger, _mangaActive: false, enhancedContext: 'off',
+            geminiJailbreak: false, postProcessEnabled: false, toolInputInDescription: false, toolCallMode: true };
+        const firstPayload = { currentMessage: { content: '第一份会议室资料。' } };
+        const secondPayload = { currentMessage: { content: '第二份资料描述大厅。' } };
+        const baseline = clone(h.sdt.getDrawSpecTool(store));
+        const first = h.sdt.buildStandardDrawRequest('First analysis rules.', firstPayload, store);
+        first.tool.function.parameters.properties.shouldDraw.description = 'changed test schema';
+        first.tool.function.description = 'changed test description';
+        first.messages[0].content = 'changed test rules';
+        const second = h.sdt.buildStandardDrawRequest('Second analysis rules.', secondPayload, store);
+        assert.deepEqual(clone(second.tool), baseline, 'a previous caller cannot contaminate the next tool');
+        assert.deepEqual(clone(h.sdt.getDrawSpecTool(store)), baseline, 'the shared tool definition remains intact');
+        assert.equal(second.messages[0].content, 'Second analysis rules.');
+        assert.deepEqual(JSON.parse(second.messages[1].content), secondPayload);
+        assert.deepEqual(firstPayload, { currentMessage: { content: '第一份会议室资料。' } });
+    });
+    await test('the standard request builder leaves other configured transports to their existing handlers', () => {
+        const h = host('structured', 'off');
+        const store = { ...h.settings._smartDrawTrigger, geminiJailbreak: false, postProcessEnabled: false,
+            toolInputInDescription: false, toolCallMode: true };
+        for (const changed of [{ provider: 'custom' }, { geminiJailbreak: true },
+            { postProcessEnabled: true }, { toolInputInDescription: true }]) {
+            assert.equal(h.sdt.buildStandardDrawRequest('Analysis rules.', { currentMessage: { content: story } },
+                { ...store, ...changed }), null, 'a nonstandard route must retain its existing handler');
+        }
+    });
+    for (const variant of ['illustration', 'legacy manga', 'layered manga']) {
+        for (const toolMode of [false, true]) for (const entry of ['auto', 'manual', 'test']) {
+            await test(`standard ${variant} ${entry} preserves message roles with Tool Call ${toolMode ? 'on' : 'off'}`, async () => {
+                const ec = variant === 'illustration' ? 'off' : variant === 'legacy manga' ? 'v_manga' : ID;
+                const h = host('structured', ec), illustration = variant === 'illustration';
+                Object.assign(h.settings._smartDrawTrigger, { _mangaActive: !illustration, enhancedContext: ec,
+                    toolCallMode: toolMode, geminiJailbreak: false, postProcessEnabled: false,
+                    toolInputInDescription: false, injectPresetsToTagger: true });
+                h.settings._mangaMode.enabled = !illustration;
+                let constructed, builds = 0, assembledPayload;
+                const build = h.sdt.buildStandardDrawRequest;
+                h.sdt.buildStandardDrawRequest = (...args) => {
+                    builds++; constructed = { instruction: args[0], input: clone(args[1]), bundle: args[3] };
+                    return build(...args);
+                };
+                h.sdt.logTaggerPayload = (label, value) => { if (label.includes('request')) assembledPayload = clone(value); };
+                const submitted = [];
+                if (entry === 'manual') {
+                    const fields = { 'rbq-sdt-manual-input': { value: story }, 'rbq-sdt-manual-status': {},
+                        'rbq-sdt-manual-submit': {}, 'rbq-sdt-manual-use-context': { checked: false } };
+                    Object.assign(h.sdt, { document: { getElementById: id => fields[id] }, localStorage: { setItem() {} },
+                        toastr: { warning(message) { throw new Error(message); }, error(message) { throw new Error(message); }, success() {} },
+                        PLUGIN_NAME: 'test', closeManualDrawDialog() {}, generateSdtImage: async segment => submitted.push(segment) });
+                }
+                const data = { shouldDraw: true, reason: '办公室递交资料。', segments: illustration
+                    ? [{ anchor: { text: story.slice(0, 24) }, scene: 'office, desk, document', characters: [] }]
+                    : entry === 'test' ? [pages()[0]] : pages() };
+                installReply(h, toolMode ? 'tool' : 'json', data, body => {
+                    assertDrawTransport(body, 'openai', toolMode);
+                    assert.deepEqual(clone(body.messages.map(message => message.role)), ['system', 'user']);
+                    assert.equal(body.messages[0].content, constructed.instruction, 'analysis instructions stay in the system message');
+                    assert.deepEqual(JSON.parse(body.messages[1].content), constructed.input, 'task fields stay in the user JSON');
+                    assert.deepEqual(constructed.input, assembledPayload, 'the shared builder receives all collected business fields');
+                    assert.equal(constructed.input.currentMessage.content, story);
+                    if (variant === 'layered manga') assertLayers(body.messages[0].content);
+                    else assert.ok(body.messages[0].content.length > 100, 'the existing analysis protocol is retained');
+                    if (toolMode) {
+                        const tool = body.tools[0];
+                        assert.equal(toolDescriptionInput(body), null);
+                        assert.ok(!tool.function.description.includes(story));
+                        assert.ok(!tool.function.description.includes('currentMessage'));
+                        assert.ok(!tool.function.description.includes(styleA.positive));
+                        const segment = tool.function.parameters.properties.segments.items;
+                        if (illustration) { assert.ok(segment.properties.scene); assert.equal(segment.properties.panels, undefined); }
+                        else { assert.ok(segment.properties.panels); assert.equal(segment.properties.scene, undefined); }
+                        if (variant === 'layered manga') assert.deepEqual(clone(tool.function.parameters), constructed.input.outputSchema);
+                    }
+                });
+                if (entry === 'auto') await h.sdt.callOpenAiCompatible(1, { type: 'auto' });
+                else if (entry === 'test') await h.sdt.parseTaggerSegment(story);
+                else { await h.sdt.submitManualDraw(); assert.equal(submitted.length, data.segments.length); }
+                assert.equal(builds, 1, 'each entry point builds one standard request');
+                assert.equal(h.calls(), 1); assert.equal(h.images(), 0);
+            });
+        }
+    }
     for (const entry of ['auto', 'manual', 'test']) {
         await test(`layered ${entry} description input preserves the original task, payload and tool schema`, async () => {
             let control;

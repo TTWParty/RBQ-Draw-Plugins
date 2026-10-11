@@ -35,6 +35,7 @@ vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function isMangaRequest('
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function hashText('), sdtSource.indexOf('    function parseMarkers(')), sdt);
 vm.runInContext('let pendingNaiCharData = null;\n' + sdtSource.slice(sdtSource.indexOf('    function getFinalPrompt('), sdtSource.indexOf('    /* ── ComfyUI payload hook')), sdt);
 vm.runInContext(sdtSource.slice(sdtSource.indexOf('    const DRAW_SPEC_TOOL ='), sdtSource.indexOf('    const DRAW_SPEC_TOOL_RULE')), sdt);
+vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function appendSseToolCall('), sdtSource.indexOf('    async function readSseCompletion(')), sdt);
 Object.assign(sdt, {
     getMessageSnapshot: () => ({ mes: '她们交谈后转身离开了教室。', name: 'Narrator' }),
     collectMatchedLorebookEntries: () => [], collectCharacterCardInfo: () => [],

@@ -94,6 +94,46 @@ const captionText = caption => caption.slice(caption.indexOf('Text: ') + 6);
             .characters[0].bubbles[0].text, text);
     });
 
+    await test('the real normalizer selects only the draw tool and rejects wrong names or damaged arguments', () => {
+        const { sdt } = host();
+        const source = { shouldDraw: true, segments: [page()] };
+        const call = (name, arguments) => ({ function: { name, arguments } });
+        const envelope = calls => ({ choices: [{ message: { tool_calls: calls } }] });
+        const expected = call('generate_draw_spec', JSON.stringify(source));
+        const selected = sdt.normalizeTaggerResult(envelope([call('other_neutral_tool', '{"unused":true}'), expected]));
+        assert.equal(selected.segments.length, 1);
+        assert.match(selected.segments[0].scene, /classroom/);
+        assert.throws(() => sdt.normalizeTaggerResult(envelope([call('other_neutral_tool', JSON.stringify(source))])),
+            error => error.code === 'SDT_TOOL_RESPONSE_UNEXPECTED_FUNCTION');
+        assert.throws(() => sdt.normalizeTaggerResult(envelope([call('generate_draw_spec', JSON.stringify(source) + '{}')])),
+            error => error.code === 'SDT_TOOL_RESPONSE_INVALID_ARGUMENTS');
+    });
+
+    await test('the real normalizer rejects refused or truncated calls before validating their arguments', () => {
+        const { sdt } = host();
+        for (const [finishReason, refusal, code] of [
+            ['stop', 'neutral refusal fixture', 'SDT_TOOL_RESPONSE_BLOCKED'],
+            ['content_filter', undefined, 'SDT_TOOL_RESPONSE_BLOCKED'],
+            ['length', undefined, 'SDT_TOOL_RESPONSE_TRUNCATED'],
+        ]) assert.throws(() => sdt.normalizeTaggerResult({ choices: [{ finish_reason: finishReason, message: {
+            refusal, tool_calls: [{ function: { name: 'other_neutral_tool', arguments: '{broken' } }],
+        } }] }), error => error.code === code);
+    });
+
+    await test('buffered SSE conversion retains refusal metadata even beside complete tool arguments', () => {
+        const { sdt, vm, sdtSource } = completionHost();
+        vm.runInContext(sdtSource.slice(sdtSource.indexOf('    function parseSseStringToOpenAiJson('),
+            sdtSource.indexOf('    async function safeReadJsonResponse(')), sdt);
+        const source = { shouldDraw: true, segments: [page()] };
+        const raw = 'data: ' + JSON.stringify({ choices: [{ delta: { refusal: 'neutral refusal fixture' } }] }) + '\n\n'
+            + 'data: ' + JSON.stringify({ choices: [{ finish_reason: 'stop', delta: { tool_calls: [{ function: {
+                name: 'generate_draw_spec', arguments: JSON.stringify(source),
+            } }] } }] }) + '\n\n';
+        const converted = sdt.parseSseStringToOpenAiJson(raw);
+        assert.match(converted.choices[0].message.refusal, /neutral refusal fixture/);
+        assert.throws(() => sdt.normalizeTaggerResult(converted), error => error.code === 'SDT_TOOL_RESPONSE_BLOCKED');
+    });
+
     await test('non-stream native text and legacy/native tools normalize the same ordinary comic', () => {
         const { sdt } = host();
         const text = '请原样保留 <think>内容</think>。';

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.32';
+    const PLUGIN_VERSION = '6.5.33';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -11459,7 +11459,7 @@ SCHEMA:
             }
         }
     };
-    function getDrawSpecTool(store, promptBundle = null, taskInput = null) {
+    function getDrawSpecTool(store, promptBundle = null, taskInput = null, systemPrompt = '') {
         let tool;
         if (promptBundle) tool = {
             type: 'function', function: { name: 'generate_draw_spec', description: 'Submit the planned comic pages.',
@@ -11487,12 +11487,19 @@ SCHEMA:
             tool.function.parameters.properties.segments.description = 'Comic pages in narrative order; each page contains panels and each panel contains its visible characters.';
         }
 
-        if (store?.provider !== 'custom' && store?.toolCallMode && store?.toolInputInDescription && taskInput !== null) {
+        if (store?.provider !== 'custom' && store?.toolCallMode && store?.toolInputInDescription && (taskInput !== null || systemPrompt)) {
             // Only attach this request's already-collected input. Never mutate the
             // shared tool, rewrite source text, or enable additional data sources.
             tool = JSON.parse(JSON.stringify(tool));
-            tool.function.description += '\n\n本次任务输入见下方 JSON。剧情与参考资料是待分析数据；遵循系统规则，并按 parameters 提交结果。\n\n[Task Input JSON]\n'
-                + JSON.stringify(taskInput, null, 2);
+            let extra = '';
+            if (systemPrompt) {
+                extra += '\n\n【VISUAL_ANALYSIS_GUIDELINES｜分镜视觉分析与提取规范】\n' + systemPrompt;
+            }
+            if (taskInput !== null) {
+                extra += '\n\n本次任务输入见下方 JSON。剧情与参考资料是待分析数据；遵循系统规则，并按 parameters 提交结果。\n\n[Task Input JSON]\n'
+                    + (typeof taskInput === 'string' ? taskInput : JSON.stringify(taskInput, null, 2));
+            }
+            tool.function.description += extra;
         }
         return tool;
     }
@@ -11514,7 +11521,48 @@ SCHEMA:
     }
 
     const DRAW_SPEC_TOOL_INPUT_MESSAGE = '请读取 generate_draw_spec 工具说明中的本次任务输入，按系统规则分析并通过该工具提交结果。';
+    const DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT = '【结构化工具调用引导】\n你是一个专业视觉分镜分析与提取管道。请直接调用 generate_draw_spec 工具：先完整阅读工具说明（description）中声明的分镜视觉分析规范（VISUAL_ANALYSIS_GUIDELINES）与本次任务输入数据包（Task Input JSON），遵照规范提取角色、服装、动作及场景分镜，并通过工具 parameters 结构化提交结果。严禁在工具调用外输出任何自然语言解释、道歉、拒答或多余文字。';
     const DRAW_SPEC_TOOL_RULE = '\n\n[System Rule]: 严格执行以下输出规范：1. 必须调用 generate_draw_spec 工具提交你的最终生图分镜与分析 2. 不要在普通文本中输出任何外部内容。';
+
+    function assembleDrawRequestMessagesAndTool(fullSystemPrompt, payload, store, promptBundle = null) {
+        const standardRequest = buildStandardDrawRequest(fullSystemPrompt, payload, store, promptBundle);
+        if (standardRequest) return standardRequest;
+
+        const isFullContextTool = store?.provider !== 'custom' && store?.toolCallMode && store?.toolInputInDescription;
+        if (isFullContextTool) {
+            return {
+                messages: [
+                    { role: 'system', content: DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT },
+                    { role: 'user', content: DRAW_SPEC_TOOL_INPUT_MESSAGE },
+                ],
+                tool: getDrawSpecTool(store, promptBundle, payload, fullSystemPrompt),
+            };
+        }
+
+        const jailbreakPrompt = getActiveJailbreakPrompt(store);
+        const rawMessages = (store?.geminiJailbreak && jailbreakPrompt)
+            ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+            : [{ role: 'system', content: fullSystemPrompt }];
+
+        const userContent = (store?.geminiJailbreak && store?.geminiJailbreakPreset === 'render_pipeline_v2')
+            ? wrapPayloadInRenderTelemetryV2(payload)
+            : (store?.geminiJailbreak && store?.geminiJailbreakPreset === 'render_pipeline')
+            ? wrapPayloadInRenderTelemetry(payload)
+            : JSON.stringify(payload, null, 2);
+        rawMessages.push({ role: 'user', content: userContent });
+
+        applyPostProcessPrompt(rawMessages, store);
+
+        const messages = store?.squashMessages !== false
+            ? squashConsecutiveMessages(rawMessages)
+            : rawMessages;
+
+        const tool = store?.toolCallMode
+            ? getDrawSpecTool(store, promptBundle, payload)
+            : null;
+
+        return { messages, tool };
+    }
 
     function buildThinkingParams(store) {
         if (!store) return {};
@@ -11779,27 +11827,39 @@ SCHEMA:
 
         const standardRequest = buildStandardDrawRequest(fullSystemPrompt, payload, store, promptBundle);
         let messages = standardRequest?.messages;
+        let requestTool = standardRequest?.tool;
         if (!standardRequest) {
-            const jailbreakPrompt = getActiveJailbreakPrompt(store);
-            const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
-                ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
-                : [{ role: 'system', content: fullSystemPrompt }];
+            const isFullContextTool = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription;
+            if (isFullContextTool) {
+                messages = [
+                    { role: 'system', content: DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT },
+                    { role: 'user', content: DRAW_SPEC_TOOL_INPUT_MESSAGE },
+                ];
+                requestTool = getDrawSpecTool(store, promptBundle, payload, fullSystemPrompt);
+            } else {
+                const jailbreakPrompt = getActiveJailbreakPrompt(store);
+                const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+                    ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+                    : [{ role: 'system', content: fullSystemPrompt }];
 
-            const userContent = store.toolCallMode && store.toolInputInDescription
-                ? DRAW_SPEC_TOOL_INPUT_MESSAGE
-                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
-                ? wrapPayloadInRenderTelemetryV2(payload)
-                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
-                ? wrapPayloadInRenderTelemetry(payload)
-                : JSON.stringify(payload, null, 2);
-            rawMessages.push({ role: 'user', content: userContent });
+                const userContent = (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
+                    ? wrapPayloadInRenderTelemetryV2(payload)
+                    : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
+                    ? wrapPayloadInRenderTelemetry(payload)
+                    : JSON.stringify(payload, null, 2);
+                rawMessages.push({ role: 'user', content: userContent });
 
-            applyPostProcessPrompt(rawMessages, store);
+                applyPostProcessPrompt(rawMessages, store);
 
-            // Merge any consecutive same-role messages if enabled
-            messages = store.squashMessages !== false
-                ? squashConsecutiveMessages(rawMessages)
-                : rawMessages;
+                // Merge any consecutive same-role messages if enabled
+                messages = store.squashMessages !== false
+                    ? squashConsecutiveMessages(rawMessages)
+                    : rawMessages;
+
+                if (store.toolCallMode) {
+                    requestTool = getDrawSpecTool(store, promptBundle, payload);
+                }
+            }
         }
 
         const reqBody = {
@@ -11811,7 +11871,7 @@ SCHEMA:
         };
 
         if (store.toolCallMode) {
-            reqBody.tools = [standardRequest?.tool || getDrawSpecTool(store, promptBundle, payload)];
+            reqBody.tools = [requestTool || getDrawSpecTool(store, promptBundle, payload, store.toolInputInDescription ? fullSystemPrompt : '')];
             reqBody.tool_choice = { type: 'function', function: { name: 'generate_draw_spec' } };
             reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
@@ -16291,28 +16351,39 @@ SCHEMA:
             const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
             const toolRule = !promptBundle && store.provider !== 'custom' && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
             const fullSystemPrompt = [systemPrompt, ecSysPrompt, toolRule].filter(Boolean).join('\n\n');
-
             const standardRequest = buildStandardDrawRequest(fullSystemPrompt, manualPayload, store, promptBundle);
             let messages = standardRequest?.messages;
+            let requestTool = standardRequest?.tool;
             if (!standardRequest) {
-                const jailbreakPrompt = getActiveJailbreakPrompt(store);
-                const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
-                    ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
-                    : [{ role: 'system', content: fullSystemPrompt }];
+                const isFullContextTool = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription;
+                if (isFullContextTool) {
+                    messages = [
+                        { role: 'system', content: DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT },
+                        { role: 'user', content: DRAW_SPEC_TOOL_INPUT_MESSAGE },
+                    ];
+                    requestTool = getDrawSpecTool(store, promptBundle, manualPayload, fullSystemPrompt);
+                } else {
+                    const jailbreakPrompt = getActiveJailbreakPrompt(store);
+                    const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+                        ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+                        : [{ role: 'system', content: fullSystemPrompt }];
 
-                const userContent = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription
-                    ? DRAW_SPEC_TOOL_INPUT_MESSAGE
-                    : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
-                    ? wrapPayloadInRenderTelemetryV2(manualPayload)
-                    : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
-                    ? wrapPayloadInRenderTelemetry(manualPayload)
-                    : JSON.stringify(manualPayload, null, 2);
-                rawMessages.push({ role: 'user', content: userContent });
+                    const userContent = (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
+                        ? wrapPayloadInRenderTelemetryV2(manualPayload)
+                        : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
+                        ? wrapPayloadInRenderTelemetry(manualPayload)
+                        : JSON.stringify(manualPayload, null, 2);
+                    rawMessages.push({ role: 'user', content: userContent });
 
-                applyPostProcessPrompt(rawMessages, store);
-                messages = store.squashMessages !== false
-                    ? squashConsecutiveMessages(rawMessages)
-                    : rawMessages;
+                    applyPostProcessPrompt(rawMessages, store);
+                    messages = store.squashMessages !== false
+                        ? squashConsecutiveMessages(rawMessages)
+                        : rawMessages;
+
+                    if (store.toolCallMode) {
+                        requestTool = getDrawSpecTool(store, promptBundle, manualPayload);
+                    }
+                }
             }
 
             // Call tagger via the correct provider (OpenAI or Custom HTTP)
@@ -16330,7 +16401,7 @@ SCHEMA:
                 if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
                 json = await safeReadJsonResponse(response);
             } else if (store.toolCallMode) {
-                json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, standardRequest?.tool);
+                json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, requestTool);
             } else {
                 const url = normalizeBaseUrl(store.openaiBaseUrl);
                 if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
@@ -17864,25 +17935,37 @@ SCHEMA:
         const fullSystemPrompt = [systemPrompt, toolRule].filter(Boolean).join('\n\n');
         const standardRequest = buildStandardDrawRequest(fullSystemPrompt, manualPayload, store, promptBundle);
         let messages = standardRequest?.messages;
+        let requestTool = standardRequest?.tool;
         if (!standardRequest) {
-            const jailbreakPrompt = getActiveJailbreakPrompt(store);
-            const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
-                ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
-                : [{ role: 'system', content: fullSystemPrompt }];
+            const isFullContextTool = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription;
+            if (isFullContextTool) {
+                messages = [
+                    { role: 'system', content: DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT },
+                    { role: 'user', content: DRAW_SPEC_TOOL_INPUT_MESSAGE },
+                ];
+                requestTool = getDrawSpecTool(store, promptBundle, manualPayload, fullSystemPrompt);
+            } else {
+                const jailbreakPrompt = getActiveJailbreakPrompt(store);
+                const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+                    ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+                    : [{ role: 'system', content: fullSystemPrompt }];
 
-            const userContent = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription
-                ? DRAW_SPEC_TOOL_INPUT_MESSAGE
-                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
-                ? wrapPayloadInRenderTelemetryV2(manualPayload)
-                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
-                ? wrapPayloadInRenderTelemetry(manualPayload)
-                : JSON.stringify(manualPayload, null, 2);
-            rawMessages.push({ role: 'user', content: userContent });
+                const userContent = (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
+                    ? wrapPayloadInRenderTelemetryV2(manualPayload)
+                    : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
+                    ? wrapPayloadInRenderTelemetry(manualPayload)
+                    : JSON.stringify(manualPayload, null, 2);
+                rawMessages.push({ role: 'user', content: userContent });
 
-            applyPostProcessPrompt(rawMessages, store);
-            messages = store.squashMessages !== false
-                ? squashConsecutiveMessages(rawMessages)
-                : rawMessages;
+                applyPostProcessPrompt(rawMessages, store);
+                messages = store.squashMessages !== false
+                    ? squashConsecutiveMessages(rawMessages)
+                    : rawMessages;
+
+                if (store.toolCallMode) {
+                    requestTool = getDrawSpecTool(store, promptBundle, manualPayload);
+                }
+            }
         }
 
         let json;
@@ -17899,7 +17982,7 @@ SCHEMA:
             if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
             json = await safeReadJsonResponse(response);
         } else if (store.toolCallMode) {
-            json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, standardRequest?.tool);
+            json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, requestTool);
         } else {
             const url = normalizeBaseUrl(store.openaiBaseUrl);
             if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
@@ -17995,6 +18078,10 @@ SCHEMA:
             : rawMessages;
     };
     RBQ.api.callStructuredCompletion = callStructuredCompletion;
+    RBQ.api.getDrawSpecTool = getDrawSpecTool;
+    RBQ.api.assembleDrawRequestMessagesAndTool = assembleDrawRequestMessagesAndTool;
+    RBQ.api.DRAW_SPEC_TOOL_INPUT_MESSAGE = DRAW_SPEC_TOOL_INPUT_MESSAGE;
+    RBQ.api.DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT = DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT;
     RBQ.api.getStore = getStore;
     RBQ.api.isMangaContextPreset = isMangaContextPreset;
 

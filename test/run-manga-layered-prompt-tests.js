@@ -34,6 +34,8 @@ function host(mode = 'structured', ec = ID) {
         assert.ok(a >= 0 && b > a, 'load real production request function: ' + start);
         vm.runInContext(sdtSource.slice(a, b), sdt);
     };
+    load('    function getDrawSpecTool(', '    function buildStandardDrawRequest(');
+    load('    function assembleDrawRequestMessagesAndTool(', '    function buildThinkingParams(');
     load('    async function callOpenAiCompatible(', '    async function callCustomHttp(');
     load('    async function callCustomHttp(', '    async function callStructuredCompletion(');
     load('    async function callStructuredCompletion(', '    async function callTagger(');
@@ -88,10 +90,18 @@ function toolDescriptionInput(body) {
     const index = description.indexOf(TOOL_INPUT_MARKER);
     return index < 0 ? null : JSON.parse(description.slice(index + TOOL_INPUT_MARKER.length));
 }
+function toolDescriptionInstruction(body) {
+    const desc = body.tools?.find(tool => tool.function?.name === 'generate_draw_spec')?.function.description || '';
+    const marker = '【VISUAL_ANALYSIS_GUIDELINES｜分镜视觉分析与提取规范】\n';
+    const index = desc.indexOf(marker);
+    if (index < 0) return null;
+    const end = desc.indexOf('\n\n本次任务输入见下方 JSON');
+    return end > index ? desc.slice(index + marker.length, end).trim() : desc.slice(index + marker.length).trim();
+}
 function requestParts(body, provider) {
     const request = provider === 'custom' && !body.messages ? body
         : toolDescriptionInput(body) || JSON.parse(body.messages.find(message => message.role === 'user').content);
-    return { request, instruction: provider === 'custom' && !body.messages ? body.mangaInstruction : systemText(body) };
+    return { request, instruction: provider === 'custom' && !body.messages ? body.mangaInstruction : (toolDescriptionInstruction(body) || systemText(body)) };
 }
 let descriptionInputUserInstruction;
 function assertTaskInputRoute(body, expected, enabled) {
@@ -538,7 +548,10 @@ function fixedStudioPage(count) {
                 else {
                     assert.deepEqual(toolDescriptionInput(sent), requestParts(control, 'openai').request);
                     assert.deepEqual(sent.tools[0].function.parameters, control.tools[0].function.parameters);
-                    assert.equal(systemText(sent), systemText(control), 'dynamic input routing does not migrate system instructions');
+                    assert.equal(toolDescriptionInstruction(sent), systemText(control), 'full context tool description contains system instructions');
+                    assert.deepEqual(sent.messages.map(m => m.role), ['system', 'user']);
+                    assert.equal(sent.messages[0].content, h.RBQ?.api?.DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT || '【结构化工具调用引导】\n你是一个专业视觉分镜分析与提取管道。请直接调用 generate_draw_spec 工具：先完整阅读工具说明（description）中声明的分镜视觉分析规范（VISUAL_ANALYSIS_GUIDELINES）与本次任务输入数据包（Task Input JSON），遵照规范提取角色、服装、动作及场景分镜，并通过工具 parameters 结构化提交结果。严禁在工具调用外输出任何自然语言解释、道歉、拒答或多余文字。');
+                    assert.equal(sent.messages[1].content, h.RBQ?.api?.DRAW_SPEC_TOOL_INPUT_MESSAGE || '请读取 generate_draw_spec 工具说明中的本次任务输入，按系统规则分析并通过该工具提交结果。');
                 }
                 assert.equal(h.calls(), 1); assert.equal(h.images(), 0);
             }

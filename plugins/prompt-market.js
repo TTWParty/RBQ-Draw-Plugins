@@ -1757,13 +1757,9 @@
                                     <button type="button" id="rbq-pm-edit-bm-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
                                         <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
                                     </button>
-                                    <button type="button" id="rbq-pm-edit-bm-draw-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:4px; cursor:pointer;">
-                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 重新实测出图
+                                    <button type="button" id="rbq-pm-edit-bm-draw-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:10.5px; font-weight:700; padding:3px 10px; border-radius:4px; cursor:pointer;">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 现场重新实测出图
                                     </button>
-                                    <button type="button" id="rbq-pm-edit-bm-change-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:3px 8px; border-radius:4px; cursor:pointer;">
-                                        <i class="fa-solid fa-folder-open"></i> 上传替换
-                                    </button>
-                                    <input id="rbq-pm-edit-file-bm" type="file" accept="image/*" style="display:none;">
                                 </div>
                             </div>
                         </div>
@@ -1835,32 +1831,10 @@
         const editBmSpec = overlay.querySelector('#rbq-pm-edit-bm-spec');
         const editBmZoomBtn = overlay.querySelector('#rbq-pm-edit-bm-zoom-btn');
         const editBmDrawBtn = overlay.querySelector('#rbq-pm-edit-bm-draw-btn');
-        const editBmChangeBtn = overlay.querySelector('#rbq-pm-edit-bm-change-btn');
-        const editBmFileInput = overlay.querySelector('#rbq-pm-edit-file-bm');
         const editBmCard = overlay.querySelector('#rbq-pm-edit-bm-card');
 
         if (editBmCard) editBmCard.onclick = () => { if (editBmImg.src) openImageZoom(editBmImg.src); };
         if (editBmZoomBtn) editBmZoomBtn.onclick = () => { if (editBmImg.src) openImageZoom(editBmImg.src); };
-        if (editBmChangeBtn) editBmChangeBtn.onclick = () => editBmFileInput.click();
-
-        editBmFileInput.onchange = (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    const { b64, width, height, approxKb } = compressToWebp(img);
-                    editBmBase64 = b64;
-                    editBmImg.src = b64;
-                    editBmStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 新选中的基准封面 (${file.name})`;
-                    editBmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
-                    toastr.success(`🎉 已将「${file.name}」选为新的官方基准测试封面！`);
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        };
 
         if (editBmDrawBtn) {
             editBmDrawBtn.onclick = async () => {
@@ -3394,20 +3368,19 @@
                             </div>
 
                             <!-- 槽位 1 未绑定态 -->
-                            <div id="rbq-pm-bm-empty" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.25); border:1.5px dashed rgba(217,70,239,0.4); border-radius:8px; padding:12px; text-align:center; align-items:center; justify-content:center; min-height:160px;">
-                                <div style="width:36px; height:36px; border-radius:8px; background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.35); display:flex; align-items:center; justify-content:center; color:#f0abfc; font-size:16px;">
+                            <div id="rbq-pm-bm-empty" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.25); border:1.5px dashed rgba(217,70,239,0.4); border-radius:8px; padding:16px 12px; text-align:center; align-items:center; justify-content:center; min-height:160px;">
+                                <div style="width:38px; height:38px; border-radius:8px; background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.35); display:flex; align-items:center; justify-content:center; color:#f0abfc; font-size:18px;">
                                     <i class="fa-solid fa-wand-magic-sparkles"></i>
                                 </div>
-                                <div style="font-size:12px; font-weight:700; color:#f0abfc;">现场实测 或 上传已跑基准图</div>
-                                <div style="display:flex; flex-direction:column; gap:6px; width:100%; max-width:220px;">
-                                    <button id="rbq-pm-run-draw" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:6px 12px; border-radius:6px; cursor:pointer; box-shadow:0 2px 10px rgba(168,85,247,0.35);">
-                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 立即生图实测 (推荐)
-                                    </button>
-                                    <button id="rbq-pm-pick-bm-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:5px 12px; border-radius:6px; cursor:pointer;">
-                                        <i class="fa-solid fa-folder-open"></i> 上传已跑出的基准图
+                                <div style="font-size:12.5px; font-weight:700; color:#f0abfc;">现场生图实测 (官方基准)</div>
+                                <div style="font-size:10.5px; color:#94a3b8; line-height:1.4; max-width:240px;">
+                                    系统将自动合并官方底模词现场出图，杜绝未验证的伪基准图。
+                                </div>
+                                <div style="display:flex; flex-direction:column; gap:6px; width:100%; max-width:200px; margin-top:4px;">
+                                    <button id="rbq-pm-run-draw" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:5px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:7px 14px; border-radius:6px; cursor:pointer; box-shadow:0 2px 10px rgba(168,85,247,0.35);">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> 立即生图实测 (必填封面)
                                     </button>
                                 </div>
-                                <input id="rbq-pm-file-bm" type="file" accept="image/*" style="display:none;">
                             </div>
 
                             <!-- 槽位 1 已绑定态 -->
@@ -3426,14 +3399,11 @@
                                     <button type="button" id="rbq-pm-bm-zoom-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
                                         <i class="fa-solid fa-magnifying-glass-plus"></i> 查看大图
                                     </button>
-                                    <button type="button" id="rbq-pm-bm-redraw-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(217,70,239,0.18); border:1px solid rgba(217,70,239,0.4); color:#f0abfc; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
-                                        <i class="fa-solid fa-rotate"></i> 重新实测
-                                    </button>
-                                    <button type="button" id="rbq-pm-bm-change-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
-                                        <i class="fa-solid fa-folder-open"></i> 更换文件
+                                    <button type="button" id="rbq-pm-bm-redraw-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:linear-gradient(135deg, #a855f7, #ec4899); border:none; color:#fff; font-size:10.5px; font-weight:700; padding:4px 10px; border-radius:5px; cursor:pointer;">
+                                        <i class="fa-solid fa-rotate"></i> 重新实测出图
                                     </button>
                                     <button type="button" id="rbq-pm-bm-clear-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:10.5px; padding:4px 8px; border-radius:5px; cursor:pointer;">
-                                        <i class="fa-solid fa-trash-can"></i> 清除
+                                        <i class="fa-solid fa-trash-can"></i> 清除重测
                                     </button>
                                 </div>
                             </div>
@@ -3555,11 +3525,8 @@
         const bmImg = overlay.querySelector('#rbq-pm-bm-img');
         const bmStatus = overlay.querySelector('#rbq-pm-bm-status');
         const bmSpec = overlay.querySelector('#rbq-pm-bm-spec');
-        const bmFileInput = overlay.querySelector('#rbq-pm-file-bm');
-        const bmPickBtn = overlay.querySelector('#rbq-pm-pick-bm-btn');
         const bmDrawBtn = overlay.querySelector('#rbq-pm-run-draw');
         const bmRedrawBtn = overlay.querySelector('#rbq-pm-bm-redraw-btn');
-        const bmChangeBtn = overlay.querySelector('#rbq-pm-bm-change-btn');
         const bmClearBtn = overlay.querySelector('#rbq-pm-bm-clear-btn');
         const bmZoomBtn = overlay.querySelector('#rbq-pm-bm-zoom-btn');
 
@@ -3579,7 +3546,6 @@
             bmImg.src = '';
             bmCardBox.style.display = 'none';
             bmEmptyEl.style.display = 'flex';
-            bmFileInput.value = '';
             bmSpec.textContent = '720px WebP 封面';
             updateSubmitButtonState();
         }
@@ -3587,23 +3553,6 @@
         if (bmClearBtn) bmClearBtn.onclick = clearBenchmarkImage;
         if (bmZoomBtn) bmZoomBtn.onclick = () => { if (bmCompressedBase64) openImageZoom(bmCompressedBase64); };
         if (bmCard) bmCard.onclick = () => { if (bmCompressedBase64) openImageZoom(bmCompressedBase64); };
-        if (bmPickBtn) bmPickBtn.onclick = (e) => { e.stopPropagation(); bmFileInput.click(); };
-        if (bmChangeBtn) bmChangeBtn.onclick = (e) => { e.stopPropagation(); bmFileInput.click(); };
-
-        bmFileInput.onchange = (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    bindBenchmarkImage(img, `本地上传: ${file.name}`);
-                    toastr.success(`🎉 已将「${file.name}」绑定为官方基准测试封面！`);
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        };
 
         // 槽位 1 现场生图核心逻辑 (与卡密sama底模提示词合并)
         async function runBenchmarkLiveDraw() {
@@ -4107,5 +4056,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.24 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.25 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

@@ -81,6 +81,13 @@ async function complete(fixture, toolMode = false, signal = null) {
     return bounded(context.callStructuredCompletion({ messages: [], tool, signal }));
 }
 
+async function completeJson(reply) {
+    const { context } = host(true);
+    context.callApiWithJsonFallback = async () => ({ ok: true,
+        headers: { get: () => 'application/json' }, text: async () => JSON.stringify(reply) });
+    return context.callStructuredCompletion({ messages: [], tool });
+}
+
 function closedAtTerminal(trace, reads) {
     assert.equal(trace.reads, reads);
     assert.equal(trace.cancels, 1);
@@ -129,6 +136,71 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
         const result = await complete(fixture, true);
         assert.deepEqual(JSON.parse(result.rawReply), ordinary);
         closedAtTerminal(fixture.trace, 1);
+    });
+
+    const modernReply = finishReason => ({ choices: [{ finish_reason: finishReason, message: {
+        tool_calls: [{ function: { name: tool.function.name, arguments: raw } }]
+    } }] });
+    const nativeReply = finishReason => ({ candidates: [{ finishReason, content: {
+        parts: [{ functionCall: { name: tool.function.name, args: ordinary } }]
+    } }] });
+    for (const reply of [modernReply('tool_calls'), nativeReply('STOP'), {
+        choices: [{ finish_reason: 'function_call', message: { function_call: { name: tool.function.name, arguments: raw } } }]
+    }]) await test('complete JSON envelopes are accepted when the endpoint ignores stream=true', async () => {
+        const result = await completeJson(reply);
+        assert.equal(result.isToolCall, true); assert.equal(result.rawReply, raw);
+    });
+
+    for (const finishReason of ['length', 'MAX_TOKENS']) await test(finishReason + ' rejects tool arguments even when the JSON is parseable', async () => {
+        const fixture = stream([event({ choices: [{ delta: { tool_calls: [{ function: { arguments: raw } }] }, finish_reason: finishReason }] })]);
+        await assert.rejects(complete(fixture, true), error => error.code === 'SDT_TOOL_RESPONSE_TRUNCATED');
+        closedAtTerminal(fixture.trace, 1);
+        await assert.rejects(completeJson(finishReason === 'length' ? modernReply(finishReason) : nativeReply(finishReason)),
+            error => error.code === 'SDT_TOOL_RESPONSE_TRUNCATED');
+    });
+
+    for (const finishReason of ['content_filter', 'SAFETY']) await test(finishReason + ' rejects remaining tool arguments', async () => {
+        const fixture = stream([event({ choices: [{ delta: { tool_calls: [{ function: { arguments: raw } }] }, finish_reason: finishReason }] })]);
+        await assert.rejects(complete(fixture, true), error => error.code === 'SDT_TOOL_RESPONSE_BLOCKED');
+        closedAtTerminal(fixture.trace, 1);
+        await assert.rejects(completeJson(finishReason === 'content_filter' ? modernReply(finishReason) : nativeReply(finishReason)),
+            error => error.code === 'SDT_TOOL_RESPONSE_BLOCKED');
+    });
+
+    for (const native of [false, true]) await test((native ? 'native' : 'compatible') + ' explicit refusal rejects complete tool arguments', async () => {
+        const reply = native ? nativeReply('STOP') : modernReply('stop');
+        (native ? reply.candidates[0] : reply.choices[0].message).refusal = 'neutral refusal fixture';
+        await assert.rejects(completeJson(reply), error => error.code === 'SDT_TOOL_RESPONSE_BLOCKED');
+    });
+
+    await test('native prompt feedback without a candidate remains a blocked response', async () => {
+        const reply = { promptFeedback: { blockReason: 'SAFETY' } };
+        await assert.rejects(completeJson(reply), error => error.code === 'SDT_TOOL_RESPONSE_BLOCKED');
+        await assert.rejects(complete(stream([JSON.stringify(reply)], { heldOpen: false }), true),
+            error => error.code === 'SDT_TOOL_RESPONSE_BLOCKED');
+    });
+
+    await test('complete JSON error in a streaming body keeps the provider error', async () => {
+        const reply = { error: { message: 'neutral upstream overload' } };
+        await assert.rejects(complete(stream([JSON.stringify(reply)], { heldOpen: false }), true), /大模型返回错误: neutral upstream overload/);
+        await assert.rejects(completeJson(reply), /大模型返回错误: neutral upstream overload/);
+    });
+
+    await test('draw completion adapter preserves streamed tool arguments and reasoning for normalization', async () => {
+        const { context, store } = host(true);
+        const fixture = stream([event({ choices: [{ delta: { reasoning_content: '核对场景。',
+            tool_calls: [{ function: { arguments: raw } }] }, finish_reason: 'tool_calls' }] })]);
+        useStream(context, fixture);
+        const result = await bounded(context.callDrawSpecCompletion([], store));
+        assert.equal(result.choices[0].message.content, null);
+        assert.equal(result.choices[0].message.reasoning_content, '核对场景。');
+        assert.equal(result.choices[0].message.tool_calls[0].function.name, tool.function.name);
+        assert.deepEqual(context.normalizeTaggerResult(result), ordinary);
+        closedAtTerminal(fixture.trace, 1);
+    });
+
+    await test('tool mode rejects ordinary text without silently switching protocols', async () => {
+        await assert.rejects(completeJson({ choices: [{ message: { content: raw }, finish_reason: 'stop' }] }), /未返回工具调用参数/);
     });
 
     await test('DONE across chunk boundaries ends an otherwise open stream', async () => {
@@ -228,6 +300,17 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
         const { context } = host(), fixture = stream([event({ choices: [{ delta: {}, finish_reason: 'content_filter' }] })]);
         useStream(context, fixture);
         await assert.rejects(bounded(context.callOpenAiCompatible(0, { type: 'manual' })), /前置内容安全审查/);
+        closedAtTerminal(fixture.trace, 1);
+    });
+
+    for (const chunk of [
+        { choices: [{ delta: { refusal: 'neutral refusal fixture', tool_calls: [{ function: { arguments: raw } }] }, finish_reason: 'stop' }] },
+        { choices: [{ delta: { tool_calls: [{ function: { arguments: raw } }] }, finish_reason: 'length' }] },
+        { candidates: [{ content: { parts: [{ functionCall: { name: tool.function.name, args: ordinary } }] }, finishReason: 'MAX_TOKENS' }] }
+    ]) await test('automatic tool path rejects refused or truncated final arguments before normalization', async () => {
+        const { context } = host(true), fixture = stream([event(chunk)]);
+        useStream(context, fixture);
+        await assert.rejects(bounded(context.callOpenAiCompatible(0, { type: 'auto' })), /前置内容安全审查|被截断/);
         closedAtTerminal(fixture.trace, 1);
     });
 

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.31';
+    const PLUGIN_VERSION = '6.5.32';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6565,32 +6565,25 @@ ${getCharacterMemoryTagSpecification()}
             // 2. OpenAI 兼容格式 (delta 或 message)
             const toolCalls = delta?.tool_calls || choice?.tool_calls;
             if (Array.isArray(toolCalls)) {
-                for (const tc of toolCalls) {
-                    const rawArg = tc?.function?.arguments ?? tc?.arguments;
-                    if (rawArg !== undefined && rawArg !== null) {
-                        state.accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
-                    }
-                }
+                toolCalls.forEach((tc, index) => appendSseToolCall(state, `openai:${tc?.index ?? index}`,
+                    { name: tc?.function?.name ?? tc?.name,
+                        arguments: tc?.function?.arguments !== undefined ? tc.function.arguments : tc?.arguments },
+                    !choice?.delta, tc?.id));
             }
 
             // Legacy function_call
             const fc = delta?.function_call || choice?.function_call;
-            if (fc) {
-                const rawArg = fc.arguments;
-                if (rawArg !== undefined && rawArg !== null) {
-                    state.accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
-                }
-            }
+            if (fc) appendSseToolCall(state, 'legacy:0', fc, !choice?.delta);
 
             // 3. Google Vertex AI / Gemini Native parts
             const parts = candidate?.content?.parts;
             if (Array.isArray(parts)) {
+                let callIndex = 0;
                 for (const p of parts) {
                     if (p.functionCall) {
-                        const rawArg = p.functionCall.args;
-                        if (rawArg !== undefined && rawArg !== null) {
-                            state.accumulatedArgs += typeof rawArg === 'object' ? JSON.stringify(rawArg) : String(rawArg);
-                        }
+                        const fn = p.functionCall;
+                        appendSseToolCall(state, `native:${callIndex++}`, { name: fn.name, arguments: fn.args },
+                            typeof fn.args !== 'string', fn.id);
                     }
                     if (p.thought === true || p.thought) {
                         if (typeof p.thought === 'string') state.accumulatedReasoning += p.thought;
@@ -6599,6 +6592,15 @@ ${getCharacterMemoryTagSpecification()}
                         state.accumulatedContent += p.text;
                     }
                 }
+            }
+
+            if (state.toolCalls?.length) {
+                let selected;
+                try { selected = selectCompletionToolCall(state.toolCalls, state.expectedToolName); }
+                catch (_) { selected = state.toolCalls[0]; }
+                // Keep legacy progress fields, but never concatenate unrelated calls.
+                // Final validation runs after refusal and truncation checks.
+                state.accumulatedArgs = selected?.arguments || '';
             }
 
             // 4. 普通正文文本与思维链支持
@@ -6627,12 +6629,105 @@ ${getCharacterMemoryTagSpecification()}
         }
     }
 
-    async function readSseCompletion(response, signal, onProgress = null) {
+    function appendSseToolCall(state, key, fn, snapshot = false, id = '') {
+        if (!fn) return;
+        const calls = state.toolCalls ||= [];
+        const raw = fn.arguments === undefined ? undefined
+            : typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments);
+        let call = id ? calls.find(entry => entry.id === id) : null;
+        if (!call) call = calls.find(entry => entry.key === key && (!id || !entry.id || entry.id === id));
+        // Without an ID, distinct complete native calls cannot safely be treated
+        // as revisions of one call. Preserve both for final ambiguity checking.
+        if (call && key.startsWith('native:') && snapshot && !id
+            && ((call.name && fn.name && call.name !== fn.name)
+                || (call.arguments && raw !== undefined && call.arguments !== raw))) call = null;
+        if (!call) {
+            call = { key, id: id || '', name: '', arguments: '' };
+            calls.push(call);
+        }
+        if (id) call.id = id;
+        if (typeof fn.name === 'string' && fn.name) {
+            call.name = snapshot ? fn.name : call.name === fn.name ? call.name : call.name + fn.name;
+        }
+        if (fn.arguments !== undefined) {
+            call.arguments = snapshot || typeof fn.arguments !== 'string' ? raw : call.arguments + raw;
+        }
+    }
+
+    function getCompletionToolCalls(envelope) {
+        const choice = envelope?.choices?.[0];
+        const message = choice?.message || choice?.delta || {};
+        const modern = message.tool_calls || choice?.tool_calls;
+        const calls = Array.isArray(modern) ? modern.map(call => ({
+            name: call?.function?.name ?? call?.name ?? '',
+            arguments: call?.function?.arguments !== undefined ? call.function.arguments : call?.arguments,
+        })) : [];
+        const legacy = message.function_call || choice?.function_call;
+        if (legacy) calls.push({ name: legacy.name || '', arguments: legacy.arguments });
+        const parts = envelope?.candidates?.[0]?.content?.parts;
+        if (Array.isArray(parts)) for (const part of parts) {
+            if (part?.functionCall) calls.push({ name: part.functionCall.name || '', arguments: part.functionCall.args });
+        }
+        return calls;
+    }
+
+    function selectCompletionToolCall(calls, expectedName = '') {
+        if (!calls?.length) return null;
+        const matches = expectedName ? calls.filter(call => call.name === expectedName) : calls;
+        if (matches.length === 1) return matches[0];
+        if (!matches.length && calls.length === 1 && !calls[0].name) return calls[0];
+        const ambiguous = matches.length > 1 || (!matches.length && calls.every(call => !call.name));
+        const err = new Error(ambiguous
+            ? `大模型返回多个无法唯一选择的工具调用 (${expectedName || '未指定函数'})`
+            : `大模型返回了非预期工具调用，需要 ${expectedName}`);
+        err.code = ambiguous ? 'SDT_TOOL_RESPONSE_AMBIGUOUS_FUNCTION' : 'SDT_TOOL_RESPONSE_UNEXPECTED_FUNCTION';
+        throw err;
+    }
+
+    function validateCompletionToolArguments(rawArguments, tool = null) {
+        const invalid = new Error('大模型工具参数不是完整的 JSON 对象');
+        invalid.code = 'SDT_TOOL_RESPONSE_INVALID_ARGUMENTS';
+        let value;
+        try { value = typeof rawArguments === 'string' ? JSON.parse(rawArguments) : rawArguments; }
+        catch (_) { throw invalid; }
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid;
+
+        // Basic root-contract checks. Nested drawing semantics are validated by
+        // the existing illustration/manga parsers; this is not a full schema engine.
+        const schema = tool?.function?.parameters;
+        const mismatch = path => {
+            const err = new Error(`大模型工具参数不符合输出 schema (${path})`);
+            err.code = 'SDT_TOOL_RESPONSE_SCHEMA_MISMATCH';
+            err.parameterPath = path;
+            throw err;
+        };
+        const matchesType = (item, type) => {
+            if (Array.isArray(type)) return type.some(entry => matchesType(item, entry));
+            if (type === 'object') return !!item && typeof item === 'object' && !Array.isArray(item);
+            if (type === 'array') return Array.isArray(item);
+            if (type === 'null') return item === null;
+            if (type === 'integer') return Number.isInteger(item);
+            if (type === 'number') return typeof item === 'number' && Number.isFinite(item);
+            return !type || typeof item === type;
+        };
+        if (schema?.type && !matchesType(value, schema.type)) mismatch('$');
+        for (const field of schema?.required || []) {
+            if (!Object.prototype.hasOwnProperty.call(value, field)) mismatch(`$.${field}`);
+        }
+        for (const [field, definition] of Object.entries(schema?.properties || {})) {
+            if (Object.prototype.hasOwnProperty.call(value, field) && definition?.type
+                && !matchesType(value[field], definition.type)) mismatch(`$.${field}`);
+        }
+        return value;
+    }
+
+    async function readSseCompletion(response, signal, onProgress = null, expectedToolName = '') {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         const sseState = {
             accumulatedArgs: '', accumulatedContent: '', accumulatedReasoning: '',
-            hasSafetyBlock: false, safetyReason: '', lastFinishReason: '', rawDebugChunks: [], streamComplete: false
+            hasSafetyBlock: false, safetyReason: '', lastFinishReason: '', rawDebugChunks: [], streamComplete: false,
+            toolCalls: [], expectedToolName,
         };
         let sseBuffer = '', rawStreamText = '', reachedEof = false, onAbort;
         const abortError = () => signal?.reason && typeof signal.reason.message === 'string'
@@ -6706,7 +6801,8 @@ ${getCharacterMemoryTagSpecification()}
             choices: [{
                 finish_reason: state.lastFinishReason || (state.hasSafetyBlock ? 'content_filter' : 'stop'),
                 message: {
-                    ...(state.accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: state.accumulatedArgs } }] } : {}),
+                    ...(state.toolCalls?.length ? { tool_calls: state.toolCalls.map(call => ({ type: 'function', function: { name: call.name, arguments: call.arguments } })) } : {}),
+                    ...(state.hasSafetyBlock ? { refusal: state.safetyReason || 'refusal' } : {}),
                     content: state.accumulatedContent,
                     reasoning_content: state.accumulatedReasoning
                 }
@@ -7292,39 +7388,32 @@ ${getCharacterMemoryTagSpecification()}
 
     function normalizeTaggerResult(data, matchedLorebooks = [], mangaContext = null) {
         assertMangaRequestContext(mangaContext);
-        // 1. Tool Call extraction (OpenAI tool_calls, legacy function_call, or Gemini functionCall)
+        // Tool arguments are an exact JSON contract, unlike ordinary text output.
         let toolRaw = null;
         const choice = data?.choices?.[0];
-        const toolCalls = choice?.message?.tool_calls || choice?.delta?.tool_calls;
-        if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-            const tc = toolCalls.find(t => t?.function?.name === 'generate_draw_spec') || toolCalls[0];
-            const args = tc?.function?.arguments;
-            if (typeof args === 'string') {
-                toolRaw = extractJson(args);
-            } else if (typeof args === 'object' && args !== null) {
-                toolRaw = args;
-            }
-        } else if (choice?.message?.function_call?.arguments) {
-            const args = choice.message.function_call.arguments;
-            toolRaw = typeof args === 'string' ? extractJson(args) : args;
-        }
-
-        if (!toolRaw) {
-            const parts = data?.candidates?.[0]?.content?.parts;
-            if (Array.isArray(parts)) {
-                for (const p of parts) {
-                    if (p?.functionCall) {
-                        const args = p.functionCall.args;
-                        if (typeof args === 'object' && args !== null) {
-                            toolRaw = args;
-                            break;
-                        } else if (typeof args === 'string') {
-                            toolRaw = extractJson(args);
-                            break;
-                        }
-                    }
+        try {
+            const calls = getCompletionToolCalls(data);
+            if (calls.length) {
+                const candidate = data?.candidates?.[0];
+                const finishReason = choice?.finish_reason || candidate?.finishReason;
+                const refusal = choice?.message?.refusal || choice?.delta?.refusal || candidate?.refusal;
+                if (refusal || data?.promptFeedback?.blockReason
+                    || /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(String(finishReason || ''))) {
+                    const err = new Error('大模型返回内容安全拦截，未采用工具参数');
+                    err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
+                    throw err;
+                }
+                if (/^(?:length|max_tokens)$/i.test(String(finishReason || ''))) {
+                    const err = new Error('大模型工具参数被截断，未采用分镜结果');
+                    err.code = 'SDT_TOOL_RESPONSE_TRUNCATED';
+                    throw err;
                 }
             }
+            const call = selectCompletionToolCall(calls, 'generate_draw_spec');
+            if (call) toolRaw = validateCompletionToolArguments(call.arguments);
+        } catch (err) {
+            err.rawOutput = JSON.stringify(data, null, 2);
+            throw err;
         }
 
         let reasoningContent = choice?.message?.reasoning_content
@@ -11408,6 +11497,22 @@ SCHEMA:
         return tool;
     }
 
+    function buildStandardDrawRequest(systemPrompt, payload, store, promptBundle = null) {
+        // Existing optional message layouts keep their compatibility path.
+        // Standard requests keep instructions, task data and output schema separate.
+        if (store?.provider === 'custom' || store?.geminiJailbreak
+            || store?.postProcessEnabled || store?.toolInputInDescription) return null;
+        return {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: JSON.stringify(payload, null, 2) },
+            ],
+            tool: store?.toolCallMode
+                ? JSON.parse(JSON.stringify(getDrawSpecTool(store, promptBundle)))
+                : null,
+        };
+    }
+
     const DRAW_SPEC_TOOL_INPUT_MESSAGE = '请读取 generate_draw_spec 工具说明中的本次任务输入，按系统规则分析并通过该工具提交结果。';
     const DRAW_SPEC_TOOL_RULE = '\n\n[System Rule]: 严格执行以下输出规范：1. 必须调用 generate_draw_spec 工具提交你的最终生图分镜与分析 2. 不要在普通文本中输出任何外部内容。';
 
@@ -11533,9 +11638,9 @@ SCHEMA:
             } else {
                 let errText = '';
                 try { errText = await autoRes.text(); } catch (_) {}
-                const err = new Error(`大模型接口不支持工具调用 (Tool Call / Function Calling)。请在设置中关闭「🛡️ 工具调用抗外审 (Tool Call)」开关，或更换支持 Tool Calling 的中转渠道。(HTTP ${autoRes.status})`);
+                const err = new Error(`大模型接口不支持工具调用 (Tool Call / Function Calling)。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持 Tool Calling 的中转渠道。(HTTP ${autoRes.status})`);
                 err.status = autoRes.status;
-                err.rawOutput = `【错误】: 当前 API 接口不支持工具调用 (Tool Call / Function Calling)\n【HTTP 状态码】: ${autoRes.status}\n【服务端返回报文】:\n${errText || '（无响应体）'}\n\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审 (Tool Call)」以改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                err.rawOutput = `【错误】: 当前 API 接口不支持工具调用 (Tool Call / Function Calling)\n【HTTP 状态码】: ${autoRes.status}\n【服务端返回报文】:\n${errText || '（无响应体）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」以改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
                 throw err;
             }
         }
@@ -11669,29 +11774,33 @@ SCHEMA:
         const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
         const toolRule = !promptBundle && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
 
-        // Combine all system directives into the top system message so Gemini never errors with "System instruction only at start"
+        // Keep system directives together at the start of the request.
         const fullSystemPrompt = [systemPrompt, ecSysPrompt, toolRule].filter(Boolean).join('\n\n');
 
-        const jailbreakPrompt = getActiveJailbreakPrompt(store);
-        const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
-            ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
-            : [{ role: 'system', content: fullSystemPrompt }];
+        const standardRequest = buildStandardDrawRequest(fullSystemPrompt, payload, store, promptBundle);
+        let messages = standardRequest?.messages;
+        if (!standardRequest) {
+            const jailbreakPrompt = getActiveJailbreakPrompt(store);
+            const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+                ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+                : [{ role: 'system', content: fullSystemPrompt }];
 
-        const userContent = store.toolCallMode && store.toolInputInDescription
-            ? DRAW_SPEC_TOOL_INPUT_MESSAGE
-            : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
-            ? wrapPayloadInRenderTelemetryV2(payload)
-            : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
-            ? wrapPayloadInRenderTelemetry(payload)
-            : JSON.stringify(payload, null, 2);
-        rawMessages.push({ role: 'user', content: userContent });
+            const userContent = store.toolCallMode && store.toolInputInDescription
+                ? DRAW_SPEC_TOOL_INPUT_MESSAGE
+                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
+                ? wrapPayloadInRenderTelemetryV2(payload)
+                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
+                ? wrapPayloadInRenderTelemetry(payload)
+                : JSON.stringify(payload, null, 2);
+            rawMessages.push({ role: 'user', content: userContent });
 
-        applyPostProcessPrompt(rawMessages, store);
+            applyPostProcessPrompt(rawMessages, store);
 
-        // Merge any consecutive same-role messages if enabled
-        const messages = store.squashMessages !== false
-            ? squashConsecutiveMessages(rawMessages)
-            : rawMessages;
+            // Merge any consecutive same-role messages if enabled
+            messages = store.squashMessages !== false
+                ? squashConsecutiveMessages(rawMessages)
+                : rawMessages;
+        }
 
         const reqBody = {
             model: modelName,
@@ -11702,7 +11811,7 @@ SCHEMA:
         };
 
         if (store.toolCallMode) {
-            reqBody.tools = [getDrawSpecTool(store, promptBundle, payload)];
+            reqBody.tools = [standardRequest?.tool || getDrawSpecTool(store, promptBundle, payload)];
             reqBody.tool_choice = { type: 'function', function: { name: 'generate_draw_spec' } };
             reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
@@ -11735,7 +11844,7 @@ SCHEMA:
         const isSseStream = (ct.includes('text/event-stream') || reqBody.stream === true) && response.body && typeof response.body.getReader === 'function';
 
         if (isSseStream) {
-            const { sseState, rawStreamText } = await readSseCompletion(response, signal);
+            const { sseState, rawStreamText } = await readSseCompletion(response, signal, null, reqBody.tools?.[0]?.function?.name || '');
 
             // 容错：如果流中未检测到 SSE 格式 (data:)，但实际上返回了完整的单体 JSON（例如反代未走流式包装）
             if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.hasSafetyBlock && rawStreamText.trim()) {
@@ -11743,7 +11852,7 @@ SCHEMA:
                 if (trimmedRaw.startsWith('{') && trimmedRaw.endsWith('}')) {
                     try {
                         const parsedDirect = JSON.parse(trimmedRaw);
-                        if (parsedDirect && (parsedDirect.choices || parsedDirect.candidates || parsedDirect.error)) {
+                        if (parsedDirect && (parsedDirect.choices || parsedDirect.candidates || parsedDirect.error || parsedDirect.promptFeedback)) {
                             console.info(`[${PLUGIN_NAME}] 流式通道接收到了标准非流式 JSON 对象，直接采纳`);
                             json = parsedDirect;
                         }
@@ -11763,7 +11872,7 @@ SCHEMA:
                 }
 
                 // 如果两者都为空，说明流式未产出内容
-                if (!sseState.accumulatedArgs && !sseState.accumulatedContent) {
+                if (!sseState.accumulatedArgs && !sseState.accumulatedContent && !sseState.toolCalls?.length) {
                     const isSafetyReason = sseState.hasSafetyBlock
                         || (sseState.lastFinishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(sseState.lastFinishReason));
 
@@ -11781,6 +11890,7 @@ SCHEMA:
                         }
 
                         const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
+                        err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
                         err.debugInfo = {
                             reason: `大模型触发前置安全策略熔断 (${safetyDetail})`,
                             model: modelName,
@@ -11793,6 +11903,7 @@ SCHEMA:
 
                     if (/^(?:length|max_tokens)$/i.test(String(sseState.lastFinishReason || ''))) {
                         const err = new Error('大模型输出因达到最大 Token (Max Tokens) 限制而被截断，未能完整返回分镜数据。请在设置中调大 Max Tokens 或精简上下文。');
+                        err.code = 'SDT_TOOL_RESPONSE_TRUNCATED';
                         err.debugInfo = {
                             reason: '大模型输出被 Max Tokens 截断 (finish_reason: length)',
                             model: modelName,
@@ -11805,14 +11916,14 @@ SCHEMA:
 
                     if (reqBody.tools) {
                         const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
-                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
+                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
                         err.debugInfo = {
                             reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
                             model: modelName,
                             llmOutput: '(空)',
                             chunks: sseState.rawDebugChunks,
                         };
-                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
                         throw err;
                     }
 
@@ -11826,13 +11937,14 @@ SCHEMA:
                     };
                     throw err;
                 } else {
-                    if (reqBody.tools && !sseState.accumulatedArgs) {
+                    if (reqBody.tools && !sseState.accumulatedArgs && !sseState.toolCalls?.length) {
                         const isSafetyReason = sseState.hasSafetyBlock
                             || (sseState.lastFinishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(sseState.lastFinishReason));
 
                         if (isSafetyReason) {
                             const safetyDetail = sseState.safetyReason || `finish_reason: ${sseState.lastFinishReason}`;
                             const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
+                            err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
                             err.debugInfo = {
                                 reason: `大模型触发前置安全策略熔断 (${safetyDetail})`,
                                 model: modelName,
@@ -11845,6 +11957,7 @@ SCHEMA:
 
                         if (/^(?:length|max_tokens)$/i.test(String(sseState.lastFinishReason || ''))) {
                             const err = new Error('大模型输出因达到最大 Token (Max Tokens) 限制而被截断，未能完整返回工具调用数据。请在设置中调大 Max Tokens 或精简上下文。');
+                            err.code = 'SDT_TOOL_RESPONSE_TRUNCATED';
                             err.debugInfo = {
                                 reason: '大模型输出被 Max Tokens 截断 (finish_reason: length)',
                                 model: modelName,
@@ -11856,21 +11969,21 @@ SCHEMA:
                         }
 
                         const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
-                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
+                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
                         err.debugInfo = {
                             reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
                             model: modelName,
                             llmOutput: sseState.accumulatedContent || '(空)',
                             chunks: sseState.rawDebugChunks,
                         };
-                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
                         throw err;
                     }
                     json = {
                         choices: [{
                             finish_reason: sseState.lastFinishReason || 'stop',
                             message: {
-                                ...(sseState.accumulatedArgs ? { tool_calls: [{ function: { name: 'generate_draw_spec', arguments: sseState.accumulatedArgs } }] } : {}),
+                                ...(sseState.toolCalls?.length ? { tool_calls: sseState.toolCalls.map(call => ({ type: 'function', function: { name: call.name, arguments: call.arguments } })) } : {}),
                                 ...(sseState.hasSafetyBlock ? { refusal: sseState.safetyReason || 'refusal' } : {}),
                                 content: sseState.accumulatedContent,
                                 reasoning_content: sseState.accumulatedReasoning
@@ -11885,14 +11998,20 @@ SCHEMA:
 
         assertMangaRequestContext(requestContext);
 
-        if (reqBody.tools && !json?.shouldDraw) {
+        if (json?.error) {
+            const err = new Error(`大模型返回错误: ${json.error.message || JSON.stringify(json.error)}`);
+            err.rawOutput = JSON.stringify(json, null, 2);
+            throw err;
+        }
+
+        if (reqBody.tools) {
             const choice = json?.choices?.[0];
             const candidate = json?.candidates?.[0];
             const finishReason = choice?.finish_reason || candidate?.finishReason;
             const refusal = choice?.message?.refusal || candidate?.refusal;
             const isSafetyReason = (finishReason && /content_filter|safety|prohibited|recitation|blocklist|spii/i.test(String(finishReason)))
                 || (refusal && typeof refusal === 'string' && refusal.trim())
-                || /content_filter|safety|prohibited/i.test(String(json?.promptFeedback?.blockReason || ''));
+                || !!json?.promptFeedback?.blockReason;
 
             if (isSafetyReason) {
                 const safetyDetail = `finish_reason: ${refusal ? 'refusal' : finishReason || json?.promptFeedback?.blockReason || 'SAFETY'}`;
@@ -11905,6 +12024,7 @@ SCHEMA:
                     return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
                 }
                 const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
+                err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
                 err.debugInfo = {
                     reason: `大模型触发前置安全策略熔断 (${safetyDetail})`,
                     model: modelName,
@@ -11916,6 +12036,7 @@ SCHEMA:
 
             if (/^(?:length|max_tokens)$/i.test(String(finishReason || ''))) {
                 const err = new Error('大模型输出因达到最大 Token (Max Tokens) 限制而被截断，未能完整返回分镜数据。请在设置中调大 Max Tokens 或精简上下文。');
+                err.code = 'SDT_TOOL_RESPONSE_TRUNCATED';
                 err.debugInfo = {
                     reason: '大模型输出被 Max Tokens 截断 (finish_reason: length)',
                     model: modelName,
@@ -11925,16 +12046,26 @@ SCHEMA:
                 throw err;
             }
 
-            const hasTool = !!(choice?.message?.tool_calls?.length || choice?.message?.function_call || json?.candidates?.[0]?.content?.parts?.some(p => p.functionCall));
+            const hasTool = getCompletionToolCalls(json).length > 0;
             if (!hasTool) {
                 const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
-                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
+                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
                 err.debugInfo = {
                     reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
                     model: modelName,
                     llmOutput: choice?.message?.content || '(空)',
                 };
-                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${choice?.message?.content || JSON.stringify(json, null, 2)}\n\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${choice?.message?.content || JSON.stringify(json, null, 2)}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
+                throw err;
+            }
+        }
+
+        if (reqBody.tools) {
+            try {
+                const call = selectCompletionToolCall(getCompletionToolCalls(json), reqBody.tools[0].function.name);
+                validateCompletionToolArguments(call?.arguments, reqBody.tools[0]);
+            } catch (err) {
+                err.rawOutput = JSON.stringify(json, null, 2);
                 throw err;
             }
         }
@@ -12069,7 +12200,7 @@ SCHEMA:
         };
 
         if (isSseStream) {
-            const streamResult = await readSseCompletion(response, signal, onProgress);
+            const streamResult = await readSseCompletion(response, signal, onProgress, useToolCall ? toolName : '');
             sseState = streamResult.sseState;
             rawOutput = streamResult.rawStreamText;
 
@@ -12147,10 +12278,21 @@ SCHEMA:
                 err.rawOutput = rawOutput;
                 throw err;
             }
+            try {
+                const call = selectCompletionToolCall(json ? getCompletionToolCalls(json) : sseState?.toolCalls, toolName);
+                if (call) {
+                    validateCompletionToolArguments(call.arguments, tool);
+                    isToolCall = true;
+                    rawReply = typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments);
+                }
+            } catch (err) {
+                err.rawOutput = rawOutput;
+                throw err;
+            }
             if (!isToolCall || !rawReply) {
                 const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
-                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「🛡️ 工具调用抗外审」开关，或更换支持工具调用的渠道/模型。`);
-                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「🛡️ 工具调用抗外审」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。\n\n【服务端原始响应】:\n${rawReply || rawOutput || '（空）'}`;
+                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
+                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。\n\n【服务端原始响应】:\n${rawReply || rawOutput || '（空）'}`;
                 throw err;
             }
         }
@@ -12166,10 +12308,10 @@ SCHEMA:
         };
     }
 
-    async function callDrawSpecCompletion(messages, store, promptBundle = null, taskInput = null) {
+    async function callDrawSpecCompletion(messages, store, promptBundle = null, taskInput = null, requestTool = null) {
         const completion = await callStructuredCompletion({
             messages,
-            tool: getDrawSpecTool(store, promptBundle, taskInput),
+            tool: requestTool || getDrawSpecTool(store, promptBundle, taskInput),
             customStore: store,
         });
         // Keep the existing normalizer's tool extraction and diagnostic fields.
@@ -14945,13 +15087,13 @@ SCHEMA:
                     </div>
                 </div>
 
-                <!-- 通信加固与防外审机制 -->
+                <!-- 通信与结构化输出 -->
                 <div class="rbq-sdt-card-group">
                     <div class="rbq-sdt-card-header">
-                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-virus" style="color:#06b6d4;"></i> 通信加固与免审机制</span>
+                        <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-virus" style="color:#06b6d4;"></i> 通信与结构化输出</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="利用大模型 Function Calling / Tool Calling 免审机制，自动将生图契约包装为 generate_draw_spec 工具调用，规避 Gemini 等渠道的流式外审截断、中途断流与道歉说教"><span>🛡️ 工具调用抗外审 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="通过 generate_draw_spec 工具参数返回分镜结果，自动、手动、测试统一使用。需接口支持 Function Calling；不会关闭服务商的内容审核。"><span>结构化工具调用 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-tool-input-description-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" style="min-height:44px;"><span>剧情与资料写入工具说明</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-input-description" type="checkbox" aria-label="剧情与资料写入工具说明"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
@@ -16150,24 +16292,28 @@ SCHEMA:
             const toolRule = !promptBundle && store.provider !== 'custom' && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
             const fullSystemPrompt = [systemPrompt, ecSysPrompt, toolRule].filter(Boolean).join('\n\n');
 
-            const jailbreakPrompt = getActiveJailbreakPrompt(store);
-            const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
-                ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
-                : [{ role: 'system', content: fullSystemPrompt }];
+            const standardRequest = buildStandardDrawRequest(fullSystemPrompt, manualPayload, store, promptBundle);
+            let messages = standardRequest?.messages;
+            if (!standardRequest) {
+                const jailbreakPrompt = getActiveJailbreakPrompt(store);
+                const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+                    ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+                    : [{ role: 'system', content: fullSystemPrompt }];
 
-            const userContent = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription
-                ? DRAW_SPEC_TOOL_INPUT_MESSAGE
-                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
-                ? wrapPayloadInRenderTelemetryV2(manualPayload)
-                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
-                ? wrapPayloadInRenderTelemetry(manualPayload)
-                : JSON.stringify(manualPayload, null, 2);
-            rawMessages.push({ role: 'user', content: userContent });
+                const userContent = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription
+                    ? DRAW_SPEC_TOOL_INPUT_MESSAGE
+                    : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
+                    ? wrapPayloadInRenderTelemetryV2(manualPayload)
+                    : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
+                    ? wrapPayloadInRenderTelemetry(manualPayload)
+                    : JSON.stringify(manualPayload, null, 2);
+                rawMessages.push({ role: 'user', content: userContent });
 
-            applyPostProcessPrompt(rawMessages, store);
-            const messages = store.squashMessages !== false
-                ? squashConsecutiveMessages(rawMessages)
-                : rawMessages;
+                applyPostProcessPrompt(rawMessages, store);
+                messages = store.squashMessages !== false
+                    ? squashConsecutiveMessages(rawMessages)
+                    : rawMessages;
+            }
 
             // Call tagger via the correct provider (OpenAI or Custom HTTP)
             let json;
@@ -16184,7 +16330,7 @@ SCHEMA:
                 if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
                 json = await safeReadJsonResponse(response);
             } else if (store.toolCallMode) {
-                json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload);
+                json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, standardRequest?.tool);
             } else {
                 const url = normalizeBaseUrl(store.openaiBaseUrl);
                 if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
@@ -17716,24 +17862,28 @@ SCHEMA:
 
         const toolRule = !promptBundle && store.provider !== 'custom' && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
         const fullSystemPrompt = [systemPrompt, toolRule].filter(Boolean).join('\n\n');
-        const jailbreakPrompt = getActiveJailbreakPrompt(store);
-        const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
-            ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
-            : [{ role: 'system', content: fullSystemPrompt }];
+        const standardRequest = buildStandardDrawRequest(fullSystemPrompt, manualPayload, store, promptBundle);
+        let messages = standardRequest?.messages;
+        if (!standardRequest) {
+            const jailbreakPrompt = getActiveJailbreakPrompt(store);
+            const rawMessages = (store.geminiJailbreak && jailbreakPrompt)
+                ? parseJailbreakMessages(jailbreakPrompt, fullSystemPrompt)
+                : [{ role: 'system', content: fullSystemPrompt }];
 
-        const userContent = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription
-            ? DRAW_SPEC_TOOL_INPUT_MESSAGE
-            : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
-            ? wrapPayloadInRenderTelemetryV2(manualPayload)
-            : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
-            ? wrapPayloadInRenderTelemetry(manualPayload)
-            : JSON.stringify(manualPayload, null, 2);
-        rawMessages.push({ role: 'user', content: userContent });
+            const userContent = store.provider !== 'custom' && store.toolCallMode && store.toolInputInDescription
+                ? DRAW_SPEC_TOOL_INPUT_MESSAGE
+                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline_v2')
+                ? wrapPayloadInRenderTelemetryV2(manualPayload)
+                : (store.geminiJailbreak && store.geminiJailbreakPreset === 'render_pipeline')
+                ? wrapPayloadInRenderTelemetry(manualPayload)
+                : JSON.stringify(manualPayload, null, 2);
+            rawMessages.push({ role: 'user', content: userContent });
 
-        applyPostProcessPrompt(rawMessages, store);
-        const messages = store.squashMessages !== false
-            ? squashConsecutiveMessages(rawMessages)
-            : rawMessages;
+            applyPostProcessPrompt(rawMessages, store);
+            messages = store.squashMessages !== false
+                ? squashConsecutiveMessages(rawMessages)
+                : rawMessages;
+        }
 
         let json;
         if (store.provider === 'custom') {
@@ -17749,7 +17899,7 @@ SCHEMA:
             if (!response.ok) throw new Error(`自定义 tagger 请求失败: HTTP ${response.status}`);
             json = await safeReadJsonResponse(response);
         } else if (store.toolCallMode) {
-            json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload);
+            json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, standardRequest?.tool);
         } else {
             const url = normalizeBaseUrl(store.openaiBaseUrl);
             if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');

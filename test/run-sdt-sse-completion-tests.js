@@ -24,10 +24,13 @@ function host(toolCallMode = false) {
         getDrawSpecTool: () => tool, assertMangaRequestContext() {}, validateStructuredResult: value => value,
         normalizeTaggerResult(json) {
             const message = json.choices?.[0]?.message || {};
-            return JSON.parse(message.tool_calls?.[0]?.function?.arguments || message.content);
+            const selected = context.selectCompletionToolCall(context.getCompletionToolCalls(json), tool.function.name);
+            const args = selected?.arguments;
+            return args !== undefined ? typeof args === 'string' ? JSON.parse(args) : args : JSON.parse(message.content);
         }, safeReadJsonResponse: response => response.json(), toastr: { warning() {} }
     });
     vm.runInContext(source.slice(source.indexOf('    function processSseLine('), source.indexOf('    function parseSseStringToOpenAiJson(')), context);
+    vm.runInContext(source.slice(source.indexOf('    function buildStandardDrawRequest('), source.indexOf('    const DRAW_SPEC_TOOL_INPUT_MESSAGE')), context);
     vm.runInContext(source.slice(source.indexOf('    async function callOpenAiCompatible('), source.indexOf('    async function callCustomHttp(')), context);
     vm.runInContext(source.slice(source.indexOf('    async function callStructuredCompletion('), source.indexOf('    async function callTagger(')), context);
     return { context, store };
@@ -75,17 +78,71 @@ async function bounded(promise) {
     } finally { clearTimeout(timer); }
 }
 
-async function complete(fixture, toolMode = false, signal = null) {
+async function complete(fixture, toolMode = false, signal = null, requestTool = tool) {
     const { context } = host(toolMode);
     useStream(context, fixture);
-    return bounded(context.callStructuredCompletion({ messages: [], tool, signal }));
+    return bounded(context.callStructuredCompletion({ messages: [], tool: requestTool, signal }));
 }
 
-async function completeJson(reply) {
+async function completeJson(reply, requestTool = tool) {
     const { context } = host(true);
     context.callApiWithJsonFallback = async () => ({ ok: true,
         headers: { get: () => 'application/json' }, text: async () => JSON.stringify(reply) });
-    return context.callStructuredCompletion({ messages: [], tool });
+    return context.callStructuredCompletion({ messages: [], tool: requestTool });
+}
+
+async function automaticJson(reply, requestTool = tool) {
+    const { context } = host(true);
+    context.getDrawSpecTool = () => requestTool;
+    context.callApiWithJsonFallback = async () => ({ ok: true,
+        headers: { get: () => 'application/json' }, json: async () => reply });
+    return context.callOpenAiCompatible(0, { type: 'auto' });
+}
+
+async function automaticStream(chunks, requestTool = tool) {
+    const { context } = host(true), fixture = stream(chunks);
+    context.getDrawSpecTool = () => requestTool;
+    useStream(context, fixture);
+    return bounded(context.callOpenAiCompatible(0, { type: 'auto' }));
+}
+
+const namedCall = (name, args, index = 0) => ({ index, type: 'function', function: {
+    ...(name === undefined ? {} : { name }), arguments: args
+} });
+const callsReply = (calls, finishReason = 'tool_calls') => ({ choices: [{
+    message: { tool_calls: calls }, finish_reason: finishReason
+}] });
+const callsDelta = (calls, finishReason) => event({ choices: [{ delta: { tool_calls: calls },
+    ...(finishReason === undefined ? {} : { finish_reason: finishReason })
+}] });
+
+function toolRoutes(reply, chunks, requestTool = tool) {
+    return [
+        ['generic JSON', () => completeJson(reply, requestTool)],
+        ['generic SSE', () => complete(stream(chunks), true, null, requestTool)],
+        ['automatic JSON', () => automaticJson(reply, requestTool)],
+        ['automatic SSE', () => automaticStream(chunks, requestTool)]
+    ];
+}
+
+async function rejectsToolRoutes(reply, chunks, code, { requestTool = tool, rawMatch = null } = {}) {
+    for (const [route, run] of toolRoutes(reply, chunks, requestTool)) {
+        await assert.rejects(run(), error => {
+            assert.equal(error.code, code, route + ' must preserve the protocol error code');
+            if (rawMatch) assert.match(String(error.rawOutput || ''), rawMatch, route + ' must retain the original diagnostic');
+            return true;
+        });
+    }
+}
+
+async function acceptsToolRoutes(reply, chunks, expectedRaw = raw, requestTool = tool) {
+    for (const [route, run] of toolRoutes(reply, chunks, requestTool)) {
+        const result = await run();
+        if (route.startsWith('generic')) {
+            assert.equal(result.rawReply, expectedRaw, route + ' must preserve the selected JSON argument text');
+            assert.equal(result.isToolCall, true, route + ' must remain a tool response');
+        } else assert.deepEqual(result, JSON.parse(expectedRaw), route + ' must normalize only the selected tool');
+    }
 }
 
 function closedAtTerminal(trace, reads) {
@@ -197,6 +254,20 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
         assert.equal(result.choices[0].message.tool_calls[0].function.name, tool.function.name);
         assert.deepEqual(context.normalizeTaggerResult(result), ordinary);
         closedAtTerminal(fixture.trace, 1);
+    });
+
+    await test('draw completion uses the prepared request tool without rebuilding its schema', async () => {
+        const { context, store } = host(true);
+        const prepared = { ...tool, function: { ...tool.function, description: 'Prepared draw output contract.' } };
+        context.getDrawSpecTool = () => { throw new Error('prepared tool must be reused'); };
+        context.callApiWithJsonFallback = async (_url, _options, body) => {
+            assert.equal(body.tools[0], prepared);
+            return { ok: true, headers: { get: () => 'application/json' }, text: async () => JSON.stringify({
+                choices: [{ message: { tool_calls: [{ function: { name: tool.function.name, arguments: raw } }] }, finish_reason: 'tool_calls' }]
+            }) };
+        };
+        const result = await context.callDrawSpecCompletion([], store, null, null, prepared);
+        assert.deepEqual(context.normalizeTaggerResult(result), ordinary);
     });
 
     await test('tool mode rejects ordinary text without silently switching protocols', async () => {
@@ -313,6 +384,205 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
         await assert.rejects(bounded(context.callOpenAiCompatible(0, { type: 'auto' })), /前置内容安全审查|被截断/);
         closedAtTerminal(fixture.trace, 1);
     });
+
+    for (const [format, reply] of [
+        ['modern', callsReply([namedCall('other_neutral_tool', raw)])],
+        ['legacy', { choices: [{ message: { function_call: { name: 'other_neutral_tool', arguments: raw } }, finish_reason: 'function_call' }] }],
+        ['native', { candidates: [{ content: { parts: [{ functionCall: { name: 'other_neutral_tool', args: ordinary } }] }, finishReason: 'STOP' }] }]
+    ]) await test(format + ' explicit unexpected function is rejected without relabeling the response', async () => {
+        await rejectsToolRoutes(reply, [event(reply)], 'SDT_TOOL_RESPONSE_UNEXPECTED_FUNCTION', { rawMatch: /other_neutral_tool/ });
+    });
+
+    for (const expectedFirst of [false, true]) await test('multiple modern calls select the requested function when it is ' + (expectedFirst ? 'first' : 'last'), async () => {
+        const expected = namedCall(tool.function.name, raw, expectedFirst ? 0 : 1);
+        const other = namedCall('other_neutral_tool', JSON.stringify({ ignored: '普通工具结果' }), expectedFirst ? 1 : 0);
+        const calls = expectedFirst ? [expected, other] : [other, expected];
+        await acceptsToolRoutes(callsReply(calls), [callsDelta(calls, 'tool_calls')]);
+    });
+
+    await test('multiple matching modern calls are ambiguous instead of taking the first result', async () => {
+        const calls = [namedCall(tool.function.name, raw, 0), namedCall(tool.function.name, raw, 1)];
+        await rejectsToolRoutes(callsReply(calls), [callsDelta(calls, 'tool_calls')], 'SDT_TOOL_RESPONSE_AMBIGUOUS_FUNCTION');
+    });
+
+    await test('interleaved stream indices retain each call name and argument fragments separately', async () => {
+        const otherRaw = JSON.stringify({ ignored: '另一份结果' });
+        const cut = Math.floor(raw.length / 2), otherCut = Math.floor(otherRaw.length / 2);
+        const chunks = [
+            callsDelta([namedCall('other_neutral_tool', otherRaw.slice(0, otherCut), 0), namedCall(tool.function.name, raw.slice(0, cut), 1)]),
+            callsDelta([namedCall(undefined, raw.slice(cut), 1), namedCall(undefined, otherRaw.slice(otherCut), 0)], 'tool_calls')
+        ];
+        const reply = callsReply([namedCall('other_neutral_tool', otherRaw, 0), namedCall(tool.function.name, raw, 1)]);
+        await acceptsToolRoutes(reply, chunks);
+    });
+
+    await test('streamed call ids preserve isolation when unnamed-index fragments change their array positions', async () => {
+        const otherRaw = JSON.stringify({ ignored: '普通工具结果' });
+        const cut = Math.floor(raw.length / 2), otherCut = Math.floor(otherRaw.length / 2);
+        const chunks = [
+            callsDelta([
+                { id: 'call-other', function: { name: 'other_neutral_tool', arguments: otherRaw.slice(0, otherCut) } },
+                { id: 'call-draw', function: { name: tool.function.name, arguments: raw.slice(0, cut) } }
+            ]),
+            callsDelta([
+                { id: 'call-draw', function: { arguments: raw.slice(cut) } },
+                { id: 'call-other', function: { arguments: otherRaw.slice(otherCut) } }
+            ], 'tool_calls')
+        ];
+        const reply = callsReply([namedCall('other_neutral_tool', otherRaw), namedCall(tool.function.name, raw, 1)]);
+        await acceptsToolRoutes(reply, chunks);
+    });
+
+    await test('one unnamed call keeps compatible endpoint support through indexed fragments', async () => {
+        const cut = Math.floor(raw.length / 2);
+        const calls = [namedCall(undefined, raw)];
+        await acceptsToolRoutes(callsReply(calls), [
+            callsDelta([namedCall(undefined, raw.slice(0, cut))]),
+            callsDelta([namedCall(undefined, raw.slice(cut))], 'tool_calls')
+        ]);
+    });
+
+    await test('a single streamed call keeps its initial name when following fragments omit index and name', async () => {
+        const cut = Math.floor(raw.length / 2);
+        const reply = callsReply([namedCall(tool.function.name, raw)]);
+        const chunks = [
+            callsDelta([namedCall(tool.function.name, raw.slice(0, cut))]),
+            callsDelta([{ function: { arguments: raw.slice(cut) } }], 'tool_calls')
+        ];
+        await acceptsToolRoutes(reply, chunks);
+    });
+
+    await test('native calls select the requested function without concatenating another part', async () => {
+        const reply = { candidates: [{ content: { parts: [
+            { functionCall: { name: 'other_neutral_tool', args: { ignored: '普通结果' } } },
+            { functionCall: { name: tool.function.name, args: ordinary } }
+        ] }, finishReason: 'STOP' }] };
+        await acceptsToolRoutes(reply, [event(reply)]);
+    });
+
+    await test('separate native calls without ids stay ambiguous across complete argument snapshots', async () => {
+        const first = { functionCall: { name: tool.function.name, args: ordinary } };
+        const second = { functionCall: { name: tool.function.name, args: { ...ordinary, note: '另一份普通结果。' } } };
+        const reply = { candidates: [{ content: { parts: [first, second] }, finishReason: 'STOP' }] };
+        const chunks = [
+            event({ candidates: [{ content: { parts: [first] } }] }),
+            event({ candidates: [{ content: { parts: [second] }, finishReason: 'STOP' }] })
+        ];
+        await rejectsToolRoutes(reply, chunks, 'SDT_TOOL_RESPONSE_AMBIGUOUS_FUNCTION');
+    });
+
+    await test('native snapshots with the same explicit id update to the complete final object', async () => {
+        const first = { functionCall: { id: 'native-draw', name: tool.function.name, args: { shouldDraw: true } } };
+        const final = { functionCall: { id: 'native-draw', name: tool.function.name, args: ordinary } };
+        const reply = { candidates: [{ content: { parts: [final] }, finishReason: 'STOP' }] };
+        const chunks = [
+            event({ candidates: [{ content: { parts: [first] } }] }),
+            event({ candidates: [{ content: { parts: [final] }, finishReason: 'STOP' }] })
+        ];
+        await acceptsToolRoutes(reply, chunks);
+    });
+
+    const invalidArguments = [
+        ['damaged JSON', '{"shouldDraw": tru}'],
+        ['root null', 'null'],
+        ['root array', '[]'],
+        ['root string', '"普通结果"'],
+        ['root number', '42'],
+        ['root boolean', 'true'],
+        ['Markdown wrapper', '```json\n' + raw + '\n```']
+    ];
+    for (const [name, args] of invalidArguments) await test(name + ' cannot become a successful tool object', async () => {
+        const calls = [namedCall(tool.function.name, args)];
+        await rejectsToolRoutes(callsReply(calls), [callsDelta(calls, 'tool_calls')], 'SDT_TOOL_RESPONSE_INVALID_ARGUMENTS');
+    });
+
+    await test('empty or omitted arguments remain invalid tool calls across JSON and SSE paths', async () => {
+        for (const args of ['', undefined]) {
+            const calls = [namedCall(tool.function.name, args)];
+            await rejectsToolRoutes(callsReply(calls), [callsDelta(calls, 'tool_calls')], 'SDT_TOOL_RESPONSE_INVALID_ARGUMENTS');
+        }
+    });
+
+    const schemaTool = { type: 'function', function: { name: tool.function.name, parameters: {
+        type: 'object', required: ['shouldDraw', 'segments'], properties: {
+            shouldDraw: { type: 'boolean' }, segments: { type: 'array' }, note: { type: 'string' }
+        }
+    } } };
+    for (const [name, value, requestTool] of [
+        ['missing required property', { shouldDraw: true }, schemaTool],
+        ['incorrect declared boolean', { shouldDraw: 'true', segments: [] }, schemaTool],
+        ['incorrect declared array', { shouldDraw: true, segments: {} }, schemaTool],
+        ['incorrect declared string', { shouldDraw: true, segments: [], note: 12 }, schemaTool],
+        ['root schema type mismatch', ordinary, { ...schemaTool, function: { ...schemaTool.function, parameters: { type: 'array' } } }]
+    ]) await test(name + ' is reported as a tool schema mismatch', async () => {
+        const calls = [namedCall(tool.function.name, JSON.stringify(value))];
+        await rejectsToolRoutes(callsReply(calls), [callsDelta(calls, 'tool_calls')], 'SDT_TOOL_RESPONSE_SCHEMA_MISMATCH', { requestTool });
+    });
+
+    await test('valid tool JSON retains original whitespace, Unicode escapes and literal DONE text', async () => {
+        const literal = '{\n  "shouldDraw": true, "segments": [], "note": "字面 \\u4fe1 与 [DONE] 保留。"\n}';
+        const calls = [namedCall(tool.function.name, literal)];
+        await acceptsToolRoutes(callsReply(calls), [callsDelta(calls, 'tool_calls')], literal, schemaTool);
+    });
+
+    await test('generic completion validates against the supplied tool name instead of hardcoding draw spec', async () => {
+        const requestTool = { ...schemaTool, function: { ...schemaTool.function, name: 'generate_neutral_storyboard' } };
+        const calls = [namedCall(requestTool.function.name, raw)];
+        // Automatic SDT uses a fixed function name; the public generic helper also serves other tools.
+        for (const completion of [
+            () => completeJson(callsReply(calls), requestTool),
+            () => complete(stream([callsDelta(calls, 'tool_calls')]), true, null, requestTool)
+        ]) assert.equal((await completion()).rawReply, raw);
+    });
+
+    await test('HTTP 200 provider errors retain the upstream message in generic and automatic complete-body paths', async () => {
+        const reply = { error: { message: 'neutral upstream gateway error' } };
+        const runs = [
+            () => completeJson(reply),
+            () => automaticJson(reply),
+            () => complete(stream([JSON.stringify(reply)], { heldOpen: false }), true),
+            async () => {
+                const { context } = host(true), fixture = stream([JSON.stringify(reply)], { heldOpen: false });
+                useStream(context, fixture);
+                return bounded(context.callOpenAiCompatible(0, { type: 'auto' }));
+            }
+        ];
+        for (const run of runs) await assert.rejects(run(), error => {
+            assert.match(error.message, /大模型返回错误: neutral upstream gateway error/);
+            assert.match(String(error.rawOutput || ''), /neutral upstream gateway error/);
+            assert.doesNotMatch(error.message, /未返回工具调用参数/);
+            return true;
+        });
+    });
+
+    await test('prompt feedback OTHER blocks complete JSON and reader-body JSON before missing-tool detection', async () => {
+        const reply = { promptFeedback: { blockReason: 'OTHER' } };
+        const runs = [
+            () => completeJson(reply),
+            () => automaticJson(reply),
+            () => complete(stream([JSON.stringify(reply)], { heldOpen: false }), true),
+            async () => {
+                const { context } = host(true), fixture = stream([JSON.stringify(reply)], { heldOpen: false });
+                useStream(context, fixture);
+                return bounded(context.callOpenAiCompatible(0, { type: 'auto' }));
+            }
+        ];
+        for (const run of runs) await assert.rejects(run(), error => {
+            assert.equal(error.code, 'SDT_TOOL_RESPONSE_BLOCKED');
+            return true;
+        });
+    });
+
+    for (const invalidKind of ['unexpected name', 'invalid JSON']) for (const terminal of ['refusal', 'content_filter', 'length']) {
+        await test(terminal + ' takes precedence over ' + invalidKind + ' in every tool response path', async () => {
+            const calls = [namedCall(invalidKind === 'unexpected name' ? 'other_neutral_tool' : tool.function.name,
+                invalidKind === 'invalid JSON' ? '{"shouldDraw": tru}' : raw)];
+            const reply = callsReply(calls, terminal === 'refusal' ? 'stop' : terminal);
+            if (terminal === 'refusal') reply.choices[0].message.refusal = 'neutral refusal fixture';
+            await rejectsToolRoutes(reply, [event(reply)], terminal === 'length'
+                ? 'SDT_TOOL_RESPONSE_TRUNCATED' : 'SDT_TOOL_RESPONSE_BLOCKED');
+        });
+    }
 
     console.log(`\n${passed} SSE completion tests passed; 0 live requests.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2126,11 +2126,15 @@
                         </div>
                         ` : ''}
                         <div id="rbq-pm-detail-img-wrap" style="width:100%; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:#070b13; border:1px solid rgba(255,255,255,0.12); position:relative; cursor:zoom-in;" title="点击查看高清大图">
-                            <img id="rbq-pm-detail-main-img" src="${currentViewSrc}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:opacity 0.2s ease;">
-                            <div id="rbq-pm-detail-img-badge" style="position:absolute; top:7px; left:7px; background:linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9)); color:#fff; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4);">
+                            <div id="rbq-pm-detail-img-loading" style="display:none; position:absolute; inset:0; z-index:3; background:rgba(7,11,19,0.72); backdrop-filter:blur(4px); align-items:center; justify-content:center; flex-direction:column; gap:6px; color:#38bdf8; font-size:11px;">
+                                <i class="fa-solid fa-spinner fa-spin" style="font-size:22px;"></i>
+                                <span style="font-weight:600;">正在加载展示图...</span>
+                            </div>
+                            <img id="rbq-pm-detail-main-img" src="${currentViewSrc}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:opacity 0.25s ease;">
+                            <div id="rbq-pm-detail-img-badge" style="position:absolute; top:7px; left:7px; z-index:4; background:linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9)); color:#fff; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4);">
                                 <i class="fa-solid fa-flask"></i> 官方基准图
                             </div>
-                            <div style="position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); font-size:10px; padding:2px 6px; border-radius:4px; color:#cbd5e1;">
+                            <div style="position:absolute; bottom:6px; right:6px; z-index:4; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); font-size:10px; padding:2px 6px; border-radius:4px; color:#cbd5e1;">
                                 <i class="fa-solid fa-magnifying-glass-plus"></i> 点击放大
                             </div>
                         </div>
@@ -2221,27 +2225,24 @@
         bindFastClose(overlay.querySelector('#rbq-pm-detail-close'), () => closeSubDialog(overlay));
         bindDialogBackdropClose(overlay);
 
-        // 双图切换逻辑 (官方基准测试图 vs 作者自制参考图)
+        // 预加载作者自制参考图（如果存在），消除切换白屏或等待延迟
+        if (hasReference && item.referenceUrl) {
+            const preImg = new Image();
+            preImg.src = item.referenceUrl;
+        }
+
+        // 双图平滑切换逻辑 (官方基准测试图 vs 作者自制参考图)
         const tabBm = overlay.querySelector('#rbq-pm-detail-tab-bm');
         const tabRef = overlay.querySelector('#rbq-pm-detail-tab-ref');
         const mainImg = overlay.querySelector('#rbq-pm-detail-main-img');
         const imgBadge = overlay.querySelector('#rbq-pm-detail-img-badge');
-        if (tabBm && tabRef && mainImg) {
-            tabBm.onclick = () => {
-                currentViewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
-                mainImg.src = currentViewSrc;
-                tabBm.style.background = 'linear-gradient(135deg, #a855f7, #ec4899)';
-                tabBm.style.color = '#fff';
-                tabRef.style.background = 'transparent';
-                tabRef.style.color = '#94a3b8';
-                if (imgBadge) {
-                    imgBadge.innerHTML = '<i class="fa-solid fa-flask"></i> 官方基准图';
-                    imgBadge.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9))';
-                }
-            };
-            tabRef.onclick = () => {
-                currentViewSrc = item.referenceUrl;
-                mainImg.src = currentViewSrc;
+        const imgLoading = overlay.querySelector('#rbq-pm-detail-img-loading');
+
+        function switchDetailView(targetSrc, isRef) {
+            if (!targetSrc) return;
+            currentViewSrc = targetSrc;
+
+            if (isRef) {
                 tabRef.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
                 tabRef.style.color = '#fff';
                 tabBm.style.background = 'transparent';
@@ -2250,7 +2251,47 @@
                     imgBadge.innerHTML = '<i class="fa-solid fa-image"></i> 自制参考图';
                     imgBadge.style.background = 'linear-gradient(135deg, rgba(56,189,248,0.9), rgba(37,99,235,0.9))';
                 }
+            } else {
+                tabBm.style.background = 'linear-gradient(135deg, #a855f7, #ec4899)';
+                tabBm.style.color = '#fff';
+                tabRef.style.background = 'transparent';
+                tabRef.style.color = '#94a3b8';
+                if (imgBadge) {
+                    imgBadge.innerHTML = '<i class="fa-solid fa-flask"></i> 官方基准图';
+                    imgBadge.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9))';
+                }
+            }
+
+            if (mainImg.getAttribute('data-loaded-src') === targetSrc) {
+                mainImg.src = targetSrc;
+                return;
+            }
+
+            if (imgLoading) imgLoading.style.display = 'flex';
+            mainImg.style.opacity = '0.35';
+
+            const onLoaded = () => {
+                if (imgLoading) imgLoading.style.display = 'none';
+                mainImg.style.opacity = '1';
+                mainImg.setAttribute('data-loaded-src', targetSrc);
             };
+
+            const temp = new Image();
+            temp.onload = () => {
+                mainImg.src = targetSrc;
+                onLoaded();
+            };
+            temp.onerror = () => {
+                if (imgLoading) imgLoading.style.display = 'none';
+                mainImg.style.opacity = '1';
+                toastr.warning('图片加载超时或异常，请检查网络');
+            };
+            temp.src = targetSrc;
+        }
+
+        if (tabBm && tabRef && mainImg) {
+            tabBm.onclick = () => switchDetailView(item.previewUrl || KAMI_DEFAULT_PREVIEW, false);
+            tabRef.onclick = () => switchDetailView(item.referenceUrl, true);
         }
 
         // 点击预览图放大 Lightbox
@@ -4056,5 +4097,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.25 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.26 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

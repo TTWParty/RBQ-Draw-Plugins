@@ -254,4 +254,77 @@ test('DRAW_SPEC_TOOL character schema includes wardrobe_outfit and name_tag prop
     assert.equal(charProps.name_tag.type, 'string');
 });
 
+// Test 7: wardrobe_outfit matching handles Chinese brackets, quotes, and string triggers
+test('wardrobe_outfit matching handles Chinese brackets, quotes, and string triggers gracefully', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    const profiles = {
+        '芙宁娜': {
+            displayName: '芙宁娜',
+            nameTag: 'furina',
+            baseTags: '1girl, blue hair',
+            baseLocked: true,
+            isBaseLocked: true,
+            outfitLocked: true,
+            isOutfitLocked: true,
+            wardrobe: [
+                {
+                    id: 'w1',
+                    name: '蓝色吊带睡衣',
+                    outfit: 'blue silk nightgown, camisole',
+                    triggers: '睡衣, 吊带',
+                    locked: true,
+                }
+            ],
+            currentOutfitId: 'w_default',
+        }
+    };
+    Object.assign(sdt.getCharacterProfiles(), profiles);
+
+    // LLM outputs with Chinese brackets 【蓝色吊带睡衣】
+    const caption1 = sdt.mergeCharacterCaption(
+        '芙宁娜', '1girl, blue hair', 'nightgown', 'sitting', '', 'furina',
+        { wardrobeOutfit: '【蓝色吊带睡衣】' }
+    );
+    assert.match(caption1, /blue silk nightgown, camisole/);
+
+    // LLM outputs with quotes “吊带” (matches trigger)
+    const caption2 = sdt.mergeCharacterCaption(
+        '芙宁娜', '1girl, blue hair', 'nightgown', 'sitting', '', 'furina',
+        { wardrobeOutfit: '“吊带”' }
+    );
+    assert.match(caption2, /blue silk nightgown, camisole/);
+});
+
+// Test 8: Unlocked character allows normal plot outfit transitions
+test('Unlocked character allows normal plot outfit transitions and auto-archiving', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    const profiles = {
+        '可莉': {
+            displayName: '可莉',
+            nameTag: 'klee',
+            baseTags: '1girl, blonde hair, red eyes',
+            baseLocked: false,
+            outfitLocked: false,
+            currentOutfit: 'red dress, white bloomers',
+            wardrobe: [
+                { id: 'w1', name: '默认服装', outfit: 'red dress, white bloomers', locked: false }
+            ],
+        }
+    };
+    Object.assign(sdt.getCharacterProfiles(), profiles);
+
+    // Plot switches to swimsuit (no wardrobe_outfit specified)
+    sdt.mergeCharacterCaption(
+        '可莉', '1girl, blonde hair', 'red swimsuit, swimming ring', 'smiling', '', 'klee'
+    );
+
+    const updated = sdt.getCharacterProfile('可莉');
+    // Unlocked outfit should update currentOutfit to the plot's new swimsuit
+    assert.equal(updated.currentOutfit, 'red swimsuit, swimming ring');
+});
+
 console.log(`\n${passed} wardrobe & lock tests passed successfully.`);

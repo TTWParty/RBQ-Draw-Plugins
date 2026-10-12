@@ -8,7 +8,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 PORT = int(os.environ.get('PORT', 3000))
-ADMIN_KEY = os.environ.get('MARKET_ADMIN_KEY', 'rbq_admin_secret')
+ADMIN_KEY = os.environ.get('MARKET_ADMIN_KEY', '120078')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 UPLOADS_DIR = os.path.join(BASE_DIR, 'uploads')

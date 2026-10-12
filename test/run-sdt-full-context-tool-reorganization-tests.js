@@ -65,7 +65,11 @@ function createHost(settingsOverride = {}) {
         vm.runInContext(sdtSource.slice(a, b), sdt);
     };
 
+    load('    const JAILBREAK_PRESETS =', '    const DEFAULT_JAILBREAK_PRESET =');
+    vm.runInContext('this.JAILBREAK_PRESETS = JAILBREAK_PRESETS;', sdt);
+    load('    function splitTurnsByColon(', '    async function smartFetch(');
     load('    const DRAW_SPEC_TOOL_RULE =', '    function buildThinkingParams(');
+    load('    function applyPostProcessPrompt(', '    async function callOpenAiCompatible(');
     load('    async function callOpenAiCompatible(', '    async function callCustomHttp(');
     load('    async function callStructuredCompletion(', '    async function callTagger(');
     load('    async function callDrawSpecCompletion(', '    async function callTagger(');
@@ -76,11 +80,6 @@ function createHost(settingsOverride = {}) {
     Object.assign(sdt, {
         getActiveJailbreakPrompt: store => store?.geminiJailbreak ? (sdt.JAILBREAK_PRESETS?.[store.geminiJailbreakPreset]?.prompt || '') : '',
         squashConsecutiveMessages: messages => messages,
-        applyPostProcessPrompt: (messages, store) => {
-            if (store?.postProcessEnabled && store?.postProcessPrompt) {
-                messages.push({ role: 'user', content: store.postProcessPrompt });
-            }
-        },
         normalizeBaseUrl: url => url,
         checkUrlSafety() {},
         buildThinkingParams: () => ({}),
@@ -331,7 +330,78 @@ function createHost(settingsOverride = {}) {
         assert.doesNotMatch(req.messages[1].content, /APPENDED_POST_PROCESS_PROMPT/);
     });
 
-    // 7. No Linux terminology in prompt constants or tool descriptions
+    // 8. kami_gase preset definition and compatibility
+    test('kami_gase preset provides GASE-TAGGER-003 and leaves original kami preset untouched', () => {
+        const { sdtSource } = createHost();
+        // Original kami preset untouched
+        assert.match(sdtSource, /kami:\s*\{[\s\S]*?label:\s*['"]卡密破限 \(仅破限 ds\/glm\)['"]/);
+        // New kami_gase preset present
+        assert.match(sdtSource, /kami_gase:\s*\{[\s\S]*?GASE-TAGGER-003/);
+        assert.match(sdtSource, /GASE-SEC-003/);
+        assert.match(sdtSource, /Responding budget exceeded\. Thinking disabled\./);
+    });
+
+    // 9. kami_gase with toolInputInDescription: true
+    await asyncTest('kami_gase with toolInputInDescription integrates GASE protocol and clamp token', async () => {
+        const { sdt, sentRequests } = createHost({
+            toolCallMode: true,
+            toolInputInDescription: true,
+            geminiJailbreak: true,
+            geminiJailbreakPreset: 'kami_gase',
+            postProcessEnabled: true,
+        });
+
+        await sdt.callOpenAiCompatible(1, { type: 'auto' });
+        assert.equal(sentRequests.length, 1);
+        const req = sentRequests[0].body;
+
+        // Exactly 2 turns
+        assert.equal(req.messages.length, 2);
+        assert.equal(req.messages[0].role, 'system');
+        assert.match(req.messages[0].content, /GASE-TAGGER-003/);
+        assert.match(req.messages[0].content, /GASE-SEC-003/);
+        assert.equal(req.messages[1].role, 'user');
+        assert.match(req.messages[1].content, /Responding budget exceeded\. Thinking disabled\./);
+
+        // Tool description includes GASE notice
+        const desc = req.tools[0].function.description;
+        assert.match(desc, /GASE-SEC-003 NOTICE/);
+        assert.match(desc, /【VISUAL_ANALYSIS_GUIDELINES/);
+        assert.match(desc, /\[Task Input JSON\]/);
+    });
+
+    // 10. kami_gase with toolInputInDescription: false
+    await asyncTest('kami_gase without toolInputInDescription sends multi-turn GASE specification', async () => {
+        const { sdt, sentRequests } = createHost({
+            toolCallMode: true,
+            toolInputInDescription: false,
+            geminiJailbreak: true,
+            geminiJailbreakPreset: 'kami_gase',
+            squashMessages: false,
+            postProcessEnabled: true,
+        });
+
+        await sdt.callOpenAiCompatible(1, { type: 'auto' });
+        assert.equal(sentRequests.length, 1);
+        const req = sentRequests[0].body;
+
+        // Has GASE specification in system turn
+        const sysMsg = req.messages.find(m => m.role === 'system');
+        assert.ok(sysMsg);
+        assert.match(sysMsg.content, /GASE-TAGGER-003/);
+
+        // Has ReadyAcknowledge assistant turn
+        const asstMsg = req.messages.find(m => m.role === 'assistant');
+        assert.ok(asstMsg);
+        assert.match(asstMsg.content, /ReadyAcknowledge/);
+
+        // Has postProcess clamp token
+        const lastUser = req.messages.filter(m => m.role === 'user').pop();
+        assert.ok(lastUser);
+        assert.match(lastUser.content, /Responding budget exceeded\. Thinking disabled\./);
+    });
+
+    // 10. No Linux terminology in prompt constants or tool descriptions
     test('No private Linux preset terminology exposed', () => {
         const { sdt, sdtSource } = createHost();
         assert.doesNotMatch(sdt.DRAW_SPEC_TOOL_REORGANIZED_SYSTEM_PROMPT, /linux/i);

@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.29';
+    const VERSION = '2.2.30';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -1922,6 +1922,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             displayName: origProfile?.displayName || editName || '',
             nameTag: origProfile?.nameTag || '',
             baseTags: origProfile?.baseTags || '',
+            baseLocked: !!(origProfile?.baseLocked || origProfile?.isBaseLocked),
+            isBaseLocked: !!(origProfile?.baseLocked || origProfile?.isBaseLocked),
+            outfitLocked: !!(origProfile?.outfitLocked || origProfile?.isOutfitLocked),
+            isOutfitLocked: !!(origProfile?.outfitLocked || origProfile?.isOutfitLocked),
             previousBaseTags: origProfile?.previousBaseTags,
             currentOutfit: origProfile?.currentOutfit || '',
             currentOutfitId: origProfile?.currentOutfitId || '',
@@ -1929,7 +1933,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             wardrobe: JSON.parse(JSON.stringify(origProfile?.wardrobe || [])),
         };
         if (draft.wardrobe.length === 0) {
-            draft.wardrobe.push({ id: uid('w'), name: '默认服装', outfit: draft.currentOutfit || '', triggers: [], createdAt: Date.now() });
+            draft.wardrobe.push({ id: uid('w'), name: '默认服装', outfit: draft.currentOutfit || '', triggers: [], locked: false, createdAt: Date.now() });
         }
         if (!draft.currentOutfitId) {
             draft.currentOutfitId = draft.wardrobe[0]?.id || '';
@@ -1973,7 +1977,12 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         <div class="cw-card">
                             <div class="cw-card-hd">
                                 <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-dna"></i> 7 维全息外貌公式 (Base Tags)</span>
-                                <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选外貌</button>
+                                <div style="display:flex;gap:6px;align-items:center">
+                                    <button class="cw-btn sm" id="cw-ce-toggle-base-lock" type="button" style="background:${draft.baseLocked ? 'rgba(163,230,53,0.18)' : 'rgba(255,255,255,0.06)'};border:1px solid ${draft.baseLocked ? 'rgba(163,230,53,0.5)' : 'rgba(255,255,255,0.15)'};color:${draft.baseLocked ? '#a3e635' : '#94a3b8'}" title="锁定人设：生图后绝对不回填篡改人设（吻痕/战损不沉淀至档案）">
+                                        <i class="fa-solid ${draft.baseLocked ? 'fa-lock' : 'fa-lock-open'}"></i> ${draft.baseLocked ? '🔒 人设已锁定' : '🔓 锁定人设'}
+                                    </button>
+                                    <button class="cw-btn cy sm" id="cw-ce-wb-base" type="button"><i class="fa-solid fa-book-open"></i> 从世界书选外貌</button>
+                                </div>
                             </div>
                             <div style="display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto;background:rgba(0,0,0,.25);padding:8px 10px;border-radius:6px">
                                 ${TRAITS.map(g => `<div style="display:flex;gap:5px;align-items:flex-start;flex-wrap:wrap">
@@ -1996,12 +2005,15 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             <div class="cw-tabs" style="overflow-x:auto">
                                 ${draft.wardrobe.map((w, i) => {
                                     const isWorn = (draft.currentOutfitId ? w.id === draft.currentOutfitId : (w.outfit && w.outfit === draft.currentOutfit));
-                                    return `<button class="cw-tab cw-w-tab ${activeWIdx === i ? 'on' : ''}" data-wi="${i}">👗 ${esc(w.name || '套件' + (i + 1))} ${isWorn ? '<span style="color:#4ade80;font-size:10px;margin-left:2px">●穿</span>' : ''}</button>`;
+                                    return `<button class="cw-tab cw-w-tab ${activeWIdx === i ? 'on' : ''}" data-wi="${i}">👗 ${esc(w.name || '套件' + (i + 1))} ${w.locked ? '<span style="color:#f472b6;font-size:10px;margin-left:2px" title="已锁定">🔒</span>' : ''} ${isWorn ? '<span style="color:#4ade80;font-size:10px;margin-left:2px">●穿</span>' : ''}</button>`;
                                 }).join('')}
                             </div>
                             <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
                                 <input id="cw-ce-wname" class="cw-in" type="text" placeholder="服装名称" value="${esc(cw?.name || '')}" style="width:160px;flex-shrink:0" />
                                 ${isCurrentlyWorn ? '<button class="cw-btn gn sm" type="button" disabled style="opacity:0.9"><i class="fa-solid fa-check"></i> ✨ 正在穿着</button>' : '<button class="cw-btn cy sm" id="cw-ce-set-active" type="button"><i class="fa-solid fa-shirt"></i> 设为当前穿着</button>'}
+                                <button class="cw-btn sm" id="cw-ce-toggle-w-lock" type="button" style="background:${cw?.locked ? 'rgba(244,114,182,0.18)' : 'rgba(255,255,255,0.06)'};border:1px solid ${cw?.locked ? 'rgba(244,114,182,0.5)' : 'rgba(255,255,255,0.15)'};color:${cw?.locked ? '#f472b6' : '#94a3b8'}" title="锁定此服装预设：生图后绝对不回填篡改此衣服">
+                                    <i class="fa-solid ${cw?.locked ? 'fa-lock' : 'fa-lock-open'}"></i> ${cw?.locked ? '🔒 服装已锁定' : '🔓 锁定此衣服'}
+                                </button>
                                 <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1;overflow-x:auto">${OUTFIT_PRESETS.slice(0, 7).map(o => `<button class="cw-chip cw-outfit-chip" data-tag="${esc(o.t)}" type="button">${esc(o.n)}</button>`).join('')}</div>
                                 ${draft.wardrobe.length > 1 ? '<button class="cw-btn rd sm" id="cw-ce-del-w" type="button">✕ 删除此套</button>' : ''}
                             </div>
@@ -2076,6 +2088,33 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 draft.currentOutfit = curW.outfit || curW.tags || '';
                 render();
                 toastr.success(`已将「${curW.name || '此套服装'}」设为当前穿着！`, PLUGIN_NAME);
+            });
+
+            // Toggle Base Lock
+            mask.querySelector('#cw-ce-toggle-base-lock')?.addEventListener('click', () => {
+                const el = mask.querySelector('#cw-ce-base');
+                if (el) draft.baseTags = el.value;
+                draft.baseLocked = !draft.baseLocked;
+                draft.isBaseLocked = draft.baseLocked;
+                render();
+                toastr.info(draft.baseLocked ? '已锁定人设（生图后绝对不回填篡改人设）' : '已解锁人设', PLUGIN_NAME);
+            });
+
+            // Toggle Outfit Lock for active wardrobe preset
+            mask.querySelector('#cw-ce-toggle-w-lock')?.addEventListener('click', () => {
+                const wn = mask.querySelector('#cw-ce-wname');
+                const wt = mask.querySelector('#cw-ce-wtags');
+                if (draft.wardrobe[activeWIdx]) {
+                    if (wn) draft.wardrobe[activeWIdx].name = wn.value;
+                    if (wt) draft.wardrobe[activeWIdx].outfit = wt.value;
+                    draft.wardrobe[activeWIdx].locked = !draft.wardrobe[activeWIdx].locked;
+                    if (draft.wardrobe[activeWIdx].id === draft.currentOutfitId) {
+                        draft.isOutfitLocked = draft.wardrobe[activeWIdx].locked;
+                        draft.outfitLocked = draft.isOutfitLocked;
+                    }
+                    render();
+                    toastr.info(draft.wardrobe[activeWIdx].locked ? `已锁定服装「${draft.wardrobe[activeWIdx].name}」（生图后不被顶替）` : `已解锁服装「${draft.wardrobe[activeWIdx].name}」`, PLUGIN_NAME);
+                }
             });
 
             mask.querySelectorAll('.cw-outfit-chip').forEach(b => b.addEventListener('click', () => {
@@ -2184,6 +2223,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     displayName: name,
                     nameTag: draft.nameTag,
                     baseTags: draft.baseTags,
+                    baseLocked: draft.baseLocked,
+                    isBaseLocked: draft.baseLocked,
+                    outfitLocked: draft.isOutfitLocked,
+                    isOutfitLocked: draft.isOutfitLocked,
                     previousBaseTags: draft.previousBaseTags,
                     currentOutfit: draft.currentOutfit,
                     currentOutfitId: draft.currentOutfitId,
@@ -2477,6 +2520,8 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                 <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:2px">
                                     <div style="display:flex;align-items:center;gap:6px">
                                         <span style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.displayName || n)}</span>
+                                        ${(p.baseLocked || p.isBaseLocked) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(163,230,53,0.18);border:1px solid rgba(163,230,53,0.5);color:#bef264" title="人设已锁定防篡改">🔒人设</span>` : ''}
+                                        ${(p.outfitLocked || p.isOutfitLocked || activeW?.locked) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(244,114,182,0.18);border:1px solid rgba(244,114,182,0.5);color:#f472b6" title="服装已锁定防篡改">🔒服装</span>` : ''}
                                         ${(p.source === 'lorebook' || p.sourceName || isFromLorebook) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(192,132,252,0.25);border:1px solid rgba(192,132,252,0.5);color:#e9d5ff">同人库</span>` : ''}
                                     </div>
                                     <span style="font-size:11px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.baseTags)}"><span style="color:#79e4ff">外貌:</span> ${esc(p.baseTags || '未设置')}</span>

@@ -35,7 +35,7 @@ function host(mode = 'structured', ec = ID) {
         vm.runInContext(sdtSource.slice(a, b), sdt);
     };
     load('    function getDrawSpecTool(', '    function buildStandardDrawRequest(');
-    load('    function assembleDrawRequestMessagesAndTool(', '    function buildThinkingParams(');
+    load('    function getReorganizedSystemPrompt(', '    function buildThinkingParams(');
     load('    async function callOpenAiCompatible(', '    async function callCustomHttp(');
     load('    async function callCustomHttp(', '    async function callStructuredCompletion(');
     load('    async function callStructuredCompletion(', '    async function callTagger(');

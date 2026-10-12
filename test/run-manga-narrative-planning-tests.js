@@ -215,7 +215,7 @@ function checkPlainNarrativeRequest(body, provider, description) {
     for (const mode of modes) for (const provider of ['custom', 'openai']) {
         await test(`${provider} test-draw parser sends ${mode} narrative canvas and schema and returns its single fixture page`, async () => {
             reset(mode);
-            Object.assign(settings._smartDrawTrigger, { provider, toolCallMode: true });
+            Object.assign(settings._smartDrawTrigger, { provider, toolCallMode: false });
             const description = '阿岚接过信，低头读完，说：“我会赴约。”小林松了口气，说：“谢谢你。”';
             let calls = 0;
             const receive = body => {
@@ -244,7 +244,7 @@ function checkPlainNarrativeRequest(body, provider, description) {
     for (const mode of modes) for (const provider of ['custom', 'openai']) {
         await test(`${provider} manual draw sends ${mode} narrative contract once and submits every fixture page`, async () => {
             reset(mode);
-            Object.assign(settings._smartDrawTrigger, { provider, toolCallMode: true });
+            Object.assign(settings._smartDrawTrigger, { provider, toolCallMode: false });
             const keys = ['document', 'localStorage', 'toastr', 'PLUGIN_NAME', 'closeManualDrawDialog', 'generateSdtImage'];
             const original = Object.fromEntries(keys.map(key => [key, sdt[key]]));
             const fields = { 'rbq-sdt-manual-input': { value: story }, 'rbq-sdt-manual-status': {},

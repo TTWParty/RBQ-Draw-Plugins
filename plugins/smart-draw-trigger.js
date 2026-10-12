@@ -3659,12 +3659,20 @@ ${activeRegistrySection}`;
                 : wardrobeOutfit;
             if (wardrobeClaim && Array.isArray(profile.wardrobe) && profile.wardrobe.length > 0) {
                 const targetW = String(wardrobeClaim).trim().toLowerCase();
+                const cleanTarget = targetW.replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
                 matchedPreset = profile.wardrobe.find(w => {
                     if (!w || !w.name) return false;
                     const wName = String(w.name).trim().toLowerCase();
-                    if (wName === targetW) return true;
-                    if (targetW.length >= 2 && (wName.includes(targetW) || targetW.includes(wName))) return true;
-                    if (Array.isArray(w.triggers) && w.triggers.some(t => String(t).trim().toLowerCase() === targetW)) return true;
+                    const cleanWName = wName.replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
+                    if (wName === targetW || cleanWName === cleanTarget || cleanWName === targetW || wName === cleanTarget) return true;
+                    if (cleanTarget.length >= 2 && (cleanWName.includes(cleanTarget) || cleanTarget.includes(cleanWName))) return true;
+                    const triggerList = Array.isArray(w.triggers)
+                        ? w.triggers
+                        : (typeof w.triggers === 'string' ? w.triggers.split(/[,，\s]+/) : []);
+                    if (triggerList.some(t => {
+                        const cleanT = String(t).trim().toLowerCase().replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
+                        return cleanT && (cleanT === targetW || cleanT === cleanTarget || cleanTarget.includes(cleanT) || cleanT.includes(cleanTarget));
+                    })) return true;
                     return false;
                 });
                 if (matchedPreset && (matchedPreset.outfit || matchedPreset.tags)) {
@@ -9332,9 +9340,20 @@ SCHEMA:
 
         modal.querySelectorAll('.rbq-sdt-card-char-outfit-sec').forEach(sec => {
             const input = sec.querySelector('.rbq-sdt-custom-outfit-input');
+            input?.addEventListener('input', () => {
+                delete input.dataset.wardrobeName;
+                sec.querySelectorAll('.rbq-sdt-pick-outfit-btn').forEach(b => {
+                    b.style.background = 'rgba(255,255,255,0.06)';
+                    b.style.color = '#fff';
+                    b.style.borderColor = 'rgba(255,255,255,0.12)';
+                });
+            });
             sec.querySelectorAll('.rbq-sdt-pick-outfit-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    if (input) input.value = btn.dataset.tags || '';
+                    if (input) {
+                        input.value = btn.dataset.tags || '';
+                        input.dataset.wardrobeName = btn.dataset.name || '';
+                    }
                     sec.querySelectorAll('.rbq-sdt-pick-outfit-btn').forEach(b => {
                         b.style.background = 'rgba(255,255,255,0.06)';
                         b.style.color = '#fff';
@@ -9365,14 +9384,17 @@ SCHEMA:
 
             const secs = modal.querySelectorAll('.rbq-sdt-card-char-outfit-sec');
             secs.forEach((sec, idx) => {
-                const newOutfit = sec.querySelector('.rbq-sdt-custom-outfit-input')?.value?.trim() || '';
+                const input = sec.querySelector('.rbq-sdt-custom-outfit-input');
+                const newOutfit = input?.value?.trim() || '';
+                const selectedPresetName = input?.dataset?.wardrobeName || '';
                 if (updatedSeg.characters[idx]) {
                     updatedSeg.characters[idx]._rawOutfit = newOutfit;
                     updatedSeg.characters[idx].outfit = newOutfit;
+                    updatedSeg.characters[idx].wardrobe_outfit = selectedPresetName;
                     const charName = updatedSeg.characters[idx]._rawName || updatedSeg.characters[idx].name || '';
                     const llmBase = updatedSeg.characters[idx]._rawBase || updatedSeg.characters[idx].base || '';
                     const llmAction = updatedSeg.characters[idx]._rawAction || updatedSeg.characters[idx].action || '';
-                    updatedSeg.characters[idx].caption = mergeCharacterCaption(charName, llmBase, newOutfit, llmAction, '', updatedSeg.characters[idx].name_tag, updatedSeg.characters[idx].wardrobe_outfit);
+                    updatedSeg.characters[idx].caption = mergeCharacterCaption(charName, llmBase, newOutfit, llmAction, '', updatedSeg.characters[idx].name_tag, selectedPresetName);
                 }
             });
 
@@ -16372,6 +16394,8 @@ SCHEMA:
                 if (p) {
                     p.outfitLocked = !(p.outfitLocked || p.isOutfitLocked);
                     p.isOutfitLocked = p.outfitLocked;
+                    const activeW = (p.wardrobe || []).find(w => w.id === p.currentOutfitId);
+                    if (activeW) activeW.locked = p.outfitLocked;
                     save();
                     refreshCharacterProfileListUi();
                     toastr.info(`角色「${p.displayName || charKey}」服装已${p.outfitLocked ? '锁定🔒（生图不回填更改）' : '解锁🔓'}`, PLUGIN_NAME);

@@ -2086,6 +2086,8 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const curW = draft.wardrobe[activeWIdx];
                 draft.currentOutfitId = curW.id;
                 draft.currentOutfit = curW.outfit || curW.tags || '';
+                draft.isOutfitLocked = !!curW.locked;
+                draft.outfitLocked = draft.isOutfitLocked;
                 render();
                 toastr.success(`已将「${curW.name || '此套服装'}」设为当前穿着！`, PLUGIN_NAME);
             });
@@ -2218,6 +2220,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const activeW = draft.wardrobe.find(w => w.id === draft.currentOutfitId) || draft.wardrobe[0];
                 draft.currentOutfit = activeW?.outfit || activeW?.tags || '';
                 draft.currentOutfitId = activeW?.id || '';
+                if (activeW) {
+                    draft.isOutfitLocked = !!activeW.locked;
+                    draft.outfitLocked = draft.isOutfitLocked;
+                }
 
                 saveProfile(name, {
                     displayName: name,

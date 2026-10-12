@@ -1,0 +1,257 @@
+/**
+ * Regression and unit test suite for:
+ * 1. Base Lock (baseLocked / isBaseLocked): prevents temporary plot marks (hickeys, wounds) from backfilling baseTags.
+ * 2. Outfit Lock (outfitLocked / isOutfitLocked / preset.locked): prevents AI from mutating locked wardrobe presets.
+ * 3. Explicit Wardrobe Selection (wardrobe_outfit): allows LLM to claim preset outfits without regex guessing.
+ */
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+
+const harness = fs.readFileSync(path.join(__dirname, 'run-manga-tests.js'), 'utf8').split('\ntest(')[0];
+
+let passed = 0;
+function test(name, fn) {
+    try {
+        fn();
+        passed++;
+        console.log('PASS ' + name);
+    } catch (e) {
+        console.error('FAIL ' + name, e);
+        process.exit(1);
+    }
+}
+
+function createEnv() {
+    const env = new Function('require', '__dirname', harness + '\nreturn {manga,sdt,settings,RBQ,sdtSource};')(require, __dirname);
+    const { sdt, settings, sdtSource } = env;
+
+    const load = (start, end) => {
+        const a = sdtSource.indexOf(start), b = sdtSource.indexOf(end, a);
+        assert.ok(a >= 0 && b > a, 'load slice: ' + start);
+        vm.runInContext(sdtSource.slice(a, b), sdt);
+    };
+
+    // Load mergeCharacterCaption and related functions
+    load('    function mergeCharacterCaption(', '    function collectCharacterCardInfo(');
+    load('    function buildCharacterMemoryPromptModule(', '    function getActiveCharacterName(');
+    vm.runInContext('this.DRAW_SPEC_TOOL = DRAW_SPEC_TOOL;', sdt);
+
+    settings._smartDrawTrigger._mangaActive = false;
+    settings._smartDrawTrigger.enhancedContext = 'off';
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    return { sdt, settings };
+}
+
+// Test 1: wardrobe_outfit explicit selection resolves preset tags
+test('wardrobe_outfit explicit selection resolves exact preset tags without regex guessing', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    // Set up a character profile with a custom wardrobe preset
+    const profiles = {
+        '芙宁娜': {
+            displayName: '芙宁娜',
+            nameTag: 'furina (genshin impact)',
+            baseTags: '1girl, blue eyes, medium hair, ahoge',
+            baseLocked: true,
+            isBaseLocked: true,
+            outfitLocked: true,
+            isOutfitLocked: true,
+            wardrobe: [
+                {
+                    id: 'w_pajamas',
+                    name: '蓝色吊带睡衣',
+                    outfit: 'blue silk nightgown, camisole, lace trim, bare shoulders',
+                    triggers: '睡衣, 吊带',
+                    locked: true,
+                },
+                {
+                    id: 'w_uniform',
+                    name: '枫丹礼服',
+                    outfit: 'blue coat, ascot, top hat, ornate vest, white shorts',
+                    triggers: '礼服, 正装',
+                    locked: true,
+                }
+            ],
+            currentOutfitId: 'w_uniform',
+        }
+    };
+    Object.assign(sdt.getCharacterProfiles(), profiles);
+
+    // LLM outputs wardrobe_outfit: "蓝色吊带睡衣", but passes simple outfit: "nightgown"
+    const caption = sdt.mergeCharacterCaption(
+        '芙宁娜',
+        '1girl, blue eyes',
+        'nightgown',
+        'sitting on bed, blush',
+        '',
+        'furina (genshin impact)',
+        { wardrobeOutfit: '蓝色吊带睡衣' }
+    );
+
+    // Caption should contain the exact preset outfit tags
+    assert.match(caption, /blue silk nightgown, camisole, lace trim, bare shoulders/);
+    assert.match(caption, /furina \(genshin impact\)/);
+    assert.match(caption, /sitting on bed, blush/);
+
+    // Character's currentOutfitId should be updated to w_pajamas
+    const updated = sdt.getCharacterProfile('芙宁娜');
+    assert.equal(updated.currentOutfitId, 'w_pajamas');
+    assert.equal(updated.currentOutfit, 'blue silk nightgown, camisole, lace trim, bare shoulders');
+    // The preset tags themselves should remain unchanged
+    const preset = updated.wardrobe.find(w => w.id === 'w_pajamas');
+    assert.equal(preset.outfit, 'blue silk nightgown, camisole, lace trim, bare shoulders');
+});
+
+// Test 2: Base Lock prevents temporary plot traits from backfilling baseTags
+test('Base Lock (baseLocked: true) prevents temporary marks from corrupting saved baseTags', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    const originalBase = '1girl, adult, long black hair, purple eyes';
+    const profiles = {
+        '神里绫华': {
+            displayName: '神里绫华',
+            nameTag: 'kamisato ayaka (genshin impact)',
+            baseTags: originalBase,
+            baseLocked: true,
+            isBaseLocked: true,
+            wardrobe: [],
+        }
+    };
+    Object.assign(sdt.getCharacterProfiles(), profiles);
+
+    // Plot generates temporary erotic / battle mark in base and action
+    const temporaryBaseWithMarks = '1girl, adult, long black hair, purple eyes, hickey on neck, scratch on collarbone';
+    const caption = sdt.mergeCharacterCaption(
+        '神里绫华',
+        temporaryBaseWithMarks,
+        'white kimono',
+        'hickey on neck, shy, looking away',
+        '',
+        'kamisato ayaka (genshin impact)'
+    );
+
+    // The image caption for THIS turn includes the plot marks in action
+    assert.match(caption, /hickey on neck/);
+
+    // But the stored memory baseTags MUST remain clean and unchanged!
+    const updated = sdt.getCharacterProfile('神里绫华');
+    assert.equal(updated.baseTags, originalBase);
+    assert.doesNotMatch(updated.baseTags, /hickey/);
+    assert.doesNotMatch(updated.baseTags, /scratch/);
+});
+
+// Test 3: Brand new character learns initial base tags and outfit
+test('Brand new character learns initial baseTags and outfit', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    sdt.mergeCharacterCaption(
+        '新角色',
+        '1girl, blonde hair, blue eyes',
+        't-shirt',
+        'standing',
+        '',
+        'new char'
+    );
+
+    const updated = sdt.getCharacterProfile('新角色');
+    assert.ok(updated);
+    assert.match(updated.baseTags, /1girl, blonde hair, blue eyes/);
+    assert.equal(updated.currentOutfit, 't-shirt');
+});
+
+// Test 4: Outfit Lock prevents AI from overwriting preset tags
+test('Outfit Lock prevents AI from mutating locked wardrobe preset', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    const originalPresetOutfit = 'sailor uniform, pleated skirt, red neckerchief';
+    const profiles = {
+        '黑猫': {
+            displayName: '黑猫',
+            nameTag: 'gokou ruri (oreimo)',
+            baseTags: '1girl, black hair, hime cut',
+            baseLocked: true,
+            isBaseLocked: true,
+            outfitLocked: true,
+            isOutfitLocked: true,
+            wardrobe: [
+                {
+                    id: 'w_sailor',
+                    name: '校服',
+                    outfit: originalPresetOutfit,
+                    triggers: '校服, 水手服',
+                    locked: true,
+                }
+            ],
+            wornOutfitId: 'w_sailor',
+        }
+    };
+    Object.assign(sdt.getCharacterProfiles(), profiles);
+
+    // AI claims the school uniform via wardrobe_outfit, but outputs a simplified outfit: "school uniform"
+    sdt.mergeCharacterCaption(
+        '黑猫',
+        '1girl, black hair',
+        'school uniform',
+        'reading book',
+        '',
+        'gokou ruri (oreimo)',
+        { wardrobeOutfit: '校服' }
+    );
+
+    const updated = sdt.getCharacterProfile('黑猫');
+    const preset = updated.wardrobe.find(w => w.id === 'w_sailor');
+    // Preset outfit tags must NOT be overwritten by the AI's simplified output
+    assert.equal(preset.outfit, originalPresetOutfit);
+    // Wardrobe length should not increase (no duplicate spam)
+    assert.equal(updated.wardrobe.length, 1);
+});
+
+// Test 5: System prompt module presents wardrobe presets and lock indicators
+test('buildCharacterMemoryPromptModule lists wardrobe presets with lock indicators and clear guidance', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    Object.assign(sdt.getCharacterProfiles(), {
+        '芙宁娜': {
+            displayName: '芙宁娜',
+            nameTag: 'furina',
+            baseTags: '1girl, blue hair',
+            baseLocked: true,
+            isBaseLocked: true,
+            outfitLocked: true,
+            isOutfitLocked: true,
+            wardrobe: [
+                { id: 'w1', name: '蓝色吊带睡衣', outfit: 'blue camisole', locked: true },
+                { id: 'w2', name: '常服', outfit: 'casual dress', locked: false },
+            ]
+        }
+    });
+
+    const promptModule = sdt.buildCharacterMemoryPromptModule();
+    assert.ok(promptModule);
+    assert.match(promptModule, /芙宁娜/);
+    assert.match(promptModule, /【蓝色吊带睡衣】\(🔒锁定\)/);
+    assert.match(promptModule, /【常服】/);
+    assert.match(promptModule, /wardrobe_outfit/);
+});
+
+// Test 6: DRAW_SPEC_TOOL schema includes wardrobe_outfit and name_tag
+test('DRAW_SPEC_TOOL character schema includes wardrobe_outfit and name_tag properties', () => {
+    const { sdt } = createEnv();
+    const tool = sdt.DRAW_SPEC_TOOL;
+    const charProps = tool.function.parameters.properties.segments.items.properties.characters.items.properties;
+
+    assert.ok(charProps.wardrobe_outfit, 'wardrobe_outfit property exists');
+    assert.equal(charProps.wardrobe_outfit.type, 'string');
+    assert.ok(charProps.name_tag, 'name_tag property exists');
+    assert.equal(charProps.name_tag.type, 'string');
+});
+
+console.log(`\n${passed} wardrobe & lock tests passed successfully.`);

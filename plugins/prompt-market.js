@@ -54,7 +54,7 @@
             .replace(/'/g, '&#039;');
     }
 
-    // 图片高保真压缩通用函数 (720px / 0.82 WebP)
+    // 图片高保真压缩通用函数 (720px / 0.82 WebP，在不支持 WebP 的 Safari/WebKit 环境下智能回退到 high-quality JPEG)
     function compressToWebp(imgObj, maxWidth = 720, quality = 0.82) {
         const canvas = document.createElement('canvas');
         let width = imgObj.width;
@@ -66,10 +66,21 @@
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        // 填充深色底色，防止 JPEG 回退或透明通道出现杂色/黑色
+        ctx.fillStyle = '#07090e';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(imgObj, 0, 0, width, height);
-        const b64 = canvas.toDataURL('image/webp', quality);
+
+        let format = 'WebP';
+        let b64 = canvas.toDataURL('image/webp', quality);
+        // Safari/WebKit 会静默忽略 'image/webp' 并回退为无损 png (toDataURL 返回 data:image/png...)
+        // 这会导致 1.5MB+ 的超大 PNG base64 拖垮移动端网络传输。若不支持 webp，立即回退为 high-quality jpeg
+        if (!b64.startsWith('data:image/webp')) {
+            b64 = canvas.toDataURL('image/jpeg', quality);
+            format = 'JPEG';
+        }
         const approxKb = Math.round((b64.length * 3) / 4 / 1024);
-        return { b64, width, height, approxKb };
+        return { b64, width, height, approxKb, format };
     }
 
     // 默认配置 (默认直连自建的 market.rbq.my 节点服务)
@@ -1872,11 +1883,11 @@
                     const drawImg = new Image();
                     drawImg.crossOrigin = 'anonymous';
                     drawImg.onload = () => {
-                        const { b64, width, height, approxKb } = compressToWebp(drawImg);
+                        const { b64, width, height, approxKb, format } = compressToWebp(drawImg);
                         editBmBase64 = b64;
                         editBmImg.src = b64;
                         editBmStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> 现场重新实测出的基准图';
-                        editBmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                        editBmSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
                         toastr.success('🎉 现场基准生图成功！保存后生效。');
                     };
                     drawImg.onerror = async () => {
@@ -1887,11 +1898,11 @@
                             r.onload = (e2) => {
                                 const bImg = new Image();
                                 bImg.onload = () => {
-                                    const { b64, width, height, approxKb } = compressToWebp(bImg);
+                                    const { b64, width, height, approxKb, format } = compressToWebp(bImg);
                                     editBmBase64 = b64;
                                     editBmImg.src = b64;
                                     editBmStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> 现场重新实测出的基准图';
-                                    editBmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                                    editBmSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
                                     toastr.success('🎉 现场基准生图成功！保存后生效。');
                                 };
                                 bImg.src = e2.target.result;
@@ -1930,13 +1941,13 @@
             reader.onload = (ev) => {
                 const img = new Image();
                 img.onload = () => {
-                    const { b64, width, height, approxKb } = compressToWebp(img);
+                    const { b64, width, height, approxKb, format } = compressToWebp(img);
                     editRefBase64 = b64;
                     refImg.src = b64;
                     refEmptyEl.style.display = 'none';
                     refCardBox.style.display = 'flex';
                     refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 新选中的参考图 (${file.name})`;
-                    refSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+                    refSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
                     toastr.success(`🎉 已选择「${file.name}」作为新参考图！`);
                 };
                 img.src = ev.target.result;
@@ -2040,8 +2051,12 @@
                     body: JSON.stringify(payload)
                 });
 
-                const data = await res.json();
-                if (res.ok && data.success) {
+                let data = null;
+                try {
+                    data = await res.json();
+                } catch (_) {}
+
+                if (res.ok && data?.success) {
                     if (data.item) {
                         Object.assign(item, data.item);
                     } else {
@@ -2061,7 +2076,8 @@
                     renderCards();
                     openDetailDialog(item);
                 } else {
-                    toastr.error('更新失败: ' + (data.error || '未知错误'));
+                    const errMsg = data?.error || (res.status ? `服务器异常 (HTTP ${res.status})` : '未知错误');
+                    toastr.error('更新失败: ' + errMsg);
                 }
             } catch (err) {
                 toastr.error('网络请求错误: ' + (err.message || String(err)));
@@ -3572,13 +3588,13 @@
         const bmZoomBtn = overlay.querySelector('#rbq-pm-bm-zoom-btn');
 
         function bindBenchmarkImage(imgObj, sourceName = '现场实测出图') {
-            const { b64, width, height, approxKb } = compressToWebp(imgObj);
+            const { b64, width, height, approxKb, format } = compressToWebp(imgObj);
             bmCompressedBase64 = b64;
             bmImg.src = b64;
             bmEmptyEl.style.display = 'none';
             bmCardBox.style.display = 'flex';
             bmStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定基准封面 (${sourceName})`;
-            bmSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+            bmSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
             updateSubmitButtonState();
         }
 
@@ -3700,13 +3716,13 @@
         const refZoomBtn = overlay.querySelector('#rbq-pm-ref-zoom-btn');
 
         function bindReferenceImage(imgObj, fileName = '自制美图') {
-            const { b64, width, height, approxKb } = compressToWebp(imgObj);
+            const { b64, width, height, approxKb, format } = compressToWebp(imgObj);
             refCompressedBase64 = b64;
             refImg.src = b64;
             refEmptyEl.style.display = 'none';
             refCardBox.style.display = 'flex';
             refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定自制参考图 (${fileName})`;
-            refSpec.textContent = `${width}x${height} WebP (~${approxKb}KB)`;
+            refSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
             updateSubmitButtonState();
         }
 
@@ -3833,8 +3849,12 @@
                     })
                 });
 
-                const data = await res.json();
-                if (res.ok && data.success) {
+                let data = null;
+                try {
+                    data = await res.json();
+                } catch (_) {}
+
+                if (res.ok && data?.success) {
                     if (data.item?.id && !cfg.myUploadedIds.includes(data.item.id)) {
                         cfg.myUploadedIds.push(data.item.id);
                         saveConfig();
@@ -3843,7 +3863,8 @@
                     closeSubDialog(overlay);
                     loadMarketData();
                 } else {
-                    toastr.error('发布失败: ' + (data.error || '未知错误'));
+                    const errMsg = data?.error || (res.status ? `服务器异常 (HTTP ${res.status})` : '未知错误');
+                    toastr.error('发布失败: ' + errMsg);
                 }
             } catch (err) {
                 toastr.error('请求网络错误: ' + (err.message || String(err)));
@@ -4097,5 +4118,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.26 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.27 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

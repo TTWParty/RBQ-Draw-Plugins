@@ -46,6 +46,20 @@ class MarketHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
+    def finish_json(self, status, payload):
+        try:
+            resp = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(resp)))
+            self.send_cors()
+            self.end_headers()
+            self.wfile.write(resp)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:
+            print(f"Error in finish_json: {e}")
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_cors()
@@ -56,11 +70,7 @@ class MarketHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == '/api/health':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({'status': 'ok', 'service': 'RBQ Prompt Market Node'}).encode('utf-8'))
+            self.finish_json(200, {'status': 'ok', 'service': 'RBQ Prompt Market Node'})
             return
 
         if path in ('/', '/index.html'):
@@ -68,29 +78,31 @@ class MarketHandler(BaseHTTPRequestHandler):
             if os.path.exists(index_path):
                 with open(index_path, 'rb') as f:
                     content = f.read()
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/html; charset=utf-8')
-                self.send_header('Content-Length', str(len(content)))
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(content)
+                try:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/html; charset=utf-8')
+                    self.send_header('Content-Length', str(len(content)))
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(content)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
                 return
             else:
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json; charset=utf-8')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'status': 'ok', 'service': 'RBQ Prompt Market Node'}).encode('utf-8'))
+                self.finish_json(200, {'status': 'ok', 'service': 'RBQ Prompt Market Node'})
                 return
 
         if path == '/favicon.ico':
             svg_fav = b'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="24" fill="#a855f7"/><path d="M30 50 L45 65 L72 35" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'''
-            self.send_response(200)
-            self.send_header('Content-Type', 'image/svg+xml')
-            self.send_header('Cache-Control', 'public, max-age=86400')
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(svg_fav)
+            try:
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/svg+xml')
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.send_cors()
+                self.end_headers()
+                self.wfile.write(svg_fav)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
 
         if path == '/api/presets':
@@ -100,13 +112,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 p_copy = dict(p)
                 p_copy.pop('liked_by', None)
                 clean_presets.append(p_copy)
-            body = json.dumps(clean_presets, ensure_ascii=False).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Content-Length', str(len(body)))
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(body)
+            self.finish_json(200, clean_presets)
             return
 
         if path.startswith('/previews/'):
@@ -115,55 +121,60 @@ class MarketHandler(BaseHTTPRequestHandler):
             if os.path.exists(file_path):
                 ext = os.path.splitext(filename)[1].lower()
                 mime = 'image/webp' if ext == '.webp' else ('image/png' if ext == '.png' else 'image/jpeg')
-                with open(file_path, 'rb') as f:
-                    content = f.read()
-                self.send_response(200)
-                self.send_header('Content-Type', mime)
-                self.send_header('Content-Length', str(len(content)))
-                self.send_header('Cache-Control', 'public, max-age=604800, immutable')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(content)
+                try:
+                    with open(file_path, 'rb') as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', mime)
+                    self.send_header('Content-Length', str(len(content)))
+                    self.send_header('Cache-Control', 'public, max-age=604800, immutable')
+                    self.send_cors()
+                    self.end_headers()
+                    self.wfile.write(content)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
                 return
             else:
-                self.send_response(404)
-                self.send_cors()
-                self.end_headers()
+                self.finish_json(404, {'error': 'Image not found'})
                 return
 
-        self.send_response(404)
-        self.send_cors()
-        self.end_headers()
+        self.finish_json(404, {'error': 'Not Found'})
 
     def do_POST(self):
         parsed = urlparse(self.path)
         content_length = int(self.headers.get('Content-Length', 0))
         if content_length > 15 * 1024 * 1024:
-            self.send_response(413)
-            self.send_cors()
-            self.end_headers()
+            self.finish_json(413, {'error': 'Payload Too Large'})
             return
 
-        raw_body = self.rfile.read(content_length) if content_length > 0 else b'{}'
+        if content_length > 0:
+            chunks = []
+            bytes_read = 0
+            while bytes_read < content_length:
+                chunk = self.rfile.read(min(65536, content_length - bytes_read))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                bytes_read += len(chunk)
+            raw_body = b''.join(chunks)
+            if len(raw_body) < content_length:
+                print(f"[Warning] Premature EOF: expected {content_length} bytes, received {len(raw_body)} bytes")
+                self.finish_json(400, {'error': '网络传输中断：客户端连接提前断开，数据未完整接收'})
+                return
+        else:
+            raw_body = b'{}'
+
         try:
             data = json.loads(raw_body.decode('utf-8'))
-        except Exception:
-            self.send_response(400)
-            self.send_header('Content-Type', 'application/json')
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode('utf-8'))
+        except Exception as e:
+            self.finish_json(400, {'error': f'JSON 解析失败: {e}'})
             return
 
         # ── 点赞 / 取消点赞 API (Toggle 收藏防刷) ──
         if parsed.path == '/api/like':
             target_id = str(data.get('id', '')).strip()
             if not target_id:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                self.finish_json(400, {'error': '缺少预设 ID'})
                 return
 
             client_id = str(data.get('clientId', '')).strip()
@@ -190,49 +201,35 @@ class MarketHandler(BaseHTTPRequestHandler):
                         liked_by.remove(voter_id)
                         found['likes'] = max(0, current_likes - 1)
                         save_presets(presets)
-                        resp = json.dumps({
+                        self.finish_json(200, {
                             'success': True,
                             'action': 'unliked',
                             'isLiked': False,
                             'id': target_id,
                             'likes': found['likes']
-                        }).encode('utf-8')
+                        })
                     else:
                         # 未点赞 -> 增加点赞 (Toggle Like / 收藏)
                         liked_by.append(voter_id)
                         found['likes'] = current_likes + 1
                         save_presets(presets)
-                        resp = json.dumps({
+                        self.finish_json(200, {
                             'success': True,
                             'action': 'liked',
                             'isLiked': True,
                             'id': target_id,
                             'likes': found['likes']
-                        }).encode('utf-8')
-
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(resp)
+                        })
                     return
                 else:
-                    self.send_response(404)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '未找到对应预设'}).encode('utf-8'))
+                    self.finish_json(404, {'error': '未找到对应预设'})
                     return
 
         # ── 下载/安装计数 API ──
         if parsed.path == '/api/download':
             target_id = str(data.get('id', '')).strip()
             if not target_id:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                self.finish_json(400, {'error': '缺少预设 ID'})
                 return
 
             with DATA_LOCK:
@@ -245,19 +242,10 @@ class MarketHandler(BaseHTTPRequestHandler):
                         break
                 if found:
                     save_presets(presets)
-                    resp = json.dumps({'success': True, 'id': target_id, 'downloads': found['downloads']}).encode('utf-8')
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(resp)
+                    self.finish_json(200, {'success': True, 'id': target_id, 'downloads': found['downloads']})
                     return
                 else:
-                    self.send_response(404)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    self.finish_json(404, {'error': '预设不存在'})
                     return
 
         # ── 历史预设无感自动认领/补绑 API ──
@@ -268,11 +256,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             req_admin_key = str(data.get('adminKey', '')).strip()
 
             if not target_id or not req_creator_key:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': '缺少预设 ID 或创作者个人码'}).encode('utf-8'))
+                self.finish_json(400, {'error': '缺少预设 ID 或创作者个人码'})
                 return
 
             is_admin = bool(req_admin_key and req_admin_key == ADMIN_KEY)
@@ -281,25 +265,15 @@ class MarketHandler(BaseHTTPRequestHandler):
                 presets = load_presets()
                 target_preset = next((p for p in presets if p.get('id') == target_id), None)
                 if not target_preset:
-                    self.send_response(404)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    self.finish_json(404, {'error': '预设不存在'})
                     return
 
                 existing_key = target_preset.get('creatorKey')
                 if existing_key and not is_admin:
                     if existing_key == req_creator_key:
-                        resp = json.dumps({'success': True, 'message': '已属于当前创作者', 'id': target_id}).encode('utf-8')
-                        self.send_response(200)
+                        self.finish_json(200, {'success': True, 'message': '已属于当前创作者', 'id': target_id})
                     else:
-                        resp = json.dumps({'success': False, 'error': '该预设已被其他创作者绑定', 'id': target_id}).encode('utf-8')
-                        self.send_response(403)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(resp)
+                        self.finish_json(403, {'success': False, 'error': '该预设已被其他创作者绑定', 'id': target_id})
                     return
 
                 target_preset['creatorKey'] = req_creator_key
@@ -308,12 +282,7 @@ class MarketHandler(BaseHTTPRequestHandler):
 
                 save_presets(presets)
 
-            resp = json.dumps({'success': True, 'message': '成功认领并固化创作者个人码', 'id': target_id}).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(resp)
+            self.finish_json(200, {'success': True, 'message': '成功认领并固化创作者个人码', 'id': target_id})
             return
 
         # ── 编辑/更新预设 API (修改标签、标题、署名、提示词等) ──
@@ -323,11 +292,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             req_admin_key = str(data.get('adminKey', '')).strip()
 
             if not target_id:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                self.finish_json(400, {'error': '缺少预设 ID'})
                 return
 
             is_admin = bool(req_admin_key and req_admin_key == ADMIN_KEY)
@@ -336,11 +301,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 presets = load_presets()
                 target_preset = next((p for p in presets if p.get('id') == target_id), None)
                 if not target_preset:
-                    self.send_response(404)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '预设不存在'}).encode('utf-8'))
+                    self.finish_json(404, {'error': '预设不存在'})
                     return
 
                 # 鉴权：管理员、创作者码匹配、或历史未绑定者作者名匹配
@@ -357,11 +318,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                         authorized = True
 
                 if not authorized:
-                    self.send_response(403)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '鉴权失败：无权修改他人作品。请检查创作者个人码。'}).encode('utf-8'))
+                    self.finish_json(403, {'error': '鉴权失败：无权修改他人作品。请检查创作者个人码。'})
                     return
 
                 # 更新允许修改的字段
@@ -434,12 +391,7 @@ class MarketHandler(BaseHTTPRequestHandler):
 
                 save_presets(presets)
 
-            resp = json.dumps({'success': True, 'item': target_preset}).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(resp)
+            self.finish_json(200, {'success': True, 'item': target_preset})
             return
 
         # ── 删除预设 API (支持创作者身份码与管理员密钥严格鉴权) ──
@@ -449,11 +401,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             req_admin_key = str(data.get('adminKey', '')).strip()
 
             if not target_id:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': '缺少预设 ID'}).encode('utf-8'))
+                self.finish_json(400, {'error': '缺少预设 ID'})
                 return
 
             is_admin = bool(req_admin_key and req_admin_key == ADMIN_KEY)
@@ -462,29 +410,16 @@ class MarketHandler(BaseHTTPRequestHandler):
                 presets = load_presets()
                 if target_id == '__ALL__':
                     if not is_admin:
-                        self.send_response(403)
-                        self.send_header('Content-Type', 'application/json; charset=utf-8')
-                        self.send_cors()
-                        self.end_headers()
-                        self.wfile.write(json.dumps({'error': '清空全部工坊预设需要正确的管理员密钥'}).encode('utf-8'))
+                        self.finish_json(403, {'error': '清空全部工坊预设需要正确的管理员密钥'})
                         return
                     presets = []
                     save_presets(presets)
-                    resp = json.dumps({'success': True, 'remaining': 0}).encode('utf-8')
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(resp)
+                    self.finish_json(200, {'success': True, 'remaining': 0})
                     return
 
                 target_preset = next((p for p in presets if p.get('id') == target_id), None)
                 if not target_preset:
-                    self.send_response(404)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '预设不存在或已被删除'}).encode('utf-8'))
+                    self.finish_json(404, {'error': '预设不存在或已被删除'})
                     return
 
                 # 权限鉴权逻辑：
@@ -505,11 +440,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                         authorized = True
 
                 if not authorized:
-                    self.send_response(403)
-                    self.send_header('Content-Type', 'application/json; charset=utf-8')
-                    self.send_cors()
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'error': '鉴权失败：无权删除他人作品。请在设置中检查创作者个人码或管理员密钥。'}).encode('utf-8'))
+                    self.finish_json(403, {'error': '鉴权失败：无权删除他人作品。请在设置中检查创作者个人码或管理员密钥。'})
                     return
 
                 presets = [p for p in presets if p.get('id') != target_id]
@@ -526,12 +457,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print('Error cleaning image files on delete:', e)
 
-            resp = json.dumps({'success': True, 'remaining': len(presets), 'deletedId': target_id}).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(resp)
+            self.finish_json(200, {'success': True, 'remaining': len(presets), 'deletedId': target_id})
             return
 
         # ── 上传发布 API ──
@@ -540,11 +466,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             positive = str(data.get('positive', '')).strip()
             creator_key = str(data.get('creatorKey', '')).strip()[:64]
             if not title or not positive:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.send_cors()
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': '标题与正面提示词不能为空'}).encode('utf-8'))
+                self.finish_json(400, {'error': '标题与正面提示词不能为空'})
                 return
 
             model = str(data.get('model', 'v5')).strip().lower()
@@ -633,18 +555,10 @@ class MarketHandler(BaseHTTPRequestHandler):
                 presets.insert(0, item)
                 save_presets(presets)
 
-            resp = json.dumps({'success': True, 'item': item}).encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Content-Length', str(len(resp)))
-            self.send_cors()
-            self.end_headers()
-            self.wfile.write(resp)
+            self.finish_json(200, {'success': True, 'item': item})
             return
 
-        self.send_response(404)
-        self.send_cors()
-        self.end_headers()
+        self.finish_json(404, {'error': 'Not Found'})
 
 if __name__ == '__main__':
     server = ThreadingHTTPServer(('0.0.0.0', PORT), MarketHandler)

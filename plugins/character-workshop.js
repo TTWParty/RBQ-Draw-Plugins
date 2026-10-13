@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.31';
+    const VERSION = '2.2.32';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -214,6 +214,8 @@
     //  Data Access Layer: Direct SDT characterProfiles Binding
     // ══════════════════════════════════════════════════════════
     let dossierScope = 'chat'; // 'chat' (仅当前会话) | 'all' (全部历史档案)
+    let isDossierBatchMode = false;
+    const selectedDossierNames = new Set();
 
     function getChatKey() {
         // 1. 优先尝试 ST 全局 getCurrentChatId()
@@ -1971,7 +1973,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             mask.innerHTML = `
                 <div class="cw-modal" style="width:820px;max-width:96vw;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;min-height:min-content">
                     <div class="cw-modal-hd" style="flex-shrink:0">
-                        <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-id-card"></i> ${isEdit ? '编辑角色 · ' + esc(draft.displayName) : '✨ 新建角色档案'}</strong>
+                        <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-id-card"></i> ${isEdit ? '编辑角色 · ' + esc(draft.displayName) : '✨ 新建角色档案'}${dossierScope === 'all' ? ' <span style="font-size:11px;font-weight:normal;padding:2px 6px;border-radius:4px;background:rgba(56,189,248,0.18);color:#7dd3fc;border:1px solid rgba(56,189,248,0.35)">🌐 全局历史模式</span>' : ''}</strong>
                         <button class="cw-btn sm" id="cw-ce-x">✕</button>
                     </div>
                     <div class="cw-modal-bd" style="flex:1 1 auto;min-height:min-content;overflow-y:auto;-webkit-overflow-scrolling:touch">
@@ -2039,11 +2041,12 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             <textarea id="cw-ce-wtags" class="cw-ta" placeholder="sailor_suit, pleated_skirt, white_thighhighs">${esc(cw?.outfit || cw?.tags || '')}</textarea>
                         </div>
                     </div>
-                    <div class="cw-modal-ft">
+                    <div class="cw-modal-ft" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
                         <button class="cw-btn cy" id="cw-ce-test" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 🎨 测试单人立绘</button>
-                        <div style="display:flex;gap:7px">
+                        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+                            <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:rgba(255,255,255,0.75);cursor:pointer;margin-right:4px" title="勾选后，若其他历史会话中也有此角色，将同步更新所有历史会话副本"><input type="checkbox" id="cw-ce-sync-global" ${dossierScope === 'all' ? 'checked' : ''} style="accent-color:#38bdf8;cursor:pointer" /> 🌐 同步至全局所有会话副本</label>
                             <button class="cw-btn" id="cw-ce-cancel">取消</button>
-                            <button class="cw-btn pri" id="cw-ce-save">💾 保存到 SDT 角色记忆</button>
+                            <button class="cw-btn pri" id="cw-ce-save">💾 ${dossierScope === 'all' ? '保存 (同步全局)' : '保存到 SDT 角色记忆'}</button>
                         </div>
                     </div>
                 </div>`;
@@ -2234,7 +2237,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const name = draft.displayName;
                 if (!name) return toastr.warning('请输入角色姓名', PLUGIN_NAME);
 
-                if (isEdit && editName !== name) deleteProfile(editName, dossierScope);
+                const syncGlobal = (dossierScope === 'all') || Boolean(mask.querySelector('#cw-ce-sync-global')?.checked);
+                const targetScope = syncGlobal ? 'all' : dossierScope;
+
+                if (isEdit && editName !== name) deleteProfile(editName, targetScope);
 
                 const activeW = draft.wardrobe.find(w => w.id === draft.currentOutfitId) || draft.wardrobe[0];
                 draft.currentOutfit = activeW?.outfit || activeW?.tags || '';
@@ -2257,8 +2263,8 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     currentOutfitId: draft.currentOutfitId,
                     avatarUrl: draft.avatarUrl,
                     wardrobe: draft.wardrobe,
-                }, dossierScope);
-                toastr.success('「' + name + '」已保存到 SDT 角色记忆！', PLUGIN_NAME);
+                }, targetScope);
+                toastr.success(targetScope === 'all' ? ('「' + name + '」已保存，并已同步更新至全局历史所有会话副本！') : ('「' + name + '」已保存到 SDT 角色记忆！'), PLUGIN_NAME);
                 mask.remove();
                 if (onSaved) onSaved(name);
             });
@@ -2522,11 +2528,25 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         </div>
                     </div>
                     <div class="cw-archive-tools" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                        <button type="button" class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
-                        <button type="button" class="cw-btn sm" id="cw-export-dossier-btn" title="导出当前视图角色档案库为 JSON 备份"><i class="fa-solid fa-file-export"></i> 导出备份</button>
-                        <button type="button" class="cw-btn sm" id="cw-import-dossier-btn" title="从 JSON 文件导入角色档案到当前会话"><i class="fa-solid fa-file-import"></i> 导入文件</button>
-                        <input type="file" id="cw-import-dossier-file" accept=".json" style="display:none" />
-                        <button type="button" class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
+                        ${!isDossierBatchMode ? `
+                            <button type="button" class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
+                            <button type="button" class="cw-btn sm" id="cw-batch-mode-btn" title="开启批量选择模式：支持批量删除、批量导出与批量导入当前"><i class="fa-solid fa-list-check"></i> 批量管理</button>
+                            <button type="button" class="cw-btn sm" id="cw-export-dossier-btn" title="导出当前视图角色档案库为 JSON 备份"><i class="fa-solid fa-file-export"></i> 导出备份</button>
+                            <button type="button" class="cw-btn sm" id="cw-import-dossier-btn" title="从 JSON 文件导入角色档案到当前会话"><i class="fa-solid fa-file-import"></i> 导入文件</button>
+                            <input type="file" id="cw-import-dossier-file" accept=".json" style="display:none" />
+                            <button type="button" class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
+                        ` : `
+                            <div class="cw-batch-toolbar" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(56,189,248,0.12);padding:3px 8px;border-radius:6px;border:1px solid rgba(56,189,248,0.35)">
+                                <button type="button" class="cw-btn xs" id="cw-batch-toggle-all" style="padding:3px 8px;font-size:11px"><i class="fa-solid fa-check-double"></i> ${selectedDossierNames.size === names.length && names.length > 0 ? '全不选' : '全选'}</button>
+                                <span style="font-size:11px;color:#f8fafc">已选 <strong style="color:#38bdf8">${selectedDossierNames.size}</strong>/${names.length}</span>
+                                ${(dossierScope === 'all') ? `
+                                    <button type="button" class="cw-btn gn xs" id="cw-batch-import-curr" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="将选中的角色批量克隆并导入到当前会话"><i class="fa-solid fa-file-import"></i> 批量导入当前 (${selectedDossierNames.size})</button>
+                                ` : ''}
+                                <button type="button" class="cw-btn xs" id="cw-batch-export-btn" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="将选中的角色打包导出为 JSON 文件"><i class="fa-solid fa-file-export"></i> 批量导出 (${selectedDossierNames.size})</button>
+                                <button type="button" class="cw-btn rd xs" id="cw-batch-delete-btn" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="${dossierScope === 'all' ? '从全局历史中彻底删除选中的角色' : '从当前会话中移除选中的角色'}"><i class="fa-solid fa-trash"></i> 批量删除 (${selectedDossierNames.size})</button>
+                                <button type="button" class="cw-btn xs" id="cw-batch-exit-btn" style="padding:3px 8px;font-size:11px"><i class="fa-solid fa-xmark"></i> 退出批量</button>
+                            </div>
+                        `}
                     </div>
                 </div>
                 <div class="cw-chgrid">
@@ -2541,9 +2561,14 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         const wCount = Array.isArray(p.wardrobe) ? p.wardrobe.length : 0;
                         const activeW = Array.isArray(p.wardrobe) ? (p.wardrobe.find(w => w.id === p.currentOutfitId) || p.wardrobe[0]) : null;
                         const activeOutfitName = activeW?.name || '默认';
+                        const isSelected = selectedDossierNames.has(n);
+                        const cardBorder = isSelected ? 'border:1px solid rgba(56,189,248,0.7) !important;background:rgba(56,189,248,0.08) !important;box-shadow:0 0 10px rgba(56,189,248,0.2) !important;' : '';
 
-                        return `<div class="cw-chcard">
+                        return `<div class="cw-chcard ${isDossierBatchMode ? 'cw-batch-card' : ''}" data-name="${esc(n)}" style="${cardBorder};cursor:${isDossierBatchMode ? 'pointer' : 'default'}">
                             <div style="display:flex;gap:10px;align-items:flex-start;min-width:0">
+                                ${isDossierBatchMode ? `
+                                    <input type="checkbox" class="cw-batch-item-check" data-name="${esc(n)}" ${isSelected ? 'checked' : ''} style="width:17px;height:17px;margin-top:3px;accent-color:#38bdf8;cursor:pointer;flex-shrink:0" />
+                                ` : ''}
                                 <div class="cw-avatar">${p.avatarUrl ? '<img src="' + esc(p.avatarUrl) + '"/>' : (isFromLorebook ? '📖' : '👤')}</div>
                                 <div style="flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:2px">
                                     <div style="display:flex;align-items:center;gap:6px">
@@ -2568,7 +2593,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                     ` : `
                                         <button class="cw-btn gn sm cw-import-from-global" data-name="${esc(n)}" title="将此全局历史角色导入到当前会话"><i class="fa-solid fa-file-import"></i> 导入当前</button>
                                     `) : ''}
-                                    <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}" title="编辑角色档案"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+                                    <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}" title="${dossierScope === 'all' ? '编辑全局档案并同步所有会话' : '编辑角色档案'}"><i class="fa-solid fa-pen-to-square"></i> ${dossierScope === 'all' ? '编辑(全局)' : '编辑'}</button>
                                     <button class="cw-btn sm cw-export-single-char" data-name="${esc(n)}" title="导出该角色为独立 JSON 文件"><i class="fa-solid fa-file-export"></i></button>
                                     <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}" title="删除档案"><i class="fa-solid fa-trash"></i></button>
                                 `}
@@ -3654,6 +3679,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             const scope = b.dataset.scope;
             if (scope && (scope === 'chat' || scope === 'all' || scope === 'lorebook')) {
                 dossierScope = scope;
+                selectedDossierNames.clear();
                 refresh('dossier');
             }
         }));
@@ -3800,6 +3826,113 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 }
             };
             reader.readAsText(file);
+        // ── Batch Management Listeners ──
+        container.querySelector('#cw-batch-mode-btn')?.addEventListener('click', () => {
+            isDossierBatchMode = true;
+            selectedDossierNames.clear();
+            refresh('dossier');
+        });
+
+        container.querySelector('#cw-batch-exit-btn')?.addEventListener('click', () => {
+            isDossierBatchMode = false;
+            selectedDossierNames.clear();
+            refresh('dossier');
+        });
+
+        container.querySelector('#cw-batch-toggle-all')?.addEventListener('click', () => {
+            const currentNames = Object.keys(getAllProfiles());
+            if (selectedDossierNames.size === currentNames.length) {
+                selectedDossierNames.clear();
+            } else {
+                currentNames.forEach(n => selectedDossierNames.add(n));
+            }
+            refresh('dossier');
+        });
+
+        container.querySelectorAll('.cw-batch-item-check').forEach(chk => {
+            chk.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const name = ev.currentTarget.dataset.name;
+                if (ev.currentTarget.checked) {
+                    selectedDossierNames.add(name);
+                } else {
+                    selectedDossierNames.delete(name);
+                }
+                refresh('dossier');
+            });
+        });
+
+        container.querySelectorAll('.cw-batch-card').forEach(card => {
+            card.addEventListener('click', (ev) => {
+                if (ev.target.closest('button') || ev.target.closest('input')) return;
+                const name = card.dataset.name;
+                if (name) {
+                    if (selectedDossierNames.has(name)) {
+                        selectedDossierNames.delete(name);
+                    } else {
+                        selectedDossierNames.add(name);
+                    }
+                    refresh('dossier');
+                }
+            });
+        });
+
+        container.querySelector('#cw-batch-delete-btn')?.addEventListener('click', () => {
+            const count = selectedDossierNames.size;
+            if (count === 0) return toastr.warning('请先勾选需要删除的角色', PLUGIN_NAME);
+            const isGlobal = (dossierScope === 'all');
+            const confirmMsg = isGlobal
+                ? `确定从全局历史中彻底删除选中的 ${count} 位角色吗？\n（这些角色在所有历史会话中的档案与记忆都将被清理且不可恢复）`
+                : `确定从当前会话中移除选中的 ${count} 位角色吗？`;
+            if (confirm(confirmMsg)) {
+                for (const n of selectedDossierNames) {
+                    deleteProfile(n, dossierScope);
+                }
+                selectedDossierNames.clear();
+                toastr.success(isGlobal ? `已从全局历史彻底删除 ${count} 位角色档案！` : `已从当前会话移除 ${count} 位角色档案！`, PLUGIN_NAME);
+                refresh('dossier');
+            }
+        });
+
+        container.querySelector('#cw-batch-import-curr')?.addEventListener('click', () => {
+            const count = selectedDossierNames.size;
+            if (count === 0) return toastr.warning('请先勾选需要导入的角色', PLUGIN_NAME);
+            const globalProfiles = getAllGlobalProfiles();
+            let imported = 0;
+            for (const n of selectedDossierNames) {
+                const p = globalProfiles[n] || getProfile(n);
+                if (p) {
+                    saveProfile(n, JSON.parse(JSON.stringify(p)), 'chat');
+                    imported++;
+                }
+            }
+            selectedDossierNames.clear();
+            toastr.success(`已成功将 ${imported} 位角色批量导入到当前会话！`, PLUGIN_NAME);
+            refresh('dossier');
+        });
+
+        container.querySelector('#cw-batch-export-btn')?.addEventListener('click', () => {
+            const count = selectedDossierNames.size;
+            if (count === 0) return toastr.warning('请先勾选需要导出的角色', PLUGIN_NAME);
+            const exported = {};
+            for (const n of selectedDossierNames) {
+                exported[n] = getProfile(n) || getAllProfiles()[n];
+            }
+            const scopeLabel = dossierScope === 'all' ? '全局历史' : (dossierScope === 'lorebook' ? '同人库' : '当前会话');
+            const payload = {
+                version: '1.0',
+                type: 'rbq-character-dossier-backup',
+                scope: dossierScope,
+                exportedAt: new Date().toISOString(),
+                count,
+                characters: JSON.parse(JSON.stringify(exported))
+            };
+            const filename = `RBQ角色档案-批量选中-${count}位-${scopeLabel}-${new Date().toISOString().slice(0, 10)}.json`;
+            if (downloadJsonFile(payload, filename)) {
+                toastr.success(`已成功批量导出 ${count} 位角色档案！`, PLUGIN_NAME);
+            } else {
+                toastr.error('导出文件失败，请检查浏览器权限', PLUGIN_NAME);
+            }
         });
 
         container.querySelector('#cw-create-char')?.addEventListener('click', () => openCharacterEditor(null, () => refresh('dossier')));

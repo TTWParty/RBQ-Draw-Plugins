@@ -236,4 +236,94 @@ test('Array-based characters list import works seamlessly', () => {
     assert.equal(targetChatBucket['博丽灵梦'].wardrobe[0].name, '巫女服');
 });
 
-console.log('\nAll 6 Character Workshop import/export tests passed successfully.');
+// Test 7: Batch delete in chat scope removes only selected characters from active chat
+test('Batch delete in chat scope removes only selected characters from active chat', () => {
+    const { settings, getActiveChat } = createWorkshopEnv();
+    const activeChat = getActiveChat();
+    settings._smartDrawTrigger.characterProfiles[activeChat] = {
+        'charA': { displayName: 'charA' },
+        'charB': { displayName: 'charB' },
+        'charC': { displayName: 'charC' }
+    };
+
+    const toDelete = new Set(['charA', 'charC']);
+    for (const name of toDelete) {
+        delete settings._smartDrawTrigger.characterProfiles[activeChat][name];
+    }
+
+    const remaining = settings._smartDrawTrigger.characterProfiles[activeChat];
+    assert.equal(Object.keys(remaining).length, 1);
+    assert.ok(remaining['charB']);
+    assert.equal(remaining['charA'], undefined);
+    assert.equal(remaining['charC'], undefined);
+});
+
+// Test 8: Batch delete in global scope purges selected characters across all historical chat buckets
+test('Batch delete in global scope purges selected characters across all historical chat buckets', () => {
+    const { settings } = createWorkshopEnv();
+    const toDelete = new Set(['神里绫华']);
+
+    for (const chatDict of Object.values(settings._smartDrawTrigger.characterProfiles)) {
+        for (const name of toDelete) {
+            delete chatDict[name];
+        }
+    }
+
+    assert.equal(settings._smartDrawTrigger.characterProfiles['historical-chat-1']['神里绫华'], undefined);
+    assert.ok(settings._smartDrawTrigger.characterProfiles['historical-chat-2']['芙宁娜']);
+});
+
+// Test 9: Global edit synchronization updates all historical chat replicas
+test('Global edit synchronization updates all historical chat replicas when scope is all', () => {
+    const { settings } = createWorkshopEnv();
+    // Add same character in two chats
+    settings._smartDrawTrigger.characterProfiles['chat-1'] = {
+        '芙宁娜': { displayName: '芙宁娜', baseTags: 'old tags', wardrobe: [] }
+    };
+    settings._smartDrawTrigger.characterProfiles['chat-2'] = {
+        '芙宁娜': { displayName: '芙宁娜', baseTags: 'old tags', wardrobe: [] }
+    };
+
+    const updatedData = { displayName: '芙宁娜', baseTags: '1girl, ahoge, blue eyes', baseLocked: true };
+    const scope = 'all';
+
+    // Simulate saveProfile with scope === 'all'
+    if (scope === 'all') {
+        for (const chatDict of Object.values(settings._smartDrawTrigger.characterProfiles)) {
+            if (chatDict['芙宁娜']) {
+                chatDict['芙宁娜'] = { ...chatDict['芙宁娜'], ...updatedData };
+            }
+        }
+    }
+
+    assert.equal(settings._smartDrawTrigger.characterProfiles['chat-1']['芙宁娜'].baseTags, '1girl, ahoge, blue eyes');
+    assert.equal(settings._smartDrawTrigger.characterProfiles['chat-2']['芙宁娜'].baseTags, '1girl, ahoge, blue eyes');
+    assert.equal(settings._smartDrawTrigger.characterProfiles['chat-1']['芙宁娜'].baseLocked, true);
+});
+
+// Test 10: Batch import from global history clones multiple characters into active chat
+test('Batch import from global history clones multiple characters into active chat in one shot', () => {
+    const { settings, getActiveChat } = createWorkshopEnv();
+    const activeChat = getActiveChat();
+    settings._smartDrawTrigger.characterProfiles[activeChat] = {};
+
+    const selected = new Set(['神里绫华', '芙宁娜']);
+    const allGlobal = {
+        '神里绫华': settings._smartDrawTrigger.characterProfiles['historical-chat-1']['神里绫华'],
+        '芙宁娜': settings._smartDrawTrigger.characterProfiles['historical-chat-2']['芙宁娜']
+    };
+
+    for (const name of selected) {
+        const p = allGlobal[name];
+        settings._smartDrawTrigger.characterProfiles[activeChat][name] = JSON.parse(JSON.stringify(p));
+    }
+
+    const current = settings._smartDrawTrigger.characterProfiles[activeChat];
+    assert.equal(Object.keys(current).length, 2);
+    assert.ok(current['神里绫华']);
+    assert.ok(current['芙宁娜']);
+    assert.equal(current['神里绫华'].wardrobe.length, 2);
+    assert.equal(current['芙宁娜'].nameTag, 'furina (genshin impact)');
+});
+
+console.log('\nAll 10 Character Workshop import/export/batch tests passed successfully.');

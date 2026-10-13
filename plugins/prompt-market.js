@@ -1760,14 +1760,9 @@
                     <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
                             <span style="font-size:11.5px; color:#c084fc; font-weight:700;"><i class="fa-solid fa-sliders"></i> NAI 生图参数设定</span>
-                            <div style="display:inline-flex; gap:3px; background:rgba(0,0,0,0.4); padding:2px; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">
-                                <button id="rbq-pm-edit-param-preset-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; border:none; cursor:pointer; transition:all 0.15s;" title="快速重置为本预设已存推荐参数">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> 预设推荐
-                                </button>
-                                <button id="rbq-pm-edit-param-mine-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; border:none; cursor:pointer; transition:all 0.15s;" title="快速载入当前酒馆设置中正在生效的 NAI 参数">
-                                    <i class="fa-solid fa-user-gear"></i> 我的酒馆设置
-                                </button>
-                            </div>
+                            <button id="rbq-pm-edit-param-mine-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; font-size:10.5px; font-weight:600; padding:3px 10px; border-radius:5px; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; cursor:pointer; transition:all 0.15s;" title="快速载入当前酒馆设置中正在生效的 NAI 参数">
+                                <i class="fa-solid fa-user-gear"></i> 我的酒馆设置
+                            </button>
                         </div>
                         <div class="rbq-pm-up-params-grid" style="display:grid; grid-template-columns: 1fr 1.35fr 1fr 1fr; gap:6px;">
                             <div>
@@ -1884,7 +1879,6 @@
         const editSamplerSelect = overlay.querySelector('#rbq-pm-edit-param-sampler');
         const editStepsInput = overlay.querySelector('#rbq-pm-edit-param-steps');
         const editRescaleInput = overlay.querySelector('#rbq-pm-edit-param-rescale');
-        const editBtnPreset = overlay.querySelector('#rbq-pm-edit-param-preset-btn');
         const editBtnMine = overlay.querySelector('#rbq-pm-edit-param-mine-btn');
 
         const populateEditSamplerOptions = (selectedVal) => {
@@ -1903,27 +1897,6 @@
 
         populateEditSamplerOptions(editSampler);
 
-        const updateEditParamModeButtons = (mode) => {
-            if (mode === 'preset') {
-                editBtnPreset.style.background = 'linear-gradient(135deg, #a855f7, #6366f1)';
-                editBtnPreset.style.color = '#fff';
-                editBtnMine.style.background = 'transparent';
-                editBtnMine.style.color = '#94a3b8';
-            } else if (mode === 'mine') {
-                editBtnMine.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
-                editBtnMine.style.color = '#fff';
-                editBtnPreset.style.background = 'transparent';
-                editBtnPreset.style.color = '#94a3b8';
-            } else {
-                editBtnPreset.style.background = 'transparent';
-                editBtnPreset.style.color = '#94a3b8';
-                editBtnMine.style.background = 'transparent';
-                editBtnMine.style.color = '#94a3b8';
-            }
-        };
-
-        updateEditParamModeButtons(item.params ? 'preset' : 'mine');
-
         function getEditedParams() {
             return {
                 scale: editScaleInput.value !== '' ? Number(editScaleInput.value) : 6.0,
@@ -1933,43 +1906,22 @@
             };
         }
 
-        editBtnPreset.onclick = () => {
-            const origP = item.params || {};
-            const prScale = origP.scale !== undefined && origP.scale !== null ? Number(origP.scale) : 6.0;
-            const prSampler = origP.sampler || 'k_euler_ancestral';
-            const prSteps = origP.steps !== undefined && origP.steps !== null ? Number(origP.steps) : 28;
-            const prRescale = origP.cfgRescale !== undefined && origP.cfgRescale !== null ? Number(origP.cfgRescale) : 0;
+        if (editBtnMine) {
+            editBtnMine.onclick = () => {
+                const fresh = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
+                const myScale = fresh.naiScale !== undefined && fresh.naiScale !== null ? Number(fresh.naiScale) : 6.0;
+                const mySampler = fresh.naiSampler || 'k_euler_ancestral';
+                const mySteps = fresh.naiSteps !== undefined && fresh.naiSteps !== null ? Number(fresh.naiSteps) : 28;
+                const myRescale = fresh.naiCfgRescale !== undefined && fresh.naiCfgRescale !== null ? Number(fresh.naiCfgRescale) : 0;
 
-            editScaleInput.value = prScale;
-            populateEditSamplerOptions(prSampler);
-            editSamplerSelect.value = prSampler;
-            editStepsInput.value = prSteps;
-            editRescaleInput.value = prRescale;
-            updateEditParamModeButtons('preset');
-            toastr.info('已恢复此预设的已存推荐参数');
-        };
-
-        editBtnMine.onclick = () => {
-            const fresh = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
-            const myScale = fresh.naiScale !== undefined && fresh.naiScale !== null ? Number(fresh.naiScale) : 6.0;
-            const mySampler = fresh.naiSampler || 'k_euler_ancestral';
-            const mySteps = fresh.naiSteps !== undefined && fresh.naiSteps !== null ? Number(fresh.naiSteps) : 28;
-            const myRescale = fresh.naiCfgRescale !== undefined && fresh.naiCfgRescale !== null ? Number(fresh.naiCfgRescale) : 0;
-
-            editScaleInput.value = myScale;
-            populateEditSamplerOptions(mySampler);
-            editSamplerSelect.value = mySampler;
-            editStepsInput.value = mySteps;
-            editRescaleInput.value = myRescale;
-            updateEditParamModeButtons('mine');
-            toastr.info('已载入当前酒馆全局生图设置');
-        };
-
-        [editScaleInput, editSamplerSelect, editStepsInput, editRescaleInput].forEach(el => {
-            if (!el) return;
-            el.onchange = () => updateEditParamModeButtons('custom');
-            el.oninput = () => updateEditParamModeButtons('custom');
-        });
+                editScaleInput.value = myScale;
+                populateEditSamplerOptions(mySampler);
+                editSamplerSelect.value = mySampler;
+                editStepsInput.value = mySteps;
+                editRescaleInput.value = myRescale;
+                toastr.info('已载入当前酒馆全局生图设置');
+            };
+        }
 
         // ── 封面基准图交互 ──
         const editBmImg = overlay.querySelector('#rbq-pm-edit-bm-img');
@@ -3536,18 +3488,13 @@
                         <textarea id="rbq-pm-up-neg" rows="2" placeholder="可选输入针对该风格的负向词，例如: flat color, simplified" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:12px; box-sizing:border-box;"></textarea>
                     </div>
 
-                    <!-- NAI 生图参数设定 (双态切换 + 标准采样器下拉 + 4维参数微调) -->
+                    <!-- NAI 生图参数设定 (标准采样器下拉 + 4维参数微调 + 一键同步我的酒馆设置) -->
                     <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
                             <span style="font-size:11.5px; color:#c084fc; font-weight:700;"><i class="fa-solid fa-sliders"></i> NAI 生图参数设定</span>
-                            <div style="display:inline-flex; gap:3px; background:rgba(0,0,0,0.4); padding:2px; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">
-                                <button id="rbq-pm-up-param-preset-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; border:none; cursor:pointer; transition:all 0.15s;" title="快速载入预设推荐/默认生图参数">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> 预设推荐
-                                </button>
-                                <button id="rbq-pm-up-param-mine-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; font-size:10px; font-weight:600; padding:3px 8px; border-radius:4px; border:none; cursor:pointer; transition:all 0.15s;" title="快速载入当前酒馆设置中正在生效的 NAI 参数">
-                                    <i class="fa-solid fa-user-gear"></i> 我的酒馆设置
-                                </button>
-                            </div>
+                            <button id="rbq-pm-up-param-mine-btn" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; font-size:10.5px; font-weight:600; padding:3px 10px; border-radius:5px; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; cursor:pointer; transition:all 0.15s;" title="快速载入当前酒馆设置中正在生效的 NAI 参数">
+                                <i class="fa-solid fa-user-gear"></i> 我的酒馆设置
+                            </button>
                         </div>
                         <div class="rbq-pm-up-params-grid" style="display:grid; grid-template-columns: 1fr 1.35fr 1fr 1fr; gap:6px;">
                             <div>
@@ -3714,7 +3661,6 @@
         const upSamplerSelect = overlay.querySelector('#rbq-pm-up-param-sampler');
         const upStepsInput = overlay.querySelector('#rbq-pm-up-param-steps');
         const upRescaleInput = overlay.querySelector('#rbq-pm-up-param-rescale');
-        const upBtnPreset = overlay.querySelector('#rbq-pm-up-param-preset-btn');
         const upBtnMine = overlay.querySelector('#rbq-pm-up-param-mine-btn');
 
         const populateUpSamplerOptions = (selectedVal) => {
@@ -3733,27 +3679,6 @@
 
         populateUpSamplerOptions(activeSampler);
 
-        const updateUpParamModeButtons = (mode) => {
-            if (mode === 'preset') {
-                upBtnPreset.style.background = 'linear-gradient(135deg, #a855f7, #6366f1)';
-                upBtnPreset.style.color = '#fff';
-                upBtnMine.style.background = 'transparent';
-                upBtnMine.style.color = '#94a3b8';
-            } else if (mode === 'mine') {
-                upBtnMine.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
-                upBtnMine.style.color = '#fff';
-                upBtnPreset.style.background = 'transparent';
-                upBtnPreset.style.color = '#94a3b8';
-            } else {
-                upBtnPreset.style.background = 'transparent';
-                upBtnPreset.style.color = '#94a3b8';
-                upBtnMine.style.background = 'transparent';
-                upBtnMine.style.color = '#94a3b8';
-            }
-        };
-
-        updateUpParamModeButtons('mine');
-
         function syncCapturedParams() {
             capturedParams.scale = upScaleInput.value !== '' ? Number(upScaleInput.value) : 6.0;
             capturedParams.sampler = upSamplerSelect.value || 'k_euler_ancestral';
@@ -3761,59 +3686,28 @@
             capturedParams.cfgRescale = upRescaleInput.value !== '' ? Number(upRescaleInput.value) : 0;
         }
 
-        upBtnPreset.onclick = () => {
-            const idx = localSelect.value;
-            let prScale = 6.0;
-            let prSampler = 'k_euler_ancestral';
-            let prSteps = 28;
-            let prRescale = 0;
+        if (upBtnMine) {
+            upBtnMine.onclick = () => {
+                const fresh = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
+                const myScale = fresh.naiScale !== undefined && fresh.naiScale !== null ? Number(fresh.naiScale) : 6.0;
+                const mySampler = fresh.naiSampler || 'k_euler_ancestral';
+                const mySteps = fresh.naiSteps !== undefined && fresh.naiSteps !== null ? Number(fresh.naiSteps) : 28;
+                const myRescale = fresh.naiCfgRescale !== undefined && fresh.naiCfgRescale !== null ? Number(fresh.naiCfgRescale) : 0;
 
-            if (idx !== '' && localPresets[idx]?.params) {
-                const lp = localPresets[idx].params;
-                if (lp.scale !== undefined && lp.scale !== null) prScale = Number(lp.scale);
-                if (lp.sampler) prSampler = lp.sampler;
-                if (lp.steps !== undefined && lp.steps !== null) prSteps = Number(lp.steps);
-                if (lp.cfgRescale !== undefined && lp.cfgRescale !== null) prRescale = Number(lp.cfgRescale);
-                toastr.info('已载入本地预设推荐参数');
-            } else {
-                toastr.info('已载入官方推荐默认参数');
-            }
-
-            upScaleInput.value = prScale;
-            populateUpSamplerOptions(prSampler);
-            upSamplerSelect.value = prSampler;
-            upStepsInput.value = prSteps;
-            upRescaleInput.value = prRescale;
-            updateUpParamModeButtons('preset');
-            syncCapturedParams();
-        };
-
-        upBtnMine.onclick = () => {
-            const fresh = (typeof RBQ?.api?.getSettings === 'function') ? RBQ.api.getSettings() : {};
-            const myScale = fresh.naiScale !== undefined && fresh.naiScale !== null ? Number(fresh.naiScale) : 6.0;
-            const mySampler = fresh.naiSampler || 'k_euler_ancestral';
-            const mySteps = fresh.naiSteps !== undefined && fresh.naiSteps !== null ? Number(fresh.naiSteps) : 28;
-            const myRescale = fresh.naiCfgRescale !== undefined && fresh.naiCfgRescale !== null ? Number(fresh.naiCfgRescale) : 0;
-
-            upScaleInput.value = myScale;
-            populateUpSamplerOptions(mySampler);
-            upSamplerSelect.value = mySampler;
-            upStepsInput.value = mySteps;
-            upRescaleInput.value = myRescale;
-            updateUpParamModeButtons('mine');
-            syncCapturedParams();
-            toastr.info('已载入当前酒馆全局生图设置');
-        };
+                upScaleInput.value = myScale;
+                populateUpSamplerOptions(mySampler);
+                upSamplerSelect.value = mySampler;
+                upStepsInput.value = mySteps;
+                upRescaleInput.value = myRescale;
+                syncCapturedParams();
+                toastr.info('已载入当前酒馆全局生图设置');
+            };
+        }
 
         [upScaleInput, upSamplerSelect, upStepsInput, upRescaleInput].forEach(el => {
-            el.onchange = () => {
-                syncCapturedParams();
-                updateUpParamModeButtons('custom');
-            };
-            el.oninput = () => {
-                syncCapturedParams();
-                updateUpParamModeButtons('custom');
-            };
+            if (!el) return;
+            el.onchange = () => syncCapturedParams();
+            el.oninput = () => syncCapturedParams();
         });
 
         localSelect.onchange = (e) => {
@@ -3832,7 +3726,6 @@
                     if (p.params.steps !== undefined) upStepsInput.value = Number(p.params.steps);
                     if (p.params.cfgRescale !== undefined) upRescaleInput.value = Number(p.params.cfgRescale);
                     syncCapturedParams();
-                    updateUpParamModeButtons('preset');
                     toastr.success(`已导入「${p.name || p.id}」及专属生图参数！`);
                 } else {
                     toastr.success(`已导入「${p.name || p.id}」！`);
@@ -4401,5 +4294,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.28 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.29 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

@@ -206,27 +206,33 @@
     }
 
     function ensureDialogStyles() {
-        if (document.getElementById('rbq-pp-dialog-styles')) return;
-        const style = document.createElement('style');
-        style.id = 'rbq-pp-dialog-styles';
+        let style = document.getElementById('rbq-pp-dialog-styles');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'rbq-pp-dialog-styles';
+            document.head.appendChild(style);
+        }
         style.textContent = `
             .rbq-pp-dialog-overlay {
                 position: fixed !important;
                 inset: 0 !important;
-                z-index: 100000 !important;
+                z-index: 2147483647 !important;
                 display: flex !important;
-                background: rgba(0, 0, 0, 0.72) !important;
-                backdrop-filter: blur(6px) !important;
-                -webkit-backdrop-filter: blur(6px) !important;
+                align-items: center !important;
+                justify-content: center !important;
+                background: rgba(0, 0, 0, 0.75) !important;
+                backdrop-filter: blur(8px) !important;
+                -webkit-backdrop-filter: blur(8px) !important;
                 box-sizing: border-box !important;
                 padding: max(16px, env(safe-area-inset-top, 16px)) 12px max(16px, env(safe-area-inset-bottom, 16px)) !important;
                 overflow-y: auto !important;
                 overscroll-behavior: contain !important;
+                -webkit-overflow-scrolling: touch !important;
             }
             .rbq-pp-dialog-box {
                 background: #18191d !important;
                 border: 1px solid rgba(255, 255, 255, 0.12) !important;
-                border-radius: 12px !important;
+                border-radius: 14px !important;
                 box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
                 width: min(94vw, 520px) !important;
                 max-height: min(86dvh, 720px) !important;
@@ -318,7 +324,8 @@
                 display: flex !important;
                 align-items: flex-start !important;
                 gap: 10px !important;
-                padding: 9px 12px !important;
+                padding: 10px 12px !important;
+                min-height: 44px !important;
                 border-radius: 8px !important;
                 background: rgba(255, 255, 255, 0.03) !important;
                 border: 1px solid rgba(255, 255, 255, 0.06) !important;
@@ -375,6 +382,7 @@
                 justify-content: flex-end !important;
                 gap: 8px !important;
                 padding: 12px 16px !important;
+                padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
                 border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
                 background: rgba(255, 255, 255, 0.02) !important;
                 flex-shrink: 0 !important;
@@ -387,7 +395,7 @@
                 gap: 6px !important;
                 white-space: nowrap !important;
                 box-sizing: border-box !important;
-                min-height: 38px !important;
+                min-height: 40px !important;
                 padding: 8px 16px !important;
                 font-size: 13px !important;
                 font-weight: 500 !important;
@@ -497,7 +505,9 @@
         `;
 
         overlay.appendChild(dialog);
+        dialog.addEventListener('click', (e) => e.stopPropagation());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
+        overlay.addEventListener('touchmove', (e) => { if (e.target === overlay) e.preventDefault(); }, { passive: false });
         dialog.querySelector('.rbq-pp-dialog-close')?.addEventListener('click', closeDialog);
         dialog.querySelector('#rbq-pp-save-cancel')?.addEventListener('click', closeDialog);
         dialog.querySelector('#rbq-pp-save-compact')?.addEventListener('click', () => { closeDialog(); onSelect('compact'); });
@@ -920,12 +930,14 @@
         updateCounter();
 
         dialog.append(header, toolbar, listDiv, footer);
+        dialog.addEventListener('click', (e) => e.stopPropagation());
         overlay.appendChild(dialog);
 
         // CRITICAL: stop bubbling from dialog elements too
         overlay.addEventListener('change', (e) => e.stopPropagation());
         overlay.addEventListener('input', (e) => e.stopPropagation());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
+        overlay.addEventListener('touchmove', (e) => { if (e.target === overlay) e.preventDefault(); }, { passive: false });
 
         document.body.appendChild(overlay);
     }

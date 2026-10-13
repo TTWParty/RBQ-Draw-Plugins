@@ -338,6 +338,8 @@ class MarketHandler(BaseHTTPRequestHandler):
                     m = str(data['model']).strip().lower()
                     if m in ('v5', 'v4.5', 'v3', 'sdxl', 'general'):
                         target_preset['model'] = m
+                if 'params' in data and isinstance(data['params'], dict):
+                    target_preset['params'] = data['params']
 
                 # 更新自制参考图 (可选伴生图)
                 if 'referenceBase64' in data:

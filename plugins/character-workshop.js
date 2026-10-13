@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.30';
+    const VERSION = '2.2.31';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -282,6 +282,25 @@
         }
         if (changed) RBQ.api.saveSettings();
         return bucket;
+    }
+
+    function downloadJsonFile(data, filename) {
+        try {
+            const jsonStr = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 3000);
+            return true;
+        } catch (e) {
+            console.error(`[${PLUGIN_NAME}] 导出 JSON 失败:`, e);
+            return false;
+        }
     }
 
     function getCurrentChatProfiles() {
@@ -2502,8 +2521,11 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'lorebook' ? 'cy' : ''}" data-scope="lorebook" style="padding:2px 8px;font-size:11px" title="${doujinSrc ? '已挂载同人库: ' + esc(doujinSrc.name) : '点击查看或挂载同人库'}"><i class="fa-solid fa-book-bookmark"></i> 📖 同人库 (${doujinCount})</button>
                         </div>
                     </div>
-                    <div class="cw-archive-tools" style="display:flex;gap:6px;align-items:center">
+                    <div class="cw-archive-tools" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                         <button type="button" class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
+                        <button type="button" class="cw-btn sm" id="cw-export-dossier-btn" title="导出当前视图角色档案库为 JSON 备份"><i class="fa-solid fa-file-export"></i> 导出备份</button>
+                        <button type="button" class="cw-btn sm" id="cw-import-dossier-btn" title="从 JSON 文件导入角色档案到当前会话"><i class="fa-solid fa-file-import"></i> 导入文件</button>
+                        <input type="file" id="cw-import-dossier-file" accept=".json" style="display:none" />
                         <button type="button" class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
                     </div>
                 </div>
@@ -2539,9 +2561,16 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                 <button class="cw-btn cy sm cw-go-action" data-name="${esc(n)}" title="为该角色搭配世界书动作生图"><i class="fa-solid fa-person-running"></i> 配动作生图</button>
                                 ${isFromLorebook ? `
                                     <button class="cw-btn gn sm cw-import-from-lorebook" data-name="${esc(n)}" title="导入为当前常驻角色档案"><i class="fa-solid fa-file-import"></i> 导入常驻</button>
+                                    <button class="cw-btn sm cw-export-single-char" data-name="${esc(n)}" title="导出该角色为独立 JSON 文件"><i class="fa-solid fa-file-export"></i></button>
                                 ` : `
-                                    <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
-                                    <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}"><i class="fa-solid fa-trash"></i></button>
+                                    ${(dossierScope === 'all') ? (chatProfiles[n] ? `
+                                        <span style="font-size:10px;padding:3px 6px;border-radius:4px;background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.25)" title="当前聊天已存在该角色"><i class="fa-solid fa-check"></i> 本会话已存在</span>
+                                    ` : `
+                                        <button class="cw-btn gn sm cw-import-from-global" data-name="${esc(n)}" title="将此全局历史角色导入到当前会话"><i class="fa-solid fa-file-import"></i> 导入当前</button>
+                                    `) : ''}
+                                    <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}" title="编辑角色档案"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+                                    <button class="cw-btn sm cw-export-single-char" data-name="${esc(n)}" title="导出该角色为独立 JSON 文件"><i class="fa-solid fa-file-export"></i></button>
+                                    <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}" title="删除档案"><i class="fa-solid fa-trash"></i></button>
                                 `}
                             </div>
                         </div>`;
@@ -3646,6 +3675,132 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 refresh('dossier');
             }
         }));
+
+        container.querySelectorAll('.cw-import-from-global').forEach(b => b.addEventListener('click', (e) => {
+            const name = e.currentTarget.dataset.name;
+            const globalProfiles = getAllGlobalProfiles();
+            const p = globalProfiles[name] || getProfile(name);
+            if (p) {
+                const toImport = JSON.parse(JSON.stringify(p));
+                saveProfile(name, toImport, 'chat');
+                toastr.success(`已成功将「${name}」导入到当前会话档案库！可在当前会话中直接使用`, PLUGIN_NAME);
+                refresh('dossier');
+            } else {
+                toastr.warning(`未找到角色「${name}」的全局历史数据`, PLUGIN_NAME);
+            }
+        }));
+
+        container.querySelectorAll('.cw-export-single-char').forEach(b => b.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const name = b.dataset.name;
+            const p = getProfile(name) || getAllProfiles()[name];
+            if (!p) {
+                toastr.warning(`未找到角色「${name}」的档案数据`, PLUGIN_NAME);
+                return;
+            }
+            const exportData = {
+                version: '1.0',
+                type: 'rbq-character-profile',
+                exportedAt: new Date().toISOString(),
+                character: JSON.parse(JSON.stringify(p))
+            };
+            const filename = `角色档案-${p.displayName || name}-${new Date().toISOString().slice(0, 10)}.json`;
+            if (downloadJsonFile(exportData, filename)) {
+                toastr.success(`已成功导出角色「${p.displayName || name}」为 JSON 文件`, PLUGIN_NAME);
+            } else {
+                toastr.error('导出文件失败，请检查浏览器权限', PLUGIN_NAME);
+            }
+        }));
+
+        container.querySelector('#cw-export-dossier-btn')?.addEventListener('click', () => {
+            const currentProfiles = getAllProfiles();
+            const count = Object.keys(currentProfiles).length;
+            if (count === 0) {
+                toastr.warning('当前视图没有可导出的角色档案', PLUGIN_NAME);
+                return;
+            }
+            const scopeLabel = dossierScope === 'all' ? '全局历史' : (dossierScope === 'lorebook' ? '同人库' : '当前会话');
+            const exportData = {
+                version: '1.0',
+                type: 'rbq-character-dossier-backup',
+                scope: dossierScope,
+                exportedAt: new Date().toISOString(),
+                count: count,
+                characters: JSON.parse(JSON.stringify(currentProfiles))
+            };
+            const filename = `RBQ角色档案库-${scopeLabel}-${new Date().toISOString().slice(0, 10)}.json`;
+            if (downloadJsonFile(exportData, filename)) {
+                toastr.success(`已成功导出 ${count} 位角色档案（${scopeLabel}）`, PLUGIN_NAME);
+            } else {
+                toastr.error('导出备份失败', PLUGIN_NAME);
+            }
+        });
+
+        const dossierFileInput = container.querySelector('#cw-import-dossier-file');
+        container.querySelector('#cw-import-dossier-btn')?.addEventListener('click', () => {
+            dossierFileInput?.click();
+        });
+        dossierFileInput?.addEventListener('change', (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const raw = JSON.parse(ev.target.result);
+                    let importedCount = 0;
+                    if (raw.character && typeof raw.character === 'object') {
+                        const char = raw.character;
+                        const charName = char.displayName || char.name || file.name.replace(/\.json$/i, '');
+                        saveProfile(charName, char, 'chat');
+                        importedCount = 1;
+                    } else if (raw.characters && typeof raw.characters === 'object') {
+                        if (Array.isArray(raw.characters)) {
+                            for (const char of raw.characters) {
+                                if (char && typeof char === 'object') {
+                                    const charName = char.displayName || char.name;
+                                    if (charName) {
+                                        saveProfile(charName, char, 'chat');
+                                        importedCount++;
+                                    }
+                                }
+                            }
+                        } else {
+                            for (const [k, char] of Object.entries(raw.characters)) {
+                                if (char && typeof char === 'object') {
+                                    const charName = char.displayName || k;
+                                    saveProfile(charName, char, 'chat');
+                                    importedCount++;
+                                }
+                            }
+                        }
+                    } else if (raw.baseTags !== undefined || raw.wardrobe !== undefined || raw.nameTag !== undefined) {
+                        const charName = raw.displayName || raw.name || file.name.replace(/\.json$/i, '');
+                        saveProfile(charName, raw, 'chat');
+                        importedCount = 1;
+                    } else if (typeof raw === 'object' && Object.keys(raw).length > 0) {
+                        for (const [k, v] of Object.entries(raw)) {
+                            if (v && typeof v === 'object' && (v.baseTags !== undefined || v.wardrobe !== undefined || v.displayName)) {
+                                const charName = v.displayName || k;
+                                saveProfile(charName, v, 'chat');
+                                importedCount++;
+                            }
+                        }
+                    }
+
+                    if (importedCount > 0) {
+                        toastr.success(`成功导入 ${importedCount} 位角色档案到当前会话！`, PLUGIN_NAME);
+                        refresh('dossier');
+                    } else {
+                        toastr.warning('未在文件中识别到有效的角色档案数据', PLUGIN_NAME);
+                    }
+                } catch (err) {
+                    toastr.error('导入角色档案失败: ' + (err.message || err), PLUGIN_NAME);
+                } finally {
+                    e.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        });
 
         container.querySelector('#cw-create-char')?.addEventListener('click', () => openCharacterEditor(null, () => refresh('dossier')));
 

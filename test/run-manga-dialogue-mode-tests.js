@@ -201,7 +201,7 @@ test('ordinary character memory and matching gray views are identical under both
         const context = sdt.captureMangaRequestContext(null,1);
         const result = sdt.normalizeTaggerResult({shouldDraw:true,segments:[scene(mode,true)]},[],context);
         const profile = sdt.getCharacterProfile('Mina');
-        assert.equal(profile.baseTags,'Mina (original), ' + sourceBase);
+        assert.equal(profile.baseTags,sourceBase); assert.equal(profile.nameTag,'Mina (original)');
         assert.equal(profile.currentOutfit,sourceOutfit);
         assert.equal(result.mangaRenderSettings.dialogueMode,mode);
         assert.match(result.characters[0].caption,/long light grey hair/);

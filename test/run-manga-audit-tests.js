@@ -26,7 +26,7 @@ test('original identity suffix belongs to rendered/stored name, canonical key on
     assert.equal(sdt.ensureCharacterNameTag('Ami (original)','Ami, girl'), 'Ami (original), girl');
     assert.equal(sdt.ensureCharacterNameTag('Ami','Ami (original), girl'), 'Ami (original), girl');
     const result=sdt.normalizeTaggerResult({shouldDraw:true,segments:[page([{}])]},[],{messageId:1});
-    assert.equal(sdt.getCharacterProfile('Ami').baseTags,'Ami (original), girl, silver hair');
+    assert.equal(sdt.getCharacterProfile('Ami').baseTags,'girl, silver hair');
     assert.equal(sdt.getCharacterProfile('Ami'),sdt.getCharacterProfile('Ami (original)'));
     assert.match(result.characters[0].caption,/^Ami \(original\), girl/);
 });
@@ -41,7 +41,7 @@ test('fan identity weights are identical on ordinary first render, reuse and man
     assert.equal(again,first);
     const resolved=RBQ.api.mangaProtocol.resolveAppearances([page([{name,base:'girl'}])]);
     assert.equal(manga.compileMangaPage(resolved[0]).characters[0].caption,first);
-    assert.equal(sdt.getCharacterProfile(name).baseTags,'Alice (Example Series), girl');
+    assert.equal(sdt.getCharacterProfile(name).baseTags,'girl');
     assert.equal(sdt.renderCharacterMemoryBase(name,'2::Alice (Example Series)::, girl, Text: Alice (Example Series)'),
         '2::Alice (Example Series)::, girl, Text: Alice (Example Series)');
 });

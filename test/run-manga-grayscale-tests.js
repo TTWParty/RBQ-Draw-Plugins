@@ -162,7 +162,7 @@ test('new gray parses save full-color identity, wardrobe and temporal history on
     const raw = { shouldDraw: true, segments: [page([first(), { state: { outfit: 'red coat' }, render: { outfit: 'dark coat' } }])] };
     const result = sdt.normalizeTaggerResult(raw, [], sdt.captureMangaRequestContext(null, 1));
     const profile = sdt.getCharacterProfile('Mina');
-    assert.equal(profile.baseTags, 'Mina (original), ' + originalBase); assert.equal(profile.currentOutfit, 'red coat');
+    assert.equal(profile.baseTags, originalBase); assert.equal(profile.nameTag, 'Mina (original)'); assert.equal(profile.currentOutfit, 'red coat');
     assert.ok(JSON.stringify(profile).includes(originalOutfit));
     assert.doesNotMatch(JSON.stringify(profile), /light grey|dark coat|"render"/);
     assert.match(result.characters[1].caption, /dark coat/);
@@ -350,7 +350,7 @@ test('Chinese-keyed identity persists through gray cache reload and temporary ap
     const profile = sdt.getCharacterProfile('神谷美咲');
     assert.equal(profile.displayName,'神谷美咲');
     assert.equal(profile.nameTag,'kamiya misaki (original)');
-    assert.equal(profile.baseTags,'kamiya misaki (original), ' + originalBase);
+    assert.equal(profile.baseTags,originalBase);
     assert.equal(profile.currentOutfit,originalOutfit);
     assert.equal(sdt.getMangaRenderCacheRows().length,3);
     const lastCaption = result.characters.at(-1).caption;
@@ -377,12 +377,12 @@ test('confirmed English identity repairs legacy Chinese tokens without discardin
         if (temporary) people.push({name:'毛利兰',state:{base:oldBase.replace('long blonde hair','short red hair')},
             render:{base:oldGray.replace('long light grey hair','short dark hair')}});
         parse(people);
-        assert.equal(sdt.getCharacterProfile('毛利兰').baseTags,oldBase);
+        assert.equal(sdt.getCharacterProfile('毛利兰').baseTags,originalBase);
         const repaired = parse([{name:'毛利兰',name_tag:'mouri ran'}],2);
         const profile = sdt.getCharacterProfile('毛利兰');
         assert.equal(profile.nameTag,'mouri ran');
-        assert.equal(profile.baseTags,'mouri ran, ' + originalBase);
-        assert.equal(profile.previousBaseTags,oldBase);
+        assert.equal(profile.baseTags,originalBase);
+        assert.equal(profile.previousBaseTags,undefined); // base already stored nameless (6.5.40 contract), nothing to repair
         assert.equal(profile.currentOutfit,originalOutfit);
         assert.equal(repaired.renderWarnings,undefined);
         assert.match(repaired.characters[0].caption,/mouri ran/);
@@ -418,8 +418,8 @@ test('bare English identity upgrades its original suffix while retaining matchin
     const result = parse([{name:'Mina (original)'}],2);
     const profile = sdt.getCharacterProfile('Mina');
     assert.equal(profile.nameTag,'Mina (original)');
-    assert.equal(profile.baseTags,'Mina (original), ' + originalBase);
-    assert.equal(profile.previousBaseTags,bareBase);
+    assert.equal(profile.baseTags,originalBase);
+    assert.equal(bareBase,originalBase); assert.equal(profile.previousBaseTags,undefined); // nameless base unchanged by nameTag upgrade
     assert.equal(profile.currentOutfit,originalOutfit);
     assert.match(result.characters[0].caption,/Mina \(original\).*long light grey hair/);
     assert.ok(result.characters[0].caption.includes(grayOutfit));

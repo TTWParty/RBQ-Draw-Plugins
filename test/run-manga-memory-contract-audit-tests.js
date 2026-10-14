@@ -26,7 +26,7 @@ test('an explicit English drawing identity recovers an omitted initial archive n
     assert.equal(c.name, 'Lin Yao (original)');
     assert.equal(c.name_tag, 'Lin Yao (original)');
     assert.match(c.base, /^Lin Yao \(original\), /);
-    assert.equal(sdt.getCharacterProfile('Lin Yao').baseTags, c.base);
+    assert.equal(sdt.getCharacterProfile('Lin Yao').baseTags, 'girl, chinese, 35 years old, 180cm height, black hair');
 });
 test('an omitted archive name with a known drawing identity reuses the Chinese profile key', () => {
     sdt.updateCharacterProfile('林遥', 'chinese, girl, brown eyes', 'navy coat', null, true, { nameTag: 'Lin Yao (original)' });

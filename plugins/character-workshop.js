@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.33';
+    const VERSION = '2.2.35';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -658,6 +658,16 @@
         const bucket = ensureProfileBucket();
         // Editor fields are a partial profile; keep each chat's independent temporal history.
         const profileData = { ...bucket[name], ...data, displayName: data.displayName || name, updatedAt: Date.now() };
+        // An explicitly cleared name_tag removes the identity instead of storing an empty string.
+        const clearNameTag = Object.hasOwn(data, 'nameTag') && !String(data.nameTag || '').trim();
+        // Same for an explicitly cleared aliases list; global-sync copies follow identically.
+        const clearAliases = Object.hasOwn(data, 'aliases') && !(Array.isArray(data.aliases) ? data.aliases.length : String(data.aliases || '').trim());
+        const dropEmptyNameTag = obj => {
+            if (clearNameTag) { delete obj.nameTag; delete obj.nameTagSource; } else if (obj && !obj.nameTagSource) delete obj.nameTagSource;
+            if (clearAliases) delete obj.aliases;
+            return obj;
+        };
+        dropEmptyNameTag(profileData);
         if (!profileData.createdAt) profileData.createdAt = Date.now();
         if (!Array.isArray(profileData.wardrobe)) profileData.wardrobe = [];
         bucket[name] = profileData;
@@ -671,9 +681,9 @@
                         if (chatDict[name] || (data.displayName && chatDict[data.displayName])) {
                             const targetKey = chatDict[name] ? name : data.displayName;
                             const existing = chatDict[targetKey];
-                            chatDict[targetKey] = JSON.parse(JSON.stringify({ ...existing, ...data,
+                            chatDict[targetKey] = dropEmptyNameTag(JSON.parse(JSON.stringify({ ...existing, ...data,
                                 displayName: data.displayName || name, updatedAt: profileData.updatedAt,
-                                createdAt: existing.createdAt || profileData.createdAt }));
+                                createdAt: existing.createdAt || profileData.createdAt })));
                         }
                     }
                 }
@@ -1942,6 +1952,9 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
         const draft = {
             displayName: origProfile?.displayName || editName || '',
             nameTag: origProfile?.nameTag || '',
+            nameTagSource: origProfile?.nameTagSource || '',
+            aliasesText: (Array.isArray(origProfile?.aliases) ? origProfile.aliases
+                : String(origProfile?.aliases || '').split(/[,，]/)).map(a => String(a).trim()).filter(Boolean).join(', '),
             baseTags: origProfile?.baseTags || '',
             baseLocked: !!(origProfile?.baseLocked || origProfile?.isBaseLocked),
             isBaseLocked: !!(origProfile?.baseLocked || origProfile?.isBaseLocked),
@@ -1989,6 +2002,14 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                     <div style="display:flex;gap:6px;align-items:center">
                                         <span style="font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap">头像 URL:</span>
                                         <input id="cw-ce-avatar-url" class="cw-in" type="text" placeholder="https://... 或测试立绘后一键设为头像" value="${esc(draft.avatarUrl)}" style="font-size:11px;padding:3px 8px" />
+                                    </div>
+                                    <div style="display:flex;gap:6px;align-items:center">
+                                        <span style="font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap">英文绘图名 (name_tag):</span>
+                                        <input id="cw-ce-name-tag" class="cw-in" type="text" placeholder="如 Hayase Saki (Blue Archive)；原创写 Name (original)；留空由 AI 根据剧情判断" value="${esc(draft.nameTag)}" style="font-size:11px;padding:3px 8px" />
+                                    </div>
+                                    <div style="display:flex;gap:6px;align-items:center">
+                                        <span style="font-size:10.5px;color:rgba(255,255,255,.5);white-space:nowrap">别名:</span>
+                                        <input id="cw-ce-aliases" class="cw-in" type="text" placeholder="如 早濑咲, 早瀬ユウカ, 咲" value="${esc(draft.aliasesText)}" style="font-size:11px;padding:3px 8px" />
                                     </div>
                                 </div>
                             </div>
@@ -2063,6 +2084,11 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             mask.querySelector('#cw-ce-cancel')?.addEventListener('click', () => mask.remove());
 
             mask.querySelector('#cw-ce-name')?.addEventListener('input', e => { draft.displayName = e.target.value.trim(); });
+            mask.querySelector('#cw-ce-aliases')?.addEventListener('input', e => { draft.aliasesText = e.target.value; });
+            mask.querySelector('#cw-ce-name-tag')?.addEventListener('input', e => {
+                draft.nameTag = e.target.value.trim();
+                draft.nameTagSource = 'user';
+            });
             mask.querySelector('#cw-ce-avatar-url')?.addEventListener('input', e => {
                 draft.avatarUrl = e.target.value.trim();
                 const ab = mask.querySelector('#cw-ce-avatar-box');
@@ -2137,7 +2163,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         draft.outfitLocked = draft.isOutfitLocked;
                     }
                     render();
-                    toastr.info(draft.wardrobe[activeWIdx].locked ? `已锁定服装「${draft.wardrobe[activeWIdx].name}」（生图后不被顶替）` : `已解锁服装「${draft.wardrobe[activeWIdx].name}」`, PLUGIN_NAME);
+                    toastr.info(draft.wardrobe[activeWIdx].locked ? `已锁定服装「${draft.wardrobe[activeWIdx].name}」（生图不改写其内容；换装/新服装照常收录）` : `已解锁服装「${draft.wardrobe[activeWIdx].name}」`, PLUGIN_NAME);
                 }
             });
 
@@ -2181,6 +2207,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             if (updated) {
                                 draft.displayName = updated.displayName || charName;
                                 draft.nameTag = updated.nameTag || draft.nameTag;
+                                if (updated.nameTag) draft.nameTagSource = updated.nameTagSource || 'user';
                                 draft.baseTags = updated.baseTags || draft.baseTags;
                                 draft.previousBaseTags = updated.previousBaseTags;
                                 draft.currentOutfit = updated.currentOutfit || draft.currentOutfit;
@@ -2250,9 +2277,17 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     draft.outfitLocked = draft.isOutfitLocked;
                 }
 
+                // Manual name_tag is authoritative ('user'); empty clears it so AI decides from the story.
+                const nameTagValue = String(draft.nameTag || '').trim();
+                // "a, b，c" → trimmed, case-insensitively deduped alias list.
+                const aliasSeen = new Set();
+                const aliasesValue = String(draft.aliasesText || '').split(/[,，]/).map(v => v.trim())
+                    .filter(v => v && !aliasSeen.has(v.toLowerCase()) && aliasSeen.add(v.toLowerCase()));
                 saveProfile(name, {
                     displayName: name,
-                    nameTag: draft.nameTag,
+                    nameTag: nameTagValue,
+                    aliases: aliasesValue,
+                    nameTagSource: nameTagValue ? (draft.nameTagSource || (origProfile?.nameTag === nameTagValue ? '' : 'user')) : '',
                     baseTags: draft.baseTags,
                     baseLocked: draft.baseLocked,
                     isBaseLocked: draft.baseLocked,

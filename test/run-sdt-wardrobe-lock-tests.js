@@ -44,6 +44,8 @@ function createEnv() {
 
     return { sdt, settings };
 }
+const cap = (r) => (r && typeof r === 'object' && 'caption' in r) ? r.caption : r;
+
 
 // Test 1: wardrobe_outfit explicit selection resolves preset tags
 test('wardrobe_outfit explicit selection resolves exact preset tags without regex guessing', () => {
@@ -81,8 +83,9 @@ test('wardrobe_outfit explicit selection resolves exact preset tags without rege
     };
     Object.assign(sdt.getCharacterProfiles(), profiles);
 
+    // 6.5.43: lock protects content, not switching — an explicit claim switches even while locked.
     // LLM outputs wardrobe_outfit: "蓝色吊带睡衣", but passes simple outfit: "nightgown"
-    const caption = sdt.mergeCharacterCaption(
+    const caption = cap(sdt.mergeCharacterCaption(
         '芙宁娜',
         '1girl, blue eyes',
         'nightgown',
@@ -90,18 +93,18 @@ test('wardrobe_outfit explicit selection resolves exact preset tags without rege
         '',
         'furina (genshin impact)',
         { wardrobeOutfit: '蓝色吊带睡衣' }
-    );
+    ));
 
     // Caption should contain the exact preset outfit tags
     assert.match(caption, /blue silk nightgown, camisole, lace trim, bare shoulders/);
     assert.match(caption, /furina \(genshin impact\)/);
     assert.match(caption, /sitting on bed, blush/);
 
-    // Character's currentOutfitId should be updated to w_pajamas
+    // Character's currentOutfitId should be updated to w_pajamas (parse writes; no new wardrobe entry for preset claim)
     const updated = sdt.getCharacterProfile('芙宁娜');
     assert.equal(updated.currentOutfitId, 'w_pajamas');
     assert.equal(updated.currentOutfit, 'blue silk nightgown, camisole, lace trim, bare shoulders');
-    // The preset tags themselves should remain unchanged
+    assert.equal(updated.wardrobe.length, 2);
     const preset = updated.wardrobe.find(w => w.id === 'w_pajamas');
     assert.equal(preset.outfit, 'blue silk nightgown, camisole, lace trim, bare shoulders');
 });
@@ -126,14 +129,14 @@ test('Base Lock (baseLocked: true) prevents temporary marks from corrupting save
 
     // Plot generates temporary erotic / battle mark in base and action
     const temporaryBaseWithMarks = '1girl, adult, long black hair, purple eyes, hickey on neck, scratch on collarbone';
-    const caption = sdt.mergeCharacterCaption(
+    const caption = cap(sdt.mergeCharacterCaption(
         '神里绫华',
         temporaryBaseWithMarks,
         'white kimono',
         'hickey on neck, shy, looking away',
         '',
         'kamisato ayaka (genshin impact)'
-    );
+    ));
 
     // The image caption for THIS turn includes the plot marks in action
     assert.match(caption, /hickey on neck/);
@@ -158,11 +161,16 @@ test('Brand new character learns initial baseTags and outfit', () => {
         '',
         'new char'
     );
-
     const updated = sdt.getCharacterProfile('新角色');
     assert.ok(updated);
     assert.match(updated.baseTags, /1girl, blonde hair, blue eyes/);
+    assert.doesNotMatch(updated.baseTags, /new char/i);
     assert.equal(updated.currentOutfit, 't-shirt');
+    // First non-empty outfit may seed wardrobe once
+    assert.equal(updated.wardrobe.length, 1);
+    // Re-parse same outfit must not grow wardrobe
+    sdt.mergeCharacterCaption('新角色', '1girl, blonde hair, blue eyes', 't-shirt', 'standing', '', 'new char');
+    assert.equal(sdt.getCharacterProfile('新角色').wardrobe.length, 1);
 });
 
 // Test 4: Outfit Lock prevents AI from overwriting preset tags
@@ -207,9 +215,7 @@ test('Outfit Lock prevents AI from mutating locked wardrobe preset', () => {
 
     const updated = sdt.getCharacterProfile('黑猫');
     const preset = updated.wardrobe.find(w => w.id === 'w_sailor');
-    // Preset outfit tags must NOT be overwritten by the AI's simplified output
     assert.equal(preset.outfit, originalPresetOutfit);
-    // Wardrobe length should not increase (no duplicate spam)
     assert.equal(updated.wardrobe.length, 1);
 });
 
@@ -283,17 +289,17 @@ test('wardrobe_outfit matching handles Chinese brackets, quotes, and string trig
     Object.assign(sdt.getCharacterProfiles(), profiles);
 
     // LLM outputs with Chinese brackets 【蓝色吊带睡衣】
-    const caption1 = sdt.mergeCharacterCaption(
+    const caption1 = cap(sdt.mergeCharacterCaption(
         '芙宁娜', '1girl, blue hair', 'nightgown', 'sitting', '', 'furina',
         { wardrobeOutfit: '【蓝色吊带睡衣】' }
-    );
+    ));
     assert.match(caption1, /blue silk nightgown, camisole/);
 
     // LLM outputs with quotes “吊带” (matches trigger)
-    const caption2 = sdt.mergeCharacterCaption(
+    const caption2 = cap(sdt.mergeCharacterCaption(
         '芙宁娜', '1girl, blue hair', 'nightgown', 'sitting', '', 'furina',
         { wardrobeOutfit: '“吊带”' }
-    );
+    ));
     assert.match(caption2, /blue silk nightgown, camisole/);
 });
 
@@ -323,8 +329,11 @@ test('Unlocked character allows normal plot outfit transitions and auto-archivin
     );
 
     const updated = sdt.getCharacterProfile('可莉');
-    // Unlocked outfit should update currentOutfit to the plot's new swimsuit
     assert.equal(updated.currentOutfit, 'red swimsuit, swimming ring');
+    // Real change from red dress → swimsuit archives once; re-parse does not stack
+    assert.equal(updated.wardrobe.length, 2);
+    sdt.mergeCharacterCaption('可莉', '1girl, blonde hair', 'red swimsuit, swimming ring', 'smiling', '', 'klee');
+    assert.equal(sdt.getCharacterProfile('可莉').wardrobe.length, 2);
 });
 
 console.log(`\n${passed} wardrobe & lock tests passed successfully.`);

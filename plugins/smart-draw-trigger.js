@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.37';
+    const PLUGIN_VERSION = '6.5.43';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -254,7 +254,8 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
 - 复杂动态补足：标签碎片拼不出的微妙语感（多段连贯动作/对抗拉扯/力学动态），用自然语言短句整体描述紧跟关联标签。
 
 ══ 角色外貌 7 维防伪矩阵与同人皮肤 ══
-- 同人角色名：2::Name (Series)::
+- 已建档角色：name 逐字复制档案 name_tag（无则复制档案名），不翻译不追加作品名；伤疤/面具/配饰/伤势等剧情变化照常写入 outfit/action
+- 新同人角色名：2::Name (Series)::
 - 同人官方皮肤：2::Name (Series) (skin name)::
 - 原创：OC 中译英 (original)
 - 配角：faceless male / faceless female
@@ -290,7 +291,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
 
 ══ 标签权重与括号等效 (Tag Weights) ══
 - 数字权重：n::tag:: 或 n::tag1, tag2::（n>1.0 增强，n<1.0 削弱，n<0 反向排斥）：
-  · 核心同人名：2::Name (Series)::
+  · 核心同人名（仅新角色；已建档角色逐字复制档案 name_tag）：2::Name (Series)::
   · 发色与核心着装：1.2::发色::
   · 核心动作与交互关键动词：1.2~1.4::动作::
   · 弱化次要/远景/氛围光：0.6::mountain::, 0.6::diffused light::
@@ -306,7 +307,7 @@ Scene 是整幅画面的空间坐标基座与全场总纲：
   · scene: 分层空间结构与环境总览字符串
   · negative: 全场通用负面排除词（Scene UC，包含分级底线词如 nude, completely nude 等，与角色私属 UC 隔离）
   · characters[i]:
-    - name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；同人皮肤用 "2::Name (Series) (skin name)::"；原创用 "Ami (original)"；配角用 "faceless male"
+    - name: 精确角色名。已建档角色必须逐字复制档案 name_tag（无则复制档案名），不翻译、不追加作品名；新同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；同人皮肤用 "2::Name (Series) (skin name)::"；原创用 "Ami (original)"；配角用 "faceless male"
     - base: 7维外貌防伪特征（纯净无服装动作）
     - outfit: 签名服装部件与穿着状态
     - action: 碎化肢体动作 + 动作权重 + 微表情
@@ -568,7 +569,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
 
 ══ 标签权重与括号等效 (Tag Weights) ══
 - 数字权重：n::tag:: 或 n::tag1, tag2::（n>1.0 增强，n<1.0 削弱，n<0 反向排斥）：
-  · 核心同人名：2::Name (Series)::
+  · 核心同人名（仅新角色；已建档角色逐字复制档案 name_tag）：2::Name (Series)::
   · 发色与核心着装：1.2::发色::
   · 核心动作与交互关键动词：1.2~1.4::动作::
   · 弱化次要/远景/氛围光：0.6::mountain::, 0.6::diffused light::
@@ -581,7 +582,7 @@ characters[i].center 负责在画面中给角色精准定位，实现受控布�
 - scene: 分层空间结构与环境总览字符串
 - negative: 全场通用负面排除词（Scene UC，包含分级底线词如 nude, completely nude 等，与角色私属 UC 隔离）
 - characters[i]:
-  · name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
+  · name: 精确角色名。已建档角色必须逐字复制档案 name_tag（无则复制档案名），不翻译、不追加作品名；新同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
   · base: 7维外貌防伪特征（纯净无服装动作）
   · outfit: 签名服装部件与穿着状态
   · action: 碎化肢体动作 + 动作权重 + 微表情
@@ -769,7 +770,7 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
 ══ 字段格式 ══
 - scene: 分层空间结构与环境总览字符串
 - characters[i]:
-  · name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
+  · name: 精确角色名。已建档角色必须逐字复制档案 name_tag（无则复制档案名），不翻译、不追加作品名；新同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
   · base: 7维外貌防伪码（纯净无服装动作）
   · outfit: 签名服装部件与穿着状态
   · action: 碎化肢体动作 + 动作权重 + 微表情
@@ -933,7 +934,7 @@ characters[i].action 必须将全身姿势、手部与神态细化拆解：
 ══ 字段格式 ══
 - scene: 分层空间结构与环境总览字符串
 - characters[i]:
-  · name: 精确角色名。同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
+  · name: 精确角色名。已建档角色必须逐字复制档案 name_tag（无则复制档案名），不翻译、不追加作品名；新同人角色带作品全称如 "Kaguya Shinomiya (Kaguya-sama: Love Is War)"（引擎自动加权为 2::Name::）；原创用 "Ami (original)"；配角用 "faceless male"
   · base: 7维外貌防伪码（纯净无服装动作）
   · outfit: 签名服装部件与穿着状态
   · action: 碎化肢体动作 + 动作权重 + 微表情
@@ -2053,7 +2054,7 @@ Zimage 擅长理解复杂的英文长句和语境。
 
 ══ 模块二：角色规格、服装签名与微观动作 (Character & Action) ══
 1. 【角色外貌 7 维防伪矩阵与同人皮肤】：
-   - 命名标准：同人角色 2::Name (Series)::；同人官方皮肤 2::Name (Series) (skin name)::；原创 OC (original)；配角 faceless male / faceless female。
+   - 命名标准（仅资产库外的新角色；已建档角色逐字复制档案 name_tag）：同人角色 2::Name (Series)::；同人官方皮肤 2::Name (Series) (skin name)::；原创 OC (original)；配角 faceless male / faceless female。
    - 7 维外貌公式（写在 base 字段，纯净无临时服装与临时动作）：
      ① 性别：girl / boy（严禁带数字如 1girl，防人数干扰）
      ② 面相/族裔：japanese, delicate_face（日系二次元必带，锁定动漫秀气五官，防欧美化漂移）/ caucasian / western 等
@@ -3103,6 +3104,109 @@ Zimage 擅长理解复杂的英文长句和语境。
         return String(name).trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').replace(/\s*[\(\[（【](original|原创|fanart|同人)[\)\]）】]/gi, '').trim();
     }
 
+    // ── Lookup-only name normalization (storage keys are never rewritten) ──
+    // Strips weights (2::x::, {x}, [x]), ALL trailing parenthetical groups (series, skin,
+    // original, 同人…), unifies separators/width and lowercases.
+    function getCharMatchKey(name) {
+        if (name == null) return '';
+        let s = String(name).normalize('NFKC').trim();
+        let prev;
+        do {
+            prev = s;
+            s = s.replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]*?)::$/, '$1').trim();
+            s = s.replace(/^\{+([\s\S]*?)\}+$/, '$1').replace(/^\[+([\s\S]*?)\]+$/, '$1').trim();
+            s = s.replace(/\s*[(\[【][^()\[\]【】]*[)\]】]\s*$/, '').trim();
+        } while (s && s !== prev);
+        return s.replace(/[_·・‧･\-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function getSwappedCharMatchKey(key) {
+        const m = /^([a-z\u00c0-\u024f']+) ([a-z\u00c0-\u024f']+)$/.exec(String(key || ''));
+        return m ? `${m[2]} ${m[1]}` : '';
+    }
+
+    function getProfileAliasList(p) {
+        const raw = p && p.aliases;
+        if (Array.isArray(raw)) return raw.map(a => String(a || '').trim()).filter(Boolean);
+        if (typeof raw === 'string') return raw.split(/[,，、;；\n]+/).map(a => a.trim()).filter(Boolean);
+        return [];
+    }
+
+    function getProfileNameCandidates(k, p) {
+        return [k, p && p.displayName, p && p.nameTag, ...getProfileAliasList(p)].filter(v => typeof v === 'string' && v.trim());
+    }
+
+    function stripCharWeight(name) {
+        return String(name || '').normalize('NFKC').trim().replace(/^[-+]?\d+(?:\.\d+)?::([\s\S]+)::$/, '$1').trim();
+    }
+
+    // A nameTag already carries a parenthetical identity (series, skin or explicit original).
+    function hasCharIdentitySuffix(name) {
+        return /[(\[【][^()\[\]【】]+[)\]】]\s*$/.test(stripCharWeight(name));
+    }
+    function hasCharSeriesSuffix(name) {
+        const m = /[(\[【]([^()\[\]【】]+)[)\]】]\s*$/.exec(stripCharWeight(name));
+        return !!m && !/^(?:original|原创|同人|fanart|oc)$/i.test(m[1].trim());
+    }
+    // Source of a stored nameTag: 'user' (workshop / extract confirm) or 'llm' (parse backfill).
+    // Legacy profiles without a source count as 'llm' unless the tag already carries a series.
+    function getNameTagSource(profile) {
+        if (!profile?.nameTag) return '';
+        if (profile.nameTagSource === 'user' || profile.nameTagSource === 'llm') return profile.nameTagSource;
+        return hasCharSeriesSuffix(profile.nameTag) ? 'user' : 'llm';
+    }
+    // An LLM-guessed "Name (original)" may become "Name (Series)" when the romaji name part is the same person.
+    function isUpgradeableOriginalNameTag(profile, nextTag) {
+        const current = String(profile?.nameTag || '');
+        if (!current || !nextTag || getNameTagSource(profile) !== 'llm') return false;
+        if (!hasCharIdentitySuffix(current) || hasCharSeriesSuffix(current) || !hasCharSeriesSuffix(nextTag)) return false;
+        const bare = v => stripCharWeight(v).replace(/\s*[(\[【][^()\[\]【】]+[)\]】]\s*$/, '').trim();
+        const a = getCharMatchKey(bare(current)), b = getCharMatchKey(bare(nextTag));
+        return !!a && a === b;
+    }
+
+    // exact → normalized → swapped(2-word Latin). Ambiguous normalized hits prefer an exact
+    // displayName/nameTag hit, otherwise refuse to merge.
+    function findCharacterProfileEntry(profiles, rawName) {
+        if (!profiles || typeof profiles !== 'object') return null;
+        const raw = String(rawName || '').trim();
+        if (!raw) return null;
+        const canonical = getCanonicalCharName(raw);
+        if (canonical && profiles[canonical]) return [canonical, profiles[canonical]];
+        if (profiles[raw]) return [raw, profiles[raw]];
+
+        const entries = Object.entries(profiles).filter(([k, p]) => p && typeof p === 'object');
+        const lowerCanon = canonical.toLowerCase();
+        for (const [k, p] of entries) {
+            const pCanon = getCanonicalCharName(p.displayName || k).toLowerCase();
+            const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase();
+            const aliasHit = getProfileAliasList(p).some(a => getCanonicalCharName(a).toLowerCase() === lowerCanon);
+            if (k.toLowerCase() === lowerCanon || pCanon === lowerCanon || (tagCanon && tagCanon === lowerCanon) || aliasHit) return [k, p];
+        }
+
+        const key = getCharMatchKey(raw);
+        if (!key || key.length < 2) return null;
+        const pick = (target) => {
+            const hits = entries.filter(([k, p]) => getProfileNameCandidates(k, p).some(c => getCharMatchKey(c) === target));
+            if (hits.length <= 1) return hits[0] || null;
+            const rawLower = stripCharWeight(raw).toLowerCase();
+            const exact = hits.filter(([k, p]) => [p.displayName, p.nameTag].some(v => v && stripCharWeight(v).toLowerCase() === rawLower));
+            if (exact.length === 1) return exact[0];
+            debugInfo(`⚠️ 角色名「${raw}」规范化后命中多个档案（${hits.map(h => h[0]).join(' / ')}），为避免误合并不做匹配`);
+            return 'ambiguous';
+        };
+        let hit = pick(key);
+        if (hit === 'ambiguous') return null;
+        if (hit) return hit;
+        const swapped = getSwappedCharMatchKey(key);
+        if (swapped) {
+            hit = pick(swapped);
+            if (hit && hit !== 'ambiguous') return hit;
+        }
+        return null;
+    }
+    RBQ.api.getCharMatchKey = getCharMatchKey;
+
     function getCharacterMemoryTagSpecification() {
         return `【角色记忆标签规格】
 base/outfit 使用英文逗号分隔的可视标签，优先常用 Danbooru 标签；无合适标签时仅用短视觉词组，不写人物小传或整句说明。
@@ -3113,7 +3217,7 @@ base 按七维逐项检查，已明确的特征不得遗漏：
 ④ 发色、发长、发型、刘海；⑤ 瞳色、眼型；⑥ 高矮、体格、身体比例及有辨识度的体态；⑦ 肤色、永久身体标记及幻想种族特征。
 依据角色卡、世界书、正文和可靠原作设定提取；“未知不猜”不代表可以省略已有设定。未知年龄、国籍、族裔和标记不臆造，不为凑齐七维强加特征。精确年龄、身高等已有数值如 35 years old、180cm height 原样保留，可同时补对应的已知年龄阶段和体型；不能以视觉化为由删掉明确数值。
 outfit 逐件组织：[颜色] [已知材质] [服装款式] [长度/穿着状态] + 辨识细节；区分内外层、上下装和鞋袜配饰，保留已知领型、袖长、裙长、靴筒长度、花纹，未知材质和颜色不猜。不要把一整套衣服写成一句叙述。
-base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。绘图姓名必须使用英文/罗马字：同人用通用英文角色 Tag (作品英文名)，如 Mouri Ran (Detective Conan)；原创用已知英文名或姓名罗马字 (original)，如 Lin Yao (original)。不能把中文姓名当绘图 Tag，不把姓名意译为人物属性，不凭空添加作品。
+base 不含衣物、动作、表情、手持物、构图、画风或对白；outfit 不含身体外貌、动作和背景。绘图姓名必须使用英文/罗马字：同人用通用英文角色 Tag (作品英文名)，如 Mouri Ran (Detective Conan)；原创用已知英文名或姓名罗马字 (original)，如 Lin Yao (original)。不能把中文姓名当绘图 Tag，不把姓名意译为人物属性。档案缺 name_tag 或仅为 (original) 时，先依据正文、世界书、角色卡和姓名本身判断是否出自已有作品（动画/游戏/小说）：是则写通用英文/罗马字角色 Tag (作品英文名)，如 Hayase Saki (Blue Archive)；仅确为原创时用 (original)。无依据时不臆造作品。
 name 用于资料关联，已有档案沿用其 name，不改名另建档。中文关联名另给 name_tag="英文/罗马字绘图身份"；新人物可直接用完整英文 name。已有 name_tag 原样复用，仅首次/旧档缺失时每人提供一次，后格沿用。程序将绘图身份拼入 base 并保存，base 不必重复填写姓名。已存英文普通姓名、角色 Tag、original 或作品后缀保留；旧档精确中文姓名词由确认的 name_tag 替换，其余外貌原样复用。可脱卸配饰归 outfit，永久生理特征归 base。`;
     }
 
@@ -3146,20 +3250,21 @@ ${getCharacterMemoryTagSpecification()}
                     ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
                     : '';
                 return `  * 角色「${name}」:
-    - name_tag (英文绘图身份): ${p.nameTag || '(按命名模板补充，不改档案姓名)'}
+    - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
     - base (固定外貌DNA · ${isBaseLocked ? '🔒已锁定防篡改' : '跨图绝对锁定'}): ${base || '(首次登场提炼)'}
-    - outfit (当前服装签名${isOutfitLocked ? ' · 🔒已锁定' : ' · 随换装剧情演进'}): ${outfit || '(根据剧情即时提炼)'}${wardrobe}`;
+    - outfit (当前服装签名${isOutfitLocked ? ' · 🔒内容锁定（可换装，新服装另行收录）' : ' · 随换装剧情演进'}): ${outfit || '(根据剧情即时提炼)'}${wardrobe}`;
             }).join('\n');
 
             activeRegistrySection = `
 【🧠 当前会话已锁定的角色外貌记忆资产库 (Active Character Memory Registry)】
 以下角色已在系统中建档并锁定了永久视觉 DNA (L0 Base) 与当前服装 (L1 Outfit)。
 【核心资产复用契约与衣柜认领规则】：
-1. 凡剧情中登场的角色与上述资产库匹配时，必须直接引用该角色的真实名称填入 name 字段；
+1. 凡剧情中登场的角色与上述资产库匹配时（含中文名、别名、昵称、姓名顺序不同的同一人），name 字段必须逐字复制该角色的 name_tag（无 name_tag 时复制「」内的档案名），禁止翻译、改写、调换姓名顺序或自行追加/删除作品名后缀；2::Name (Series):: 命名格式仅适用于资产库中没有的新角色；
 2. 必须 100% 原样复用其已锁定的 base 外貌标签，严禁在不同分镜或画格中随意改动或漂移其发色、瞳色、族裔与五官特征！
 3. 【衣柜预设显式认领 (wardrobe_outfit)】：
    - 若角色当前穿着符合上述「可选衣柜预设」中的某套服装预设（例如：校服、蓝色吊带睡衣等），请直接在 wardrobe_outfit 字段中填写对应的预设名称（例如: "蓝色吊带睡衣"）；系统将直接调取用户预设的高精提示词。
    - 若剧情中角色换穿了衣柜中未收录的全新服装、衣物破损或处于裸体状态，请将 wardrobe_outfit 留空，并在 outfit 字段中输出当次画面的英文描述。
+   - 新服装可另填 outfit_name：2-8 字中文服装名（如 白色连衣裙），仅用于衣柜命名，不进绘图。
 4. 若剧情未发生换装/脱衣，且未命中新的衣柜预设，outfit 默认沿用当前服装；若剧情发生明确解衣、湿身、撕裂或换装，则在本格更新 outfit。
 ${listText}
 `;
@@ -3177,13 +3282,13 @@ ${listText}
                         ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
                         : '';
                     return `  * 已知全局角色资产「${name}」:
-    - name_tag (英文绘图身份): ${p.nameTag || '(按命名模板补充，不改档案姓名)'}
+    - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
     - base (固定外貌DNA · ${isBaseLocked ? '🔒已锁定' : '跨图锁定'}): ${base || '(首次登场提炼)'}
-    - outfit (典型服装${isOutfitLocked ? ' · 🔒已锁定' : ''}): ${outfit || '(剧情提炼)'}${wardrobe}`;
+    - outfit (典型服装${isOutfitLocked ? ' · 🔒内容锁定（可换装）' : ''}): ${outfit || '(剧情提炼)'}${wardrobe}`;
                 }).join('\n');
                 activeRegistrySection = `
 【🧠 角色外貌记忆资产库参考 (Known Global Character Profiles)】
-当前会话为新聊天，但系统中已收录以下全局角色资产。若本剧情中包含这些角色，请直接继承其真实 name 与 base：
+当前会话为新聊天，但系统中已收录以下全局角色资产。若本剧情中包含这些角色（含中文名、别名、昵称），name 必须逐字复制其 name_tag（无则复制「」内档案名），禁止翻译改写或自行追加作品名，并直接继承其 base；2::Name (Series):: 格式仅用于新角色：
 ${globalListText}
 遇到其他新登场角色时，请严格按下述 7 维外貌防伪矩阵建立专属 base。
 `;
@@ -3200,9 +3305,10 @@ ${globalListText}
 
 1. 【角色外貌 7 维防伪矩阵与同人皮肤 (7-Dimensional Holographic Base DNA)】：
    - 命名标准：
+     * 【仅限资产库外的新角色】已建档角色的 name 一律逐字复制档案 name_tag（无则复制档案名），不翻译、不改写、不追加作品名。
      * 同人角色：2::Name (Series)::（例如 2::Cartethyia (Wuthering Waves)::、2::Raiden Shogun (Genshin Impact)::）
      * 同人官方皮肤：2::Name (Series) (skin name)::
-     * 原创角色：英文/罗马字 Name (original)（例如 Mira (original)、Shi Zun (original)）；中文资料关联名另用英文 name_tag，不直接注入绘图。
+     * 原创角色：英文/罗马字 Name (original)（例如 Mira (original)、Shi Zun (original)）；中文资料关联名另用英文 name_tag，不直接注入绘图。档案缺 name_tag 或仅为待确认的 (original) 时，先依据正文/世界书/角色卡与姓名判断是否出自已有作品，是则写 Name (作品英文名)，确为原创才用 (original)，无依据时不臆造作品。
      * 次要配角/路人：faceless male / faceless female 或简要外貌，禁止喧宾夺主。
    - 7 维外貌公式（写在 base 字段，纯净无临时服装与临时动作）：
      ① 性别：girl / boy（严禁带数字如 1girl，防人数干扰）
@@ -3236,7 +3342,7 @@ ${globalListText}
    - 多角色交互：使用 source#action / target#action / mutual#action 明确互动施受关系。
    - 空间连续坐标：center 统一采用连续浮点坐标对象 {"x": 0.5, "y": 0.5} 或网格 C3。
 
-资料 name 沿用已存档案的关联姓名，不能改名另建档。绘图身份必须为英文/罗马字；中文关联名在首次或旧档缺失时另给 name_tag。同人用通用英文角色 Tag (作品英文名)，原创用英文名或姓名罗马字 (original)，例如 Mouri Ran (Detective Conan)、Lin Yao (original)。已有 name_tag 原样复用，后续分镜沿用；只补绘图姓名，不重做固定外貌。
+资料 name 沿用已存档案的关联姓名（有 name_tag 时逐字复制 name_tag），不能改名另建档。沿用档案名不影响剧情变化：伤疤、伤口、面具、眼罩、新配饰、脏污破损等仍可自由写入 outfit/action。绘图身份必须为英文/罗马字；中文关联名在首次或旧档缺失时另给 name_tag。同人用通用英文角色 Tag (作品英文名)，原创用英文名或姓名罗马字 (original)，例如 Mouri Ran (Detective Conan)、Lin Yao (original)。缺 name_tag 或仅为待确认的 (original) 时，依据上下文与姓名判断所属作品，确为原创才写 (original)，无依据不臆造作品。已有带作品名的 name_tag 原样复用，后续分镜沿用；只补绘图姓名，不重做固定外貌。
 ${activeRegistrySection}`;
     }
 
@@ -3330,23 +3436,8 @@ ${activeRegistrySection}`;
     }
 
     function getCharacterProfile(name) {
-        const profiles = getCharacterProfiles();
-        const rawName = String(name || '').trim();
-        if (!rawName) return null;
-        const canonical = getCanonicalCharName(rawName);
-        
-        if (profiles[canonical]) return profiles[canonical];
-        if (profiles[rawName]) return profiles[rawName];
-
-        const lowerCanon = canonical.toLowerCase();
-        for (const [k, p] of Object.entries(profiles)) {
-            const pCanon = getCanonicalCharName(p.displayName || k);
-            const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase();
-            if (k.toLowerCase() === lowerCanon || pCanon.toLowerCase() === lowerCanon || (tagCanon && tagCanon === lowerCanon)) {
-                return p;
-            }
-        }
-        return null;
+        const hit = findCharacterProfileEntry(getCharacterProfiles(), name);
+        return hit ? hit[1] : null;
     }
 
     function isSameOutfit(a, b) {
@@ -3383,7 +3474,21 @@ ${activeRegistrySection}`;
         { regex: /\b(hoodie|jacket|cardigan|coat|sweater)\b/i, name: '外套/日常私服' },
     ];
 
-    function deriveOutfitName(canonicalName, outfitTags, isInitial = false) {
+    // LLM-supplied short Chinese outfit name (outfit_name). Returns '' when unusable.
+    function cleanOutfitName(value) {
+        const v = String(value || '').trim().replace(/^[【\[“"'「]+|[】\]”"'」]+$/g, '').replace(/^(?:剧情|初始)\s*[:：]\s*/, '').trim();
+        return v && !/[,，\n]/.test(v) && [...v].length <= 12 ? v : '';
+    }
+    function uniqueWardrobeName(wardrobe, name) {
+        const taken = new Set((Array.isArray(wardrobe) ? wardrobe : []).map(w => String(w?.name || '')));
+        if (!taken.has(name)) return name;
+        let i = 2;
+        while (taken.has(`${name} ${i}`)) i++;
+        return `${name} ${i}`;
+    }
+    function deriveOutfitName(canonicalName, outfitTags, isInitial = false, outfitName = '', wardrobe = null) {
+        const named = cleanOutfitName(outfitName);
+        if (named) return uniqueWardrobeName(wardrobe, `${isInitial ? '初始: ' : '剧情: '}${named}`);
         const rawTags = String(outfitTags || '').trim();
         if (!rawTags) return isInitial ? '初始设定服装' : '剧情着装';
 
@@ -3415,21 +3520,27 @@ ${activeRegistrySection}`;
         const nameTag = getCharacterNameTag(rawName, options.nameTag);
         if (existing) {
             const isBaseLocked = !!(existing.baseLocked || existing.isBaseLocked) && !options.forceUnlock;
-            const isOutfitLocked = !!(existing.outfitLocked || existing.isOutfitLocked || options.preserveOutfit) && !options.forceUnlock;
+            // Lock = protect outfit content from edits, not from switching. preserveOutfit (card import) freezes outfit fully.
+            const isOutfitLocked = !!(existing.outfitLocked || existing.isOutfitLocked) && !options.forceUnlock;
+            const freezeOutfit = !!options.preserveOutfit && !options.forceUnlock;
+            const previousOutfit = existing.currentOutfit || '';
 
             // Only an explicit card re-extraction may replace learned identity.
             // Keep the plot's current clothing when importing the card's default outfit.
             if (options.preserveOutfit && (existing.currentOutfit
                 || existing.wardrobe?.some(w => w.id === existing.currentOutfitId && (w.outfit === '' || w.tags === '')))) outfitTags = '';
 
+            let wroteOutfit = false;
             if (options.matchedPresetId) {
                 existing.currentOutfitId = options.matchedPresetId;
                 const matchedW = existing.wardrobe?.find(w => w.id === options.matchedPresetId);
                 if (matchedW) {
                     existing.currentOutfit = matchedW.outfit || matchedW.tags || '';
                 }
-            } else if (outfitTags && !isOutfitLocked) {
+            } else if (outfitTags && !freezeOutfit && (!isOutfitLocked || !isSameOutfit(previousOutfit, outfitTags))) {
+                // Locked: a near-same LLM rewrite never edits the stored text; a clearly different outfit is a change.
                 existing.currentOutfit = outfitTags;
+                wroteOutfit = true;
             }
 
             if (baseTags && (!existing.baseTags || (options.replaceBase && !isBaseLocked))) {
@@ -3437,24 +3548,56 @@ ${activeRegistrySection}`;
                 existing.baseTags = baseTags;
             }
             if (avatarUrl) existing.avatarUrl = avatarUrl;
-            if (nameTag && (!existing.nameTag || (options.replaceBase && !isBaseLocked))) existing.nameTag = nameTag;
+            // A fuller identity suffix (series or original) may upgrade a bare nameTag; locks guard base/outfit only.
+            const incomingSource = options.nameTagSource === 'user' ? 'user' : 'llm';
+            const storedSource = getNameTagSource(existing);
+            const canWriteNameTag = incomingSource === 'user'
+                // Never touch user tags from parse; never downgrade a series to (original)/bare.
+                || (storedSource !== 'user' && !(hasCharSeriesSuffix(existing.nameTag || '') && !hasCharSeriesSuffix(nameTag)));
+            if (nameTag && canWriteNameTag && (incomingSource === 'user' || !existing.nameTag || (options.replaceBase && !isBaseLocked)
+                || (options.backfillNameTag && hasCharIdentitySuffix(nameTag) && !hasCharIdentitySuffix(existing.nameTag))
+                || (options.backfillNameTag && isUpgradeableOriginalNameTag(existing, nameTag)))) {
+                if (existing.nameTag !== nameTag || existing.nameTagSource !== incomingSource) existing.nameTagSource = incomingSource;
+                existing.nameTag = nameTag;
+            }
             if (!Array.isArray(existing.wardrobe)) existing.wardrobe = [];
 
-            // Auto-archive new plot outfit to wardrobe if distinct and not locked
-            if (autoArchiveToWardrobe && !isOutfitLocked && outfitTags && outfitTags.length > 5) {
-                const alreadyExists = existing.wardrobe.some(w => isSameOutfit(w.outfit || w.tags, outfitTags));
-                if (!alreadyExists) {
-                    const nameStr = deriveOutfitName(canonical, outfitTags, false);
-                    existing.wardrobe.push({
-                        id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-                        name: nameStr,
-                        outfit: outfitTags,
-                        triggers: [],
-                        locked: false,
-                        createdAt: Date.now()
-                    });
-                    debugInfo(`👗 角色「${canonical}」新剧情服装已自动收录至衣柜: ${nameStr}`);
-                }
+            // Auto-archive only on a real outfit change (not re-parse / empty / preset claim / duplicate).
+            const outfitTrim = String(outfitTags || '').trim();
+            const shouldArchive = autoArchiveToWardrobe
+                && wroteOutfit
+                && !options.matchedPresetId
+                && !!outfitTrim
+                && outfitTrim.length > 5
+                && !isSameOutfit(previousOutfit, outfitTrim)
+                && !existing.wardrobe.some(w => isSameOutfit(w.outfit || w.tags, outfitTrim));
+            if (shouldArchive) {
+                const nameStr = deriveOutfitName(canonical, outfitTrim, false, options.outfitName, existing.wardrobe);
+                existing.wardrobe.push({
+                    id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                    name: nameStr,
+                    outfit: outfitTrim,
+                    triggers: [],
+                    locked: false,
+                    createdAt: Date.now()
+                });
+                debugInfo(`👗 角色「${canonical}」新剧情服装已自动收录至衣柜: ${nameStr}`);
+            }
+
+            // Keep currentOutfitId pointing at a real wardrobe entry matching currentOutfit.
+            if (!options.matchedPresetId && wroteOutfit) {
+                const active = existing.wardrobe.find(w => (w.outfit || w.tags || '') === existing.currentOutfit)
+                    || existing.wardrobe.find(w => isSameOutfit(w.outfit || w.tags, existing.currentOutfit));
+                if (active) existing.currentOutfitId = active.id;
+                else delete existing.currentOutfitId;
+            }
+            // Profile-level lock mirrors the worn item's lock (same as the SDT panel and 角色工坊) after a switch.
+            if (options.matchedPresetId || wroteOutfit) {
+                const worn = existing.wardrobe.find(w => w.id === existing.currentOutfitId);
+                if (worn) { existing.outfitLocked = !!worn.locked; existing.isOutfitLocked = !!worn.locked; }
+            }
+            if (existing.currentOutfitId && !existing.wardrobe.some(w => w.id === existing.currentOutfitId)) {
+                delete existing.currentOutfitId;
             }
 
             existing.updatedAt = Date.now();
@@ -3462,7 +3605,7 @@ ${activeRegistrySection}`;
         } else {
             const initialWardrobe = [];
             if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
-                const nameStr = deriveOutfitName(canonical, outfitTags, true);
+                const nameStr = deriveOutfitName(canonical, outfitTags, true, options.outfitName);
                 initialWardrobe.push({
                     id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                     name: nameStr,
@@ -3483,6 +3626,7 @@ ${activeRegistrySection}`;
                 currentOutfit: outfitTags || '',
                 avatarUrl: avatarUrl || '',
                 wardrobe: initialWardrobe,
+                ...(initialWardrobe[0] ? { currentOutfitId: initialWardrobe[0].id } : {}),
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
@@ -3625,15 +3769,26 @@ ${activeRegistrySection}`;
 
     /**
      * Merge character memory with LLM output.
+     * Writes profile/outfit/nameTag during parse; wardrobe archives only on a real outfit change.
+     * Stored baseTags never include the drawing name — name is added only for the caption.
      * @returns {string} Final merged caption for char_caption
      */
-    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, nameTag = '', wardrobeOutfit = '') {
+    function mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, nameTag = '', wardrobeOutfit = '', outfitName = '') {
+        if (!outfitName && wardrobeOutfit && typeof wardrobeOutfit === 'object') outfitName = wardrobeOutfit.outfitName || wardrobeOutfit.outfit_name || '';
         const store = getStore();
         const chatKey = getChatKey();
         const isJunk = isJunkCharacterName(name);
         const cleanName = isJunk ? '' : String(name || '').trim();
         const profile = cleanName && store.characterMemoryEnabled ? getCharacterProfile(cleanName) : null;
-        const drawingName = getCharacterNameTag(nameTag || cleanName, profile?.nameTag || nameTag);
+        // Backfill a full fan identity ("Name (Series)" / "(original)") regardless of locks; locks guard base/outfit only.
+        let pendingNameTag = null;
+        if (profile) {
+            const fullTag = [nameTag, cleanName].map(v => getCharacterNameTag(v)).find(v => v && hasCharIdentitySuffix(v));
+            if (fullTag && (!hasCharIdentitySuffix(profile.nameTag || '') || isUpgradeableOriginalNameTag(profile, fullTag))) {
+                pendingNameTag = stripCharWeight(fullTag);
+            }
+        }
+        const drawingName = getCharacterNameTag(nameTag || cleanName, pendingNameTag || profile?.nameTag || nameTag);
         const weightedName = weightCharacterName(drawingName);
         if (isMangaRequest(store)) {
             return [llmBase, llmOutfit, llmAction].filter(Boolean).join(', ');
@@ -3649,89 +3804,109 @@ ${activeRegistrySection}`;
         }
 
         let finalBase, finalOutfit;
+        const identityArgs = [drawingName, cleanName, profile?.nameTag, profile?.displayName, pendingNameTag];
 
         if (profile) {
             // 1. 优先检查 LLM 是否显式认领了衣柜中已收录的预设服装 (wardrobe_outfit)
             let effectiveOutfit = llmOutfit;
             let matchedPreset = null;
+            const profileOutfitLocked = !!(profile.outfitLocked || profile.isOutfitLocked);
             const wardrobeClaim = typeof wardrobeOutfit === 'object' && wardrobeOutfit !== null
                 ? (wardrobeOutfit.wardrobeOutfit || wardrobeOutfit.wardrobe_outfit || '')
                 : wardrobeOutfit;
             if (wardrobeClaim && Array.isArray(profile.wardrobe) && profile.wardrobe.length > 0) {
                 const targetW = String(wardrobeClaim).trim().toLowerCase();
                 const cleanTarget = targetW.replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
-                matchedPreset = profile.wardrobe.find(w => {
-                    if (!w || !w.name) return false;
-                    const wName = String(w.name).trim().toLowerCase();
-                    const cleanWName = wName.replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
-                    if (wName === targetW || cleanWName === cleanTarget || cleanWName === targetW || wName === cleanTarget) return true;
-                    if (cleanTarget.length >= 2 && (cleanWName.includes(cleanTarget) || cleanTarget.includes(cleanWName))) return true;
-                    const triggerList = Array.isArray(w.triggers)
-                        ? w.triggers
-                        : (typeof w.triggers === 'string' ? w.triggers.split(/[,，\s]+/) : []);
-                    if (triggerList.some(t => {
-                        const cleanT = String(t).trim().toLowerCase().replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
-                        return cleanT && (cleanT === targetW || cleanT === cleanTarget || cleanTarget.includes(cleanT) || cleanT.includes(cleanTarget));
-                    })) return true;
-                    return false;
-                });
+                const cleanW = v => String(v || '').trim().toLowerCase().replace(/^[【\[“"'\s]+|[】\]”"'\s]+$/g, '');
+                const termsOf = w => [w.name, ...(Array.isArray(w.triggers) ? w.triggers
+                    : (typeof w.triggers === 'string' ? w.triggers.split(/[,，\s]+/) : []))].map(cleanW).filter(Boolean);
+                const items = profile.wardrobe.filter(w => w && w.name);
+                // Exact name/trigger match after cleanup; a partial match (2+ chars) only when it is unique.
+                matchedPreset = items.find(w => termsOf(w).some(t => t === cleanTarget || t === targetW)) || null;
+                if (!matchedPreset && cleanTarget.length >= 2) {
+                    const partial = items.filter(w => termsOf(w).some(t => t.length >= 2 && (t.includes(cleanTarget) || cleanTarget.includes(t))));
+                    if (partial.length === 1) matchedPreset = partial[0];
+                    else if (partial.length > 1) debugInfo(`👗 衣柜认领「${wardrobeClaim}」模糊命中 ${partial.length} 套，忽略`);
+                }
                 if (matchedPreset && (matchedPreset.outfit || matchedPreset.tags)) {
                     effectiveOutfit = matchedPreset.outfit || matchedPreset.tags;
                     debugInfo(`👗 角色「${cleanName}」显式命中衣柜预设【${matchedPreset.name}】，调取预设提示词: "${effectiveOutfit.slice(0, 40)}..."`);
                 }
             }
 
-            // Use stored base (immutable), update outfit from LLM or matched preset
+            // Lock protects content, not switching: a claimed preset always switches. Without a claim, a locked
+            // worn outfit keeps its stored text unless the LLM outfit is clearly different (a real change → new entry).
+            const wornItem = Array.isArray(profile.wardrobe) ? profile.wardrobe.find(w => w && w.id && w.id === profile.currentOutfitId) : null;
+            const lockActive = profileOutfitLocked || !!wornItem?.locked;
+            const lockedText = (wornItem?.locked && (wornItem.outfit || wornItem.tags)) || profile.currentOutfit || '';
+            const keepLockedText = lockActive && !matchedPreset && !!lockedText && (!llmOutfit || isSameOutfit(lockedText, llmOutfit));
+            if (keepLockedText) effectiveOutfit = lockedText;
+            // Use stored base (immutable). Lookup-only strip of a dirty leading name/nameTag.
             ({ base: finalBase, outfit: finalOutfit } = resolveCharacterMemoryFields(profile, llmBase, effectiveOutfit));
-            const namedBase = ensureCharacterNameTag(profile.displayName || cleanName, finalBase, drawingName);
-            const repaired = namedBase !== finalBase;
-            finalBase = namedBase;
+            const cleanedStored = stripCharacterIdentityFromBase(finalBase, ...identityArgs);
+            finalBase = cleanedStored;
 
             const isBaseLocked = !!(profile.baseLocked || profile.isBaseLocked);
-            const isOutfitLocked = !!(profile.outfitLocked || profile.isOutfitLocked || matchedPreset?.locked);
+            const isOutfitLocked = !!(lockActive || matchedPreset?.locked); // for logging only
 
-            const shouldUpdateBase = !isBaseLocked && repaired;
-            const shouldUpdateOutfit = matchedPreset ? true : (!isOutfitLocked && !!llmOutfit);
+            // Never persist the drawing name into baseTags. Only clean a previously polluted store.
+            const dirtyStored = String(profile.baseTags || '').trim();
+            const shouldCleanBase = !isBaseLocked && dirtyStored && cleanedStored !== dirtyStored;
+            const shouldUpdateOutfit = matchedPreset ? true : (!keepLockedText && !!llmOutfit);
+            const shouldBackfillNameTag = !!(pendingNameTag || (drawingName && !profile.nameTag));
 
-            if (shouldUpdateOutfit || shouldUpdateBase || (drawingName && !profile.nameTag)) {
+            if (shouldUpdateOutfit || shouldCleanBase || shouldBackfillNameTag) {
                 updateCharacterProfile(
                     cleanName,
-                    shouldUpdateBase ? finalBase : null,
-                    matchedPreset ? (matchedPreset.outfit || matchedPreset.tags) : (isOutfitLocked ? null : llmOutfit),
+                    shouldCleanBase ? cleanedStored : null,
+                    matchedPreset ? (matchedPreset.outfit || matchedPreset.tags) : (keepLockedText ? null : llmOutfit),
                     null,
-                    !matchedPreset && !isOutfitLocked,
+                    !matchedPreset && !keepLockedText,
                     {
-                        replaceBase: shouldUpdateBase,
-                        nameTag: drawingName,
+                        replaceBase: shouldCleanBase,
+                        nameTag: pendingNameTag || drawingName,
+                        backfillNameTag: !!pendingNameTag,
                         matchedPresetId: matchedPreset?.id,
-                        preserveOutfit: isOutfitLocked && !matchedPreset
+                        preserveOutfit: false,
+                        outfitName
                     }
                 );
             }
             debugInfo(`角色记忆复用「${cleanName}」: storedBase="${finalBase.slice(0, 40)}...", baseLocked=${isBaseLocked}, outfitLocked=${isOutfitLocked}`);
         } else {
-            // First time: learn from LLM and store (store clean name, not weighted)
-            finalBase = ensureCharacterNameTag(cleanName, llmBase, drawingName);
+            // First time: learn from LLM (store base without drawing name); caption still gets the name.
+            const rawBase = String(llmBase || '').trim();
+            finalBase = stripCharacterIdentityFromBase(rawBase, ...identityArgs);
             finalOutfit = llmOutfit || '';
             if (finalBase && cleanName) {
-                updateCharacterProfile(cleanName, finalBase, finalOutfit, null, true, { nameTag: drawingName });
+                updateCharacterProfile(cleanName, finalBase, finalOutfit, null, true, { nameTag: drawingName, outfitName });
             } else if (!finalBase && cleanName) {
                 debugInfo(`⚠️ 角色「${cleanName}」: LLM 未输出 base 字段，无法建档。请确认 System Prompt 为 V22 且 LLM 支持 base/outfit/action 拆分`);
             }
         }
 
-        // Build weighted base for NAI: apply name weight + memory base
-        // For 同人 characters with stored memory, re-apply name weight to the stored base
-        let displayBase = renderCharacterMemoryBase(cleanName, finalBase, drawingName);
+        // Build weighted base for NAI: name is added only here for the caption, never into stored baseTags.
+        // Name goes inside the base's own braces; braces are re-applied exactly once below.
+        const baseParts = splitOuterBaseBraces(finalBase);
+        const namedBase = ensureCharacterNameTag(profile?.displayName || cleanName, baseParts.inner, drawingName);
+        let displayBase = renderCharacterMemoryBase(cleanName, namedBase, drawingName);
         if (/\b(?:headless|decapitat(?:ed|ion)|severed\s+(?:pelvis|torso|legs?|arms?|body|limbs?|buttocks?)|only\s+(?:a\s+)?(?:severed\s+)?(?:female\s+)?(?:pelvis|buttocks|lower\s+body|torso)|neck\s+stump|bloody\s+neck\s+stump|无头|身首异处|断头|斩首|仅剩骨盆|仅留骨盆|被切下的(?:女性)?骨盆)\b/i.test([llmAction, llmBase].join(' '))) {
             const forbiddenHeadHairPatterns = /\b(?:(?:\w+\s+)?hair(?:\s+\w+)?|ponytail|twintails?|braids?|pigtails?|bangs|ahoge|bun|buns|dreadlocks|afro|messy\s+ponytail|eyes?|pupils?|iris|eyebrows?|eyelashes?|face|mouth|lips?|nose|ears?|cheeks?|chin|expression|smile|blush|tears?|lifeless\s+eyes|closed\s+eyes|parted\s+lips|open\s+mouth|tongue|facial|portrait|horns?|forehead)\b/i;
             displayBase = displayBase.split(/[,，\n]+/).map(t => t.trim()).filter(t => t && !forbiddenHeadHairPatterns.test(t.toLowerCase().replace(/[-_]/g, ' '))).join(', ');
         }
 
         // Merge: appearance(lorebook) + base(with weighted name) + outfit + action
-        const wrappedBase = (['v40_worldbook_97_opt', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset) && displayBase) ? '{' + displayBase + '}' : displayBase;
+        const wrapPreset = ['v40_worldbook_97_opt', 'v35_worldbook_97', 'v33_worldbook_97', 'v31_worldbook_97', 'v29_worldbook_93', 'v28_worldbook_91', 'v27_5', 'v27_universal', 'v26_hybrid', 'v25_hybrid', 'consistent', 'v24_3d'].includes(store.systemPromptPreset);
+        const wrappedBase = ((wrapPreset || baseParts.braced) && displayBase) ? '{' + displayBase + '}' : displayBase;
         return [appearanceTags, wrappedBase, finalOutfit, llmAction].filter(Boolean).join(', ');
     }
+
+    /** @deprecated Deferred commit removed; parse writes immediately. Kept as no-op for older test harnesses. */
+    function commitCharacterMemoryUpdate(update) {
+        if (!update || !update.name) return getCharacterProfile(update?.name);
+        return getCharacterProfile(update.name);
+    }
+    function commitCharacterMemoryUpdates(characters) { /* no-op: parse already committed */ }
 
     function collectCharacterCardInfo(currentMes = '', recentMessages = [], requestStore = null) {
         const store = requestStore || getStore();
@@ -3967,8 +4142,8 @@ ${getCharacterMemoryTagSpecification()}
             const nameTag = getCharacterNameTag('', parsed.name_tag) || getCharacterNameTag(parsed.name)
                 || getCharacterNameTag(name, getCharacterProfile(cleanCharName)?.nameTag);
             if (!nameTag) throw new Error('模型未返回英文/罗马字绘图姓名 name_tag，原有角色记忆未改动');
-            updateCharacterProfile(cleanCharName, ensureCharacterNameTag(cleanCharName, extractedBase, nameTag), extractedOutfit, avatarUrl, true,
-                { replaceBase: true, preserveOutfit: true, nameTag });
+            updateCharacterProfile(cleanCharName, stripCharacterIdentityFromBase(extractedBase, nameTag, cleanCharName), extractedOutfit, avatarUrl, true,
+                { replaceBase: true, preserveOutfit: true, nameTag, nameTagSource: 'user' });
             toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
             return getCharacterProfile(cleanCharName);
         } catch (err) {
@@ -7177,6 +7352,59 @@ ${getCharacterMemoryTagSpecification()}
         return valid(fallback) ? fallback : '';
     }
 
+    // Split one balanced outer {...} pair wrapping the whole base (LLM/worldbook emphasis).
+    function splitOuterBaseBraces(base) {
+        const value = String(base || '').trim();
+        if (!value.startsWith('{') || !value.endsWith('}')) return { inner: value, braced: false };
+        let depth = 0;
+        for (let i = 0; i < value.length; i++) {
+            if (value[i] === '{') depth++;
+            else if (value[i] === '}') { depth--; if (depth === 0 && i < value.length - 1) return { inner: value, braced: false }; }
+        }
+        return depth === 0 ? { inner: value.slice(1, -1).trim(), braced: true } : { inner: value, braced: false };
+    }
+
+    // Strip drawing-name / displayName tokens from a stored base. Lookup-safe: does not write storage.
+    // Only leading identity entries are removed so appearance tags are never eaten by coincidence.
+    // Braces are preserved: an outer {...} stays balanced and a removed token's "{" moves to the next tag.
+    function stripCharacterIdentityFromBase(base, ...identities) {
+        const outer = splitOuterBaseBraces(base);
+        const stripped = stripCharacterIdentityTokens(outer.inner, identities);
+        return outer.braced && stripped ? `{${stripped}}` : stripped;
+    }
+    function stripCharacterIdentityTokens(base, identities) {
+        const value = typeof base === 'string' ? base.trim() : '';
+        if (!value) return '';
+        const keys = new Set();
+        for (const id of identities) {
+            const raw = stripCharWeight(id);
+            if (!raw) continue;
+            const canon = getCanonicalCharName(raw).toLowerCase().replace(/_/g, ' ');
+            const match = typeof getCharMatchKey === 'function' ? getCharMatchKey(raw) : '';
+            if (canon) keys.add(canon);
+            if (match) keys.add(match);
+        }
+        if (!keys.size) return value;
+        const tokens = value.split(/[,，\n]/);
+        let start = 0;
+        while (start < tokens.length) {
+            const plain = tokens[start].trim().replace(/^[{]+|[}]+$/g, '').trim();
+            if (!plain) { start++; continue; }
+            const canon = getCanonicalCharName(plain).toLowerCase().replace(/_/g, ' ');
+            const match = typeof getCharMatchKey === 'function' ? getCharMatchKey(plain) : '';
+            if ((canon && keys.has(canon)) || (match && keys.has(match))) { start++; continue; }
+            break;
+        }
+        if (!start) return value;
+        // Carry unmatched opening braces of removed tokens onto the first kept tag.
+        let carry = 0;
+        for (const t of tokens.slice(0, start)) carry += (t.match(/\{/g) || []).length - (t.match(/\}/g) || []).length;
+        const kept = tokens.slice(start);
+        if (carry > 0 && kept.length) kept[0] = kept[0].replace(/^(\s*)/, `$1${'{'.repeat(carry)}`);
+        return kept.join(',').replace(/^[,，\s]+|[,，\s]+$/g, '').trim();
+    }
+    RBQ.api.stripCharacterIdentityFromBase = stripCharacterIdentityFromBase;
+
     function ensureCharacterNameTag(name, base, nameTag = '') {
         const value = typeof base === 'string' ? base : '';
         const identity = getCharacterNameTag(name, nameTag);
@@ -7226,6 +7454,26 @@ ${getCharacterMemoryTagSpecification()}
 
     // Ordinary images and manga share the same immutable-base/current-outfit selection.
     // Pure: callers control when complete, validated results are saved to the profile.
+    // Lorebook entry for a character: exact title/key first; partial (3+ chars, Latin on word boundaries) only if unique.
+    function findCharacterLorebookEntry(entries, name) {
+        const lowerName = String(name || '').trim().toLowerCase();
+        if (!lowerName || !Array.isArray(entries)) return null;
+        const termsOf = l => [String(l.comment || l.sourceName || ''),
+            ...(Array.isArray(l.matchedKeys) ? l.matchedKeys : []), ...(Array.isArray(l.key) ? l.key : [])]
+            .map(k => String(k).trim().toLowerCase()).filter(Boolean);
+        const exact = entries.find(l => termsOf(l).includes(lowerName));
+        if (exact) return exact;
+        if ([...lowerName].length < 3) return null;
+        const latin = /^[\x00-\x7f]+$/;
+        const esc = v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const contains = (hay, needle) => latin.test(needle)
+            ? new RegExp(`(?:^|[^a-z0-9])${esc(needle)}(?:$|[^a-z0-9])`).test(hay) : hay.includes(needle);
+        const partial = entries.filter(l => termsOf(l).some(t => contains(t, lowerName)
+            || ([...t].length >= 3 && contains(lowerName, t))));
+        return partial.length === 1 ? partial[0] : null;
+    }
+    RBQ.api.findCharacterLorebookEntry = findCharacterLorebookEntry;
+
     function resolveCharacterMemoryFields(profile, base, outfit) {
         return { base: profile ? profile.baseTags || '' : base || '', outfit: outfit || profile?.currentOutfit || '' };
     }
@@ -7245,7 +7493,8 @@ ${getCharacterMemoryTagSpecification()}
             type: 'array', description: 'Only when character memory is enabled: one update per named visible person; [] if unchanged. Not render captions.',
             items: { type: 'object', properties: {
                 name: { type: 'string', description: 'Stable name matching panels[].characters[].name, never a panel/character ID' },
-                name_tag: { type: 'string', description: 'English/romanized drawing identity: fan Name (Series), original Name (original). Optional when name is already English or saved name_tag exists; provide once for a missing identity, never a Chinese drawing tag.' },
+                name_tag: { type: 'string', description: 'English/romanized drawing identity: fan Name (Series), original Name (original). Identify the source work from story/lorebook/card; use (original) only when clearly original. Optional when name is already English or saved name_tag exists; provide once for a missing identity, never a Chinese drawing tag.' },
+                outfit_name: { type: 'string', description: 'Optional short Chinese name (2-8 chars, e.g. 白色连衣裙) for a new outfit; wardrobe label only.' },
                 initial_outfit: { type: 'string', description: 'New/empty-outfit profiles only: complete known clothing at story START, before later changes. Optional; never fill with final changed outfit.' },
                 base: { type: 'string', description: 'Comma-separated English identity/appearance tags per the seven-aspect memory specification, including explicitly established nationality/ethnicity and facial traits; without counts (girl, not 1girl). Empty if already known. No clothing/shot/action/dialogue/style.' },
                 outfit: { type: 'string', description: 'Comma-separated English tags for complete known clothing at final appearance: color, known material, garment, length/state and details. Only initial clothing or explicit change; empty preserves saved clothing.' }
@@ -7530,6 +7779,7 @@ ${getCharacterMemoryTagSpecification()}
             next.nameTag ||= getCharacterNameTag(name, row.name_tag);
             next.base ||= cleanField(row.base);
             next.outfit = cleanField(row.outfit) || next.outfit;
+            next.outfitName = cleanOutfitName(row.outfit_name) || next.outfitName || '';
             updates.set(key, next);
         }
         const messageId = context?.messageId;
@@ -7546,8 +7796,20 @@ ${getCharacterMemoryTagSpecification()}
             const previousLatest = [...previousHistory].filter(entry => entry?.after).sort((a, b) => a.messageId - b.messageId).at(-1);
             const timelineOwnsOutfit = previousLatest && profile.currentOutfit === previousLatest.after.outfit;
             const nameTag = getCharacterNameTag(row.nameTag || row.name, profile?.nameTag || row.nameTag);
-            const namedBase = ensureCharacterNameTag(row.name, profile?.baseTags || row.base, nameTag);
-            const base = namedBase !== profile?.baseTags ? namedBase : '';
+            // Never inject the drawing name into storage. New bases are stored stripped; existing
+            // bases only lose a leaked leading archive/drawing name when a nameTag is available.
+            let base = !String(profile?.baseTags || '').trim() && row.base
+                ? stripCharacterIdentityFromBase(row.base, nameTag, row.name, profile?.nameTag, profile?.displayName)
+                : '';
+            if (!base && profile?.baseTags && nameTag) {
+                // Strip only a leaked non-drawing archive name (e.g. Chinese displayName), never an
+                // intentional English token that older profiles may still carry in baseTags.
+                const archiveName = profile.displayName || row.name;
+                if (archiveName && !getCharacterNameTag(archiveName)) {
+                    const cleaned = stripCharacterIdentityFromBase(profile.baseTags, archiveName);
+                    if (cleaned !== String(profile.baseTags).trim()) base = cleaned;
+                }
+            }
             const snapshot = snapshots.get(getCanonicalCharName(row.name).toLowerCase());
             const stateFields = value => {
                 const state = { outfit: value?.outfit || '', outfitSet: !!value?.outfitSet };
@@ -7567,8 +7829,11 @@ ${getCharacterMemoryTagSpecification()}
                 && profile.currentOutfit !== requestedOutfits[getCanonicalCharName(row.name).toLowerCase()];
             const preserveCurrent = older || changedDuringRequest;
             const outfit = preserveCurrent ? '' : finalOutfit;
-            if (base || (outfit && outfit !== profile?.currentOutfit) || (nameTag && !profile?.nameTag)) updateCharacterProfile(row.name, base, outfit, null, true,
-                { replaceBase: !!profile?.baseTags && !!base, nameTag });
+            const shouldUpgradeNameTag = !!(nameTag && (!profile?.nameTag
+                || (hasCharIdentitySuffix(nameTag) && !hasCharIdentitySuffix(profile.nameTag))
+                || isUpgradeableOriginalNameTag(profile, nameTag)));
+            if (base || (outfit && outfit !== profile?.currentOutfit) || shouldUpgradeNameTag) updateCharacterProfile(row.name, base, outfit, null, true,
+                { replaceBase: !!profile?.baseTags && !!base, nameTag, backfillNameTag: shouldUpgradeNameTag && !!profile?.nameTag, outfitName: row.outfitName });
             const saved = getCharacterProfile(row.name);
             if (!saved) continue;
             if (!Array.isArray(saved.wardrobe)) saved.wardrobe = [];
@@ -7583,7 +7848,7 @@ ${getCharacterMemoryTagSpecification()}
                     || (saved.currentOutfit && isSameOutfit(w.outfit, saved.currentOutfit)));
                 if (!active && saved.currentOutfit) {
                     active = { id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-                        name: deriveOutfitName(row.name, saved.currentOutfit, !saved.wardrobe.length), outfit: saved.currentOutfit,
+                        name: deriveOutfitName(row.name, saved.currentOutfit, !saved.wardrobe.length, row.outfitName, saved.wardrobe), outfit: saved.currentOutfit,
                         triggers: [], createdAt: Date.now() };
                     saved.wardrobe.push(active);
                 }
@@ -7604,7 +7869,7 @@ ${getCharacterMemoryTagSpecification()}
                     let active = saved.wardrobe.find(outfit => outfit.outfit === saved.currentOutfit);
                     if (!active) {
                         active = { id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-                            name: saved.currentOutfit ? deriveOutfitName(row.name, saved.currentOutfit) : '无衣物（剧情状态）',
+                            name: saved.currentOutfit ? deriveOutfitName(row.name, saved.currentOutfit, false, row.outfitName, saved.wardrobe) : '无衣物（剧情状态）',
                             outfit: saved.currentOutfit, triggers: [], createdAt: Date.now() };
                         saved.wardrobe.push(active);
                     }
@@ -7795,17 +8060,7 @@ ${getCharacterMemoryTagSpecification()}
                     }
 
                     if (name) {
-                        const matched = matchedLorebooks.find(l => {
-                            const lName = String(l.comment || l.sourceName || '').toLowerCase();
-                            const allKeys = [
-                                ...(Array.isArray(l.matchedKeys) ? l.matchedKeys : []),
-                                ...(Array.isArray(l.key) ? l.key : []),
-                            ].map(k => String(k).toLowerCase()).filter(Boolean);
-                            const lowerName = name.toLowerCase();
-                            return lName === lowerName
-                                || lName.includes(lowerName)
-                                || allKeys.some(k => k === lowerName || k.includes(lowerName) || lowerName.includes(k));
-                        });
+                        const matched = findCharacterLorebookEntry(matchedLorebooks, name);
                         if (matched) {
                             appearanceTags = String(matched.content || '').trim();
                             debugInfo(`角色「${name}」匹配到世界书: comment="${matched.comment}", tags=${appearanceTags.slice(0, 60)}...`);
@@ -7817,9 +8072,9 @@ ${getCharacterMemoryTagSpecification()}
                         }
                     }
 
-                    // Merge character memory with LLM output
+                    // Merge character memory with LLM output (writes profile on parse; wardrobe only on real change)
                     const wardrobeOutfit = String(char?.wardrobe_outfit || '').trim();
-                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, char?.name_tag, wardrobeOutfit);
+                    const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, char?.name_tag, wardrobeOutfit, char?.outfit_name);
 
                     return {
                         index: charIndex + 1,
@@ -8522,6 +8777,7 @@ SCHEMA:
 
                 if (imageResult && (imageResult.url || imageResult.displayUrl)) {
                     if (wrapper) {
+                        cacheWrapperCharacterData(wrapper, updatedSeg);
                         RBQ.api.renderInlineGeneratedImage(wrapper, imageResult);
                         renderCardBadges(wrapper, updatedSeg);
                         if (baseKey && segmentKey) {
@@ -11710,10 +11966,11 @@ SCHEMA:
                                         type: 'object',
                                         properties: {
                                             name: { type: 'string' },
-                                            name_tag: { type: 'string', description: 'English/romanized drawing identity for a non-English archive name. Fan Name (Series), original Name (original); reuse saved identity.' },
+                                            name_tag: { type: 'string', description: 'English/romanized drawing identity for a non-English archive name. Fan Name (Series), original Name (original) only when clearly original (identify the source work from context); reuse saved identity.' },
                                             base: { type: 'string' },
                                             wardrobe_outfit: { type: 'string', description: '若角色当次穿着符合其已知衣柜中的某套服装预设（例如：校服、蓝色吊带睡衣），请直接填写该服装预设的准确名称；未命中或穿全新服装时留空。' },
                                             outfit: { type: 'string' },
+                                            outfit_name: { type: 'string', description: '可选：新服装的简短中文名（2-8字，如 白色连衣裙），仅用于衣柜命名' },
                                             action: { type: 'string' },
                                             center: { type: 'string' },
                                             uc: { type: 'string' }
@@ -13480,6 +13737,7 @@ SCHEMA:
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
             if (onSdtNaiPayload.disposed) return;
+            if (charDataJson) wrapper.dataset.rbqSdtCharData = JSON.stringify(segment.characters);
             RBQ.api.renderInlineGeneratedImage(wrapper, image);
             if (wrapper.dataset.rbqSdtExternalId) persistSdtImageCardRecord(wrapper, segment, finalPrompt, image);
             const effectiveSegKey = segmentKey || wrapper?.dataset?.rbqSdtSegmentKey || baseKey;
@@ -13689,6 +13947,7 @@ SCHEMA:
                 const sub = wrapper.querySelector('.st-scene-trigger-nai-loader-sub');
                 if (sub instanceof HTMLElement) sub.textContent = progressText;
             });
+            cacheWrapperCharacterData(wrapper, result);
             RBQ.api.renderInlineGeneratedImage(wrapper, image);
             markSegmentAutoGenerated(baseKey, effectiveSegKey, image, messageId);
             setGenerateButtonState(wrapper, true, getRegenLabel(wrapper), false);
@@ -16398,7 +16657,7 @@ SCHEMA:
                     if (activeW) activeW.locked = p.outfitLocked;
                     save();
                     refreshCharacterProfileListUi();
-                    toastr.info(`角色「${p.displayName || charKey}」服装已${p.outfitLocked ? '锁定🔒（生图不回填更改）' : '解锁🔓'}`, PLUGIN_NAME);
+                    toastr.info(`角色「${p.displayName || charKey}」服装已${p.outfitLocked ? '锁定🔒（生图不改写当前服装内容，仍可换装）' : '解锁🔓'}`, PLUGIN_NAME);
                 }
                 return;
             }

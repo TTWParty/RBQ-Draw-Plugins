@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.32';
+    const VERSION = '2.2.33';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -3826,6 +3826,8 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 }
             };
             reader.readAsText(file);
+        });
+
         // ── Batch Management Listeners ──
         container.querySelector('#cw-batch-mode-btn')?.addEventListener('click', () => {
             isDossierBatchMode = true;

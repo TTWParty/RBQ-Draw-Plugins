@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.44';
+    const PLUGIN_VERSION = '6.5.46';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -11872,30 +11872,202 @@ SCHEMA:
         ].join('\n');
     }
 
+    const ST_CORS_PROXY_HINT = '如需让该类请求也能跨域，可在酒馆 config.yaml 中设置 enableCorsProxy: true 并重启酒馆。';
+    const ST_RELAY_HTTP_STATUS_BY_TEXT = {
+        'bad request': 400, 'unauthorized': 401, 'payment required': 402, 'forbidden': 403, 'not found': 404,
+        'method not allowed': 405, 'request timeout': 408, 'conflict': 409, 'payload too large': 413,
+        'unprocessable entity': 422, 'too many requests': 429, 'internal server error': 500,
+        'not implemented': 501, 'bad gateway': 502, 'service unavailable': 503, 'gateway timeout': 504,
+    };
+
+    function getStCsrfHeaders() {
+        try {
+            const headers = getSillyTavernHeaders();
+            const token = headers['X-CSRF-Token'] ?? headers['x-csrf-token'];
+            return token ? { 'X-CSRF-Token': String(token) } : {};
+        } catch (_e) {
+            return {};
+        }
+    }
+
+    function headersToPlainObject(headers) {
+        const out = {};
+        if (!headers) return out;
+        if (typeof headers.forEach === 'function' && typeof headers.get === 'function') {
+            headers.forEach((value, key) => { out[key] = value; });
+            return out;
+        }
+        if (Array.isArray(headers)) {
+            for (const [key, value] of headers) out[key] = value;
+            return out;
+        }
+        return { ...headers };
+    }
+
+    function buildStProxyOptions(options = {}) {
+        return { ...options, headers: { ...headersToPlainObject(options.headers), ...getStCsrfHeaders() } };
+    }
+
+    // 判断 /proxy/ 响应是否是"酒馆代理不可用"（未开启时：带 CSRF 令牌 → 404 禁用提示；不带令牌 → 403 Invalid CSRF token）
+    async function isStProxyUnavailableResponse(response) {
+        if (!response || (response.status !== 404 && response.status !== 403)) return false;
+        let text = '';
+        try { text = await response.clone().text(); } catch (_e) {}
+        if (response.status === 404) return /CORS proxy is disabled/i.test(text) || !text.trim() || /Cannot (GET|POST|PUT|PATCH|DELETE) \/proxy\//i.test(text);
+        return /csrf/i.test(text);
+    }
+
+    // 仅 OpenAI 兼容的 chat/completions（POST + messages）与 /models（GET）可由酒馆后端转发
+    function getStBackendRelayKind(url, options = {}) {
+        let parsed;
+        try { parsed = new URL(String(url)); } catch (_e) { return null; }
+        if (!/^https?:$/.test(parsed.protocol) || parsed.search || parsed.hash) return null;
+        const method = String(options.method || 'GET').toUpperCase();
+        const path = parsed.pathname.replace(/\/+$/, '');
+        if (method === 'POST' && /\/chat\/completions$/.test(path)) {
+            if (typeof options.body !== 'string') return null;
+            try {
+                const body = JSON.parse(options.body);
+                return body && typeof body === 'object' && Array.isArray(body.messages) ? 'chat' : null;
+            } catch (_e) { return null; }
+        }
+        if (method === 'GET' && /\/models$/.test(path)) return 'models';
+        return null;
+    }
+
+    function buildStRelayHeaderYaml(options = {}) {
+        const relayHeaders = {};
+        for (const [key, value] of Object.entries(headersToPlainObject(options.headers))) {
+            if (/^(content-type|content-length|accept|x-csrf-token|x-requested-with)$/i.test(key)) continue;
+            relayHeaders[key] = String(value);
+        }
+        // 未配置密钥时显式置空 Authorization，避免酒馆把自身保存的 Custom API 密钥发往插件配置的接口
+        if (!Object.keys(relayHeaders).some(key => key.toLowerCase() === 'authorization')) relayHeaders.Authorization = '';
+        return JSON.stringify(relayHeaders);
+    }
+
+    function buildStRelayChatRequest(url, options = {}) {
+        const body = JSON.parse(options.body);
+        const baseUrl = String(url).replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
+        const { messages, ...rest } = body;
+        // 除 messages 外所有字段原样经 custom_include_body 合并进上游请求体，避免酒馆改写 reasoning_effort / 丢弃 response_format、thinking 等字段
+        return {
+            chat_completion_source: 'custom',
+            custom_url: baseUrl,
+            model: body.model,
+            stream: !!body.stream,
+            messages,
+            custom_include_body: JSON.stringify(rest),
+            custom_include_headers: buildStRelayHeaderYaml(options),
+        };
+    }
+
+    function makeRelayJsonResponse(data, status = 200, statusText = '') {
+        return new Response(typeof data === 'string' ? data : JSON.stringify(data), {
+            status,
+            statusText,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    // 酒馆后端在上游非 2xx 时仍返回 HTTP 200 + { error: { message: statusText } }，此处还原为失败的 Response
+    function normalizeStRelayChatJson(data) {
+        const isError = data && typeof data === 'object' && data.error && !Array.isArray(data.choices);
+        if (!isError) return makeRelayJsonResponse(data, 200, 'OK');
+        const message = String(data.error?.message || (typeof data.error === 'string' ? data.error : '') || 'Unknown error occurred');
+        const status = data.quota_error ? 429 : (ST_RELAY_HTTP_STATUS_BY_TEXT[message.trim().toLowerCase()] || 502);
+        return makeRelayJsonResponse({ error: { ...(typeof data.error === 'object' ? data.error : {}), message: `${message} (经酒馆后端转发)` } }, status, message);
+    }
+
+    async function fetchViaStBackend(url, options = {}, kind) {
+        const stHeaders = { ...getSillyTavernHeaders(), 'Content-Type': 'application/json' };
+        const endpoint = kind === 'models' ? '/api/backends/chat-completions/status' : '/api/backends/chat-completions/generate';
+        const relayBody = kind === 'models'
+            ? {
+                chat_completion_source: 'custom',
+                custom_url: String(url).replace(/\/+$/, '').replace(/\/models$/, ''),
+                custom_include_headers: buildStRelayHeaderYaml(options),
+            }
+            : buildStRelayChatRequest(url, options);
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: stHeaders,
+            body: JSON.stringify(relayBody),
+            signal: options.signal,
+        });
+        if (response.status === 403 || response.status === 404) {
+            let text = '';
+            try { text = await response.clone().text(); } catch (_e) {}
+            if (response.status === 404 || /csrf/i.test(text)) {
+                throw new Error(`酒馆后端转发接口不可用 (HTTP ${response.status}${text ? `: ${text.slice(0, 160)}` : ''})`);
+            }
+        }
+        if (kind === 'chat' && relayBody.stream) return response;
+        if (!response.ok) {
+            let text = '';
+            try { text = await response.text(); } catch (_e) {}
+            return makeRelayJsonResponse(text || JSON.stringify({ error: { message: response.statusText || 'Unknown error occurred' } }), response.status, response.statusText);
+        }
+        let data;
+        try {
+            data = await response.json();
+        } catch (_e) {
+            return makeRelayJsonResponse({ error: { message: '酒馆后端转发返回了无法解析的响应' } }, 502, 'Bad Gateway');
+        }
+        if (kind === 'models') {
+            if (data?.error) return makeRelayJsonResponse({ error: { message: '模型列表获取失败（经酒馆后端转发）：密钥错误或接口不可用' } }, 502, 'Bad Gateway');
+            return makeRelayJsonResponse(data, 200, 'OK');
+        }
+        return normalizeStRelayChatJson(data);
+    }
+
+    // 代理不可用时的最后一道兜底：OpenAI 兼容请求改经酒馆后端转发；其余请求类型给出包含实际错误的提示
+    async function fallbackAfterProxyUnavailable(url, options, reason) {
+        const kind = getStBackendRelayKind(url, options);
+        if (!kind) {
+            throw new Error(`无法跨域连接 API 接口 (${url})：${reason}。该请求不是 OpenAI 兼容的 chat/completions 或 /models 调用，无法改经酒馆后端转发。${ST_CORS_PROXY_HINT}`);
+        }
+        console.warn(`[${PLUGIN_NAME}] 酒馆 /proxy/ 不可用 (${reason})，改经酒馆后端转发:`, url);
+        try {
+            return await fetchViaStBackend(url, options, kind);
+        } catch (relayErr) {
+            if (relayErr?.name === 'AbortError') throw relayErr;
+            console.error(`[${PLUGIN_NAME}] 酒馆后端转发失败:`, relayErr);
+            throw new Error(`无法跨域连接 API 接口 (${url})：${reason}；酒馆后端转发亦失败: ${relayErr?.message || relayErr}。${ST_CORS_PROXY_HINT}`);
+        }
+    }
+
+    async function fetchViaStProxyOrBackend(url, options, directReason) {
+        let proxyResponse;
+        try {
+            proxyResponse = await fetch(`/proxy/${url}`, buildStProxyOptions(options));
+        } catch (proxyErr) {
+            if (proxyErr?.name === 'AbortError') throw proxyErr;
+            console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
+            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆 /proxy/ 请求失败: ${proxyErr?.message || proxyErr}`);
+        }
+        if (await isStProxyUnavailableResponse(proxyResponse)) {
+            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆内置代理未开启 (HTTP ${proxyResponse.status})`);
+        }
+        if (proxyResponse.ok || proxyResponse.status < 500) return proxyResponse;
+        if (getStBackendRelayKind(url, options)) {
+            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆 /proxy/ 返回 HTTP ${proxyResponse.status}`);
+        }
+        return proxyResponse;
+    }
+
     async function smartFetch(url, options = {}) {
         const isMixedContent = typeof window !== 'undefined' && window.location?.protocol === 'https:' && String(url).startsWith('http://');
 
         // 若当前网页为 HTTPS，目标 API 为明文 HTTP，浏览器安全策略强制阻断 Mixed Content 直连
-        // 此时直接无缝转交酒馆后端内置代理 (/proxy/) 发起服务端请求
+        // 此时直接转交酒馆内置代理 (/proxy/)；代理未开启时再改经酒馆后端转发
         if (isMixedContent) {
             console.info(`[${PLUGIN_NAME}] 当前网页为 HTTPS，目标为 HTTP 接口 (${url})，自动切换至酒馆内置代理转发 (/proxy/)`);
-            try {
-                const proxyUrl = `/proxy/${url}`;
-                const proxyResponse = await fetch(proxyUrl, options);
-                if (proxyResponse.ok || (proxyResponse.status !== 404 && proxyResponse.status < 500)) {
-                    return proxyResponse;
-                }
-                if (proxyResponse.status === 404) {
-                    throw new Error(`酒馆内置代理未生效 (HTTP 404)。请确保酒馆 config.yaml 中已配置 enableCorsProxy: true 并已重启酒馆服务。`);
-                }
-            } catch (proxyErr) {
-                console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
-                throw new Error(`[Mixed Content] 当前网页为 HTTPS，无法直接连接 HTTP 接口 (${url})。通过酒馆代理 (/proxy/) 转发亦失败: ${proxyErr.message}。请确认已在 config.yaml 开启 enableCorsProxy: true 并重启酒馆。`);
-            }
+            return fetchViaStProxyOrBackend(url, options, '当前网页为 HTTPS，浏览器禁止直连 HTTP 接口 (Mixed Content)');
         }
 
         let response;
-        let isCorsError = false;
+        let directReason = '';
         try {
             response = await fetch(url, options);
             if (response.ok || (response.status !== 405 && response.status < 500)) {
@@ -11903,26 +12075,14 @@ SCHEMA:
             }
         } catch (err) {
             const errStr = String(err || '');
-            isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
+            const isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
             if (!isCorsError) throw err;
+            directReason = `浏览器直连被拦截 (${err.message || errStr})`;
         }
 
-        if (isCorsError || (response && response.status === 405)) {
+        if (directReason || (response && response.status === 405)) {
             console.warn(`[${PLUGIN_NAME}] 直连发包被 CORS / OPTIONS 405 拦截，自动尝试使用酒馆内置代理转发 (/proxy/):`, url);
-            try {
-                const proxyUrl = `/proxy/${url}`;
-                const proxyResponse = await fetch(proxyUrl, options);
-                if (proxyResponse.ok || (proxyResponse.status !== 404 && proxyResponse.status < 500)) {
-                    return proxyResponse;
-                }
-                if (proxyResponse.status === 404) {
-                    throw new Error(`酒馆内置代理未开启 (HTTP 404)。请在酒馆 config.yaml 中配置 enableCorsProxy: true 并重启酒馆。`);
-                }
-            } catch (proxyErr) {
-                console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
-                throw proxyErr;
-            }
-            throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制或代理不可用。请确认酒馆 config.yaml 中已开启 enableCorsProxy: true 并已重启酒馆。`);
+            return fetchViaStProxyOrBackend(url, options, directReason || '目标服务器对 OPTIONS 预检请求返回 HTTP 405');
         }
 
         return response;
@@ -12309,7 +12469,7 @@ SCHEMA:
             delete cleanBody.reasoning_effort;
             delete cleanBody.thinking;
             delete cleanBody.thinking_budget;
-            response = await smartFetch(url, {
+            response = await customFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(cleanBody),
             });

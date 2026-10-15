@@ -4,11 +4,22 @@
 
 入口文件：[`../../plugins/smart-draw-trigger.js`](../../plugins/smart-draw-trigger.js)
 
-版本：`6.5.33`
+版本：`6.5.46`
 
 ---
 
-## 最新更新 (v6.5.33)
+## 最新更新 (v6.5.46)：LLM 接口跨域兜底
+
+- **修正酒馆代理被 CSRF 拦截**：浏览器直连 LLM 接口被 CORS 拦截（或 HTTPS 页面访问 HTTP 接口）时，转交酒馆 `/proxy/` 的请求现在带上酒馆的 `X-CSRF-Token`。此前未开启 `enableCorsProxy`（酒馆默认关闭）时，该请求被酒馆以 `403 Invalid CSRF token` 拒绝，插件把 403 当成接口错误显示，看不到正确原因。现在 403 CSRF 与 404「CORS proxy is disabled」都判定为代理不可用；代理已开启时，上游自身返回的 404 等响应原样交回，不再误报为代理未开启。
+- **新增酒馆后端转发兜底**：代理不可用时，OpenAI 兼容的 `…/chat/completions` 请求改经酒馆后端 `/api/backends/chat-completions/generate`（来源 `custom`）发出，无需修改酒馆配置。
+  - 除 `messages` 外，原请求体的全部字段（`response_format`、`reasoning_effort`、`thinking`、`thinking_budget`、`tools`、`tool_choice`、`stream` 等）经 `custom_include_body` 原样合并进上游请求；插件填写的密钥或自定义密钥请求头经 `custom_include_headers` 发送。未填密钥时显式发送空 `Authorization`，不会带出酒馆自己保存的 Custom 密钥。
+  - 酒馆在上游出错时仍返回 HTTP 200 + `{error}`，插件会按错误文字还原为对应失败状态（如 400、429），后续降级重试照常进行。限制：经后端转发时只能拿到上游的状态描述，拿不到上游错误正文。流式请求直接透传。
+  - 刷新模型列表（GET `…/models`）改用 `/api/backends/chat-completions/status`。
+- **提示时机**：只要后端转发成功，就不再提示开启 `enableCorsProxy`。仅在直连、代理、后端转发都失败，或请求类型无法经后端转发（「自定义 HTTP」非 OpenAI 格式接口）时，才在实际错误后附上该提示。
+- 顺序：直连 → `/proxy/` → 后端转发；直连或代理可用时行为与之前一致。`callApiWithJsonFallback` 最后一次剥离思考参数的重试改用传入的 fetch 函数。
+- 测试：新增 `test/run-sdt-cors-fallback-tests.js`（17 项）；在酒馆 1.19.0 中用真实跨域接口分别验证了代理关闭与开启两种情况。
+
+## 历史更新 (v6.5.33)
 
 - **升级「剧情与资料写入工具说明」子开关（完整上下文迁移与消息重组）**：
   - **完整分析规则与任务资料分区迁移**：在开启「结构化工具调用 (Tool Call)」与「剧情与资料写入工具说明 (toolInputInDescription)」时，本次视觉分析系统规范（`VISUAL_ANALYSIS_GUIDELINES`）与本次实际业务任务数据包（`Task Input JSON`）统一分区迁入 `generate_draw_spec` 工具的 `description` 中。

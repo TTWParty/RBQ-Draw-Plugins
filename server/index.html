@@ -401,8 +401,8 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
-    .media-badge-top-left.v5 { color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
-    .media-badge-top-left.v4 { color: #34d399; border-color: rgba(52, 211, 153, 0.3); }
+    .media-badge-top-left.v5 { color: #f0abfc; border-color: rgba(217, 70, 239, 0.35); }
+    .media-badge-top-left.v4, .media-badge-top-left.v4-5, .media-badge-top-left.v4_5 { color: #7dd3fc; border-color: rgba(56, 189, 248, 0.35); }
     .media-badge-top-left.comfyui { color: #fb923c; border-color: rgba(251, 146, 60, 0.3); }
 
     .media-badge-top-right {
@@ -810,7 +810,7 @@
       <div class="model-tabs" id="model-tabs">
         <div class="tab-item active" data-model="all">🌌 全部预设</div>
         <div class="tab-item" data-model="v5">✨ NAI V5</div>
-        <div class="tab-item" data-model="v4">🎨 NAI V4/4.5</div>
+        <div class="tab-item" data-model="v4.5">🎨 NAI V4/4.5</div>
         <div class="tab-item mine-tab" data-model="mine">👑 我的上传</div>
         <div class="tab-item liked-tab" data-model="liked">❤️ 已点赞</div>
       </div>
@@ -1177,18 +1177,44 @@
         }
       }
 
-      // 提取全部可用标签生成过滤胶囊
+      // 提取全部可用标签生成过滤胶囊（联动当前选中的模型分类）
       function renderTagPills() {
         const container = document.getElementById('tag-pills-container');
         const tagMap = new Map();
-        allPresets.forEach(p => {
+        const myKey = getCreatorKey();
+        const likedIds = getLikedIds();
+
+        const modelFiltered = allPresets.filter(p => {
+          if (currentFilterModel === 'mine') {
+            if (!myKey || p.creatorKey !== myKey) return false;
+          } else if (currentFilterModel === 'liked') {
+            if (!likedIds.includes(p.id)) return false;
+          } else if (currentFilterModel === 'v5') {
+            const m = String(p.model || '').toLowerCase();
+            const tags = Array.isArray(p.tags) ? p.tags : [];
+            if (m !== 'v5' && !tags.some(t => /v5/i.test(t))) return false;
+          } else if (currentFilterModel === 'v4' || currentFilterModel === 'v4.5') {
+            const m = String(p.model || '').toLowerCase();
+            const tags = Array.isArray(p.tags) ? p.tags : [];
+            if (m !== 'v4' && m !== 'v4.5' && !m.includes('v4') && !tags.some(t => /v4/i.test(t))) return false;
+          }
+          return true;
+        });
+
+        modelFiltered.forEach(p => {
           if (Array.isArray(p.tags)) {
             p.tags.forEach(t => {
               const tag = String(t).trim();
-              if (tag) tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+              if (tag && tag !== '全部' && tag !== 'NAI V5' && tag !== 'NAI V4.5' && tag !== 'NAI V4') {
+                tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+              }
             });
           }
         });
+
+        if (currentFilterTag !== 'all' && !tagMap.has(currentFilterTag)) {
+          currentFilterTag = 'all';
+        }
 
         // 按频次排序
         const sortedTags = Array.from(tagMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
@@ -1223,6 +1249,14 @@
             if (!myKey || p.creatorKey !== myKey) return false;
           } else if (currentFilterModel === 'liked') {
             if (!likedIds.includes(p.id)) return false;
+          } else if (currentFilterModel === 'v5') {
+            const m = String(p.model || '').toLowerCase();
+            const tags = Array.isArray(p.tags) ? p.tags : [];
+            if (m !== 'v5' && !tags.some(t => /v5/i.test(t))) return false;
+          } else if (currentFilterModel === 'v4' || currentFilterModel === 'v4.5') {
+            const m = String(p.model || '').toLowerCase();
+            const tags = Array.isArray(p.tags) ? p.tags : [];
+            if (m !== 'v4' && m !== 'v4.5' && !m.includes('v4') && !tags.some(t => /v4/i.test(t))) return false;
           } else if (currentFilterModel !== 'all') {
             if (String(p.model || '').toLowerCase() !== currentFilterModel) return false;
           }
@@ -1286,7 +1320,8 @@
         filtered.forEach(p => {
           const isMine = myKey && p.creatorKey === myKey;
           const isLiked = likedIds.includes(p.id);
-          const modelType = String(p.model || 'v5').toLowerCase();
+          const rawModel = String(p.model || 'v5').toLowerCase();
+          const modelType = rawModel.replace(/[^a-z0-9_-]/g, '-');
           const previewImg = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
 
           html += `
@@ -1670,6 +1705,7 @@
           document.querySelectorAll('#model-tabs .tab-item').forEach(t => t.classList.remove('active'));
           tab.classList.add('active');
           currentFilterModel = tab.dataset.model;
+          renderTagPills();
           renderCards();
         };
       });

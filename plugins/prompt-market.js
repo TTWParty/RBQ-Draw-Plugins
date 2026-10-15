@@ -1221,7 +1221,7 @@
                         <div id="rbq-pm-model-tabs" style="display: flex; gap: 5px; align-items: center; flex-shrink: 0;">
                             <button class="rbq-pm-model-tab active" data-model="all" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.18); color: #38bdf8; cursor: pointer; white-space: nowrap;">全部模型</button>
                             <button class="rbq-pm-model-tab" data-model="v5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(217, 70, 239, 0.35); background: rgba(255,255,255,0.04); color: #f0abfc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</button>
-                            <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-bolt"></i> NAI V4.5</button>
+                            <button class="rbq-pm-model-tab" data-model="v4.5" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(255,255,255,0.04); color: #7dd3fc; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-bolt"></i> NAI V4/4.5</button>
                             <button class="rbq-pm-model-tab" data-model="general" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #cbd5e1; cursor: pointer; white-space: nowrap;">通用</button>
                             <button class="rbq-pm-model-tab" data-model="mine" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.45); background: rgba(255,255,255,0.04); color: #fbbf24; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-crown"></i> 我的上传</button>
                             <button class="rbq-pm-model-tab" data-model="liked" style="padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px; border: 1px solid rgba(244, 63, 94, 0.45); background: rgba(255,255,255,0.04); color: #fb7185; cursor: pointer; white-space: nowrap;"><i class="fa-solid fa-heart"></i> 已点赞</button>
@@ -1327,6 +1327,7 @@
                     tab.style.color = '#38bdf8';
                 }
                 activeModelFilter = tab.dataset.model;
+                refreshDynamicTags();
                 renderCards();
             };
         });
@@ -1354,13 +1355,34 @@
         if (!tagBar) return;
         tagBar.innerHTML = '';
 
-        // 动态汇总当前所有预设中真实存在的标签
+        // 动态汇总当前选定模型分类中真实存在的标签
         const tagCounts = new Map();
-        (cachedList || []).forEach(item => {
+        const cfg = getConfig();
+        const modelFilteredList = (cachedList || []).filter(it => {
+            if (activeModelFilter === 'mine') {
+                return Boolean((it.creatorKey && cfg.creatorKey && it.creatorKey === cfg.creatorKey) || (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(it.id)));
+            } else if (activeModelFilter === 'liked') {
+                return Array.isArray(cfg.likedIds) && cfg.likedIds.includes(it.id);
+            } else if (activeModelFilter === 'v5') {
+                const m = (it.model || '').toLowerCase();
+                const tags = Array.isArray(it.tags) ? it.tags : [];
+                return m === 'v5' || tags.some(t => /v5/i.test(t));
+            } else if (activeModelFilter === 'v4.5' || activeModelFilter === 'v4') {
+                const m = (it.model || '').toLowerCase();
+                const tags = Array.isArray(it.tags) ? it.tags : [];
+                return m === 'v4.5' || m === 'v4' || m.includes('v4') || tags.some(t => /v4/i.test(t));
+            } else if (activeModelFilter === 'general') {
+                const m = (it.model || '').toLowerCase();
+                return m !== 'v5' && m !== 'v4.5' && m !== 'v4' && !m.includes('v4');
+            }
+            return true;
+        });
+
+        modelFilteredList.forEach(item => {
             if (Array.isArray(item.tags)) {
                 item.tags.forEach(t => {
                     const tag = String(t || '').trim();
-                    if (tag && tag !== '全部' && tag !== 'NAI V5' && tag !== 'NAI V4.5') {
+                    if (tag && tag !== '全部' && tag !== 'NAI V5' && tag !== 'NAI V4.5' && tag !== 'NAI V4') {
                         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
                     }
                 });
@@ -1498,9 +1520,10 @@
             } else {
                 items = items.filter(it => {
                     const m = (it.model || '').toLowerCase();
-                    if (activeModelFilter === 'v5') return m === 'v5' || (it.tags || []).includes('NAI V5');
-                    if (activeModelFilter === 'v4.5') return m === 'v4.5' || (it.tags || []).includes('NAI V4.5');
-                    if (activeModelFilter === 'general') return m !== 'v5' && m !== 'v4.5';
+                    const tags = Array.isArray(it.tags) ? it.tags : [];
+                    if (activeModelFilter === 'v5') return m === 'v5' || tags.some(t => /v5/i.test(t));
+                    if (activeModelFilter === 'v4.5' || activeModelFilter === 'v4') return m === 'v4.5' || m === 'v4' || m.includes('v4') || tags.some(t => /v4/i.test(t));
+                    if (activeModelFilter === 'general') return m !== 'v5' && m !== 'v4.5' && m !== 'v4' && !m.includes('v4');
                     return true;
                 });
             }
@@ -4294,5 +4317,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.29 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.30 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

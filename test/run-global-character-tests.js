@@ -161,7 +161,7 @@ test('updateCharacterProfile (card/manga paths) imports instead of duplicating; 
 
 test('static: SDT never assigns to globalCharacters (parse is read-only)', () => {
     const src = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-trigger.js'), 'utf8');
-    assert.match(src, /const PLUGIN_VERSION = '6\.5\.47'/);
+    assert.match(src, /const PLUGIN_VERSION = '6\.5\.48'/);
     assert.doesNotMatch(src, /globalCharacters\s*(?:\[[^\]]*\]|\.\w+)*\s*=[^=]/);
     assert.doesNotMatch(src, /delete\s+[\w.]*globalCharacters/);
     assert.doesNotMatch(src, /已知全局角色资产/);
@@ -239,7 +239,7 @@ test('CW: deleting from 角色库 also cancels the ⭐全局角色; chat-scope d
 });
 
 test('CW UI strings: 角色库 rename + 设为/取消全局角色 + badges', () => {
-    assert.match(cwSrc, /const VERSION = '2\.2\.38'/);
+    assert.match(cwSrc, /const VERSION = '2\.2\.39'/);
     assert.doesNotMatch(cwSrc, /全局历史/);
     for (const s of ['角色库 (${allCount})', '设为全局角色', '取消全局角色', '⭐ 全局', '⭐ 来自全局', '只看全局角色', '编辑(角色库)', '用全局版本覆盖当前', '导入当前'])
         assert.ok(cwSrc.includes(s), s);

@@ -225,15 +225,20 @@ test('中5: 角色库 save of a global char from a fresh chat does not create a 
     ctx.saveProfile('早濑沙纪', editorData(ctx.getProfile('早濑沙纪'), { baseTags: 'G-EDIT-2' }), 'all');
     assert.equal(sdt.characterProfiles.src['早濑沙纪'].baseTags, 'G-EDIT-2', 'the chat that owns a real copy is written');
 });
-test('中5: an imported copy in the current chat is not overwritten by a 角色库 save unless edited from the chat view', () => {
+test('中5: an imported copy in the current chat is not overwritten by a 角色库 save (CW 2.2.39: no chat-view override)', () => {
     const { ctx, sdt } = cwEnv({ src: { '早濑沙纪': baSaki() } }, 'imp');
     ctx.setGlobalCharacter('早濑沙纪', true);
     ctx.importGlobalCharacterToCurrentChat('早濑沙纪');
     ctx.saveProfile('早濑沙纪', editorData(ctx.getProfile('早濑沙纪'), { baseTags: 'G-EDIT' }), 'all');
     assert.match(sdt.characterProfiles.imp['早濑沙纪'].baseTags, /GLOBAL pink hair/);
     assert.equal(sdt.characterProfiles.imp['早濑沙纪'].baseLocked, true);
-    ctx.saveProfile('早濑沙纪', editorData(sdt.characterProfiles.imp['早濑沙纪'], { baseTags: 'CHAT-VIEW-EDIT' }), 'all', { fromChatView: true });
+    // CW 2.2.39 removed the 「📦 同步至角色库」 checkbox (and fromChatView): a chat-view save uses scope 'chat'.
+    ctx.saveProfile('早濑沙纪', editorData(sdt.characterProfiles.imp['早濑沙纪'], { baseTags: 'G-EDIT-2' }), 'all', { fromChatView: true });
+    assert.match(sdt.characterProfiles.imp['早濑沙纪'].baseTags, /GLOBAL pink hair/, 'stale fromChatView flag is ignored');
+    assert.equal(sdt.globalCharacters['早濑沙纪'].profile.baseTags, 'G-EDIT-2');
+    ctx.saveProfile('早濑沙纪', editorData(sdt.characterProfiles.imp['早濑沙纪'], { baseTags: 'CHAT-VIEW-EDIT' }), 'chat');
     assert.equal(sdt.characterProfiles.imp['早濑沙纪'].baseTags, 'CHAT-VIEW-EDIT');
+    assert.equal(sdt.globalCharacters['早濑沙纪'].profile.baseTags, 'G-EDIT-2', 'chat save never writes the global');
 });
 test('中6 (CW): 角色库 prefers the real archive over a locked imported copy (unflag / re-flag)', () => {
     const { ctx, sdt } = cwEnv({ src: { '早濑沙纪': baSaki({ baseTags: 'REAL' }) } }, 'imp');
@@ -296,13 +301,13 @@ test('决定 B: no → imported copies untouched; no copies → no confirm', () 
     assert.match(sdt.characterProfiles.c1['早濑沙纪'].baseTags, /GLOBAL pink hair/);
     assert.equal(sdt.globalCharacters['早濑沙纪'].profile.baseTags, 'G-EDIT');
 });
-test('CW editor wiring: ask before rename/delete, pass syncImported/fromChatView, warn alias conflicts', () => {
+test('CW editor wiring: ask before rename/delete, pass syncImported, warn alias conflicts', () => {
     const i = cwSrc.indexOf("mask.querySelector('#cw-ce-save')?.addEventListener('click'");
     const body = cwSrc.slice(i, cwSrc.indexOf('syncChips();', i));
     assert.ok(body.indexOf('askSyncImportedGlobalCopies(name)') < body.indexOf('deleteProfile(editName, targetScope)'));
-    assert.match(body, /\{ makeGlobal: keepGlobalOnRename, syncImported, fromChatView: dossierScope === 'chat' \}/);
+    assert.match(body, /\{ makeGlobal: keepGlobalOnRename, syncImported \}/);
     assert.match(body, /warnGlobalAliasConflicts\(name\)/);
-    assert.match(cwSrc, /const VERSION = '2\.2\.38'/);
+    assert.match(cwSrc, /const VERSION = '2\.2\.39'/);
 });
 
 console.log(`\n${passed} global character fix tests passed.`);

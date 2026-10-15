@@ -88,11 +88,11 @@ await test('提示第二行：锁定说明（撤销提示 + 无撤销的普通�
     const e = env('早濑咲来了。');
     parse(e, rawResult('早濑咲'));
     const t = undoToasts(e)[0];
-    assert.match(t.msg, /（人设与服装已锁定）<br><small style="opacity:\.8">可在角色工坊手动解锁修改，会话里的改动不会同步回全局<\/small><br><button/);
+    assert.match(t.msg, /（人设与服装已锁定）<br><small style="opacity:\.8">锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局<\/small><br><button/);
     e.toasts.length = 0;
     e.sdt.showGlobalImportToast(e.sdt.recordGlobalImportEvent({ key: '早濑沙纪', globalKey: '早濑沙纪' }), null);
     const plain = importToasts(e)[0];
-    assert.match(plain.msg, /已从全局角色导入「早濑沙纪」到当前会话（人设与服装已锁定）<br><small[^>]*>可在角色工坊手动解锁修改，会话里的改动不会同步回全局<\/small>$/);
+    assert.match(plain.msg, /已从全局角色导入「早濑沙纪」到当前会话（人设与服装已锁定）<br><small[^>]*>锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局<\/small>$/);
     assert.equal(plain.opts.escapeHtml, false);
     assert.doesNotMatch(plain.msg, /撤销/);
 });

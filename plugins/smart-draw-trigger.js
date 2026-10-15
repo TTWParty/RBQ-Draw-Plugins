@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.47';
+    const PLUGIN_VERSION = '6.5.48';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2743,7 +2743,9 @@ Zimage 擅长理解复杂的英文长句和语境。
         showCharCoordBadge: false,
         cardPosition: 'bottom', // 'bottom' | 'top' | 'message_actions'
 
-        characterMemoryEnabled: false,
+        // 6.5.48: new installs default ON (the 角色工坊 / ⭐全局角色 / locks only affect images when this is on).
+        // getStore() only fills undefined keys, so users who already have a saved value keep it.
+        characterMemoryEnabled: true,
         characterProfiles: {},
         injectCharacterCard: true,
 
@@ -3400,7 +3402,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         return getGlobalImportEventLog().find(e => e.seq > seq && e.key === key) || null;
     }
     function getGlobalImportToastText(globalKey) { return `已从全局角色导入「${globalKey}」到当前会话（人设与服装已锁定）`; }
-    function getGlobalImportLockHint() { return '可在角色工坊手动解锁修改，会话里的改动不会同步回全局'; }
+    function getGlobalImportLockHint() { return '锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局'; }
     /** Toast body: first line = import notice, second (small) line = what the lock means. */
     function getGlobalImportToastHtml(globalKey) { return `${escapeHtml(getGlobalImportToastText(globalKey))}<br><small style="opacity:.8">${escapeHtml(getGlobalImportLockHint())}</small>`; }
 
@@ -3545,6 +3547,14 @@ Zimage 擅长理解复杂的英文长句和语境。
         return list;
     }
 
+    // Copies imported from a ⭐全局角色 keep the global rule (user decision: 全部服装都发给 LLM, no cap);
+    // other current-chat characters keep the first 8 outfits as before (normal-mode cap).
+    function getPromptWardrobeForProfile(p) {
+        const list = Array.isArray(p?.wardrobe) ? p.wardrobe : [];
+        return p?.importedFromGlobal ? list.slice() : list.slice(0, 8);
+    }
+    RBQ.api.getPromptWardrobeForProfile = getPromptWardrobeForProfile;
+
     function formatGlobalCharacterForPrompt(name, p) {
         const display = p.displayName || name;
         const aliases = getProfileAliasList(p);
@@ -3618,8 +3628,9 @@ ${getCharacterMemoryTagSpecification()}
                 const outfit = String(p.currentOutfit || '').trim();
                 const isBaseLocked = !!(p.baseLocked || p.isBaseLocked);
                 const isOutfitLocked = !!(p.outfitLocked || p.isOutfitLocked);
-                const wardrobe = Array.isArray(p.wardrobe) && p.wardrobe.length > 0
-                    ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
+                const wardrobeItems = getPromptWardrobeForProfile(p);
+                const wardrobe = wardrobeItems.length > 0
+                    ? `\n    - 可选衣柜预设: ${wardrobeItems.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).join(' | ')}`
                     : '';
                 return `  * 角色「${name}」${p.importedFromGlobal ? ' (⭐ 来自全局角色)' : ''}:
     - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
@@ -4060,6 +4071,30 @@ ${activeRegistrySection}`;
         }
     }
 
+    /** Names that exist only in this chat: 角色库 is just a view over all chats, so clearing this chat drops them from 角色库 too.
+     *  ⭐全局角色 keep their own snapshot (sdt.globalCharacters) and are not counted. */
+    function getChatOnlyCharacterNames(store, chatKey) {
+        const all = store?.characterProfiles || {};
+        const mine = all[chatKey] && typeof all[chatKey] === 'object' ? Object.keys(all[chatKey]) : [];
+        const globals = store?.globalCharacters && typeof store.globalCharacters === 'object' ? store.globalCharacters : {};
+        return mine.filter(name => !Object.prototype.hasOwnProperty.call(globals, name)
+            && !Object.entries(all).some(([k, dict]) => k !== chatKey && dict && typeof dict === 'object'
+                && Object.prototype.hasOwnProperty.call(dict, name)));
+    }
+
+    function buildClearCharacterProfilesConfirm(store, chatKey) {
+        const count = Object.keys(store?.characterProfiles?.[chatKey] || {}).length;
+        const only = getChatOnlyCharacterNames(store, chatKey);
+        let msg = `确定清空当前聊天的所有角色记忆吗？（共 ${count} 位）`;
+        if (only.length) {
+            const shown = only.slice(0, 10).map(n => `「${n}」`).join('、') + (only.length > 10 ? ` 等` : '');
+            msg += `\n\n⚠️ 其中 ${only.length} 位只存在于这个对话：${shown}\n清空后这些角色也会从「角色库」里消失，且无法撤销。需要的话请先在角色工坊「角色库」里「导出备份」或设为⭐全局角色。`;
+        } else if (count) {
+            msg += '\n\n这些角色在其他对话或⭐全局角色里还有存档，「角色库」里仍能找到。';
+        }
+        return msg;
+    }
+
     function clearAllCharacterProfiles() {
         const store = getStore();
         const chatKey = getChatKey();
@@ -4089,7 +4124,7 @@ ${activeRegistrySection}`;
                         <div style="display: inline-flex; align-items: center; gap: 6px; background: var(--linear-surface, rgba(255,255,255,0.04)); border: 1px solid var(--linear-border-standard, rgba(255,255,255,0.12)); padding: 4px 10px; border-radius: 8px;">
                             ${profile.avatarUrl ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 20px; height: 20px; border-radius: 4px; object-fit: cover;" />` : '<span>👤</span>'}
                             <strong style="color: var(--linear-brand, #79e4ff); font-size: 12.5px;">${escapeHtml(name)}</strong>
-                            ${profile.importedFromGlobal ? '<span style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.45); color: #fde047;" title="从全局角色导入（导入时人设与服装默认锁定）。可在角色工坊手动解锁修改，会话里的改动不会同步回全局">⭐来自全局</span>' : ''}
+                            ${profile.importedFromGlobal ? '<span style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.45); color: #fde047;" title="从全局角色导入（导入时人设与服装默认锁定）。锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局">⭐来自全局</span>' : ''}
                             <button type="button" class="rbq-sdt-toggle-base-lock-btn" data-char="${escapeHtml(key)}" style="background: ${isBaseLocked ? 'rgba(163,230,53,0.18)' : 'rgba(255,255,255,0.06)'}; border: 1px solid ${isBaseLocked ? 'rgba(163,230,53,0.5)' : 'rgba(255,255,255,0.15)'}; color: ${isBaseLocked ? '#a3e635' : '#94a3b8'}; border-radius: 4px; font-size: 10.5px; padding: 1px 5px; cursor: pointer;" title="${isBaseLocked ? '人设已锁定：生图绝不回填人设（点击解锁）' : '人设未锁定（点击锁定防篡改）'}">${isBaseLocked ? '🔒人设' : '🔓人设'}</button>
                             <button type="button" class="rbq-sdt-toggle-outfit-lock-btn" data-char="${escapeHtml(key)}" style="background: ${isOutfitLocked ? 'rgba(244,114,182,0.18)' : 'rgba(255,255,255,0.06)'}; border: 1px solid ${isOutfitLocked ? 'rgba(244,114,182,0.5)' : 'rgba(255,255,255,0.15)'}; color: ${isOutfitLocked ? '#f472b6' : '#94a3b8'}; border-radius: 4px; font-size: 10.5px; padding: 1px 5px; cursor: pointer;" title="${isOutfitLocked ? '服装已锁定：生图绝不回填顶替（点击解锁）' : '服装未锁定（点击锁定防篡改）'}">${isOutfitLocked ? '🔒衣服' : '🔓衣服'}</button>
                             ${wCount > 0 ? `<span style="font-size: 10.5px; color: #ffb86c;">(${wCount}套)</span>` : ''}
@@ -4298,6 +4333,67 @@ ${activeRegistrySection}`;
     }
     function commitCharacterMemoryUpdates(characters) { /* no-op: parse already committed */ }
 
+    /** Cards that belong to the open chat: the group's member cards (by avatar) in a group chat, the open card in 1:1.
+     *  Never the whole card library and never characters[0] as a guess. */
+    function getActiveChatCharacters(ctx) {
+        const characters = Array.isArray(ctx?.characters) ? ctx.characters : [];
+        const activeChars = [];
+        const groupId = ctx?.groupId;
+        if (groupId != null && String(groupId).trim() !== '') {
+            const group = Array.isArray(ctx.groups) ? ctx.groups.find(g => String(g?.id) === String(groupId)) : null;
+            const members = (Array.isArray(group?.members) ? group.members : [])
+                .map(member => typeof member === 'string' ? member : member?.avatar).filter(Boolean);
+            // Keep the group's member order (not the card-library order).
+            for (const avatar of members) {
+                const char = characters.find(c => c?.name && c.avatar === avatar);
+                if (char && !activeChars.includes(char)) activeChars.push(char);
+            }
+            // Some hosts expose only the current speaker. Never substitute the entire card library.
+            if (!group && characters[ctx.characterId]?.name) activeChars.push(characters[ctx.characterId]);
+        } else if (ctx?.characterId != null && String(ctx.characterId).trim() !== '') {
+            const char = characters[ctx.characterId];
+            if (char && char.name) activeChars.push(char);
+        }
+        return activeChars;
+    }
+
+    /** 「从角色卡提取」 target: 1:1 → the open card; group → the member matching preferName, the only member, or ask. */
+    function resolveCardForExtraction(ctx, preferName = '') {
+        const candidates = getActiveChatCharacters(ctx);
+        const isGroup = ctx?.groupId != null && String(ctx.groupId).trim() !== '';
+        if (!isGroup || candidates.length <= 1) return { char: candidates[0] || null, candidates, isGroup };
+        const want = String(preferName || '').trim();
+        if (want) {
+            const key = n => (getCanonicalCharName(n) || String(n || '')).trim().toLowerCase();
+            const hit = candidates.find(c => key(c.name) === key(want));
+            if (hit) return { char: hit, candidates, isGroup };
+        }
+        return { char: null, candidates, isGroup, needsChoice: true };
+    }
+
+    function chooseGroupMemberCard(candidates) {
+        return new Promise((resolve) => {
+            document.getElementById('rbq-sdt-pick-card-modal')?.remove();
+            const modal = document.createElement('div');
+            modal.id = 'rbq-sdt-pick-card-modal';
+            modal.style.cssText = 'position:fixed;inset:0;z-index:2147483635;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+            modal.innerHTML = `
+                <div style="background:#1e1f24;border:1px solid rgba(255,255,255,0.18);border-radius:12px;width:360px;max-width:94vw;padding:16px;display:flex;flex-direction:column;gap:10px;color:#e4e4e7;">
+                    <div style="font-weight:bold;font-size:14px;">这是群聊：要从哪张角色卡提取外貌？</div>
+                    <div style="font-size:12px;opacity:0.75;">只列出本群聊的成员。</div>
+                    ${candidates.map((c, i) => `<button type="button" class="menu_button rbq-sdt-pick-card" data-idx="${i}" style="display:flex;align-items:center;gap:8px;justify-content:flex-start;">${c.avatar ? `<img src="/characters/${escapeHtml(c.avatar)}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;" />` : '<span>👤</span>'}<span>${escapeHtml(c.name)}</span></button>`).join('')}
+                    <button type="button" class="menu_button rbq-sdt-pick-card-cancel" style="opacity:0.8;">取消</button>
+                </div>`;
+            const done = (val) => { modal.remove(); resolve(val); };
+            modal.addEventListener('click', (e) => {
+                const btn = e.target.closest('.rbq-sdt-pick-card');
+                if (btn) return done(candidates[Number(btn.dataset.idx)] || null);
+                if (e.target === modal || e.target.closest('.rbq-sdt-pick-card-cancel')) done(null);
+            });
+            document.body.appendChild(modal);
+        });
+    }
+
     function collectCharacterCardInfo(currentMes = '', recentMessages = [], requestStore = null) {
         const store = requestStore || getStore();
         if (!store.injectCharacterCard) return [];
@@ -4310,26 +4406,7 @@ ${activeRegistrySection}`;
             if (!Array.isArray(characters)) return [];
 
             // 确定当前聊天的角色列表
-            const activeChars = [];
-            const groupId = ctx.groupId;
-
-            if (groupId != null && String(groupId).trim() !== '') {
-                const group = Array.isArray(ctx.groups) ? ctx.groups.find(g => String(g?.id) === String(groupId)) : null;
-                const members = new Set((Array.isArray(group?.members) ? group.members : [])
-                    .map(member => typeof member === 'string' ? member : member?.avatar).filter(Boolean));
-                for (const char of characters) {
-                    if (char?.name && members.has(char.avatar)) {
-                        activeChars.push(char);
-                    }
-                }
-                // Some hosts expose only the current speaker. Never substitute the entire card library.
-                if (!group && characters[ctx.characterId]?.name) activeChars.push(characters[ctx.characterId]);
-            } else {
-                const char = characters[ctx.characterId];
-                if (char && char.name) {
-                    activeChars.push(char);
-                }
-            }
+            const activeChars = getActiveChatCharacters(ctx);
 
             const allContextText = [...(recentMessages || []).map(m => m.content || ''), currentMes || ''].join('\n').toLowerCase();
             const infoList = [];
@@ -4403,7 +4480,7 @@ ${activeRegistrySection}`;
         return references;
     }
 
-    async function importCharacterFromCurrentCard() {
+    async function importCharacterFromCurrentCard(options = {}) {
         const btn = document.getElementById('rbq-sdt-import-char-profile-btn');
         const origHtml = btn ? btn.innerHTML : '';
         const requestContext = captureMangaRequestContext(null, -1);
@@ -4420,13 +4497,16 @@ ${activeRegistrySection}`;
                 return false;
             }
 
-            let char = null;
-            if (ctx.groupId != null && String(ctx.groupId).trim() !== '') {
-                char = characters.find(c => c && c.name) || characters[0];
-            } else if (ctx.characterId != null && characters[ctx.characterId]) {
-                char = characters[ctx.characterId];
-            } else {
-                char = characters[0];
+            // 6.5.48: group chats used to take the first card in the whole library; now only this chat's members.
+            const target = resolveCardForExtraction(ctx, options?.preferName);
+            let char = target.char;
+            if (target.needsChoice) {
+                char = await chooseGroupMemberCard(target.candidates);
+                if (!char) return false; // cancelled: nothing changes
+            }
+            if (target.isGroup && !target.candidates.length) {
+                toastr.warning('没找到这个群聊的成员角色卡，没有提取任何内容', PLUGIN_NAME);
+                return false;
             }
 
             if (!char || !char.name) {
@@ -8038,8 +8118,14 @@ ${getCharacterMemoryTagSpecification()}
                 state.outfit = p.currentOutfit || '';
                 state.outfitSet = true;
             }
-            return { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
+            const ref = { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
                 outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
+            // Imported ⭐全局角色 copies keep their full wardrobe in manga paths too (same as before import).
+            if (p.importedFromGlobal) {
+                ref.wardrobe = getPromptWardrobeForProfile(p).filter(w => w && (w.name || w.outfit || w.tags))
+                    .map(w => ({ name: w.name || '', outfit: w.outfit || w.tags || '', locked: !!w.locked }));
+            }
+            return ref;
         });
         // ⭐全局角色 not yet in this chat (all manga paths incl. layered/studio): marked global, imported on appearance.
         references.push(...getMangaGlobalMemoryReferences(chatProfiles, requestStore));
@@ -16662,6 +16748,13 @@ SCHEMA:
             save();
             console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}`);
         });
+        // 6.5.48: 「参考角色卡信息（未建档时）」 also saves on click, same as the memory switch above (bound at bindSwitch list).
+        document.getElementById('rbq-sdt-inject-char-card').addEventListener('change', (e) => {
+            const s = getStore();
+            s.injectCharacterCard = e.target.checked;
+            save();
+            console.info(`[Smart Draw] 参考角色卡信息已${e.target.checked ? '✅ 启用' : '❌ 禁用'}`);
+        });
 
         // API templates selection/change
         document.getElementById('rbq-sdt-api-template').addEventListener('change', (event) => {
@@ -17213,7 +17306,7 @@ SCHEMA:
 
             const clearBtn = e.target.closest('#rbq-sdt-clear-char-profiles');
             if (clearBtn) {
-                if (confirm('确定清空当前聊天的所有角色记忆吗？')) {
+                if (confirm(buildClearCharacterProfilesConfirm(getStore(), getChatKey()))) {
                     clearAllCharacterProfiles();
                     refreshCharacterProfileListUi();
                     toastr.success('当前聊天的角色外貌记忆已清空', PLUGIN_NAME);
@@ -19316,8 +19409,20 @@ SCHEMA:
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);
     };
 
-    RBQ.api.importCharacterFromCurrentCard = () => {
-        return importCharacterFromCurrentCard();
+    RBQ.api.importCharacterFromCurrentCard = (options = {}) => {
+        return importCharacterFromCurrentCard(options);
+    };
+
+    /** Shared by 角色工坊's 「一键打开」 banner: flips 「启用角色外貌记忆」, saves, and keeps this panel's checkbox in sync
+     *  (otherwise a later 「💾 保存智能触发器设置」 click would write the stale unchecked box back). */
+    RBQ.api.setCharacterMemoryEnabled = (enabled) => {
+        const store = getStore();
+        store.characterMemoryEnabled = !!enabled;
+        save();
+        const input = document.getElementById('rbq-sdt-char-memory');
+        if (input) input.checked = !!enabled;
+        document.getElementById('rbq-sdt-char-memory-field')?.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        return store.characterMemoryEnabled;
     };
 
     RBQ.api.collectMangaReferenceData = collectMangaReferenceData;

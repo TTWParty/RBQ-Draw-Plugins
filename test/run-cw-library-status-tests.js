@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 let passed = 0;
 const test = (n, fn) => { fn(); passed++; console.log('PASS', n); };
-const HINT = '可在角色工坊手动解锁修改，会话里的改动不会同步回全局';
+const HINT = '锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局';
 
 const cwSrc = fs.readFileSync(path.join(__dirname, '../plugins/character-workshop.js'), 'utf8');
 const sdtSrc = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-trigger.js'), 'utf8');
@@ -81,7 +81,7 @@ test('D: CW 「导入当前」 toast + SDT toast/panel carry the lock hint', () 
     assert.ok(cwSrc.includes(`导入到当前会话（人设与服装已锁定）<br><small style="opacity:.8">${HINT}</small>\`, PLUGIN_NAME, { escapeHtml: false })`));
     assert.ok(sdtSrc.includes(`function getGlobalImportLockHint() { return '${HINT}'; }`));
     assert.ok(sdtSrc.includes(`title="从全局角色导入（导入时人设与服装默认锁定）。${HINT}">⭐来自全局</span>`));
-    assert.match(cwSrc, /const VERSION = '2\.2\.38'/);
+    assert.match(cwSrc, /const VERSION = '2\.2\.39'/);
     assert.match(sdtSrc, /DEFAULT_SYSTEM_PROMPT_VERSION = 46\b/);
 });
 console.log(`\n${passed} CW library status / lock hint tests passed.`);

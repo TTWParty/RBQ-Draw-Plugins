@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.36';
+    const VERSION = '2.2.37';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -762,6 +762,20 @@
         }
 
         RBQ.api.saveSettings();
+    }
+
+
+    /** Clone preferred global archive into current chat, replacing any same-name slot. */
+    function overwriteCurrentChatFromGlobal(name) {
+        if (!name) return false;
+        const globalProfiles = getAllGlobalProfiles();
+        const p = globalProfiles[name];
+        if (!p || typeof p !== 'object') return false;
+        const bucket = ensureProfileBucket();
+        // Drop current slot first so saveProfile merge cannot keep parse-only leftovers.
+        delete bucket[name];
+        saveProfile(name, JSON.parse(JSON.stringify(p)), 'chat');
+        return true;
     }
 
     function deleteProfile(name, scope = dossierScope) {
@@ -2697,7 +2711,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                     <button class="cw-btn sm cw-export-single-char" data-name="${esc(n)}" title="导出该角色为独立 JSON 文件"><i class="fa-solid fa-file-export"></i></button>
                                 ` : `
                                     ${(dossierScope === 'all') ? (chatProfiles[n] ? `
-                                        <span style="font-size:10px;padding:3px 6px;border-radius:4px;background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.25)" title="当前聊天已存在该角色"><i class="fa-solid fa-check"></i> 本会话已存在</span>
+                                        <button class="cw-btn cy sm cw-overwrite-from-global" data-name="${esc(n)}" title="用全局历史中的优选档案（锁定优先，其次最早建档）覆盖当前会话中的同名档案"><i class="fa-solid fa-rotate"></i> 用全局版本覆盖当前</button>
                                     ` : `
                                         <button class="cw-btn gn sm cw-import-from-global" data-name="${esc(n)}" title="将此全局历史角色导入到当前会话"><i class="fa-solid fa-file-import"></i> 导入当前</button>
                                     `) : ''}
@@ -3818,6 +3832,18 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const toImport = JSON.parse(JSON.stringify(p));
                 saveProfile(name, toImport, 'chat');
                 toastr.success(`已成功将「${name}」导入到当前会话档案库！可在当前会话中直接使用`, PLUGIN_NAME);
+                refresh('dossier');
+            } else {
+                toastr.warning(`未找到角色「${name}」的全局历史数据`, PLUGIN_NAME);
+            }
+        }));
+
+        container.querySelectorAll('.cw-overwrite-from-global').forEach(b => b.addEventListener('click', (e) => {
+            const name = e.currentTarget.dataset.name;
+            const confirmMsg = `确定用全局历史中的「${name}」档案覆盖当前会话中的版本吗？\n（将采用锁定优先、其次最早建档的那份全局档案；当前会话里解析出的新内容会被替换）`;
+            if (!confirm(confirmMsg)) return;
+            if (overwriteCurrentChatFromGlobal(name)) {
+                toastr.success(`已用全局版本覆盖当前会话中的「${name}」档案`, PLUGIN_NAME);
                 refresh('dossier');
             } else {
                 toastr.warning(`未找到角色「${name}」的全局历史数据`, PLUGIN_NAME);

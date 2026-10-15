@@ -42,7 +42,7 @@ function createEnv() {
     settings._smartDrawTrigger.enhancedContext = 'off';
     settings._smartDrawTrigger.characterMemoryEnabled = true;
 
-    return { sdt, settings };
+    return { sdt, settings, sdtSource };
 }
 const cap = (r) => (r && typeof r === 'object' && 'caption' in r) ? r.caption : r;
 
@@ -334,6 +334,67 @@ test('Unlocked character allows normal plot outfit transitions and auto-archivin
     assert.equal(updated.wardrobe.length, 2);
     sdt.mergeCharacterCaption('可莉', '1girl, blonde hair', 'red swimsuit, swimming ring', 'smiling', '', 'klee');
     assert.equal(sdt.getCharacterProfile('可莉').wardrobe.length, 2);
+});
+
+
+// Test 9: duplicate category/LLM wardrobe names get numeric suffixes
+test('deriveOutfitName and auto-archive always unique wardrobe names (e.g. 剧情: 泳装 2)', () => {
+    const { sdt, settings } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+
+    Object.assign(sdt.getCharacterProfiles(), {
+        '早濑沙纪': {
+            displayName: '早濑沙纪',
+            nameTag: 'hayase saki',
+            baseTags: '1girl, blue hair',
+            currentOutfit: 'school uniform, sailor collar',
+            wardrobe: [
+                { id: 'w1', name: '剧情: 泳装', outfit: 'blue one-piece swimsuit', locked: false },
+            ],
+        }
+    });
+
+    // Category map → 泳装; must not invent a second identical 「剧情: 泳装」
+    sdt.mergeCharacterCaption(
+        '早濑沙纪', '1girl, blue hair', 'red bikini, micro bikini', 'standing', '', 'hayase saki'
+    );
+    let updated = sdt.getCharacterProfile('早濑沙纪');
+    assert.equal(updated.wardrobe.length, 2);
+    const names = updated.wardrobe.map(w => w.name);
+    assert.ok(names.includes('剧情: 泳装'));
+    assert.ok(names.includes('剧情: 泳装 2'), 'duplicate category name must be numbered: ' + names.join(','));
+
+    // LLM outfit_name path also uniques
+    sdt.mergeCharacterCaption(
+        '早濑沙纪', '1girl, blue hair', 'white bikini, frills', 'sitting', '', 'hayase saki',
+        { outfitName: '泳装' }
+    );
+    updated = sdt.getCharacterProfile('早濑沙纪');
+    const names2 = updated.wardrobe.map(w => w.name);
+    assert.equal(updated.wardrobe.length, 3);
+    assert.ok(names2.includes('剧情: 泳装 3'), 'LLM-named duplicate must be numbered: ' + names2.join(','));
+});
+
+test('addCharacterWardrobeOutfit numbers duplicate names', () => {
+    const { sdt, settings, sdtSource } = createEnv();
+    settings._smartDrawTrigger.characterMemoryEnabled = true;
+    Object.assign(sdt.getCharacterProfiles(), {
+        '可莉': {
+            displayName: '可莉', baseTags: '1girl', wardrobe: [
+                { id: 'w1', name: '默认服装', outfit: 'red dress', locked: false }
+            ],
+        }
+    });
+    // load addCharacterWardrobeOutfit if not already present
+    if (typeof sdt.addCharacterWardrobeOutfit !== 'function') {
+        const a = sdtSource.indexOf('    function addCharacterWardrobeOutfit(');
+        const b = sdtSource.indexOf('    function deleteCharacterWardrobeOutfit(');
+        assert.ok(a >= 0 && b > a);
+        vm.runInContext(sdtSource.slice(a, b) + '\nthis.addCharacterWardrobeOutfit = addCharacterWardrobeOutfit;', sdt);
+    }
+    sdt.addCharacterWardrobeOutfit('可莉', '默认服装', 'another outfit');
+    const names = sdt.getCharacterProfile('可莉').wardrobe.map(w => w.name);
+    assert.deepEqual(names.sort(), ['默认服装', '默认服装 2'].sort());
 });
 
 console.log(`\n${passed} wardrobe & lock tests passed successfully.`);

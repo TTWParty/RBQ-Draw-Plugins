@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.43';
+    const PLUGIN_VERSION = '6.5.44';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3490,24 +3490,24 @@ ${activeRegistrySection}`;
         const named = cleanOutfitName(outfitName);
         if (named) return uniqueWardrobeName(wardrobe, `${isInitial ? '初始: ' : '剧情: '}${named}`);
         const rawTags = String(outfitTags || '').trim();
-        if (!rawTags) return isInitial ? '初始设定服装' : '剧情着装';
+        if (!rawTags) return uniqueWardrobeName(wardrobe, isInitial ? '初始设定服装' : '剧情着装');
 
         // 1. Check mapped category
         for (const cat of OUTFIT_CATEGORY_MAP) {
             if (cat.regex.test(rawTags)) {
-                return `${isInitial ? '初始: ' : '剧情: '}${cat.name}`;
+                return uniqueWardrobeName(wardrobe, `${isInitial ? '初始: ' : '剧情: '}${cat.name}`);
             }
         }
 
         // 2. Extract first 1-2 prominent English tags
         const firstTag = rawTags.split(/[,，\n]/).map(t => t.trim().replace(/_/g, ' ')).filter(Boolean)[0] || '';
         if (firstTag && firstTag.length <= 25) {
-            return `${isInitial ? '初始: ' : '剧情: '}${firstTag}`;
+            return uniqueWardrobeName(wardrobe, `${isInitial ? '初始: ' : '剧情: '}${firstTag}`);
         }
 
         const now = new Date();
         const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        return isInitial ? '初始常服' : `剧情服装 (${timeStr})`;
+        return uniqueWardrobeName(wardrobe, isInitial ? '初始常服' : `剧情服装 (${timeStr})`);
     }
 
     function updateCharacterProfile(name, baseTags, outfitTags, avatarUrl = null, autoArchiveToWardrobe = true, options = {}) {
@@ -3605,7 +3605,7 @@ ${activeRegistrySection}`;
         } else {
             const initialWardrobe = [];
             if (autoArchiveToWardrobe && outfitTags && outfitTags.length > 5) {
-                const nameStr = deriveOutfitName(canonical, outfitTags, true, options.outfitName);
+                const nameStr = deriveOutfitName(canonical, outfitTags, true, options.outfitName, initialWardrobe);
                 initialWardrobe.push({
                     id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
                     name: nameStr,
@@ -3646,7 +3646,7 @@ ${activeRegistrySection}`;
             : (Array.isArray(triggersStr) ? triggersStr : []);
         const newOutfit = {
             id: `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-            name: String(outfitName || '未命名服装').trim(),
+            name: uniqueWardrobeName(p.wardrobe, String(outfitName || '未命名服装').trim() || '未命名服装'),
             outfit: String(outfitTags || '').trim(),
             triggers,
             locked: !!locked,

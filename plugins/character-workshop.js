@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.35';
+    const VERSION = '2.2.36';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -320,6 +320,59 @@
         return profiles;
     }
 
+
+    /** Locked base/outfit (or any locked wardrobe preset) — protect from unlocked-clone overwrite. */
+    function isProfileContentLocked(p) {
+        if (!p || typeof p !== 'object') return false;
+        if (p.baseLocked || p.isBaseLocked || p.outfitLocked || p.isOutfitLocked) return true;
+        return Array.isArray(p.wardrobe) && p.wardrobe.some(w => w && w.locked);
+    }
+
+    /** Same archive identity across chats: matching createdAt. Legacy (missing) never auto-matches. */
+    function isSameProfileIdentity(a, b) {
+        const ca = Number(a?.createdAt || 0);
+        const cb = Number(b?.createdAt || 0);
+        return ca > 0 && cb > 0 && ca === cb;
+    }
+
+    /** Global list pick: locked > unlocked; else oldest createdAt; same identity → newest updatedAt. */
+    function shouldPreferGlobalProfile(candidate, current) {
+        if (!current) return true;
+        const candLocked = isProfileContentLocked(candidate);
+        const curLocked = isProfileContentLocked(current);
+        if (candLocked !== curLocked) return candLocked;
+        const candCreated = Number(candidate.createdAt || 0);
+        const curCreated = Number(current.createdAt || 0);
+        if (candCreated > 0 && curCreated > 0 && candCreated !== curCreated) {
+            return candCreated < curCreated;
+        }
+        if (candCreated > 0 && curCreated > 0 && candCreated === curCreated) {
+            return Number(candidate.updatedAt || 0) > Number(current.updatedAt || 0);
+        }
+        // Legacy / missing createdAt: prefer older updatedAt so a fresh unlocked clone does not win.
+        const candUpdated = Number(candidate.updatedAt || 0);
+        const curUpdated = Number(current.updatedAt || 0);
+        if (candUpdated > 0 && curUpdated > 0 && candUpdated !== curUpdated) {
+            return candUpdated < curUpdated;
+        }
+        if (candCreated > 0 && curCreated === 0) return true;
+        return false;
+    }
+
+    /** Global sync: same createdAt only; legacy (no createdAt) may still sync; never clobber locked with unlocked.
+     *  `source` is the archive being saved (lock intent); do not use merged target which may retain old lock flags. */
+    function shouldSyncGlobalCopy(existing, incoming, source = incoming) {
+        if (!existing || typeof existing !== 'object') return false;
+        if (isProfileContentLocked(existing) && !isProfileContentLocked(source)) return false;
+        const ca = Number(existing.createdAt || 0);
+        const cb = Number(incoming?.createdAt || 0);
+        if (ca > 0 && cb > 0) return ca === cb;
+        // Legacy target without createdAt: allow name-based sync (locked guard above). Stamp identity on write.
+        if (ca === 0) return true;
+        // Target has identity but incoming does not match / lacks one: refuse.
+        return false;
+    }
+
     function getAllGlobalProfiles() {
         const sdt = getSdtStore();
         const fallback = {};
@@ -334,7 +387,7 @@
                             continue;
                         }
                         if (v && typeof v === 'object') {
-                            if (!fallback[k] || (v.updatedAt && (!fallback[k].updatedAt || v.updatedAt > fallback[k].updatedAt))) {
+                            if (!fallback[k] || shouldPreferGlobalProfile(v, fallback[k])) {
                                 fallback[k] = v;
                             }
                         }
@@ -644,6 +697,15 @@
 
     function getProfile(name) {
         if (!name) return null;
+        // Global history view: show/edit the preferred archive (locked / oldest), not the current-chat clone.
+        if (dossierScope === 'all') {
+            const globalPreferred = getAllGlobalProfiles()[name];
+            if (globalPreferred) return globalPreferred;
+        }
+        if (dossierScope === 'lorebook') {
+            const doujinPreferred = getMountedDoujinProfiles()[name];
+            if (doujinPreferred) return doujinPreferred;
+        }
         const current = getCurrentChatProfiles()[name];
         if (current) return current;
         const globalP = getAllGlobalProfiles()[name];
@@ -668,11 +730,16 @@
             return obj;
         };
         dropEmptyNameTag(profileData);
-        if (!profileData.createdAt) profileData.createdAt = Date.now();
+        // Prefer the identity of the archive being edited (global view) over a current-chat clone's createdAt.
+        if (Object.hasOwn(data, 'createdAt') && Number(data.createdAt || 0) > 0) {
+            profileData.createdAt = data.createdAt;
+        } else if (!profileData.createdAt) {
+            profileData.createdAt = Date.now();
+        }
         if (!Array.isArray(profileData.wardrobe)) profileData.wardrobe = [];
         bucket[name] = profileData;
 
-        // 若在全局历史模式下保存，同步更新其他历史会话桶中已存在的同名角色副本，防止旧副本数据脱节
+        // Global save: sync only same-identity copies; never overwrite a locked archive with an unlocked clone.
         if (scope === 'all') {
             const sdt = getSdtStore();
             if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
@@ -681,9 +748,13 @@
                         if (chatDict[name] || (data.displayName && chatDict[data.displayName])) {
                             const targetKey = chatDict[name] ? name : data.displayName;
                             const existing = chatDict[targetKey];
-                            chatDict[targetKey] = dropEmptyNameTag(JSON.parse(JSON.stringify({ ...existing, ...data,
+                            const merged = dropEmptyNameTag(JSON.parse(JSON.stringify({ ...existing, ...data,
                                 displayName: data.displayName || name, updatedAt: profileData.updatedAt,
-                                createdAt: existing.createdAt || profileData.createdAt })));
+                                createdAt: (Object.hasOwn(data, 'createdAt') && Number(data.createdAt || 0) > 0)
+                                    ? data.createdAt
+                                    : (existing.createdAt || profileData.createdAt) })));
+                            if (!shouldSyncGlobalCopy(existing, merged, profileData)) continue;
+                            chatDict[targetKey] = merged;
                         }
                     }
                 }
@@ -2298,8 +2369,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     currentOutfitId: draft.currentOutfitId,
                     avatarUrl: draft.avatarUrl,
                     wardrobe: draft.wardrobe,
+                    // Keep the archive identity so global sync only touches same-createdAt copies.
+                    ...(origProfile?.createdAt ? { createdAt: origProfile.createdAt } : {}),
                 }, targetScope);
-                toastr.success(targetScope === 'all' ? ('「' + name + '」已保存，并已同步更新至全局历史所有会话副本！') : ('「' + name + '」已保存到 SDT 角色记忆！'), PLUGIN_NAME);
+                toastr.success(targetScope === 'all' ? ('「' + name + '」已保存，并已同步至同一档案的各会话副本！') : ('「' + name + '」已保存到 SDT 角色记忆！'), PLUGIN_NAME);
                 mask.remove();
                 if (onSaved) onSaved(name);
             });

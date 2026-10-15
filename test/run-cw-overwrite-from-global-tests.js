@@ -1,15 +1,15 @@
-/** Character Workshop 2.2.37: overwrite current-chat profile from preferred global archive. */
+/** Character Workshop 2.2.37+: overwrite current-chat profile from preferred 角色库 archive (2.2.38 renamed 全局历史 → 角色库). */
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const src = fs.readFileSync(path.join(__dirname, '../plugins/character-workshop.js'), 'utf8');
-assert.match(src, /const VERSION = '2\.2\.37'/);
+assert.match(src, /const VERSION = '2\.2\.38'/);
 assert.match(src, /用全局版本覆盖当前/);
 assert.match(src, /cw-overwrite-from-global/);
 assert.doesNotMatch(src, /本会话已存在/);
-assert.match(src, /确定用全局历史中的「\$\{name\}」档案覆盖当前会话中的版本吗？/);
+assert.match(src, /确定用角色库中的「\$\{name\}」档案覆盖当前会话中的版本吗？/);
 assert.match(src, /锁定优先、其次最早建档/);
 
 const h0 = src.indexOf('    /** Locked base/outfit');

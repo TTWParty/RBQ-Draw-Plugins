@@ -1,4 +1,4 @@
-/** Repro (uncommitted): new chat parse creates a fresh 早濑沙纪 instead of reusing the history archive. */
+/** Repro: new chat parse vs. the 角色库 archive. Since SDT 6.5.45 only ⭐全局角色 are reused across chats (see run-global-character-tests.js). */
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -23,30 +23,30 @@ const oldSaki = () => ({ displayName: '早濑沙纪', nameTag: 'Hayase Saki (Blu
     currentOutfit: 'OLD-OUTFIT school uniform', wardrobe: [{ id: 'w1', name: '校服', outfit: 'OLD-OUTFIT school uniform', locked: false }],
     createdAt: 1000, updatedAt: 5000 });
 
-test('A1: new chat parse ignores history archive and creates a brand-new 早濑沙纪 in the new chat', () => {
+test('A1: 角色库 archive (not ⭐全局角色) is not sent to the LLM; new chat parse still creates its own 早濑沙纪', () => {
+    // SDT 6.5.45+ (user decision A=NO): the old 5-entry archive hint 「已知全局角色资产」 is gone; only ⭐全局角色 reach the prompt.
     const store = { oldChat: { '早濑沙纪': oldSaki() } };
     const { sdt } = sdtEnv(store);
-    // Only prompt hint: new chat is empty → global reference block listed to the LLM.
-    assert.match(sdt.buildCharacterMemoryPromptModule(), /已知全局角色资产「早濑沙纪」/);
-    // LLM returns its own base/outfit (it may or may not follow the hint).
+    assert.doesNotMatch(sdt.buildCharacterMemoryPromptModule(), /已知全局角色资产|早濑沙纪/);
     sdt.mergeCharacterCaption('早濑沙纪', 'girl, NEW-BASE long black hair', 'NEW-OUTFIT red dress', 'smile', '', 'Hayase Saki (Blue Archive)');
     const fresh = store.newChat['早濑沙纪'];
     assert.ok(fresh, 'new profile created in newChat');
     assert.match(fresh.baseTags, /NEW-BASE/);
     assert.ok(fresh.createdAt > 1000, 'new identity (createdAt)');
+    assert.equal(fresh.importedFromGlobal, undefined);
     // Old archive untouched in storage.
     assert.match(store.oldChat['早濑沙纪'].baseTags, /OLD-BASE/);
     assert.equal(store.oldChat['早濑沙纪'].updatedAt, 5000);
-    // Once the new chat has ANY profile, the global hint disappears from later parses.
-    assert.doesNotMatch(sdt.buildCharacterMemoryPromptModule(), /已知全局角色资产/);
 });
 
-test('A2: global hint is capped at 5 and picks first-seen (not locked/oldest) per name', () => {
+test('A2: archive-only characters never appear in the prompt (no 5-cap hint any more)', () => {
     const store = {};
     for (let i = 0; i < 6; i++) store['c' + i] = { ['角色' + i]: { displayName: '角色' + i, baseTags: 'x', createdAt: 1, updatedAt: 1 } };
     store.zLast = { '早濑沙纪': oldSaki() };
     const { sdt } = sdtEnv(store);
-    assert.doesNotMatch(sdt.buildCharacterMemoryPromptModule(), /早濑沙纪/);
+    const prompt = sdt.buildCharacterMemoryPromptModule();
+    assert.doesNotMatch(prompt, /早濑沙纪|角色0|已知全局角色资产/);
+    assert.match(prompt, /Initial Profiling/);
 });
 
 // ---- CW: global view (2.2.36 vs 2.2.35) ----

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.46';
+    const PLUGIN_VERSION = '6.5.47';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3165,29 +3165,97 @@ Zimage 擅长理解复杂的英文长句和语境。
         return !!a && a === b;
     }
 
+    // Series (作品) keys of an identity: trailing parenthetical groups written in Latin script, excluding
+    // original/原创/同人/fanart/oc and obvious skins/outfits. Translated (e.g. Chinese) series are not compared.
+    function isCharSkinGroup(g) { return /^(?:swim\s*suit|swimwear|bikini|school\s*uniform|uniform|casual|dress|maid|bunny|pajamas|kimono|yukata|armor|track\s*suit|gym|sportswear|nurse|wedding|winter|summer|new\s*year|christmas|halloween|cheer\s*leader|idol|alt|alternate|young|adult|child|kid|teen|older|younger|past|future|\d+)$/i.test(g); }
+    function getCharSeriesKeys(name) {
+        let s = stripCharWeight(name);
+        const keys = [];
+        let m;
+        while ((m = /\s*[(\[【]([^()\[\]【】]+)[)\]】]\s*$/.exec(s))) {
+            const g = m[1].trim();
+            s = s.slice(0, m.index).trim();
+            if (!s) break; // the whole name is bracketed ([Name] / {Name}) — not a series
+            if (/^(?:original|原创|同人|fanart|oc)$/i.test(g) || isCharSkinGroup(g)) continue;
+            if (!/^[A-Za-z0-9\u00c0-\u024f\s'’.:：&!?+\-_]+$/.test(g) || !/[A-Za-z]/.test(g)) continue;
+            keys.push(g.toLowerCase().replace(/[\s_·・‧･\-'’.:：]+/g, ''));
+        }
+        return keys;
+    }
+    function getCharSeriesKey(name) { return getCharSeriesKeys(name)[0] || ''; }
+    function getProfileSeriesKeys(k, p) {
+        for (const v of [p?.nameTag, p?.displayName, k]) { const keys = getCharSeriesKeys(v || ''); if (keys.length) return keys; }
+        return [];
+    }
+    function getProfileSeriesKey(k, p) { return getProfileSeriesKeys(k, p)[0] || ''; }
+    // Two different series = two different people, whatever the bare names say.
+    function isCharSeriesConflict(expectedSeries, k, p) {
+        const expected = (Array.isArray(expectedSeries) ? expectedSeries : [expectedSeries]).filter(Boolean);
+        if (!expected.length) return false;
+        const own = getProfileSeriesKeys(k, p);
+        return own.length > 0 && !own.some(x => expected.includes(x));
+    }
+    // name_tag identity compared verbatim (series included); only weights/width/case/separators are normalized.
+    function getExactNameTagKey(tag) {
+        return stripCharWeight(tag).replace(/[_\s]+/g, ' ').trim().toLowerCase();
+    }
+    function findProfileByExactNameTag(profiles, nameTag, opts = {}) {
+        if (!profiles || typeof profiles !== 'object') return null;
+        const key = getExactNameTagKey(nameTag);
+        if (!key) return null;
+        const hits = Object.entries(profiles).filter(([, p]) => p && typeof p === 'object' && p.nameTag && getExactNameTagKey(p.nameTag) === key);
+        if (hits.length > 1 && opts.unique) {
+            debugInfo(`⚠️ name_tag「${nameTag}」同时命中多个档案（${hits.map(h => h[0]).join(' / ')}），为避免误合并不做匹配`);
+            return null;
+        }
+        return hits[0] || null;
+    }
+
     // exact → normalized → swapped(2-word Latin). Ambiguous normalized hits prefer an exact
     // displayName/nameTag hit, otherwise refuse to merge.
-    function findCharacterProfileEntry(profiles, rawName) {
+    // opts.series: expected series key (default: from rawName); a profile of another series never matches.
+    // opts.strictNameTag: name_tag only matches verbatim (fuzzy matching only for names/aliases).
+    // opts.unique: an exact name/alias hit on several profiles is ambiguous → no match.
+    function findCharacterProfileEntry(profiles, rawName, opts = {}) {
         if (!profiles || typeof profiles !== 'object') return null;
         const raw = String(rawName || '').trim();
         if (!raw) return null;
+        const expectedSeries = Object.hasOwn(opts, 'series') ? (opts.series || []) : getCharSeriesKeys(raw);
+        const ok = (k, p) => p && typeof p === 'object' && !isCharSeriesConflict(expectedSeries, k, p);
         const canonical = getCanonicalCharName(raw);
-        if (canonical && profiles[canonical]) return [canonical, profiles[canonical]];
-        if (profiles[raw]) return [raw, profiles[raw]];
+        if (canonical && ok(canonical, profiles[canonical])) return [canonical, profiles[canonical]];
+        if (ok(raw, profiles[raw])) return [raw, profiles[raw]];
 
-        const entries = Object.entries(profiles).filter(([k, p]) => p && typeof p === 'object');
+        const entries = Object.entries(profiles).filter(([k, p]) => ok(k, p));
         const lowerCanon = canonical.toLowerCase();
+        const rawTagKey = getExactNameTagKey(raw);
+        const exactHits = [];
         for (const [k, p] of entries) {
             const pCanon = getCanonicalCharName(p.displayName || k).toLowerCase();
-            const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase();
+            const tagHit = opts.strictNameTag
+                ? !!(p.nameTag && getExactNameTagKey(p.nameTag) === rawTagKey)
+                : (() => { const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase(); return !!tagCanon && tagCanon === lowerCanon; })();
             const aliasHit = getProfileAliasList(p).some(a => getCanonicalCharName(a).toLowerCase() === lowerCanon);
-            if (k.toLowerCase() === lowerCanon || pCanon === lowerCanon || (tagCanon && tagCanon === lowerCanon) || aliasHit) return [k, p];
+            if (k.toLowerCase() === lowerCanon || pCanon === lowerCanon || tagHit || aliasHit) {
+                if (!opts.unique) return [k, p];
+                exactHits.push({ entry: [k, p], primary: k.toLowerCase() === lowerCanon || pCanon === lowerCanon || tagHit });
+            }
+        }
+        if (exactHits.length === 1) return exactHits[0].entry;
+        if (exactHits.length > 1) {
+            const primary = exactHits.filter(h => h.primary);
+            if (primary.length === 1) return primary[0].entry;
+            debugInfo(`⚠️ 角色名「${raw}」同时命中多个档案的姓名/别名（${exactHits.map(h => h.entry[0]).join(' / ')}），为避免误认不做匹配`);
+            return null;
         }
 
         const key = getCharMatchKey(raw);
         if (!key || key.length < 2) return null;
+        const candidatesOf = (k, p) => opts.strictNameTag
+            ? [k, p && p.displayName, ...getProfileAliasList(p)].filter(v => typeof v === 'string' && v.trim())
+            : getProfileNameCandidates(k, p);
         const pick = (target) => {
-            const hits = entries.filter(([k, p]) => getProfileNameCandidates(k, p).some(c => getCharMatchKey(c) === target));
+            const hits = entries.filter(([k, p]) => candidatesOf(k, p).some(c => getCharMatchKey(c) === target));
             if (hits.length <= 1) return hits[0] || null;
             const rawLower = stripCharWeight(raw).toLowerCase();
             const exact = hits.filter(([k, p]) => [p.displayName, p.nameTag].some(v => v && stripCharWeight(v).toLowerCase() === rawLower));
@@ -3205,6 +3273,306 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         return null;
     }
+
+    // ── 三层角色：角色库(全部会话档案，不自动发给 LLM) / ⭐全局角色(所有会话常驻) / 当前会话角色 ──
+    // store.globalCharacters 结构 { [name]: { profile, setAt, updatedAt } } 只由角色工坊手动写入；解析只读不写。
+    function getGlobalCharacterProfiles(store = null) {
+        const s = store || getStore();
+        const raw = s && s.globalCharacters;
+        const out = {};
+        if (!raw || typeof raw !== 'object') return out;
+        for (const [k, entry] of Object.entries(raw)) {
+            const p = entry && typeof entry === 'object' && entry.profile && typeof entry.profile === 'object' ? entry.profile : null;
+            if (!p || !k || isJunkCharacterName(k)) continue;
+            out[k] = p;
+        }
+        return out;
+    }
+
+    // Global characters usable in this chat. (Deleting an imported copy does not suppress re-import: user decision.)
+    function getActiveGlobalCharacterProfiles(store = null) {
+        return getGlobalCharacterProfiles(store);
+    }
+
+    function findGlobalCharacterEntry(rawName, store = null, nameTag = '') {
+        const globals = getActiveGlobalCharacterProfiles(store);
+        const tag = getCharacterNameTag('', nameTag);
+        const series = [...getCharSeriesKeys(tag), ...getCharSeriesKeys(rawName)];
+        return findCharacterProfileEntry(globals, rawName, { series, strictNameTag: true, unique: true })
+            || (tag ? findProfileByExactNameTag(globals, tag, { unique: true }) : null);
+    }
+
+    // Current-session profile for a global character, if already present: its names/aliases (same series only)
+    // or its exact name_tag. A same-named person from another series is not her.
+    function findCurrentProfileForGlobal(profiles, globalKey, globalProfile) {
+        const series = getProfileSeriesKeys(globalKey, globalProfile);
+        for (const n of [globalKey, globalProfile?.displayName, ...getProfileAliasList(globalProfile)]) {
+            if (!n) continue;
+            const hit = findCharacterProfileEntry(profiles, n, { series, strictNameTag: true });
+            if (hit) return hit;
+        }
+        return globalProfile?.nameTag ? findProfileByExactNameTag(profiles, globalProfile.nameTag) : null;
+    }
+
+    // Wardrobe for a copy of a global character: every outfit locked; a current outfit that is not in the
+    // wardrobe is seeded as a locked 「默认服装」 so the first outfit change cannot lose it.
+    function buildLockedGlobalWardrobe(copy) {
+        const wardrobe = (Array.isArray(copy.wardrobe) ? copy.wardrobe : []).filter(w => w && typeof w === 'object')
+            .map(w => ({ ...w, locked: true, fromGlobal: true }));
+        const current = String(copy.currentOutfit || '').trim();
+        if (current && !wardrobe.some(w => (w.outfit || w.tags || '') === copy.currentOutfit)) {
+            const seeded = { id: `w-g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                name: uniqueWardrobeName(wardrobe, '默认服装'), outfit: copy.currentOutfit, triggers: [], locked: true, fromGlobal: true, createdAt: Date.now() };
+            wardrobe.unshift(seeded);
+            copy.currentOutfitId = seeded.id;
+        }
+        copy.wardrobe = wardrobe;
+        if (copy.currentOutfitId && !wardrobe.some(w => w.id === copy.currentOutfitId)) {
+            const worn = wardrobe.find(w => (w.outfit || w.tags || '') === copy.currentOutfit);
+            if (worn) copy.currentOutfitId = worn.id; else delete copy.currentOutfitId;
+        }
+        return copy;
+    }
+
+    // Copy of a global character for the current chat: same identity (createdAt), base + every outfit locked.
+    // Locked outfits keep their text; parse can still ADD new wardrobe entries.
+    function buildImportedGlobalProfile(globalKey, source) {
+        const copy = JSON.parse(JSON.stringify(source || {}));
+        for (const k of Object.keys(copy)) if (/^manga[A-Z]/.test(k)) delete copy[k]; // per-chat floor history
+        copy.displayName = copy.displayName || globalKey;
+        copy.baseLocked = true;
+        copy.isBaseLocked = true;
+        copy.outfitLocked = true;
+        copy.isOutfitLocked = true;
+        buildLockedGlobalWardrobe(copy);
+        if (!Number(copy.createdAt || 0)) copy.createdAt = Date.now();
+        copy.importedFromGlobal = { name: globalKey, at: Date.now() };
+        copy.updatedAt = Date.now();
+        return copy;
+    }
+
+    // Current session first (by name, then exact name_tag); otherwise a matching global character is copied
+    // into the current chat (never written back). Returns [key, profile] or null.
+    // opts.nameIsArchiveKey: rawName is an already-resolved archive name (internal writers); the name_tag
+    // then only serves as a fallback lookup and does not impose its series on the name match.
+    function resolveCharacterProfileEntry(rawName, nameTag = '', opts = {}) {
+        const raw = String(rawName || '').trim();
+        if (!raw) return null;
+        const profiles = getCharacterProfiles();
+        const tag = getCharacterNameTag('', nameTag);
+        const series = opts.nameIsArchiveKey ? getCharSeriesKeys(raw) : [...getCharSeriesKeys(tag), ...getCharSeriesKeys(raw)];
+        const current = findCharacterProfileEntry(profiles, raw, { series })
+            || (tag ? findProfileByExactNameTag(profiles, tag, { unique: true }) : null);
+        if (current) return current;
+        const store = getStore();
+        const hit = findGlobalCharacterEntry(raw, store, tag);
+        if (!hit) return null;
+        const [globalKey, source] = hit;
+        const existing = findCurrentProfileForGlobal(profiles, globalKey, source);
+        if (existing) return existing;
+        const key = getCanonicalCharName(globalKey) || globalKey;
+        profiles[key] = buildImportedGlobalProfile(globalKey, source);
+        const importEvent = recordGlobalImportEvent({ globalKey, key, rawName: raw, nameTag: tag });
+        debugInfo(`⭐ 全局角色「${globalKey}」在剧情中登场（剧情名「${raw}」${tag ? ` / ${tag}` : ''}），已导入当前会话（人设与服装默认锁定）`);
+        announceGlobalImport(importEvent);
+        save();
+        return [key, profiles[key]];
+    }
+
+    function getOrImportCharacterProfile(rawName, nameTag = '', opts = {}) {
+        const hit = resolveCharacterProfileEntry(rawName, nameTag, opts);
+        return hit ? hit[1] : null;
+    }
+
+    /* ── Global import toast: 「已从全局角色导入「X」到当前会话（人设与服装已锁定）」 + 「撤销」 ── */
+    // Function-property state (no module-level const) so test slices can load this block repeatedly.
+    function getGlobalImportEventLog() { return (recordGlobalImportEvent.log ||= []); }
+    function getGlobalImportEventSeq() { return recordGlobalImportEvent.seq || 0; }
+    function recordGlobalImportEvent(ev) {
+        const log = getGlobalImportEventLog();
+        const seq = recordGlobalImportEvent.seq = getGlobalImportEventSeq() + 1;
+        const entry = { ...ev, seq, id: `gi-${Date.now().toString(36)}-${seq}`, chatKey: getChatKey(), at: Date.now() };
+        log.push(entry);
+        if (log.length > 50) log.splice(0, log.length - 50);
+        return entry;
+    }
+    function findGlobalImportEventSince(seq, key) {
+        return getGlobalImportEventLog().find(e => e.seq > seq && e.key === key) || null;
+    }
+    function getGlobalImportToastText(globalKey) { return `已从全局角色导入「${globalKey}」到当前会话（人设与服装已锁定）`; }
+    function getGlobalImportLockHint() { return '可在角色工坊手动解锁修改，会话里的改动不会同步回全局'; }
+    /** Toast body: first line = import notice, second (small) line = what the lock means. */
+    function getGlobalImportToastHtml(globalKey) { return `${escapeHtml(getGlobalImportToastText(globalKey))}<br><small style="opacity:.8">${escapeHtml(getGlobalImportLockHint())}</small>`; }
+
+    /**
+     * Imports inside a tagger parse wait for the caller (which knows the result to rebind for 「撤销」);
+     * any other import (card extraction, etc.) shows a plain toast at once.
+     * A safety timer still shows a pending one if the parse caller never got to it (e.g. the parse threw later).
+     */
+    function announceGlobalImport(ev) {
+        if (!ev) return;
+        if (!normalizeTaggerResult.active) { showGlobalImportToast(ev, null); return; }
+        ev.toastPending = true;
+        if (typeof setTimeout === 'function') setTimeout(() => { if (ev.toastPending) showGlobalImportToast(ev, null); }, 3000);
+    }
+    function getPendingGlobalImportEvents(sinceSeq = 0) {
+        return getGlobalImportEventLog().filter(e => e.toastPending && e.seq > sinceSeq);
+    }
+    /** Manual / test parse: no stored result to rebind, so plain toasts. */
+    function flushPendingGlobalImportToasts() {
+        for (const ev of getPendingGlobalImportEvents()) showGlobalImportToast(ev, null);
+    }
+
+    function collectResultCharacterLists(result) {
+        const lists = [];
+        if (Array.isArray(result?.characters)) lists.push({ holder: result, list: result.characters });
+        for (const seg of Array.isArray(result?.segments) ? result.segments : []) {
+            if (Array.isArray(seg?.characters)) lists.push({ holder: seg, list: seg.characters });
+        }
+        return lists;
+    }
+
+    /** Message parse: one toast per import event; 「撤销」 when this stored result has characters bound to it. */
+    function notifyGlobalImports(messageId, cacheKey, result) {
+        const bound = new Set();
+        if (!result?.mangaPage && !isMangaRequest()) {
+            for (const { list } of collectResultCharacterLists(result)) for (const c of list) if (c?._globalImport?.id) bound.add(c._globalImport.id);
+        }
+        return getPendingGlobalImportEvents().map(ev => showGlobalImportToast(ev, bound.has(ev.id) ? { messageId, cacheKey } : null));
+    }
+
+    function showGlobalImportToast(ev, undoTarget) {
+        if (!ev) return null;
+        ev.toastPending = false;
+        const text = getGlobalImportToastText(ev.globalKey);
+        if (!undoTarget) {
+            try { toastr.info(getGlobalImportToastHtml(ev.globalKey), '智能生图', { escapeHtml: false }); } catch (_) {}
+            return { eventId: ev.id, globalKey: ev.globalKey, text, undo: false };
+        }
+        const html = `${getGlobalImportToastHtml(ev.globalKey)}<br><button type="button" class="menu_button rbq-sdt-undo-global-import" style="margin-top:6px;display:inline-block;width:auto;">撤销</button>`;
+        let toast = null;
+        try {
+            toast = toastr.info(html, '智能生图', { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false, escapeHtml: false });
+        } catch (_) { /* toastr unavailable */ }
+        const el = toast?.[0] || toast;
+        const btn = el?.querySelector?.('.rbq-sdt-undo-global-import');
+        // toastr.clear() skips a toast that holds focus (our just-clicked button), so force it and remove as a fallback.
+        const close = () => {
+            try { btn?.blur?.(); } catch (_) {}
+            try { toastr.clear(toast, { force: true }); } catch (_) {}
+            const drop = () => { try { if (el?.isConnected !== false) el?.remove?.(); } catch (_) {} };
+            if (typeof setTimeout === 'function') setTimeout(drop, 400); else drop();
+        };
+        const closeBtn = el?.querySelector?.('.toast-close-button');
+        if (closeBtn) closeBtn.addEventListener('click', (e) => { e?.stopPropagation?.(); close(); });
+        const target = { ...undoTarget, eventId: ev.id, globalKey: ev.globalKey, chatKey: ev.chatKey };
+        if (btn) btn.addEventListener('click', async (e) => {
+            e?.stopPropagation?.();
+            btn.disabled = true;
+            let ok = false;
+            try { ok = await undoGlobalCharacterImport(target); } catch (err) { console.error(`[${PLUGIN_NAME}] 撤销全局角色导入失败`, err); }
+            if (ok) close(); else btn.disabled = false;
+        });
+        return { ...target, text, undo: true, toast, close };
+    }
+
+    /**
+     * 「撤销」: replace the locked imported copy with an ordinary unlocked local profile of the same name,
+     * built from this parse's LLM output, and rebind this result's characters/cards to it in place.
+     * The local profile takes priority over the global on later lookups, so it is not re-imported. Global untouched.
+     */
+    async function undoGlobalCharacterImport({ messageId, cacheKey, eventId, globalKey, chatKey }) {
+        const warn = msg => { try { toastr.warning(msg, '智能生图'); } catch (_) {} return false; };
+        if (chatKey !== undefined && JSON.stringify(chatKey) !== JSON.stringify(getChatKey())) return warn('已经切换到别的对话，无法撤销这次导入');
+        const store = getStore();
+        const entry = store.cache?.[cacheKey];
+        const hits = [];
+        for (const { holder, list } of collectResultCharacterLists(entry)) {
+            list.forEach((c, i) => { if (c?._globalImport?.id === eventId) hits.push({ holder, list, i, c }); });
+        }
+        if (!entry || !hits.length) return warn('找不到这次解析结果（可能已重新解析），无法撤销');
+        const profiles = getCharacterProfiles();
+        const info = hits[0].c._globalImport;
+        const key = info.key;
+        if (profiles[key] && !profiles[key].importedFromGlobal) return warn(`「${key}」已经是当前会话的独立角色了`);
+        delete profiles[key];
+        try { forgetMangaCharacterMemory(key); } catch (_) {}
+        const src = hits[0].c;
+        const nameTag = getCharacterNameTag('', info.llmNameTag || '');
+        const base = stripCharacterIdentityFromBase(src._rawBase || src.base || '', nameTag, key);
+        updateCharacterProfile(key, base, src._rawOutfit || src.outfit || '', null, true, { noGlobalImport: true, nameTag });
+        const touched = new Set();
+        for (const { holder, list, i, c } of hits) {
+            const oldCaption = String(c.caption || '');
+            const caption = mergeCharacterCaption(key, c._rawBase || '', c._rawOutfit || '', c._rawAction || '', '', nameTag, c._rawWardrobeOutfit || '');
+            const profile = getCharacterProfiles()[key];
+            const { _globalImport, ...rest } = c;
+            list[i] = { ...rest, name: key, _rawName: key, name_tag: getCharacterNameTag(key, profile?.nameTag || nameTag),
+                caption, _globalImportUndone: { global: globalKey, at: Date.now() } };
+            if (typeof holder.prompt === 'string' && oldCaption && holder.prompt.includes(oldCaption)) holder.prompt = holder.prompt.split(oldCaption).join(caption);
+            touched.add(holder);
+        }
+        save();
+        try {
+            const extra = getMsgExtraSdt(messageId);
+            if (!extra || extra.key === cacheKey) saveMsgExtraSdt(messageId, entry);
+        } catch (_) {}
+        try {
+            const container = RBQ.api.getMessageTextContainer(messageId);
+            const cards = container?.querySelectorAll ? [...container.querySelectorAll(`.${CARD_CLASS}`)] : [];
+            for (const card of cards) {
+                if (card.dataset?.rbqSdtBaseKey !== cacheKey) continue;
+                const m = String(card.dataset.rbqSdtSegmentKey || '').match(/-seg-(\d+)$/);
+                const seg = Array.isArray(entry.segments) && entry.segments.length
+                    ? entry.segments[m ? Number(m[1]) : (entry.segments.length === 1 ? 0 : -1)] : entry;
+                if (!seg || !touched.has(seg)) continue;
+                const prompt = getFinalPrompt(seg) || seg.prompt || '';
+                if (prompt) { card.dataset.prompt = prompt; card.dataset.rbqSdtFinalPrompt = prompt; }
+                cacheWrapperCharacterData(card, seg);
+                try { renderCardBadges(card, seg); } catch (_) {}
+            }
+        } catch (_) {}
+        try { toastr.success(`已撤销：「${key}」改用本次解析的人设与服装（未锁定），重新生图会用它。全局角色没有改动`, '智能生图'); } catch (_) {}
+        return true;
+    }
+    RBQ.api.undoGlobalCharacterImport = undoGlobalCharacterImport;
+
+    // Global wardrobe in prompts: ALL outfits (user decision: no cap), current outfit first.
+    function getGlobalPromptWardrobe(p) {
+        const list = (Array.isArray(p?.wardrobe) ? p.wardrobe : []).filter(w => w && (w.name || w.outfit || w.tags));
+        const worn = list.findIndex(w => w.id && w.id === p.currentOutfitId);
+        if (worn > 0) list.unshift(list.splice(worn, 1)[0]);
+        return list;
+    }
+
+    function formatGlobalCharacterForPrompt(name, p) {
+        const display = p.displayName || name;
+        const aliases = getProfileAliasList(p);
+        const base = String(p.baseTags || '').trim();
+        const outfit = String(p.currentOutfit || '').trim();
+        const wardrobe = getGlobalPromptWardrobe(p);
+        return `  * 全局角色「${display}」:${aliases.length ? `\n    - 别名/昵称: ${aliases.join('、')}` : ''}
+    - name_tag (英文绘图身份): ${p.nameTag || '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
+    - base (固定外貌DNA · 🔒全局锁定): ${base || '(首次登场提炼)'}
+    - outfit (默认服装 · 🔒锁定，换装时另行收录新服装): ${outfit || '(根据剧情即时提炼)'}${wardrobe.length ? `\n    - 衣柜服装: ${wardrobe.map(w => `【${w.name || '未命名服装'}】(🔒锁定): ${w.outfit || w.tags || ''}`).join(' | ')}` : ''}`;
+    }
+
+    // All active global characters (no cap) that the current session does not already hold.
+    function getPromptGlobalCharacterEntries(profiles, store = null) {
+        return Object.entries(getActiveGlobalCharacterProfiles(store))
+            .filter(([k, p]) => !findCurrentProfileForGlobal(profiles || {}, k, p));
+    }
+
+    // Manga references for global characters not yet in this chat (marked global; used only when they appear).
+    function getMangaGlobalMemoryReferences(profiles, store = null) {
+        return getPromptGlobalCharacterEntries(profiles, store).filter(([k]) => !isJunkCharacterName(k)).map(([k, p]) => ({
+            name: p.displayName || k, name_tag: p.nameTag || '', base: p.baseTags || '', outfit: p.currentOutfit || '',
+            global: true, aliases: getProfileAliasList(p),
+            wardrobe: getGlobalPromptWardrobe(p).map(w => ({ name: w.name || '', outfit: w.outfit || w.tags || '', locked: true })),
+            note: '⭐全局角色：当前会话尚未建档；仅当剧情中登场（含别名）时使用，name 用 name_tag，base 原样复用，服装锁定不改写',
+        }));
+    }
+
     RBQ.api.getCharMatchKey = getCharMatchKey;
 
     function getCharacterMemoryTagSpecification() {
@@ -3225,8 +3593,11 @@ name 用于资料关联，已有档案沿用其 name，不改名另建档。中�
         if (!store) store = getStore();
         const profiles = getCharacterProfiles();
         const profileEntries = Object.entries(profiles).filter(([k, p]) => p && !isJunkCharacterName(k));
+        const globalEntries = getPromptGlobalCharacterEntries(profiles, store).filter(([k]) => !isJunkCharacterName(k));
         if (isMangaRequest(store)) {
+            // Global characters ride inside the references (global:true) so the layered/studio paths see them too.
             const references = getMangaMemoryReferences(messageId);
+            const hasMangaGlobalRefs = references.some(r => r && r.global === true);
             return `【漫画角色记忆】
 以下为本聊天已保存的人物资料。name 使用稳定关联姓名，与各格 characters.name 一致；绘图身份用英文 name 或 name_tag，同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
 各格 base/outfit 与普通模式共用建档和复用原则；不另发请求。character_memory 为兼容字段，可省略或写 []；需要补充独立长期资料时每人最多一项 {name,base,initial_outfit,outfit}。
@@ -3235,7 +3606,8 @@ initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已�
 兼容字段 character_memory[].outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。格内 characters[].outfit 始终对应当前格，不能套用末格状态。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
 ${getCharacterMemoryTagSpecification()}
-已有资料：` + JSON.stringify(references);
+已有资料：` + JSON.stringify(references) + (hasMangaGlobalRefs ? `
+其中 global:true 的是⭐全局角色（用户设定的所有会话常驻角色，当前会话尚未建档）：登场时（含中文名、别名、昵称）视为已建档，name 逐字沿用其 name_tag（无则用档案名），base 原样复用不重写；服装锁定不改写，剧情换穿未收录服装时按新服装填写 outfit。未登场者仅作背景参考，不加入画格。` : '');
         }
 
         let activeRegistrySection = '';
@@ -3249,7 +3621,7 @@ ${getCharacterMemoryTagSpecification()}
                 const wardrobe = Array.isArray(p.wardrobe) && p.wardrobe.length > 0
                     ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
                     : '';
-                return `  * 角色「${name}」:
+                return `  * 角色「${name}」${p.importedFromGlobal ? ' (⭐ 来自全局角色)' : ''}:
     - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
     - base (固定外貌DNA · ${isBaseLocked ? '🔒已锁定防篡改' : '跨图绝对锁定'}): ${base || '(首次登场提炼)'}
     - outfit (当前服装签名${isOutfitLocked ? ' · 🔒内容锁定（可换装，新服装另行收录）' : ' · 随换装剧情演进'}): ${outfit || '(根据剧情即时提炼)'}${wardrobe}`;
@@ -3268,36 +3640,30 @@ ${getCharacterMemoryTagSpecification()}
 4. 若剧情未发生换装/脱衣，且未命中新的衣柜预设，outfit 默认沿用当前服装；若剧情发生明确解衣、湿身、撕裂或换装，则在本格更新 outfit。
 ${listText}
 `;
-        } else {
-            const globalProfiles = getAllKnownCharacterProfiles();
-            const globalEntries = Object.entries(globalProfiles).filter(([k, p]) => p && !isJunkCharacterName(k));
-            if (globalEntries.length > 0) {
-                const globalListText = globalEntries.slice(0, 5).map(([k, p]) => {
-                    const name = p.displayName || k;
-                    const base = String(p.baseTags || '').trim();
-                    const outfit = String(p.currentOutfit || '').trim();
-                    const isBaseLocked = !!(p.baseLocked || p.isBaseLocked);
-                    const isOutfitLocked = !!(p.outfitLocked || p.isOutfitLocked);
-                    const wardrobe = Array.isArray(p.wardrobe) && p.wardrobe.length > 0
-                        ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
-                        : '';
-                    return `  * 已知全局角色资产「${name}」:
-    - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
-    - base (固定外貌DNA · ${isBaseLocked ? '🔒已锁定' : '跨图锁定'}): ${base || '(首次登场提炼)'}
-    - outfit (典型服装${isOutfitLocked ? ' · 🔒内容锁定（可换装）' : ''}): ${outfit || '(剧情提炼)'}${wardrobe}`;
-                }).join('\n');
-                activeRegistrySection = `
-【🧠 角色外貌记忆资产库参考 (Known Global Character Profiles)】
-当前会话为新聊天，但系统中已收录以下全局角色资产。若本剧情中包含这些角色（含中文名、别名、昵称），name 必须逐字复制其 name_tag（无则复制「」内档案名），禁止翻译改写或自行追加作品名，并直接继承其 base；2::Name (Series):: 格式仅用于新角色：
-${globalListText}
-遇到其他新登场角色时，请严格按下述 7 维外貌防伪矩阵建立专属 base。
+        }
+
+        // ⭐ 全局角色：所有会话常驻，无数量上限；当前会话已有同名档案时以当前会话为准，不再重复列出。
+        let globalSection = '';
+        if (globalEntries.length > 0) {
+            globalSection = `
+【⭐ 全局角色 (Global Characters · 所有会话常驻)】
+以下是用户设定的全局常驻角色，在任何会话中都有效，当前会话尚未为其建档。
+1. 若剧情中登场的人物是其中之一（含中文名、别名、昵称、姓名顺序不同的同一人），视为已建档角色：name 必须逐字复制其 name_tag（无 name_tag 时复制「」内的档案名），禁止另建新档、翻译或改写姓名；
+2. 100% 原样复用其 base，不得改写发色、瞳色、族裔与五官；
+3. 服装已锁定：穿着符合某套衣柜服装时在 wardrobe_outfit 填写该服装名；换穿衣柜未收录的新服装时 wardrobe_outfit 留空，在 outfit 输出当次英文服装描述，可另填 outfit_name，系统会作为新服装收录，不改动已有服装；
+4. 未在剧情中登场的全局角色仅作背景参考，不要凭空加入画面。
+${globalEntries.map(([k, p]) => formatGlobalCharacterForPrompt(k, p)).join('\n')}
 `;
-            } else {
-                activeRegistrySection = `
+        }
+        if (profileEntries.length === 0) {
+            activeRegistrySection = globalEntries.length > 0
+                ? `${globalSection}遇到全局角色以外的新登场角色时，请严格按下述 7 维外貌防伪矩阵建立专属 base。\n`
+                : `
 【🧠 角色外貌记忆建档指示 (Initial Profiling)】
 当前会话尚未记忆任何角色。遇到剧情中登场的角色时，请严格执行下述「7维外貌防伪矩阵」为该角色建立专属的 base DNA，并用「四要素签名法则」提炼其当前 outfit。系统将在生图后自动学习建档，使其成为一个可独立替换、全局复用的自洽角色资产。
 `;
-            }
+        } else {
+            activeRegistrySection += globalSection;
         }
 
         return `【🧬 角色外貌记忆与视觉资产规格引擎 (Character Appearance Memory Specification)】
@@ -3361,11 +3727,12 @@ ${activeRegistrySection}`;
     function getAllKnownCharacterProfiles() {
         const store = getStore();
         const profiles = {};
-        if (store.characterProfiles && typeof store.characterProfiles === 'object') {
+        // Two passes: real archives first; copies imported from a ⭐全局角色 only fill names nobody else has.
+        if (store.characterProfiles && typeof store.characterProfiles === 'object') for (const importedPass of [false, true]) {
             for (const chatDict of Object.values(store.characterProfiles)) {
                 if (chatDict && typeof chatDict === 'object') {
                     for (const [name, prof] of Object.entries(chatDict)) {
-                        if (name && prof && typeof prof === 'object') {
+                        if (name && prof && typeof prof === 'object' && !!prof.importedFromGlobal === importedPass) {
                             if (isJunkCharacterName(name) || isJunkCharacterName(prof.displayName)) {
                                 continue;
                             }
@@ -3516,7 +3883,11 @@ ${activeRegistrySection}`;
         const profiles = getCharacterProfiles();
         const canonical = getCanonicalCharName(rawName);
 
-        let existing = getCharacterProfile(canonical);
+        // Never create a duplicate of a global character: import its locked copy first (global itself is read-only).
+        // noGlobalImport: the user just said this is NOT the global character (undo of an import).
+        let existing = options.noGlobalImport
+            ? (findCharacterProfileEntry(profiles, canonical, { series: getCharSeriesKeys(canonical) })?.[1] || null)
+            : getOrImportCharacterProfile(canonical, options.nameTag, { nameIsArchiveKey: true });
         const nameTag = getCharacterNameTag(rawName, options.nameTag);
         if (existing) {
             const isBaseLocked = !!(existing.baseLocked || existing.isBaseLocked) && !options.forceUnlock;
@@ -3588,8 +3959,11 @@ ${activeRegistrySection}`;
             if (!options.matchedPresetId && wroteOutfit) {
                 const active = existing.wardrobe.find(w => (w.outfit || w.tags || '') === existing.currentOutfit)
                     || existing.wardrobe.find(w => isSameOutfit(w.outfit || w.tags, existing.currentOutfit));
-                if (active) existing.currentOutfitId = active.id;
-                else delete existing.currentOutfitId;
+                if (active) {
+                    existing.currentOutfitId = active.id;
+                    // A locked outfit is never rewritten: wearing it means wearing its stored text verbatim.
+                    if (active.locked && (active.outfit || active.tags)) existing.currentOutfit = active.outfit || active.tags;
+                } else delete existing.currentOutfitId;
             }
             // Profile-level lock mirrors the worn item's lock (same as the SDT panel and 角色工坊) after a switch.
             if (options.matchedPresetId || wroteOutfit) {
@@ -3715,6 +4089,7 @@ ${activeRegistrySection}`;
                         <div style="display: inline-flex; align-items: center; gap: 6px; background: var(--linear-surface, rgba(255,255,255,0.04)); border: 1px solid var(--linear-border-standard, rgba(255,255,255,0.12)); padding: 4px 10px; border-radius: 8px;">
                             ${profile.avatarUrl ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 20px; height: 20px; border-radius: 4px; object-fit: cover;" />` : '<span>👤</span>'}
                             <strong style="color: var(--linear-brand, #79e4ff); font-size: 12.5px;">${escapeHtml(name)}</strong>
+                            ${profile.importedFromGlobal ? '<span style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.45); color: #fde047;" title="从全局角色导入（导入时人设与服装默认锁定）。可在角色工坊手动解锁修改，会话里的改动不会同步回全局">⭐来自全局</span>' : ''}
                             <button type="button" class="rbq-sdt-toggle-base-lock-btn" data-char="${escapeHtml(key)}" style="background: ${isBaseLocked ? 'rgba(163,230,53,0.18)' : 'rgba(255,255,255,0.06)'}; border: 1px solid ${isBaseLocked ? 'rgba(163,230,53,0.5)' : 'rgba(255,255,255,0.15)'}; color: ${isBaseLocked ? '#a3e635' : '#94a3b8'}; border-radius: 4px; font-size: 10.5px; padding: 1px 5px; cursor: pointer;" title="${isBaseLocked ? '人设已锁定：生图绝不回填人设（点击解锁）' : '人设未锁定（点击锁定防篡改）'}">${isBaseLocked ? '🔒人设' : '🔓人设'}</button>
                             <button type="button" class="rbq-sdt-toggle-outfit-lock-btn" data-char="${escapeHtml(key)}" style="background: ${isOutfitLocked ? 'rgba(244,114,182,0.18)' : 'rgba(255,255,255,0.06)'}; border: 1px solid ${isOutfitLocked ? 'rgba(244,114,182,0.5)' : 'rgba(255,255,255,0.15)'}; color: ${isOutfitLocked ? '#f472b6' : '#94a3b8'}; border-radius: 4px; font-size: 10.5px; padding: 1px 5px; cursor: pointer;" title="${isOutfitLocked ? '服装已锁定：生图绝不回填顶替（点击解锁）' : '服装未锁定（点击锁定防篡改）'}">${isOutfitLocked ? '🔒衣服' : '🔓衣服'}</button>
                             ${wCount > 0 ? `<span style="font-size: 10.5px; color: #ffb86c;">(${wCount}套)</span>` : ''}
@@ -3779,7 +4154,11 @@ ${activeRegistrySection}`;
         const chatKey = getChatKey();
         const isJunk = isJunkCharacterName(name);
         const cleanName = isJunk ? '' : String(name || '').trim();
-        const profile = cleanName && store.characterMemoryEnabled ? getCharacterProfile(cleanName) : null;
+        // Current session first; a global character appearing in this parse is imported (locked) instead of re-created.
+        // Lookup by story name, then by the LLM's exact name_tag (series included), current chat before global.
+        const profileEntry = cleanName && store.characterMemoryEnabled ? resolveCharacterProfileEntry(cleanName, nameTag) : null;
+        const profile = profileEntry ? profileEntry[1] : null;
+        const profileKey = profileEntry ? profileEntry[0] : cleanName;
         // Backfill a full fan identity ("Name (Series)" / "(original)") regardless of locks; locks guard base/outfit only.
         let pendingNameTag = null;
         if (profile) {
@@ -3834,6 +4213,17 @@ ${activeRegistrySection}`;
                 }
             }
 
+            // Switching back to a locked outfit without a claim (LLM text ≈ that outfit): use its stored text verbatim.
+            if (!matchedPreset && llmOutfit && Array.isArray(profile.wardrobe)) {
+                const lockedSame = profile.wardrobe.filter(w => w && w.locked && w.id && w.id !== profile.currentOutfitId
+                    && (w.outfit || w.tags) && isSameOutfit(w.outfit || w.tags, llmOutfit));
+                if (lockedSame.length === 1) {
+                    matchedPreset = lockedSame[0];
+                    effectiveOutfit = matchedPreset.outfit || matchedPreset.tags;
+                    debugInfo(`👗 角色「${cleanName}」换回锁定服装【${matchedPreset.name}】，沿用其原文`);
+                }
+            }
+
             // Lock protects content, not switching: a claimed preset always switches. Without a claim, a locked
             // worn outfit keeps its stored text unless the LLM outfit is clearly different (a real change → new entry).
             const wornItem = Array.isArray(profile.wardrobe) ? profile.wardrobe.find(w => w && w.id && w.id === profile.currentOutfitId) : null;
@@ -3857,7 +4247,7 @@ ${activeRegistrySection}`;
 
             if (shouldUpdateOutfit || shouldCleanBase || shouldBackfillNameTag) {
                 updateCharacterProfile(
-                    cleanName,
+                    profileKey,
                     shouldCleanBase ? cleanedStored : null,
                     matchedPreset ? (matchedPreset.outfit || matchedPreset.tags) : (keepLockedText ? null : llmOutfit),
                     null,
@@ -4142,10 +4532,18 @@ ${getCharacterMemoryTagSpecification()}
             const nameTag = getCharacterNameTag('', parsed.name_tag) || getCharacterNameTag(parsed.name)
                 || getCharacterNameTag(name, getCharacterProfile(cleanCharName)?.nameTag);
             if (!nameTag) throw new Error('模型未返回英文/罗马字绘图姓名 name_tag，原有角色记忆未改动');
-            updateCharacterProfile(cleanCharName, stripCharacterIdentityFromBase(extractedBase, nameTag, cleanCharName), extractedOutfit, avatarUrl, true,
+            const extractedCleanBase = stripCharacterIdentityFromBase(extractedBase, nameTag, cleanCharName);
+            updateCharacterProfile(cleanCharName, extractedCleanBase, extractedOutfit, avatarUrl, true,
                 { replaceBase: true, preserveOutfit: true, nameTag, nameTagSource: 'user' });
-            toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
-            return getCharacterProfile(cleanCharName);
+            const savedProfile = getOrImportCharacterProfile(cleanCharName, nameTag);
+            const baseBlocked = !!(savedProfile && (savedProfile.baseLocked || savedProfile.isBaseLocked)
+                && String(savedProfile.baseTags || '').trim() !== String(extractedCleanBase || '').trim());
+            if (baseBlocked) {
+                toastr.warning(`「${cleanCharName}」的人设已锁定🔒，外貌没有被覆盖（只更新了头像与绘图姓名）。如需改用角色卡外貌，请先在角色工坊解锁人设再提取。`, PLUGIN_NAME);
+            } else {
+                toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
+            }
+            return savedProfile || getCharacterProfile(cleanCharName);
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 导入角色卡失败:`, err);
             toastr.error(`导入角色卡失败: ${err.message || String(err)}`, PLUGIN_NAME);
@@ -7623,7 +8021,8 @@ ${getCharacterMemoryTagSpecification()}
     function getMangaMemoryReferences(messageId, requestStore = null) {
         invalidateMangaStateHistory();
         const chronological = Number.isInteger(messageId) && messageId >= 0;
-        const references = Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
+        const chatProfiles = getCharacterProfiles();
+        const references = Object.entries(chatProfiles).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
             const history = (Array.isArray(p.mangaStateHistory) ? p.mangaStateHistory : [])
                 .filter(e => Number.isInteger(e.messageId) && e.before && e.after).sort((a, b) => a.messageId - b.messageId);
             const latest = history.at(-1);
@@ -7642,6 +8041,8 @@ ${getCharacterMemoryTagSpecification()}
             return { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
                 outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
         });
+        // ⭐全局角色 not yet in this chat (all manga paths incl. layered/studio): marked global, imported on appearance.
+        references.push(...getMangaGlobalMemoryReferences(chatProfiles, requestStore));
         const rows = getMangaRenderCacheRows(undefined, requestStore);
         return rows.length && RBQ.api.mangaProtocol?.cachedReferenceViews
             ? RBQ.api.mangaProtocol.cachedReferenceViews(references, rows) : references;
@@ -7791,7 +8192,10 @@ ${getCharacterMemoryTagSpecification()}
             updates.set(key, update);
         }
         for (const row of updates.values()) {
-            const profile = getCharacterProfile(row.name);
+            // Story name first, then exact name_tag (series included); a ⭐全局角色 is imported (locked) on appearance.
+            const profileEntry = resolveCharacterProfileEntry(row.name, row.nameTag);
+            const profile = profileEntry ? profileEntry[1] : null;
+            const profileName = profileEntry ? profileEntry[0] : row.name;
             const previousHistory = Array.isArray(profile?.mangaStateHistory) ? profile.mangaStateHistory : [];
             const previousLatest = [...previousHistory].filter(entry => entry?.after).sort((a, b) => a.messageId - b.messageId).at(-1);
             const timelineOwnsOutfit = previousLatest && profile.currentOutfit === previousLatest.after.outfit;
@@ -7832,9 +8236,9 @@ ${getCharacterMemoryTagSpecification()}
             const shouldUpgradeNameTag = !!(nameTag && (!profile?.nameTag
                 || (hasCharIdentitySuffix(nameTag) && !hasCharIdentitySuffix(profile.nameTag))
                 || isUpgradeableOriginalNameTag(profile, nameTag)));
-            if (base || (outfit && outfit !== profile?.currentOutfit) || shouldUpgradeNameTag) updateCharacterProfile(row.name, base, outfit, null, true,
+            if (base || (outfit && outfit !== profile?.currentOutfit) || shouldUpgradeNameTag) updateCharacterProfile(profileName, base, outfit, null, true,
                 { replaceBase: !!profile?.baseTags && !!base, nameTag, backfillNameTag: shouldUpgradeNameTag && !!profile?.nameTag, outfitName: row.outfitName });
-            const saved = getCharacterProfile(row.name);
+            const saved = getCharacterProfile(profileName) || getCharacterProfile(row.name);
             if (!saved) continue;
             if (!Array.isArray(saved.wardrobe)) saved.wardrobe = [];
             if (!preserveCurrent && finalOutfit === '' && snapshot?.explicitOutfit) {
@@ -7894,7 +8298,14 @@ ${getCharacterMemoryTagSpecification()}
         };
     }
 
+    // Marks "inside a tagger parse" so global-import toasts wait for the caller that can offer 「撤销」.
     function normalizeTaggerResult(data, matchedLorebooks = [], mangaContext = null) {
+        normalizeTaggerResult.importSeqStart = getGlobalImportEventSeq();
+        normalizeTaggerResult.active = true;
+        try { return normalizeTaggerResultInner(data, matchedLorebooks, mangaContext); }
+        finally { normalizeTaggerResult.active = false; }
+    }
+    function normalizeTaggerResultInner(data, matchedLorebooks = [], mangaContext = null) {
         assertMangaRequestContext(mangaContext);
         // Tool arguments are an exact JSON contract, unlike ordinary text output.
         let toolRaw = null;
@@ -8074,7 +8485,18 @@ ${getCharacterMemoryTagSpecification()}
 
                     // Merge character memory with LLM output (writes profile on parse; wardrobe only on real change)
                     const wardrobeOutfit = String(char?.wardrobe_outfit || '').trim();
+                    const importSeq = getGlobalImportEventSeq();
                     const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, char?.name_tag, wardrobeOutfit, char?.outfit_name);
+                    // Which import event (if any, in this whole parse) this character resolved to — for the mismatch notice/undo.
+                    let globalImport = null;
+                    if (name && getStore().characterMemoryEnabled) {
+                        const resolvedKey = resolveCharacterProfileEntry(name, char?.name_tag)?.[0];
+                        const ev = resolvedKey ? findGlobalImportEventSince(normalizeTaggerResult.importSeqStart ?? importSeq, resolvedKey) : null;
+                        if (ev && getCharacterProfiles()[resolvedKey]?.importedFromGlobal) {
+                            globalImport = { id: ev.id, global: ev.globalKey, key: ev.key, llmName: name,
+                                llmNameTag: String(char?.name_tag || ''), chatKey: ev.chatKey };
+                        }
+                    }
 
                     return {
                         index: charIndex + 1,
@@ -8091,7 +8513,8 @@ ${getCharacterMemoryTagSpecification()}
                         _rawBase: llmBase,
                         _rawOutfit: llmOutfit,
                         _rawWardrobeOutfit: wardrobeOutfit,
-                        _rawAction: llmAction
+                        _rawAction: llmAction,
+                        ...(globalImport ? { _globalImport: globalImport } : {})
                     };
                 }).filter((char) => char.caption || char._rawName);
 
@@ -11615,8 +12038,12 @@ SCHEMA:
                     outfit: p.currentOutfit || '',
                     wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
                 }));
-            if (memoryList.length > 0) {
-                payload.characterMemory = isMangaRequest(store) ? getMangaMemoryReferences(messageId, layeredSnapshot?.storeSnapshot) : memoryList;
+            if (isMangaRequest(store)) {
+                // Manga references also carry ⭐全局角色 (global:true), even in a chat with no profile yet.
+                const mangaMemory = getMangaMemoryReferences(messageId, layeredSnapshot?.storeSnapshot);
+                if (memoryList.length > 0 || mangaMemory.some(r => r?.global === true)) payload.characterMemory = mangaMemory;
+            } else if (memoryList.length > 0) {
+                payload.characterMemory = memoryList;
             }
         }
 
@@ -14177,6 +14604,8 @@ SCHEMA:
 
             // === Sync to message.extra.rbq_sdt (chat-level persistence, cross-device sync) ===
             saveMsgExtraSdt(messageId, cacheEntry);
+            // One toast per global import of this fresh parse, with 「撤销」 (never on reload / cache restore).
+            try { notifyGlobalImports(messageId, cacheKey, cacheEntry); } catch (e) { console.warn(`[${PLUGIN_NAME}] global import toast failed`, e); }
 
             const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment) || segment.scene || (segment.characters && segment.characters.length > 0));
             const hasTopLevelPrompt = !!getFinalPrompt(result) || !!result?.scene;
@@ -17229,6 +17658,7 @@ SCHEMA:
                 }
             }
             logTaggerPayload('manual draw tagger result', normalized);
+            flushPendingGlobalImportToasts();
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
                 toastr.warning('tagger \u672a\u751f\u6210\u6709\u6548\u5206\u955c', PLUGIN_NAME);
@@ -18812,6 +19242,7 @@ SCHEMA:
             }
         }
         logTaggerPayload('test draw tagger result', normalized);
+        flushPendingGlobalImportToasts();
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
             throw new Error('Tagger 未能生成有效分镜描述');

@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.37';
+    const VERSION = '2.2.38';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -213,7 +213,8 @@
     // ══════════════════════════════════════════════════════════
     //  Data Access Layer: Direct SDT characterProfiles Binding
     // ══════════════════════════════════════════════════════════
-    let dossierScope = 'chat'; // 'chat' (仅当前会话) | 'all' (全部历史档案)
+    let dossierScope = 'chat'; // 'chat' (仅当前会话) | 'all' (角色库：全部会话档案) | 'lorebook'
+    let dossierGlobalOnly = false; // 角色库视图中只看⭐全局角色
     let isDossierBatchMode = false;
     const selectedDossierNames = new Set();
 
@@ -338,6 +339,10 @@
     /** Global list pick: locked > unlocked; else oldest createdAt; same identity → newest updatedAt. */
     function shouldPreferGlobalProfile(candidate, current) {
         if (!current) return true;
+        // A copy imported from a ⭐全局角色 is never the archive itself: real archives win over it.
+        const candImported = !!candidate?.importedFromGlobal;
+        const curImported = !!current?.importedFromGlobal;
+        if (candImported !== curImported) return !candImported;
         const candLocked = isProfileContentLocked(candidate);
         const curLocked = isProfileContentLocked(current);
         if (candLocked !== curLocked) return candLocked;
@@ -371,6 +376,177 @@
         if (ca === 0) return true;
         // Target has identity but incoming does not match / lacks one: refuse.
         return false;
+    }
+
+    // ══ 三层角色：角色库(全部会话档案) / ⭐全局角色(所有会话常驻发给 LLM) / 当前会话角色 ══
+    // sdt.globalCharacters = { [name]: { profile, setAt, updatedAt } }。只由角色工坊手动写入，SDT 解析只读。
+    function getGlobalCharacterStore() {
+        const sdt = getSdtStore();
+        if (!sdt.globalCharacters || typeof sdt.globalCharacters !== 'object' || Array.isArray(sdt.globalCharacters)) sdt.globalCharacters = {};
+        return sdt.globalCharacters;
+    }
+
+    function isGlobalCharacter(name) {
+        if (!name) return false;
+        const g = getSdtStore().globalCharacters;
+        return !!(g && typeof g === 'object' && g[name] && g[name].profile && typeof g[name].profile === 'object');
+    }
+
+    function getGlobalCharacterProfile(name) {
+        return isGlobalCharacter(name) ? getSdtStore().globalCharacters[name].profile : null;
+    }
+
+    function getGlobalCharacterNames() {
+        const g = getSdtStore().globalCharacters;
+        return g && typeof g === 'object' ? Object.keys(g).filter(isGlobalCharacter) : [];
+    }
+
+    function cloneGlobalSnapshot(p) {
+        const c = JSON.parse(JSON.stringify(p || {}));
+        for (const k of Object.keys(c)) if (/^manga[A-Z]/.test(k)) delete c[k]; // per-chat floor history
+        delete c.importedFromGlobal;
+        return c;
+    }
+
+    /** Mark/unmark a 角色库 character as 全局角色. Source = explicit profile, else preferred archive (locked > earliest). */
+    function setGlobalCharacter(name, enabled, sourceProfile = null) {
+        if (!name || isJunkCharacterName(name)) return false;
+        const store = getGlobalCharacterStore();
+        if (!enabled) {
+            if (!store[name]) return false;
+            delete store[name];
+            RBQ.api.saveSettings();
+            return true;
+        }
+        const src = sourceProfile || getAllGlobalProfiles()[name];
+        if (!src || typeof src !== 'object') return false;
+        const now = Date.now();
+        store[name] = { profile: cloneGlobalSnapshot({ ...src, displayName: src.displayName || name }), setAt: store[name]?.setAt || now, updatedAt: now };
+        RBQ.api.saveSettings();
+        return true;
+    }
+
+    function uniqueWardrobeItemName(wardrobe, name) {
+        const taken = new Set((Array.isArray(wardrobe) ? wardrobe : []).map(w => String(w?.name || '')));
+        if (!taken.has(name)) return name;
+        let i = 2;
+        while (taken.has(`${name} ${i}`)) i++;
+        return `${name} ${i}`;
+    }
+
+    /** Every global outfit locked + marked fromGlobal; a current outfit missing from the wardrobe is seeded as a locked 「默认服装」. */
+    function buildLockedGlobalWardrobe(copy) {
+        const wardrobe = (Array.isArray(copy.wardrobe) ? copy.wardrobe : []).filter(w => w && typeof w === 'object')
+            .map(w => ({ ...w, locked: true, fromGlobal: true }));
+        const current = String(copy.currentOutfit || '').trim();
+        if (current && !wardrobe.some(w => (w.outfit || w.tags || '') === copy.currentOutfit)) {
+            const seeded = { id: `w-g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                name: uniqueWardrobeItemName(wardrobe, '默认服装'), outfit: copy.currentOutfit, triggers: [], locked: true, fromGlobal: true, createdAt: Date.now() };
+            wardrobe.unshift(seeded);
+            copy.currentOutfitId = seeded.id;
+        }
+        copy.wardrobe = wardrobe;
+        if (copy.currentOutfitId && !wardrobe.some(w => w.id === copy.currentOutfitId)) {
+            const worn = wardrobe.find(w => (w.outfit || w.tags || '') === copy.currentOutfit);
+            if (worn) copy.currentOutfitId = worn.id; else delete copy.currentOutfitId;
+        }
+        return copy;
+    }
+
+    /** Copy of a global character for the current chat: same createdAt, base + every outfit locked (new outfits may still be added). */
+    function buildImportedGlobalCopy(name, source) {
+        const copy = cloneGlobalSnapshot(source);
+        copy.displayName = copy.displayName || name;
+        copy.baseLocked = true;
+        copy.isBaseLocked = true;
+        copy.outfitLocked = true;
+        copy.isOutfitLocked = true;
+        buildLockedGlobalWardrobe(copy);
+        if (!Number(copy.createdAt || 0)) copy.createdAt = Date.now();
+        copy.importedFromGlobal = { name, at: Date.now() };
+        copy.updatedAt = Date.now();
+        return copy;
+    }
+
+    // ── 别名冲突：两个⭐全局角色共用姓名/别名时，解析不会导入任何一位（避免认错人）。 ──
+    function getCharacterIdentityTerms(name, p) {
+        const raw = [name, p?.displayName, ...(Array.isArray(p?.aliases) ? p.aliases : String(p?.aliases || '').split(/[,，、;；\n]+/))];
+        return [...new Set(raw.map(v => String(v || '').normalize('NFKC').trim().toLowerCase()).filter(Boolean))];
+    }
+    /** [{ other, term }] where this character's names/aliases collide with another ⭐全局角色. */
+    function findGlobalAliasConflicts(name, profile = null) {
+        const mine = getCharacterIdentityTerms(name, profile || getGlobalCharacterProfile(name) || getAllGlobalProfiles()[name]);
+        const out = [];
+        for (const other of getGlobalCharacterNames()) {
+            if (other === name) continue;
+            const theirs = new Set(getCharacterIdentityTerms(other, getGlobalCharacterProfile(other)));
+            for (const t of mine) if (theirs.has(t)) out.push({ other, term: t });
+        }
+        return out;
+    }
+    function warnGlobalAliasConflicts(name, profile = null) {
+        const conflicts = findGlobalAliasConflicts(name, profile);
+        if (!conflicts.length) return false;
+        const text = conflicts.map(c => `「${c.term}」与⭐全局角色「${c.other}」重复`).join('；');
+        try { toastr.warning(`${text}。剧情里出现这个名字时不会自动导入任何一位，请改掉其中一个别名。`, PLUGIN_NAME, { timeOut: 9000 }); } catch (_e) { /* noop */ }
+        return true;
+    }
+
+    // ── [产品决定 B] 角色库里保存⭐全局角色时，可选同步到已导入的各会话副本 ──
+    // 更新人设/身份字段和来自全局的服装；各会话自己新增的服装保留。回退：让 isImportedGlobalSyncPromptEnabled() 返回 false。
+    function isImportedGlobalSyncPromptEnabled() { return true; }
+    function getImportedGlobalCopies(name) {
+        const sdt = getSdtStore();
+        const out = [];
+        for (const [chatKey, dict] of Object.entries(sdt.characterProfiles || {})) {
+            if (!dict || typeof dict !== 'object') continue;
+            for (const [k, v] of Object.entries(dict)) {
+                if (v && typeof v === 'object' && v.importedFromGlobal && (v.importedFromGlobal.name || k) === name) out.push({ chatKey, key: k, profile: v });
+            }
+        }
+        return out;
+    }
+    function countImportedGlobalCopies(name) { return getImportedGlobalCopies(name).length; }
+    /** Returns true if the user wants the copies updated (asked only when there are any). */
+    function askSyncImportedGlobalCopies(name) {
+        if (!isImportedGlobalSyncPromptEnabled() || !isGlobalCharacter(name)) return false;
+        const n = countImportedGlobalCopies(name);
+        if (!n) return false;
+        return confirm(`同时更新已导入的 ${n} 个对话吗？\n（这些对话里「${name}」的人设和来自全局的服装会改成这次保存的版本；各对话自己新增的服装保留。选「取消」则只改全局角色本体，已导入的对话保持原样）`);
+    }
+    function syncGlobalToImportedCopies(name, newGlobal, oldGlobal = null) {
+        if (!newGlobal || typeof newGlobal !== 'object') return 0;
+        const oldIds = new Set((Array.isArray(oldGlobal?.wardrobe) ? oldGlobal.wardrobe : []).map(w => w && w.id).filter(Boolean));
+        const fresh = buildLockedGlobalWardrobe(cloneGlobalSnapshot(newGlobal));
+        let count = 0;
+        for (const { profile: copy } of getImportedGlobalCopies(name)) {
+            for (const f of ['displayName', 'nameTag', 'nameTagSource', 'aliases', 'baseTags', 'previousBaseTags', 'avatarUrl']) {
+                if (Object.hasOwn(fresh, f)) copy[f] = JSON.parse(JSON.stringify(fresh[f])); else delete copy[f];
+            }
+            const own = (Array.isArray(copy.wardrobe) ? copy.wardrobe : []).filter(w => w && !w.fromGlobal && !oldIds.has(w.id));
+            const wornWasGlobal = !own.some(w => w.id === copy.currentOutfitId);
+            copy.wardrobe = [...JSON.parse(JSON.stringify(fresh.wardrobe || [])), ...own];
+            if (wornWasGlobal) {
+                const keep = copy.wardrobe.find(w => w.fromGlobal && w.id === copy.currentOutfitId);
+                const worn = keep || copy.wardrobe.find(w => w.id === fresh.currentOutfitId) || copy.wardrobe.find(w => w.fromGlobal) || null;
+                if (worn) { copy.currentOutfitId = worn.id; copy.currentOutfit = worn.outfit || worn.tags || ''; copy.outfitLocked = copy.isOutfitLocked = !!worn.locked; }
+                else { delete copy.currentOutfitId; copy.currentOutfit = fresh.currentOutfit || ''; }
+            }
+            copy.importedFromGlobal = { ...(copy.importedFromGlobal || {}), name, syncedAt: Date.now() };
+            copy.updatedAt = Date.now();
+            count++;
+        }
+        if (count) RBQ.api.saveSettings();
+        return count;
+    }
+
+    function importGlobalCharacterToCurrentChat(name) {
+        const src = getGlobalCharacterProfile(name);
+        if (!src) return false;
+        const bucket = ensureProfileBucket();
+        bucket[name] = buildImportedGlobalCopy(name, src);
+        RBQ.api.saveSettings();
+        return true;
     }
 
     function getAllGlobalProfiles() {
@@ -699,6 +875,9 @@
         if (!name) return null;
         // Global history view: show/edit the preferred archive (locked / oldest), not the current-chat clone.
         if (dossierScope === 'all') {
+            // ⭐ 全局角色：角色库视图展示/编辑的是全局角色本体。
+            const globalChar = getGlobalCharacterProfile(name);
+            if (globalChar) return globalChar;
             const globalPreferred = getAllGlobalProfiles()[name];
             if (globalPreferred) return globalPreferred;
         }
@@ -715,11 +894,17 @@
         return null;
     }
 
-    function saveProfile(name, data, scope = dossierScope) {
+    function saveProfile(name, data, scope = dossierScope, opts = {}) {
         if (!name || isJunkCharacterName(name)) return;
         const bucket = ensureProfileBucket();
+        // ⭐全局角色 saved from 角色库: the global itself is the target; the current chat is only written if it
+        // already holds its own (non-imported) copy of her.
+        const isGlobalSave = scope === 'all' && (isGlobalCharacter(name) || !!opts.makeGlobal);
+        const oldGlobal = isGlobalCharacter(name) ? JSON.parse(JSON.stringify(getGlobalCharacterProfile(name))) : null;
+        // (Editing the current chat's own copy with 「同步至角色库」 checked still updates that copy.)
+        const writeBucket = !isGlobalSave || !!(bucket[name] && (!bucket[name].importedFromGlobal || opts.fromChatView));
         // Editor fields are a partial profile; keep each chat's independent temporal history.
-        const profileData = { ...bucket[name], ...data, displayName: data.displayName || name, updatedAt: Date.now() };
+        const profileData = { ...(writeBucket ? bucket[name] : (oldGlobal || bucket[name])), ...data, displayName: data.displayName || name, updatedAt: Date.now() };
         // An explicitly cleared name_tag removes the identity instead of storing an empty string.
         const clearNameTag = Object.hasOwn(data, 'nameTag') && !String(data.nameTag || '').trim();
         // Same for an explicitly cleared aliases list; global-sync copies follow identically.
@@ -737,9 +922,10 @@
             profileData.createdAt = Date.now();
         }
         if (!Array.isArray(profileData.wardrobe)) profileData.wardrobe = [];
-        bucket[name] = profileData;
+        if (writeBucket) bucket[name] = profileData;
 
         // Global save: sync only same-identity copies; never overwrite a locked archive with an unlocked clone.
+        let globalData = null;
         if (scope === 'all') {
             const sdt = getSdtStore();
             if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
@@ -748,6 +934,8 @@
                         if (chatDict[name] || (data.displayName && chatDict[data.displayName])) {
                             const targetKey = chatDict[name] ? name : data.displayName;
                             const existing = chatDict[targetKey];
+                            // Copies imported from a ⭐全局角色 are updated only via the explicit sync below.
+                            if (isGlobalSave && existing?.importedFromGlobal) continue;
                             const merged = dropEmptyNameTag(JSON.parse(JSON.stringify({ ...existing, ...data,
                                 displayName: data.displayName || name, updatedAt: profileData.updatedAt,
                                 createdAt: (Object.hasOwn(data, 'createdAt') && Number(data.createdAt || 0) > 0)
@@ -759,15 +947,24 @@
                     }
                 }
             }
+            // Manual 角色库 save is the only way a 全局角色 changes (parse never writes it).
+            if (isGlobalSave) {
+                globalData = dropEmptyNameTag({ ...(oldGlobal || {}), ...data, displayName: data.displayName || name,
+                    updatedAt: profileData.updatedAt, createdAt: profileData.createdAt, wardrobe: profileData.wardrobe });
+                setGlobalCharacter(name, true, globalData);
+                if (opts.syncImported) syncGlobalToImportedCopies(name, getGlobalCharacterProfile(name), oldGlobal);
+            }
         }
 
         RBQ.api.saveSettings();
+        return globalData || profileData;
     }
 
 
     /** Clone preferred global archive into current chat, replacing any same-name slot. */
     function overwriteCurrentChatFromGlobal(name) {
         if (!name) return false;
+        if (isGlobalCharacter(name)) return importGlobalCharacterToCurrentChat(name);
         const globalProfiles = getAllGlobalProfiles();
         const p = globalProfiles[name];
         if (!p || typeof p !== 'object') return false;
@@ -805,7 +1002,13 @@
         };
 
         if (scope === 'all') {
-            // 全局删除：遍历 sdt.characterProfiles 下所有历史会话桶彻底清理
+            // 角色库删除：遍历 sdt.characterProfiles 下所有历史会话桶彻底清理；同名全局角色一并取消
+            const gStore = getSdtStore().globalCharacters;
+            if (gStore && typeof gStore === 'object') {
+                for (const gName of Object.keys(gStore)) {
+                    if (isMatch(gName, gStore[gName]?.profile)) { delete gStore[gName]; deleted = true; }
+                }
+            }
             if (sdt.characterProfiles && typeof sdt.characterProfiles === 'object') {
                 for (const [chatKey, chatDict] of Object.entries(sdt.characterProfiles)) {
                     if (chatDict && typeof chatDict === 'object') {
@@ -2071,7 +2274,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             mask.innerHTML = `
                 <div class="cw-modal" style="width:820px;max-width:96vw;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;min-height:min-content">
                     <div class="cw-modal-hd" style="flex-shrink:0">
-                        <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-id-card"></i> ${isEdit ? '编辑角色 · ' + esc(draft.displayName) : '✨ 新建角色档案'}${dossierScope === 'all' ? ' <span style="font-size:11px;font-weight:normal;padding:2px 6px;border-radius:4px;background:rgba(56,189,248,0.18);color:#7dd3fc;border:1px solid rgba(56,189,248,0.35)">🌐 全局历史模式</span>' : ''}</strong>
+                        <strong style="color:#38bdf8;font-size:14px"><i class="fa-solid fa-id-card"></i> ${isEdit ? '编辑角色 · ' + esc(draft.displayName) : '✨ 新建角色档案'}${dossierScope === 'all' ? ' <span style="font-size:11px;font-weight:normal;padding:2px 6px;border-radius:4px;background:rgba(56,189,248,0.18);color:#7dd3fc;border:1px solid rgba(56,189,248,0.35)">📦 角色库模式</span>' : ''}</strong>
                         <button class="cw-btn sm" id="cw-ce-x">✕</button>
                     </div>
                     <div class="cw-modal-bd" style="flex:1 1 auto;min-height:min-content;overflow-y:auto;-webkit-overflow-scrolling:touch">
@@ -2150,9 +2353,9 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     <div class="cw-modal-ft" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
                         <button class="cw-btn cy" id="cw-ce-test" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 🎨 测试单人立绘</button>
                         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
-                            <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:rgba(255,255,255,0.75);cursor:pointer;margin-right:4px" title="勾选后，若其他历史会话中也有此角色，将同步更新所有历史会话副本"><input type="checkbox" id="cw-ce-sync-global" ${dossierScope === 'all' ? 'checked' : ''} style="accent-color:#38bdf8;cursor:pointer" /> 🌐 同步至全局所有会话副本</label>
+                            <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:rgba(255,255,255,0.75);cursor:pointer;margin-right:4px" title="勾选后，若角色库（其他历史会话）中也有此角色，将同步更新所有会话副本；若是⭐全局角色，也会更新全局角色本体"><input type="checkbox" id="cw-ce-sync-global" ${dossierScope === 'all' ? 'checked' : ''} style="accent-color:#38bdf8;cursor:pointer" /> 📦 同步至角色库所有会话副本</label>
                             <button class="cw-btn" id="cw-ce-cancel">取消</button>
-                            <button class="cw-btn pri" id="cw-ce-save">💾 ${dossierScope === 'all' ? '保存 (同步全局)' : '保存到 SDT 角色记忆'}</button>
+                            <button class="cw-btn pri" id="cw-ce-save">💾 ${dossierScope === 'all' ? '保存 (同步角色库)' : '保存到 SDT 角色记忆'}</button>
                         </div>
                     </div>
                 </div>`;
@@ -2352,6 +2555,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 const syncGlobal = (dossierScope === 'all') || Boolean(mask.querySelector('#cw-ce-sync-global')?.checked);
                 const targetScope = syncGlobal ? 'all' : dossierScope;
 
+                // Renaming a 全局角色 in 角色库 keeps it global under the new name.
+                const keepGlobalOnRename = isEdit && editName !== name && targetScope === 'all' && isGlobalCharacter(editName);
+                // [产品决定 B] ask before the rename/delete below so the count reflects the copies being edited.
+                const syncImported = targetScope === 'all' && !keepGlobalOnRename && (!isEdit || editName === name) && askSyncImportedGlobalCopies(name);
                 if (isEdit && editName !== name) deleteProfile(editName, targetScope);
 
                 const activeW = draft.wardrobe.find(w => w.id === draft.currentOutfitId) || draft.wardrobe[0];
@@ -2385,8 +2592,9 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     wardrobe: draft.wardrobe,
                     // Keep the archive identity so global sync only touches same-createdAt copies.
                     ...(origProfile?.createdAt ? { createdAt: origProfile.createdAt } : {}),
-                }, targetScope);
-                toastr.success(targetScope === 'all' ? ('「' + name + '」已保存，并已同步至同一档案的各会话副本！') : ('「' + name + '」已保存到 SDT 角色记忆！'), PLUGIN_NAME);
+                }, targetScope, { makeGlobal: keepGlobalOnRename, syncImported, fromChatView: dossierScope === 'chat' });
+                if (targetScope === 'all' && isGlobalCharacter(name)) warnGlobalAliasConflicts(name);
+                toastr.success(targetScope === 'all' ? ('「' + name + '」已保存，并已同步至角色库中同一档案的各会话副本！') : ('「' + name + '」已保存到 SDT 角色记忆！'), PLUGIN_NAME);
                 mask.remove();
                 if (onSaved) onSaved(name);
             });
@@ -2635,8 +2843,20 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
         const allCount = Object.keys(globalProfiles).length;
         const doujinCount = Object.keys(doujinProfiles).filter(k => k !== '__mtime').length;
 
+        const globalNames = getGlobalCharacterNames();
+        const globalCount = globalNames.length;
+        if (dossierScope !== 'all') dossierGlobalOnly = false;
+
         const profiles = getAllProfiles();
-        const names = Object.keys(profiles);
+        if (dossierScope === 'all') {
+            // ⭐ 全局角色：显示全局角色本体（即使角色库里已没有任何会话副本）。
+            for (const g of globalNames) profiles[g] = getGlobalCharacterProfile(g);
+        }
+        let names = Object.keys(profiles);
+        if (dossierScope === 'all') {
+            if (dossierGlobalOnly) names = names.filter(isGlobalCharacter);
+            names.sort((a, b) => Number(isGlobalCharacter(b)) - Number(isGlobalCharacter(a)));
+        }
 
         return `<div class="cw-body">
             <div class="cw-card">
@@ -2645,12 +2865,13 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                         <span class="cw-card-tt" style="color:#38bdf8"><i class="fa-solid fa-users"></i> SDT 角色档案库 (${names.length} 位)</span>
                         <div class="cw-scope-box" style="display:inline-flex;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:2px;gap:2px">
                             <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'chat' ? 'cy' : ''}" data-scope="chat" style="padding:2px 8px;font-size:11px"><i class="fa-solid fa-comments"></i> 当前会话 (${chatCount})</button>
-                            <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'all' ? 'cy' : ''}" data-scope="all" style="padding:2px 8px;font-size:11px"><i class="fa-solid fa-globe"></i> 全局历史 (${allCount})</button>
+                            <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'all' ? 'cy' : ''}" data-scope="all" style="padding:2px 8px;font-size:11px" title="角色库：所有会话的角色档案存档，不会自动发给 LLM；可在此把角色设为⭐全局角色"><i class="fa-solid fa-box-archive"></i> 角色库 (${allCount})${globalCount ? ` · ⭐${globalCount}` : ''}</button>
                             <button type="button" class="cw-btn xs cw-scope-btn ${dossierScope === 'lorebook' ? 'cy' : ''}" data-scope="lorebook" style="padding:2px 8px;font-size:11px" title="${doujinSrc ? '已挂载同人库: ' + esc(doujinSrc.name) : '点击查看或挂载同人库'}"><i class="fa-solid fa-book-bookmark"></i> 📖 同人库 (${doujinCount})</button>
                         </div>
                     </div>
                     <div class="cw-archive-tools" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                         ${!isDossierBatchMode ? `
+                            ${dossierScope === 'all' ? `<button type="button" class="cw-btn sm ${dossierGlobalOnly ? 'cy' : ''}" id="cw-global-only-btn" title="⭐全局角色在任何会话都会发给 LLM；剧情中登场时自动导入当前会话并锁定"><i class="fa-solid fa-star"></i> ${dossierGlobalOnly ? '显示全部角色' : `只看全局角色 (${globalCount})`}</button>` : ''}
                             <button type="button" class="cw-btn cy sm" id="cw-mount-lorebook-btn" title="挂载或批量导入世界书同人库到角色档案库"><i class="fa-solid fa-book-bookmark"></i> 挂载/导入同人库</button>
                             <button type="button" class="cw-btn sm" id="cw-batch-mode-btn" title="开启批量选择模式：支持批量删除、批量导出与批量导入当前"><i class="fa-solid fa-list-check"></i> 批量管理</button>
                             <button type="button" class="cw-btn sm" id="cw-export-dossier-btn" title="导出当前视图角色档案库为 JSON 备份"><i class="fa-solid fa-file-export"></i> 导出备份</button>
@@ -2665,7 +2886,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                     <button type="button" class="cw-btn gn xs" id="cw-batch-import-curr" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="将选中的角色批量克隆并导入到当前会话"><i class="fa-solid fa-file-import"></i> 批量导入当前 (${selectedDossierNames.size})</button>
                                 ` : ''}
                                 <button type="button" class="cw-btn xs" id="cw-batch-export-btn" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="将选中的角色打包导出为 JSON 文件"><i class="fa-solid fa-file-export"></i> 批量导出 (${selectedDossierNames.size})</button>
-                                <button type="button" class="cw-btn rd xs" id="cw-batch-delete-btn" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="${dossierScope === 'all' ? '从全局历史中彻底删除选中的角色' : '从当前会话中移除选中的角色'}"><i class="fa-solid fa-trash"></i> 批量删除 (${selectedDossierNames.size})</button>
+                                <button type="button" class="cw-btn rd xs" id="cw-batch-delete-btn" ${selectedDossierNames.size === 0 ? 'disabled' : ''} style="padding:3px 8px;font-size:11px" title="${dossierScope === 'all' ? '从角色库中彻底删除选中的角色' : '从当前会话中移除选中的角色'}"><i class="fa-solid fa-trash"></i> 批量删除 (${selectedDossierNames.size})</button>
                                 <button type="button" class="cw-btn xs" id="cw-batch-exit-btn" style="padding:3px 8px;font-size:11px"><i class="fa-solid fa-xmark"></i> 退出批量</button>
                             </div>
                         `}
@@ -2675,7 +2896,8 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     ${names.length === 0 ? `
                         <div style="text-align:center;padding:36px 20px;grid-column:1/-1;opacity:.7;display:flex;flex-direction:column;align-items:center;gap:10px">
                             <div><i class="fa-solid fa-user-slash" style="font-size:28px;opacity:0.4"></i></div>
-                            <div>${dossierScope === 'lorebook' ? '尚未检测到任何已导入的世界书同人库。请先在「智能触发」中导入同人库文件，或点击右上角「挂载/导入同人库」！' : (dossierScope === 'chat' ? `当前会话暂无角色档案记忆。${allCount > 0 ? `全局历史库中有 ${allCount} 位角色，点击上方「全局历史」可直接查看与选用！` : ''}` : '暂无任何角色档案，点击右上角「新建角色档案」开始！')}</div>
+                            <div>${dossierScope === 'lorebook' ? '尚未检测到任何已导入的世界书同人库。请先在「智能触发」中导入同人库文件，或点击右上角「挂载/导入同人库」！' : (dossierScope === 'chat' ? `当前会话暂无角色档案记忆。${(allCount > 0 || globalCount > 0) ? `<div class="cw-empty-chat-library-hint" style="margin-top:6px">之前的角色都还在角色库里${allCount > 0 ? `（${allCount} 位）` : ''}，可直接查看与导入。</div>` : ''}${globalCount > 0 ? ` 已设 ${globalCount} 位⭐全局角色，剧情中登场时会自动导入当前会话。` : ''}` : (dossierGlobalOnly ? '还没有⭐全局角色。在角色库的角色卡上点「设为全局角色」即可。' : '暂无任何角色档案，点击右上角「新建角色档案」开始！'))}</div>
+                            ${(dossierScope === 'chat' && (allCount > 0 || globalCount > 0)) ? `<button type="button" class="cw-btn cy sm cw-scope-btn cw-open-library-btn" data-scope="all"><i class="fa-solid fa-box-archive"></i> 打开角色库</button>` : ''}
                         </div>` : names.map(n => {
                         const p = profiles[n];
                         if (!p || typeof p !== 'object') return '';
@@ -2697,8 +2919,11 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                         <span style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.displayName || n)}</span>
                                         ${(p.baseLocked || p.isBaseLocked) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(163,230,53,0.18);border:1px solid rgba(163,230,53,0.5);color:#bef264" title="人设已锁定防篡改">🔒人设</span>` : ''}
                                         ${(p.outfitLocked || p.isOutfitLocked || activeW?.locked) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(244,114,182,0.18);border:1px solid rgba(244,114,182,0.5);color:#f472b6" title="服装已锁定防篡改">🔒服装</span>` : ''}
+                                        ${(dossierScope === 'all') ? (isGlobalCharacter(n) ? `<span class="cw-lib-status cw-lib-status-global" style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(250,204,21,0.15);border:1px solid rgba(250,204,21,0.45);color:#fde047;white-space:nowrap" title="⭐全局角色：任何会话都会发给 LLM；剧情中登场时自动导入当前会话并锁定">⭐ 全局使用中</span>` : `<span class="cw-lib-status cw-lib-status-archive" style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);color:#cbd5e1;white-space:nowrap" title="仅存档：保存在角色库里，不会发给 LLM；点「设为全局角色」后所有会话都会用她">仅存档</span>`) : ''}
+                                        ${(dossierScope === 'chat' && p.importedFromGlobal) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(250,204,21,0.15);border:1px solid rgba(250,204,21,0.45);color:#fde047" title="从⭐全局角色导入（导入时人设与服装默认锁定）；解析只会新增服装，不会改动全局角色。可在角色工坊手动解锁修改，会话里的改动不会同步回全局">⭐ 来自全局</span>` : ''}
                                         ${(p.source === 'lorebook' || p.sourceName || isFromLorebook) ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(192,132,252,0.25);border:1px solid rgba(192,132,252,0.5);color:#e9d5ff">同人库</span>` : ''}
                                     </div>
+                                    ${(dossierScope === 'chat' && p.importedFromGlobal) ? `<span class="cw-global-lock-hint" style="font-size:10px;color:rgba(253,224,71,.75);line-height:1.3">🔒 可在角色工坊手动解锁修改，会话里的改动不会同步回全局</span>` : ''}
                                     <span style="font-size:11px;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.baseTags)}"><span style="color:#79e4ff">外貌:</span> ${esc(p.baseTags || '未设置')}</span>
                                     <span style="font-size:10.5px;color:#ffb86c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👗 当前: <strong>${esc(activeOutfitName)}</strong> <span style="opacity:0.6">(${wCount}套)</span></span>
                                 </div>
@@ -2710,12 +2935,15 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                     <button class="cw-btn gn sm cw-import-from-lorebook" data-name="${esc(n)}" title="导入为当前常驻角色档案"><i class="fa-solid fa-file-import"></i> 导入常驻</button>
                                     <button class="cw-btn sm cw-export-single-char" data-name="${esc(n)}" title="导出该角色为独立 JSON 文件"><i class="fa-solid fa-file-export"></i></button>
                                 ` : `
+                                    ${(dossierScope === 'all') ? `
+                                        <button class="cw-btn sm ${isGlobalCharacter(n) ? 'cy' : ''} cw-toggle-global-char" data-name="${esc(n)}" data-global="${isGlobalCharacter(n) ? '1' : '0'}" title="${isGlobalCharacter(n) ? '取消后不再自动发给 LLM，已导入各会话的副本保留' : '设为全局角色：任何会话都会发给 LLM；剧情中登场时自动导入当前会话，人设与服装默认锁定'}"><i class="fa-solid fa-star"></i> ${isGlobalCharacter(n) ? '取消全局角色' : '设为全局角色'}</button>
+                                    ` : ''}
                                     ${(dossierScope === 'all') ? (chatProfiles[n] ? `
-                                        <button class="cw-btn cy sm cw-overwrite-from-global" data-name="${esc(n)}" title="用全局历史中的优选档案（锁定优先，其次最早建档）覆盖当前会话中的同名档案"><i class="fa-solid fa-rotate"></i> 用全局版本覆盖当前</button>
+                                        <button class="cw-btn cy sm cw-overwrite-from-global" data-name="${esc(n)}" title="${isGlobalCharacter(n) ? '用⭐全局角色本体覆盖当前会话中的同名档案（人设与服装锁定）' : '用角色库中的优选档案（锁定优先，其次最早建档）覆盖当前会话中的同名档案'}"><i class="fa-solid fa-rotate"></i> 用全局版本覆盖当前</button>
                                     ` : `
-                                        <button class="cw-btn gn sm cw-import-from-global" data-name="${esc(n)}" title="将此全局历史角色导入到当前会话"><i class="fa-solid fa-file-import"></i> 导入当前</button>
+                                        <button class="cw-btn gn sm cw-import-from-global" data-name="${esc(n)}" title="${isGlobalCharacter(n) ? '将⭐全局角色导入到当前会话（人设与服装锁定）' : '将此角色库角色导入到当前会话'}"><i class="fa-solid fa-file-import"></i> 导入当前</button>
                                     `) : ''}
-                                    <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}" title="${dossierScope === 'all' ? '编辑全局档案并同步所有会话' : '编辑角色档案'}"><i class="fa-solid fa-pen-to-square"></i> ${dossierScope === 'all' ? '编辑(全局)' : '编辑'}</button>
+                                    <button class="cw-btn sm cw-edit-char" data-name="${esc(n)}" title="${dossierScope === 'all' ? (isGlobalCharacter(n) ? '编辑⭐全局角色本体，并同步角色库中同一档案的各会话副本' : '编辑角色库档案并同步所有会话副本') : '编辑角色档案'}"><i class="fa-solid fa-pen-to-square"></i> ${dossierScope === 'all' ? '编辑(角色库)' : '编辑'}</button>
                                     <button class="cw-btn sm cw-export-single-char" data-name="${esc(n)}" title="导出该角色为独立 JSON 文件"><i class="fa-solid fa-file-export"></i></button>
                                     <button class="cw-btn rd sm cw-del-char" data-name="${esc(n)}" title="删除档案"><i class="fa-solid fa-trash"></i></button>
                                 `}
@@ -2858,7 +3086,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                                             </optgroup>
                                         ` : ''}
                                         ${globalOnlyNames.length > 0 ? `
-                                            <optgroup label="🌐 全局历史档案 (${globalOnlyNames.length} 位)">
+                                            <optgroup label="📦 角色库档案 (${globalOnlyNames.length} 位)">
                                                 ${globalOnlyNames.map(n => `<option value="${esc(n)}" ${slot.charName === n ? 'selected' : ''}>👤 ${esc(globalProfiles[n]?.displayName || n)}</option>`).join('')}
                                             </optgroup>
                                         ` : ''}
@@ -3824,8 +4052,35 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             }
         }));
 
+        container.querySelector('#cw-global-only-btn')?.addEventListener('click', () => {
+            dossierGlobalOnly = !dossierGlobalOnly;
+            selectedDossierNames.clear();
+            refresh('dossier');
+        });
+
+        container.querySelectorAll('.cw-toggle-global-char').forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const name = e.currentTarget.dataset.name;
+            if (isGlobalCharacter(name)) {
+                if (!confirm(`确定取消「${name}」的全局角色吗？\n（之后不再自动发给 LLM；已导入各会话的副本保留不变）`)) return;
+                setGlobalCharacter(name, false);
+                toastr.info(`已取消全局角色「${name}」`, PLUGIN_NAME);
+            } else if (setGlobalCharacter(name, true)) {
+                toastr.success(`「${name}」已设为全局角色：任何会话都会发给 LLM，剧情中登场时自动导入当前会话并锁定`, PLUGIN_NAME);
+                warnGlobalAliasConflicts(name);
+            } else {
+                toastr.warning(`未在角色库中找到「${name}」`, PLUGIN_NAME);
+            }
+            refresh('dossier');
+        }));
+
         container.querySelectorAll('.cw-import-from-global').forEach(b => b.addEventListener('click', (e) => {
             const name = e.currentTarget.dataset.name;
+            if (isGlobalCharacter(name) && importGlobalCharacterToCurrentChat(name)) {
+                toastr.success(`已将⭐全局角色「${esc(name)}」导入到当前会话（人设与服装已锁定）<br><small style="opacity:.8">可在角色工坊手动解锁修改，会话里的改动不会同步回全局</small>`, PLUGIN_NAME, { escapeHtml: false });
+                refresh('dossier');
+                return;
+            }
             const globalProfiles = getAllGlobalProfiles();
             const p = globalProfiles[name] || getProfile(name);
             if (p) {
@@ -3834,19 +4089,21 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 toastr.success(`已成功将「${name}」导入到当前会话档案库！可在当前会话中直接使用`, PLUGIN_NAME);
                 refresh('dossier');
             } else {
-                toastr.warning(`未找到角色「${name}」的全局历史数据`, PLUGIN_NAME);
+                toastr.warning(`未在角色库中找到角色「${name}」`, PLUGIN_NAME);
             }
         }));
 
         container.querySelectorAll('.cw-overwrite-from-global').forEach(b => b.addEventListener('click', (e) => {
             const name = e.currentTarget.dataset.name;
-            const confirmMsg = `确定用全局历史中的「${name}」档案覆盖当前会话中的版本吗？\n（将采用锁定优先、其次最早建档的那份全局档案；当前会话里解析出的新内容会被替换）`;
+            const confirmMsg = isGlobalCharacter(name)
+                ? `确定用⭐全局角色「${name}」覆盖当前会话中的版本吗？\n（人设与服装将锁定；当前会话里解析出的新内容会被替换）`
+                : `确定用角色库中的「${name}」档案覆盖当前会话中的版本吗？\n（将采用锁定优先、其次最早建档的那份档案；当前会话里解析出的新内容会被替换）`;
             if (!confirm(confirmMsg)) return;
             if (overwriteCurrentChatFromGlobal(name)) {
                 toastr.success(`已用全局版本覆盖当前会话中的「${name}」档案`, PLUGIN_NAME);
                 refresh('dossier');
             } else {
-                toastr.warning(`未找到角色「${name}」的全局历史数据`, PLUGIN_NAME);
+                toastr.warning(`未在角色库中找到角色「${name}」`, PLUGIN_NAME);
             }
         }));
 
@@ -3879,7 +4136,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                 toastr.warning('当前视图没有可导出的角色档案', PLUGIN_NAME);
                 return;
             }
-            const scopeLabel = dossierScope === 'all' ? '全局历史' : (dossierScope === 'lorebook' ? '同人库' : '当前会话');
+            const scopeLabel = dossierScope === 'all' ? '角色库' : (dossierScope === 'lorebook' ? '同人库' : '当前会话');
             const exportData = {
                 version: '1.0',
                 type: 'rbq-character-dossier-backup',
@@ -4018,14 +4275,14 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             if (count === 0) return toastr.warning('请先勾选需要删除的角色', PLUGIN_NAME);
             const isGlobal = (dossierScope === 'all');
             const confirmMsg = isGlobal
-                ? `确定从全局历史中彻底删除选中的 ${count} 位角色吗？\n（这些角色在所有历史会话中的档案与记忆都将被清理且不可恢复）`
+                ? `确定从角色库中彻底删除选中的 ${count} 位角色吗？\n（这些角色在所有历史会话中的档案与记忆都将被清理且不可恢复；若是⭐全局角色也会一并取消）`
                 : `确定从当前会话中移除选中的 ${count} 位角色吗？`;
             if (confirm(confirmMsg)) {
                 for (const n of selectedDossierNames) {
                     deleteProfile(n, dossierScope);
                 }
                 selectedDossierNames.clear();
-                toastr.success(isGlobal ? `已从全局历史彻底删除 ${count} 位角色档案！` : `已从当前会话移除 ${count} 位角色档案！`, PLUGIN_NAME);
+                toastr.success(isGlobal ? `已从角色库彻底删除 ${count} 位角色档案！` : `已从当前会话移除 ${count} 位角色档案！`, PLUGIN_NAME);
                 refresh('dossier');
             }
         });
@@ -4036,6 +4293,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             const globalProfiles = getAllGlobalProfiles();
             let imported = 0;
             for (const n of selectedDossierNames) {
+                if (isGlobalCharacter(n) && importGlobalCharacterToCurrentChat(n)) { imported++; continue; }
                 const p = globalProfiles[n] || getProfile(n);
                 if (p) {
                     saveProfile(n, JSON.parse(JSON.stringify(p)), 'chat');
@@ -4054,7 +4312,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             for (const n of selectedDossierNames) {
                 exported[n] = getProfile(n) || getAllProfiles()[n];
             }
-            const scopeLabel = dossierScope === 'all' ? '全局历史' : (dossierScope === 'lorebook' ? '同人库' : '当前会话');
+            const scopeLabel = dossierScope === 'all' ? '角色库' : (dossierScope === 'lorebook' ? '同人库' : '当前会话');
             const payload = {
                 version: '1.0',
                 type: 'rbq-character-dossier-backup',
@@ -4120,11 +4378,11 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             const charName = b.dataset.name;
             const isGlobal = (dossierScope === 'all');
             const confirmMsg = isGlobal
-                ? `确定从全局历史中彻底删除角色「${charName}」的档案记忆吗？\n（该角色在所有会话历史中的档案都将被清理）`
+                ? `确定从角色库中彻底删除角色「${charName}」的档案记忆吗？\n（该角色在所有会话历史中的档案都将被清理；若是⭐全局角色也会一并取消）`
                 : `确定从当前会话中移除角色「${charName}」的档案记忆吗？`;
             if (confirm(confirmMsg)) {
                 deleteProfile(charName, dossierScope);
-                toastr.success(isGlobal ? `角色「${charName}」已从全局历史彻底删除` : `角色「${charName}」已从当前会话移除`, PLUGIN_NAME);
+                toastr.success(isGlobal ? `角色「${charName}」已从角色库彻底删除` : `角色「${charName}」已从当前会话移除`, PLUGIN_NAME);
                 refresh('dossier');
             }
         }));

@@ -87,7 +87,7 @@ const P = global.window.RBQFishTTS;
 
 (async () => {
     /* ===== 1. 加载与默认设置 ===== */
-    check('1.1 插件加载并暴露 API (v' + P.version + ')', !!P && P.version === '0.2.7');
+    check('1.1 插件加载并暴露 API (v' + P.version + ')', !!P && P.version === '0.2.8');
     const S = P.settings;
     check('1.2 设置存于宿主 settings._rbqFishTts 独立命名空间', !!settingsHost._rbqFishTts);
     check('1.3 默认模型 s2.1-pro-free (免费)', S.model === 's2.1-pro-free');

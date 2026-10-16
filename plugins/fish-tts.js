@@ -1,12 +1,16 @@
 /**
  * RBQ-Draw Sub-Plugin: Fish 语音 (Fish Audio TTS)
- * Version: 0.2.7
+ * Version: 0.2.8
  * Description: 剧情语音插件——LLM情绪导演改写台词(含NSFW破限) + Fish Audio 合成，
  *              音色库搜索/试听/收藏、角色绑定音色、预设体系、内心戏/旁白生成模式。
  *              全部配置独立存储于 settings._rbqFishTts，与生图连接完全隔离。
  *
  * 依赖: RBQ 宿主 >= 0.3.52 (registerCleanup / addSettingPanel / eventSource / getMessage)
- * 网络: 音色搜索直连 api.fish.audio (CORS放行免Key)；语音合成需经反代(官方禁浏览器直连)。
+ * 网络: 音色搜索直连 api.fish.audio (CORS放行免Key)。语音合成默认「直连」(v0.2.8):
+ *       浏览器直连官方兼容接口 /compat/v1/audio/speech (实测 CORS 放行 *, 零配置)。
+ *       连不上 Fish 的用户在「连接 → 高级」里另选: 直连失败自动换转发 / 只用酒馆服务端插件
+ *       /api/plugins/fishtts/tts / 只用外部地址。默认不会偷偷依赖服务端插件。
+ *       原生 /v1/tts 无 CORS 头 (OPTIONS 404 no_route)，浏览器无法直连，只用于服务器/外部通道。
  */
 (function (RBQ, $, toastr) {
     'use strict';
@@ -18,6 +22,13 @@
     const TAG = '[FishTTS]';
     const STORE_KEY = '_rbqFishTts';           // 宿主 settings 下的独立命名空间
     const PUB_API = 'https://api.fish.audio';
+    // 官方 OpenAI 兼容合成接口: 实测 OPTIONS 204 + Access-Control-Allow-Origin: * (允许 Authorization/Content-Type),
+    // 浏览器可直接调用。原生 /v1/tts 没有任何 CORS 头, 只能走服务器/外部转发。
+    const COMPAT_TTS = `${PUB_API}/compat/v1/audio/speech`;
+    const SERVER_TTS = '/api/plugins/fishtts/tts';
+    const SYNTH_ROUTES = ['direct', 'auto', 'server', 'external'];
+    const ROUTE_LABEL = { direct: '浏览器直连', server: '酒馆服务器转发', external: '外部地址', auto: '直连失败自动换转发' };
+    const ADV_HINT = '可在「🔌 连接 → 高级：网络连不上 Fish 时」换一种连接方式';
     const ICON = 'data:image/jpeg;base64,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';           // (xh) 自定义图标 48x48 JPEG, 内嵌免外部依赖 // 音色库(直连OK)
     const CSS_PREFIX = 'rbq-fishtts';
 
@@ -37,6 +48,8 @@
     const restoreChecked = new Set(); // mid -> 已查过持久缓存(刷新后回填, 每楼层只查一次)
     const playUrls = new Set();      // WAV播放源 blob URL(解码转换产物, 清理时回收)
     let playbackWarned = false;   // 酒馆TTS双开提示只弹一次
+    let preferServer = false;     // 自动通道: 本会话直连网络失败过 → 先走酒馆转发
+    let lastRoute = null;         // 最近一次成功的合成通道 (测试连接提示用)
 
     /* ════════════════════════ 2. 设置管理 ════════════════════════ */
 
@@ -48,9 +61,9 @@
     ];
 
     const DEFAULTS = {
-        version: 1,
+        version: 2,
         apiKey: '',                       // Fish API Key (多Key逗号分隔)
-        synthRoute: 'server',             // 'server'=酒馆服务器转发(推荐,需装fishtts服务端插件) | 'external'=外部地址
+        synthRoute: 'direct',             // 'direct'=浏览器直连官方兼容接口(默认,零配置) | 高级: 'auto'=直连失败→酒馆转发→外部地址 | 'server'=只用酒馆服务器转发(需装fishtts服务端插件) | 'external'=只用外部地址
         apiBase: '',                      // 外部合成地址 (synthRoute=external 时使用)
         model: 's2.1-pro-free',
         trigger: { mode: 'auto', autoplay: true, readUser: false, smartOnlyDialogue: true },
@@ -85,6 +98,18 @@
         S = Object.assign({}, DEFAULTS, saved);
         S.trigger = Object.assign({}, DEFAULTS.trigger, saved.trigger || {});
         S.llm = Object.assign({}, DEFAULTS.llm, saved.llm || {});
+        // v2 迁移: 旧默认 'server' 要求装服务端插件, 没装的用户合成必失败(跨域/404) → 改为默认直连
+        // (官方兼容接口放行 CORS, 装过插件的用户直连同样能用; 连不上再去「高级」选转发)。显式选 external 的保留。
+        if (!(Number(saved.version) >= 2)) {
+            if (!saved.synthRoute || saved.synthRoute === 'server' || saved.synthRoute === 'auto') S.synthRoute = 'direct';
+            S.version = 2;
+        }
+        if (!SYNTH_ROUTES.includes(S.synthRoute)) S.synthRoute = 'direct';
+        // 默认音色: 还没设置(新装/之前留空)时预选内置收藏夹第一个 AD学姐, 新手填完 Key 就能直接出声; 已选过的绝不覆盖
+        if (!S.defaultVoice || !S.defaultVoice.id) {
+            const fv = DEFAULTS.favorites[0];
+            S.defaultVoice = { id: fv.id, title: fv.title };
+        }
         // 预设合并: 保留用户自建预设, 补齐内置(以id去重)
         const seen = new Set(S.presets.map(p => p.id));
         BUILTIN_PRESETS.forEach(bp => { if (!seen.has(bp.id)) S.presets.push(bp); });
@@ -414,14 +439,15 @@
         return 'api';
     }
     const ERR_HINT = {
-        credit: 'API 额度不足——注意 API credit 与网站余额是两本独立账，充值请到 fish.audio → Billing → API credit（或改用免费模型 s2.1-pro-free）',
-        auth: 'API Key 无效或未授权',
-        rate: '触发限流（Starter 档并发 5），稍后自动重试',
+        credit: '余额不足：Fish 的 API 余额和网站会员是两本账，要到 fish.audio → API → Billing 单独充值；或在「📦 预设」里改用免费模型 s2.1-pro-free',
+        auth: 'Key 无效：请检查 Fish API Key 是否复制完整（到 fish.audio → API Keys 重新复制一个）',
+        rate: '请求太频繁被限流，稍等几秒再试',
+        task: '这段文字没通过 Fish 的内容审核，换个说法或换标签再试',
     };
 
-    async function synthOnce(text, voiceId, preset, key) {
+    function nativeTtsBody(text, voiceId, preset) {
         const fmt = (preset.format || 'mp3/128').split('/');
-        const body = {
+        return {
             text,
             reference_id: voiceId || undefined,
             format: fmt[0] === 'wav' ? 'wav' : 'mp3',
@@ -430,51 +456,153 @@
             latency: preset.latency || 'normal',
             normalize: true,
         };
-        const viaServer = S.synthRoute !== 'external';
-        let url, headers = { 'Content-Type': 'application/json', model: preset.model || S.model };
-        if (viaServer) {
+    }
+    function compatModel(m) {
+        const id = String(m || 's2.1-pro-free').trim();
+        return id.includes('/') ? id : `fish-audio/${id}`;
+    }
+    // 兼容接口请求体: 标准字段 + provider.options.fish-audio 透传原生参数(音量/延迟/码率/归一化)。
+    // 注意不能用 X-Fish-* 请求头——兼容接口的 CORS 只放行 Authorization/Content-Type。
+    function compatTtsBody(text, voiceId, preset) {
+        const fmt = (preset.format || 'mp3/128').split('/');
+        const wav = fmt[0] === 'wav';
+        const speed = Number(preset.speed) || 1;
+        const native = { latency: preset.latency || 'normal', normalize: true, prosody: { speed, volume: Number(preset.volume) || 0 } };
+        if (!wav) native.mp3_bitrate = Number(fmt[1] || 128);
+        return {
+            model: compatModel(preset.model || S.model),
+            input: text,
+            voice: voiceId || '',
+            response_format: wav ? 'wav' : 'mp3',
+            speed,
+            provider: { options: { 'fish-audio': native } },
+        };
+    }
+    function routeChain() {
+        const route = SYNTH_ROUTES.includes(S.synthRoute) ? S.synthRoute : 'direct';
+        if (route !== 'auto') return [route];
+        const chain = preferServer ? ['server', 'direct'] : ['direct', 'server'];
+        if (String(S.apiBase || '').trim()) chain.push('external');
+        return chain;
+    }
+    function buildRouteRequest(route, text, voiceId, preset, key) {
+        if (route === 'direct') {
+            return {
+                url: COMPAT_TTS,
+                init: { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(compatTtsBody(text, voiceId, preset)) },
+            };
+        }
+        const headers = { 'Content-Type': 'application/json', model: preset.model || S.model };
+        if (route === 'server') {
             // 走酒馆服务器同源转发 (需装 tools/st-server-plugin/fishtts 服务端小插件)
             // 关键: 永不显式设置 Authorization——浏览器自动带已缓存的酒馆登录(Basic+Cookie),
             // 显式设置会顶掉它→401→密码弹窗。Fish Key 走 X-Fish-Key, 由转发端换成 Authorization。
-            url = '/api/plugins/fishtts/tts';
             headers['X-Fish-Key'] = `Bearer ${key}`;
             try {
                 const gh = RBQ.api.getStRequestHeaders || RBQ.api.getRequestHeaders;
                 if (typeof gh === 'function') Object.assign(headers, gh());
             } catch (e) { /* CSRF头可选 */ }
-        } else {
-            const base = String(S.apiBase || '').trim().replace(/\/+$/, '');
-            url = `${base}/v1/tts`;
-            headers.Authorization = `Bearer ${key}`;
+            return { url: SERVER_TTS, init: { method: 'POST', headers, body: JSON.stringify(nativeTtsBody(text, voiceId, preset)) } };
         }
-        let resp;
+        const base = String(S.apiBase || '').trim().replace(/\/+$/, '');
+        headers.Authorization = `Bearer ${key}`;
+        return { url: `${base}/v1/tts`, init: { method: 'POST', headers, body: JSON.stringify(nativeTtsBody(text, voiceId, preset)) } };
+    }
+    // 兼容接口的 WAV 头是占位值(RIFF/data 大小 = 0xFFFFFF..), 按实际字节数修正, 否则时长解析错误。
+    function fixWavHeader(buf) {
+        const dv = new DataView(buf);
+        const tag = o => String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3));
+        if (buf.byteLength < 44 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return false;
+        dv.setUint32(4, buf.byteLength - 8, true);
+        let o = 12;
+        while (o + 8 <= buf.byteLength) {
+            const id = tag(o), size = dv.getUint32(o + 4, true);
+            if (id === 'data') { dv.setUint32(o + 4, buf.byteLength - o - 8, true); return true; }
+            if (size > buf.byteLength - o - 8) return false;
+            o += 8 + size + (size % 2);
+        }
+        return false;
+    }
+    async function finishBlob(resp, route) {
+        const blob = await resp.blob();
+        if (route !== 'direct' || !blob || typeof blob.arrayBuffer !== 'function') return blob;
         try {
-            resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-        } catch (e) {
-            const err = viaServer
-                ? new Error(`合成请求失败: ${e.message}（弹密码框=酒馆登录保护，输你平时打开酒馆的账号密码一次即可，浏览器会记住；另请确认 fishtts 服务端插件已启用）`)
-                : new Error(`合成请求失败: ${e.message}。若浏览器直连官方地址，是 CORS 拦截——请配置反代或改用「酒馆服务器」通道`);
-            err.kind = 'network'; throw err;
-        }
-        if (!resp.ok) {
-            let bodyText = '';
-            try { bodyText = await resp.text(); } catch (e) { /* ignore */ }
-            if (viaServer && resp.status === 404) {
-                const err = new Error('酒馆未安装/未启用 fishtts 服务端转发插件（见 docs/plugins/rbq-fish-tts.md「服务器转发」节），或在连接设置改用「外部地址」通道');
-                err.kind = 'noserver'; throw err;
+            const buf = await blob.arrayBuffer();
+            if (fixWavHeader(buf)) return new Blob([buf], { type: 'audio/wav' });
+        } catch (e) { /* 修头失败用原始数据 */ }
+        return blob;
+    }
+    function routeMissing(route, status) {
+        if (route === 'server') return status === 404;                  // 服务端插件没装
+        if (route === 'direct') return status === 404 || status === 405; // 兼容接口路径变更/不可用
+        return false;
+    }
+
+    async function synthOnce(text, voiceId, preset, key) {
+        const chain = routeChain();
+        const auto = chain.length > 1 || S.synthRoute === 'auto';
+        const tried = [];
+        let firstHttp = null;
+        for (const route of chain) {
+            const { url, init } = buildRouteRequest(route, text, voiceId, preset, key);
+            let resp;
+            try {
+                resp = await fetch(url, init);
+            } catch (e) {
+                tried.push(`${ROUTE_LABEL[route]}: ${e.message}`);
+                if (route === 'direct' && auto) preferServer = true;      // 本会话直连不通(网络/拦截), 下次先走转发
+                if (auto) continue;
+                const err = route === 'server'
+                    ? new Error(`连不上酒馆服务端插件（${e.message}）。弹出密码框=酒馆登录保护，输一次你打开酒馆用的账号密码即可；如果没装 fishtts 服务端插件，请把「高级」里的连接方式改回「直连」`)
+                    : route === 'direct'
+                        ? new Error(`连不上 Fish（${e.message}）。可能网络连不上 api.fish.audio，或被代理/广告拦截插件拦了；${ADV_HINT}`)
+                        : new Error(`连不上外部地址（${e.message}）。请检查地址是否填对、是否放行跨域；或把「高级」里的连接方式改回「直连」`);
+                err.kind = 'network'; throw err;
             }
-            const kind = classifyFishError(resp.status, bodyText);
-            const err = new Error(`[${resp.status}] ${ERR_HINT[kind] || bodyText.slice(0, 120)}${resp.status === 401 || resp.status === 403 ? '；若刚重启过酒馆，请 F5 刷新页面后重试' : ''}`);
-            err.kind = kind; throw err;
+            if (!resp.ok) {
+                let bodyText = '';
+                try { bodyText = await resp.text(); } catch (e) { /* ignore */ }
+                if (auto && routeMissing(route, resp.status)) {
+                    tried.push(`${ROUTE_LABEL[route]}: HTTP ${resp.status}`);
+                    if (!firstHttp) firstHttp = { status: resp.status, bodyText, route };
+                    continue;
+                }
+                if (route === 'server' && resp.status === 404) {
+                    const err = new Error('酒馆里没装或没启用 fishtts 服务端插件（装法见插件文档「方案A」）；用不到的话把「高级」里的连接方式改回「直连」');
+                    err.kind = 'noserver'; throw err;
+                }
+                throw fishHttpError(resp.status, bodyText, route);
+            }
+            lastRoute = route;
+            if (route === 'direct') preferServer = false;
+            return finishBlob(resp, route);
         }
-        return resp.blob();
+        if (firstHttp && firstHttp.status !== 404) throw fishHttpError(firstHttp.status, firstHttp.bodyText, firstHttp.route);
+        const err = new Error(`所有连接方式都失败了（${tried.join('；')}）。请确认网络能打开 api.fish.audio；要用转发需先装 fishtts 服务端插件或填外部地址`);
+        err.kind = 'network'; throw err;
+    }
+    function fishHttpError(status, bodyText, route) {
+        const kind = classifyFishError(status, bodyText);
+        let detail = bodyText;
+        try { const j = JSON.parse(bodyText); detail = (j.error && (j.error.message || j.error)) || j.message || bodyText; } catch (e) { /* 非JSON */ }
+        detail = String(detail || '').slice(0, 120);
+        let msg;
+        if (kind === 'task') msg = `${ERR_HINT.task}（${detail}）`;
+        else if (ERR_HINT[kind]) msg = ERR_HINT[kind];
+        else if (status === 400 && /voice|reference|model/i.test(detail)) msg = `音色或模型不可用（${detail}）：换个音色试试`;
+        else if (status >= 500) msg = `Fish 服务器出错了，稍后再试（${detail || 'HTTP ' + status}）`;
+        else msg = detail || `HTTP ${status}`;
+        // 服务端插件通道的 401 可能是酒馆登录失效, 而不是 Fish Key
+        if (route === 'server' && (status === 401 || status === 403)) msg += '；若刚重启过酒馆，请 F5 刷新页面后重试';
+        const err = new Error(`[${status}] ${msg}`);
+        err.kind = kind; return err;
     }
 
     async function synthWithFailover(text, voiceId, preset) {
         const keys = parseKeys(S.apiKey);
-        if (!keys.length) { const e = new Error('未配置 Fish API Key（连接设置）'); e.kind = 'nokey'; throw e; }
+        if (!keys.length) { const e = new Error('还没填 Fish API Key（「🔌 连接」页第 1 步）'); e.kind = 'nokey'; throw e; }
         if (S.synthRoute === 'external' && !String(S.apiBase || '').trim()) {
-            const e = new Error('外部通道未填合成地址（本地bat代理/CF Worker/反代，见文档；或改用酒馆服务器通道）'); e.kind = 'nobase'; throw e;
+            const e = new Error('选了「只用外部地址」但没填地址（「🔌 连接 → 高级」），或把连接方式改回「直连」'); e.kind = 'nobase'; throw e;
         }
         let lastErr = null;
         for (const key of keys) {
@@ -633,7 +761,7 @@
             `<button class="menu_button ${CSS_PREFIX}-btn" data-act="speak" data-mid="${mid}" title="重新生成(走LLM导演+合成)" onclick="event.stopPropagation();var b=this.closest('.mes'),i=b?Number(b.getAttribute('mesid')):${mid};window.RBQFishTTS&&window.RBQFishTTS.startSpeak(i,{force:true})">🔄</button>`;
         else if (st.phase === 'skip') right = `<span class="${CSS_PREFIX}-status">➖ ${esc(st.note || '智能跳过（无台词）')}</span><button class="menu_button ${CSS_PREFIX}-btn" data-act="speak" data-mid="${mid}" onclick="event.stopPropagation();var b=this.closest('.mes'),i=b?Number(b.getAttribute('mesid')):${mid};window.RBQFishTTS&&window.RBQFishTTS.startSpeak(i,{force:true})"><img src="${ICON}" class="${CSS_PREFIX}-icon ${CSS_PREFIX}-icon-sm" alt="">强制</button>`;
         else if (st.phase === 'error') right = `<span class="${CSS_PREFIX}-err">⚠ ${esc(st.note || '失败')}</span><button class="menu_button ${CSS_PREFIX}-btn" data-act="speak" data-mid="${mid}" onclick="event.stopPropagation();var b=this.closest('.mes'),i=b?Number(b.getAttribute('mesid')):${mid};window.RBQFishTTS&&window.RBQFishTTS.startSpeak(i,{force:true})">🔄 重试</button>`;
-        return `<div class="${CSS_PREFIX}-bar" data-mid="${mid}"><img src="${ICON}" class="${CSS_PREFIX}-icon" title="(xh)Fish语音 v0.2.7" alt="xh">${right}</div>`;
+        return `<div class="${CSS_PREFIX}-bar" data-mid="${mid}"><img src="${ICON}" class="${CSS_PREFIX}-icon" title="(xh)Fish语音 v0.2.8" alt="xh">${right}</div>`;
     }
 
     function renderBar(mid) {
@@ -990,9 +1118,23 @@
     table.${CSS_PREFIX}-bind{width:100%;border-collapse:collapse;font-size:12.5px}
     table.${CSS_PREFIX}-bind th{color:#9a9aa6;font-weight:normal;text-align:left;padding:5px 6px;border-bottom:1px solid #3a3a44}
     table.${CSS_PREFIX}-bind td{padding:6px;border-bottom:1px solid #2c2c34}
+    .${CSS_PREFIX}-steps{margin:4px 0 8px;padding-left:20px;color:#c8c8d0;line-height:1.7}
+    .${CSS_PREFIX}-steps a{color:#c9baff}
+    .${CSS_PREFIX}-statusline{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+    .${CSS_PREFIX}-pill{font-size:11.5px;border-radius:10px;padding:2px 9px;background:#2a2a33;border:1px solid #3a3a44;color:#c8c8d0}
+    .${CSS_PREFIX}-pill.ok{border-color:#4caf7d88;color:#7fd6a4}
+    .${CSS_PREFIX}-pill.bad{border-color:#e0525288;color:#f08a8a}
+    .${CSS_PREFIX}-out{font-size:12.5px;line-height:1.6;margin-top:6px;white-space:pre-wrap}
+    .${CSS_PREFIX}-out .ok{color:#7fd6a4} .${CSS_PREFIX}-out .bad{color:#f08a8a} .${CSS_PREFIX}-out .mid{color:#9a9aa6}
+    details.${CSS_PREFIX}-adv{background:#1f1f24;border:1px solid #3a3a44;border-radius:8px;padding:10px 14px;margin-bottom:12px}
+    details.${CSS_PREFIX}-adv>summary{cursor:pointer;user-select:none;color:#c8c8d0;font-weight:bold;min-height:28px;line-height:28px}
+    details.${CSS_PREFIX}-adv[open]>summary{margin-bottom:6px}
+    .${CSS_PREFIX}-opt{font-size:12px;color:#9a9aa6;line-height:1.6;margin:4px 0}
+    .${CSS_PREFIX}-opt b{color:#c8c8d0}
+    .${CSS_PREFIX}-opt code{background:#2a2a33;border-radius:4px;padding:0 4px}
     @media (max-width:760px){ .${CSS_PREFIX}-row{flex-direction:column} .${CSS_PREFIX}-row>div{min-width:100% !important} .${CSS_PREFIX}-vgrid{grid-template-columns:1fr} }
   </style>
-  <div class="${CSS_PREFIX}-hint" style="margin:0 0 2px"><img src="${ICON}" class="${CSS_PREFIX}-icon" alt=""> (xh)Fish语音 · 当前运行版本 <b>v0.2.7</b>（看不到这行=页面还是旧代码，请F5）</div>
+  <div class="${CSS_PREFIX}-hint" style="margin:0 0 2px"><img src="${ICON}" class="${CSS_PREFIX}-icon" alt=""> (xh)Fish语音 <b>v0.2.8</b> <span title="版本号不对说明页面还是旧代码，按 F5 刷新">（版本不对请 F5）</span></div>
   <div class="${CSS_PREFIX}-nav">${tabs}</div>
   <div id="${CSS_PREFIX}-body"></div>
 </div>`;
@@ -1012,32 +1154,63 @@
         else if (k === 'lab') el.innerHTML = tabLab();
     }
 
+    const ROUTE_OPTS = [
+        ['direct', '⚡ 直连（默认·推荐）'],
+        ['auto', '🔁 直连，失败自动换转发'],
+        ['server', '🏠 只用酒馆服务端插件转发'],
+        ['external', '🌐 只用外部地址'],
+    ];
+    function connStatusHtml() {
+        const keys = parseKeys(S.apiKey);
+        const dv = S.defaultVoice;
+        const route = S.synthRoute || 'direct';
+        const pill = (ok, text) => `<span class="${CSS_PREFIX}-pill ${ok ? 'ok' : 'bad'}">${text}</span>`;
+        return `<div class="${CSS_PREFIX}-statusline" id="${CSS_PREFIX}-connstate">` +
+            pill(keys.length > 0, keys.length ? `✓ Key 已填${keys.length > 1 ? ` ×${keys.length}` : ''}` : '✗ 还没填 Key') +
+            pill(!!dv, dv ? `✓ 默认音色：${esc(dv.title)}` : '✗ 还没选默认音色') +
+            `<span class="${CSS_PREFIX}-pill">连接方式：${esc(ROUTE_LABEL[route] || route)}</span>` +
+            `</div>`;
+    }
+
     function tabConn() {
+        const route = SYNTH_ROUTES.includes(S.synthRoute) ? S.synthRoute : 'direct';
+        const advOpen = route !== 'direct';   // 用户改过非默认方式时展开, 让人看得到
         return `
-<div class="${CSS_PREFIX}-card"><b>API 配置（与生图连接完全隔离）</b>
-  <div class="${CSS_PREFIX}-row">${fld('Fish API Key（多个用逗号/换行分隔，自动故障转移）', ta('apikey', S.apiKey, 2))}</div>
-  <div class="${CSS_PREFIX}-row">
-    ${fld('合成通道', sel('route', S.synthRoute, [['server', '🏠 酒馆服务器转发（推荐·手机通用·需装fishtts服务端小插件）'], ['external', '🌐 外部地址（本地bat代理 / CF Worker / 反代）']]))}
-    ${fld('默认模型', sel('model', S.model, [['s2.1-pro-free', 's2.1-pro-free（免费·推荐）'], ['s2.1-pro', 's2.1-pro（付费·SLA）']]))}
+<div class="${CSS_PREFIX}-card"><b>🚀 快速上手（三步就能用）</b>
+  ${connStatusHtml()}
+  <ol class="${CSS_PREFIX}-steps">
+    <li>到 <a href="https://fish.audio/app/api-keys" target="_blank" rel="noopener">fish.audio → API Keys</a> 新建一个 Key，粘贴到下面</li>
+    <li>默认音色已预选「AD学姐」，想换就在下面换（更多声音去「🎭 音色工坊」搜索收藏）</li>
+    <li>点「🔌 保存并测试」，看到 ✓ 就可以去聊天了</li>
+  </ol>
+  <div class="${CSS_PREFIX}-row">${fld('Fish API Key', ta('apikey', S.apiKey, 2))}</div>
+  <div class="${CSS_PREFIX}-hint" style="margin:-4px 0 6px">有多个 Key 可以用逗号或换行隔开，一个余额不足时自动换下一个。</div>
+  <div class="${CSS_PREFIX}-row">${fld('默认音色', sel('connvoice', S.defaultVoice ? S.defaultVoice.id : '', listVoiceOptions()))}</div>
+  <div class="${CSS_PREFIX}-btnrow">
+    <button class="menu_button ${CSS_PREFIX}-btn" data-act="testConn">🔌 保存并测试</button>
+    <button class="menu_button ${CSS_PREFIX}-btn" data-act="saveConn">💾 只保存</button>
   </div>
-  <div class="${CSS_PREFIX}-row">
-    ${fld('外部合成地址（通道=外部时必填）', inp('apibase', S.apiBase, 'http://127.0.0.1:8787 或 https://xxx.workers.dev'))}
-  </div>
-  <div class="${CSS_PREFIX}-row">
-    ${chk('debug', S.debug, '调试模式（控制台输出 LLM 原始响应）')}
-    <div class="${CSS_PREFIX}-btnrow"><button class="menu_button ${CSS_PREFIX}-btn" data-act="saveConn">💾 保存</button>
-    <button class="menu_button ${CSS_PREFIX}-btn" data-act="testConn">🔌 测试连接</button></div>
-  </div>
-  <div class="${CSS_PREFIX}-hint">⚠ API credit 与网站余额是两本独立账；免费模型 s2.1-pro-free 零成本（并发5）。服务器转发插件装法见文档「服务器转发」节；音色搜索/试听不需要任何代理。</div>
+  <div class="${CSS_PREFIX}-out" id="${CSS_PREFIX}-connout"></div>
+  <div class="${CSS_PREFIX}-hint">默认模型 s2.1-pro-free 免费；音色搜索和试听不需要 Key。</div>
 </div>
-<div class="${CSS_PREFIX}-card"><b>存储</b>
-  <div class="${CSS_PREFIX}-row">
-    ${chk('persist', S.persistCache !== false, '持久音频缓存（IndexedDB·本机跨会话复用·150MB/300条自动淘汰）')}
-    <div class="${CSS_PREFIX}-btnrow"><button class="menu_button ${CSS_PREFIX}-btn" data-act="cacheUsage">📊 占用</button>
-    <button class="menu_button ${CSS_PREFIX}-btn" data-act="cacheClear">🧹 清空缓存</button></div>
-  </div>
-  <div class="${CSS_PREFIX}-hint" id="${CSS_PREFIX}-cacheout">音频只存本机不进聊天文件；换设备缓存缺失时自动用免费模型重合成。</div>
-</div>`;
+<details class="${CSS_PREFIX}-adv" ${advOpen ? 'open' : ''}><summary>🛠️ 高级：网络连不上 Fish 时</summary>
+  <div class="${CSS_PREFIX}-opt">默认「直连」：浏览器直接连 Fish 官方，不用装任何东西。只有测试时提示「连不上 Fish」才需要改这里。</div>
+  <div class="${CSS_PREFIX}-row">${fld('连接方式', sel('route', route, ROUTE_OPTS))}</div>
+  <div class="${CSS_PREFIX}-opt"><b>🔁 直连，失败自动换转发</b>：先直连，连不上再依次试酒馆服务端插件、外部地址（没装/没填的会跳过）。</div>
+  <div class="${CSS_PREFIX}-opt"><b>🏠 酒馆服务端插件</b>：让酒馆所在的电脑/服务器替你去连 Fish。要先装插件：把 <code>fishtts</code> 文件夹复制到 <code>SillyTavern/plugins/</code>，在 <code>config.yaml</code> 里把 <code>enableServerPlugins</code> 改成 <code>true</code>，重启酒馆。酒馆就装在你自己电脑上、这台电脑也连不上 Fish 时，这个方法没用。</div>
+  <div class="${CSS_PREFIX}-opt"><b>🌐 外部地址</b>：填你自己架的代理（本地代理 / Cloudflare Worker / 反代），做法见插件文档。</div>
+  <div class="${CSS_PREFIX}-row">${fld('外部地址（只有选了「外部地址」或「自动换转发」才会用到）', inp('apibase', S.apiBase, 'https://xxx.workers.dev 或 http://127.0.0.1:8787'))}</div>
+  <div class="${CSS_PREFIX}-btnrow"><button class="menu_button ${CSS_PREFIX}-btn" data-act="saveConn">💾 保存</button></div>
+</details>
+<details class="${CSS_PREFIX}-adv"><summary>🗂️ 缓存与调试</summary>
+  ${chk('persist', S.persistCache !== false, '保存已合成的语音到本机（刷新后不用重新合成，最多 150MB / 300 条，满了自动删最旧的）')}
+  <div class="${CSS_PREFIX}-btnrow"><button class="menu_button ${CSS_PREFIX}-btn" data-act="cacheUsage">📊 看占用</button>
+  <button class="menu_button ${CSS_PREFIX}-btn" data-act="cacheClear">🧹 清空缓存</button></div>
+  <div class="${CSS_PREFIX}-hint" id="${CSS_PREFIX}-cacheout">语音只存在这台设备的浏览器里，不会写进聊天记录；换设备会自动重新合成。</div>
+  <div class="${CSS_PREFIX}-row">${fld('合成模型（各预设里还可以单独设置）', sel('model', S.model, [['s2.1-pro-free', 's2.1-pro-free（免费·推荐）'], ['s2.1-pro', 's2.1-pro（付费）']]))}</div>
+  ${chk('debug', S.debug, '调试模式（在浏览器控制台打印 LLM 原始输出）')}
+  <div class="${CSS_PREFIX}-btnrow"><button class="menu_button ${CSS_PREFIX}-btn" data-act="saveConn">💾 保存</button></div>
+</details>`;
     }
 
     const voiceState = { q: '', lang: '', sortBy: 'task_count', page: 1, self: false };
@@ -1124,6 +1297,8 @@
     function listVoiceOptions() {
         const opts = [['', '（未设置）']];
         (S.favorites || []).forEach(f => opts.push([f.id, `${f.title}${f.lang ? ' · ' + f.lang : ''}`]));
+        // 从搜索结果直接「设为默认」的音色不一定在收藏夹里, 也要列出来, 否则保存时会被当成未设置清掉
+        [S.defaultVoice, S.narratorVoice].forEach(v => { if (v && v.id && !opts.some(o => o[0] === v.id)) opts.push([v.id, v.title || v.id]); });
         (S.bindings || []).forEach(b => { if (b.voiceId && !opts.some(o => o[0] === b.voiceId)) opts.push([b.voiceId, b.voiceTitle]); });
         return opts;
     }
@@ -1263,9 +1438,8 @@
     async function handleAction(act, t) {
         if (act === 'tab') { S.panelTab = t.dataset.tab; saveSettings(); refreshPanel(); return; }
         if (act === 'saveConn') {
-            S.apiKey = gv('apikey'); S.synthRoute = gv('route'); S.apiBase = gv('apibase').trim(); S.model = gv('model'); S.debug = gc('debug');
-            S.persistCache = gc('persist');
-            saveSettings(); note('success', '连接配置已保存' + (S.synthRoute === 'server' ? '（酒馆服务器通道）' : '')); return;
+            readConnInputs(); saveSettings(); updateConnState();
+            note('success', `已保存（连接方式：${ROUTE_LABEL[S.synthRoute] || S.synthRoute}）`); return;
         }
         if (act === 'cacheUsage') {
             const u = await cacheUsage();
@@ -1274,7 +1448,7 @@
             return;
         }
         if (act === 'cacheClear') { await CacheStore.clear(); note('success', '音频缓存已清空'); return; }
-        if (act === 'testConn') { testConnection(); return; }
+        if (act === 'testConn') { readConnInputs(); saveSettings(); updateConnState(); testConnection(); return; }
         if (act === 'vsearch') { voiceState.page = 1; voiceSearchUi(true); return; }
         if (act === 'vself') { voiceState.self = !voiceState.self; voiceState.page = 1; voiceSearchUi(true); renderTabBody(); return; }
         if (act === 'vpage') {
@@ -1392,19 +1566,45 @@
         saveSettings(); note('success', `${nm} → ${voiceTitle}`);
     }
 
+    // 读「🔌 连接」页输入框; 元素不存在(没渲染)时保留原值, 不会把设置清空
+    function readConnInputs() {
+        const has = id => !!document.getElementById(`${CSS_PREFIX}-${id}`);
+        if (has('apikey')) S.apiKey = gv('apikey').trim();
+        if (has('route')) { const r = gv('route'); S.synthRoute = SYNTH_ROUTES.includes(r) ? r : 'direct'; }
+        if (has('apibase')) S.apiBase = gv('apibase').trim();
+        if (has('model')) S.model = gv('model') || S.model;
+        if (has('debug')) S.debug = gc('debug');
+        if (has('persist')) S.persistCache = gc('persist');
+        if (has('connvoice')) {
+            const v = gv('connvoice');
+            S.defaultVoice = v ? { id: v, title: (listVoiceOptions().find(o => o[0] === v) || [, v])[1] } : null;
+        }
+    }
+    function updateConnState() {
+        const el = document.getElementById(`${CSS_PREFIX}-connstate`);
+        if (el) el.outerHTML = connStatusHtml();
+    }
+
     async function testConnection() {
-        note('info', '测试中…');
-        try {
-            const keys = parseKeys(S.apiKey);
-            if (!keys.length) throw new Error('未填 API Key');
-            const d = await listVoices('', { self: true, pageSize: 3 });
-            note('success', `✅ Key 有效（我的音色 ${d.total} 个）`);
-        } catch (e) { note('error', 'Key/网络测试失败: ' + e.message); }
+        const out = document.getElementById(`${CSS_PREFIX}-connout`);
+        const lines = [];
+        const show = () => { if (out) out.innerHTML = lines.map(([c, t]) => `<div class="${c}">${esc(t)}</div>`).join(''); };
+        const add = (c, t, toast) => { lines.push([c, t]); show(); if (!out && toast) note(toast, t); };
+        lines.length = 0; add('mid', '⏳ 测试中…'); lines.length = 0;
+        const keys = parseKeys(S.apiKey);
+        if (!keys.length) { add('bad', '✗ 还没填 Fish API Key（第 1 步）', 'warning'); return; }
+        if (!S.defaultVoice) add('mid', '· 还没选默认音色，测试会用 Fish 的默认声音');
         try {
             const p = activePreset();
             const blob = await synthWithFailover('连接测试', S.defaultVoice ? S.defaultVoice.id : null, Object.assign({}, p, { model: 's2.1-pro-free', format: 'mp3/64' }));
-            note('success', `✅ 合成链路通（${Math.round(blob.size / 1024)}KB 音频）`);
-        } catch (e) { note('warning', '合成链路: ' + e.message); }
+            add('ok', `✓ 成功！Key 有效，能合成语音（${ROUTE_LABEL[lastRoute] || '合成'}，${Math.max(1, Math.round(blob.size / 1024))}KB）`, 'success');
+            if (out && typeof URL !== 'undefined' && URL.createObjectURL) {
+                const u = URL.createObjectURL(blob);
+                out.insertAdjacentHTML('beforeend', `<audio controls src="${u}" style="width:100%;height:32px;margin-top:4px"></audio>`);
+            }
+        } catch (e) {
+            add('bad', '✗ ' + (e.message || '合成失败'), 'error');
+        }
     }
 
     async function testDirector() {
@@ -1517,10 +1717,13 @@
 
     // 对测试与控制台暴露最小接口
     window.RBQFishTTS = {
-        version: '0.2.7',
+        version: '0.2.8',
         get settings() { return S; },
         startSpeak, runDirector, ruleRewrite, matchBinding, resolveVoice,
         buildFinalPrompt, robustJsonParse, synthWithFailover, listVoices,
+        compatTtsBody, fixWavHeader, get lastRoute() { return lastRoute; },
+        routeChain, _fishHttpError: fishHttpError, _tabConn: tabConn, _listVoiceOptions: listVoiceOptions,
+        _resetRoute() { preferServer = false; lastRoute = null; },
         CacheStore, cacheUsage, clipKey,
         _setCacheBackend(b) { cacheBackend = b; },
         _resetRuntime() { playUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); playUrls.clear(); blobCache.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } }); blobCache.clear(); stateCache.clear(); restoreChecked.clear(); },
@@ -1529,7 +1732,7 @@
         cleanup: cleanupInstance,
     };
 
-    console.info('(xh)Fish语音 (rbq-fish-tts) v0.2.7 Loaded!');
+    console.info('(xh)Fish语音 (rbq-fish-tts) v0.2.8 Loaded!');
 })(typeof window !== 'undefined' ? (window.RBQ || null) : null,
     typeof jQuery !== 'undefined' ? jQuery : (typeof window !== 'undefined' ? window.$ : undefined),
     typeof toastr !== 'undefined' ? toastr : (typeof window !== 'undefined' ? window.toastr : undefined));

@@ -106,9 +106,9 @@
   {
     "id": "rbq-fish-tts",
     "name": "(xh)Fish语音 (Fish Audio TTS)",
-    "description": "剧情语音插件: LLM情绪导演(含NSFW破限/内心戏/旁白模式) + Fish Audio 合成。音色库全站搜索/试听/收藏、角色绑定音色、预设体系、IndexedDB持久缓存(刷新自动恢复·内容指纹防串台·WAV播放源修复时长)、酒馆服务器转发免跨域(手机通用)。",
-    "version": "0.2.7",
+    "description": "剧情语音插件: LLM情绪导演(含NSFW破限/内心戏/旁白模式) + Fish Audio 合成。音色库全站搜索/试听/收藏、角色绑定音色、预设体系、IndexedDB持久缓存(刷新自动恢复·内容指纹防串台·WAV播放源修复时长)、合成默认浏览器直连官方兼容接口免跨域(零配置·手机通用), 网络连不上 Fish 时可在「高级」里改走酒馆服务端插件转发/外部地址。",
+    "version": "0.2.8",
     "author": "TTWP-09",
-    "main": "plugins/fish-tts.js?v=0.2.7"
+    "main": "plugins/fish-tts.js?v=0.2.8"
   }
 ]

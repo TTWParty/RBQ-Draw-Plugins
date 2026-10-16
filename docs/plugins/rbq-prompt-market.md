@@ -49,6 +49,14 @@
 
 ## 📝 更新日志
 
+### 服务器更新（2026-10-16，插件版本不变）：拦截 HTML 注入，保护旧客户端
+
+1.1.30 及更早的插件把社区文本直接当 HTML 渲染，服务器现在替它们兜底：
+
+* **上传 / 编辑拦截**：标题、作者、简介、正负面提示词、模型、标签、参数里出现危险片段时直接返回 400「内容包含不安全的 HTML/脚本片段（字段 …：…），请删除后再提交」。危险片段包括：`script / iframe / img / svg / object / embed / link / meta / form / input / button / video / audio / source / base / math / details / marquee / body / html / a` 等标签（开始或结束标签）、任何带属性的标签（如 `<style media=…>`、`<artist onclick=…>`）、`<style/…>`、`on…=` 事件处理器、`javascript:` / `vbscript:` / `data:text/` 链接、`srcdoc=`、`&#…` 实体编码，以及 `<style>` 段内的 `@import`、`url(`、`expression(` 等外链/脚本 CSS。
+* **照常放行**：不带属性的 `<artist> … </artist>`、`<style> … </style>` 等 NAI 提示词标签，以及 `{{ }}`、`[[ ]]`、`2::tag::`、`<lora:x:0.8>`、`<3`、`>_<` 等常见写法。
+* **存量数据中和**：公开列表返回前，把已存数据里的危险片段换成全角字符（＜ ＞ ＝ ： ＆ （），只改命中的片段，正常提示词原样返回；服务器上的原始数据不修改。封面 / 参考图地址不是 http(s) 时分别回退为默认封面 / 空。
+
 ### v1.1.32（换码 / 个人码轮换）
 
 > 1.1.31 之前公开列表曾返回所有人的个人码，**之前发布过作品的创作者请尽快换码**。需要服务器同步升级到带 `/api/rotate-key` 的 `server.py`。

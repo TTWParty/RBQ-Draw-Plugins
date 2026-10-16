@@ -71,7 +71,7 @@ class MarketServerSecurityTests(unittest.TestCase):
 
     def upload(self, **over):
         body = {
-            'title': '<img src=x onerror=alert(1)> 测试',
+            'title': '测试 <style>水彩</style>',
             'author': '作者A',
             'positive': '<artist>wlop</artist>, 1girl',
             'negative': 'lowres',
@@ -304,6 +304,91 @@ class MarketServerSecurityTests(unittest.TestCase):
         status, data = self.request('POST', '/api/rotate-key', {'oldKey': OWNER_KEY, 'newKey': 'RBQ-U-eeeeeeeeeeeeeeee'})
         self.assertEqual(status, 429)
         self.assertFalse(data['success'])
+
+    # ── HTML 注入拦截（保护旧 1.1.30 客户端） ──
+    PAYLOADS = [
+        '<script>alert(1)</script>',
+        '<img src=x onerror=alert(1)>',
+        '<IMG SRC=x>',
+        '<svg/onload=alert(1)>',
+        '<iframe srcdoc="x">',
+        '<a href="https://evil">x</a>',
+        '< /script >',
+        '<object data=x>', '<embed src=x>', '<link rel=stylesheet href=x>', '<meta http-equiv=refresh>',
+        '<form>', '<input autofocus>', '<button>', '<video>', '<audio>', '<source>', '<base href=x>',
+        '<math>', '<details open>', '<marquee>', '<body>', '<html>',
+        '<style media=all>x</style>', '<style/x>', '<style>@import "//evil/x.css"</style>',
+        '<style> body{background:url(//evil/x)} </style>',
+        '<artist onmouseover=alert(1)>wlop</artist>',
+        '<custom data-x=1>',
+        'text onclick=alert(1)',
+        'javascript:alert(1)', 'JaVaScRiPt :alert(1)', 'vbscript:msgbox', 'data:text/html,<b>x</b>',
+        '&#x3c;script&#x3e;', '&#60;img&#62;',
+    ]
+    LEGIT = [
+        '<artist> artist:wlop </artist>, <style> year 2024, -2::simple illustration:: </style>, solo, 0.7::close-up::',
+        '{{{{1girl}}}}, [[lowres]], 1.2::blue eyes::, <lora:abc:0.8>, artist:a_tarapisu153',
+        'one piece, button eyes, ponytail, only, a girl, <artist></artist>, <Style>X</Style>',
+        'heart (symbol), :3, >_<, <3, a < b',
+    ]
+
+    def test_legit_prompt_syntax_is_accepted(self):
+        for legit in self.LEGIT:
+            item = self.upload(positive=legit, negative=legit, description='说明 <style> 风格 </style>')
+            self.assertEqual(item['positive'], legit, 'legit prompt must round-trip unchanged')
+            status, data = self.request('POST', '/api/update', {'id': item['id'], 'creatorKey': OWNER_KEY, 'positive': legit, 'tags': ['<artist>', 'NAI V5']})
+            self.assertEqual(status, 200, (legit, data))
+            self.assertEqual(data['item']['positive'], legit)
+
+    def test_upload_rejects_dangerous_html_in_every_text_field(self):
+        for payload in self.PAYLOADS:
+            for field in ('title', 'author', 'description', 'positive', 'negative'):
+                body = {field: payload + ' x'}
+                if field == 'title':
+                    body['title'] = payload[:40]
+                status, data = self.request('POST', '/api/upload', dict(
+                    {'title': '正常标题', 'positive': '1girl', 'creatorKey': OWNER_KEY}, **body))
+                self.assertEqual(status, 400, (field, payload, data))
+                self.assertIn('不安全的 HTML', data['error'])
+            status, data = self.request('POST', '/api/upload', {'title': 't', 'positive': '1girl', 'tags': ['ok', payload]})
+            self.assertEqual(status, 400, ('tags', payload))
+            status, data = self.request('POST', '/api/upload', {'title': 't', 'positive': '1girl', 'params': {'sampler': payload}})
+            self.assertEqual(status, 400, ('params', payload))
+        self.assertEqual(server.load_presets(), [])
+
+    def test_update_rejects_dangerous_html(self):
+        item = self.upload()
+        for payload in self.PAYLOADS:
+            status, data = self.request('POST', '/api/update', {'id': item['id'], 'creatorKey': OWNER_KEY, 'positive': payload})
+            self.assertEqual(status, 400, (payload, data))
+        self.assertEqual(server.load_presets()[0]['positive'], item['positive'])
+        # wrong key still gets 403 (auth is checked first)
+        status, _ = self.request('POST', '/api/update', {'id': item['id'], 'creatorKey': OTHER_KEY, 'positive': '<script>'})
+        self.assertEqual(status, 403)
+
+    def test_stored_dangerous_content_is_neutralized_in_public_list(self):
+        legit = self.LEGIT[0]
+        server.save_presets([{
+            'id': 'old-bad', 'title': '<img src=x onerror=alert(1)>', 'author': '<script>alert(1)</script>',
+            'positive': legit + ', <svg/onload=alert(1)>', 'negative': 'javascript:alert(1)',
+            'description': '<style>@import "//evil/x.css"</style>', 'tags': ['<a href=x>t</a>', 'ok'],
+            'params': {'sampler': '<iframe srcdoc=x>'}, 'previewUrl': 'javascript:alert(1)',
+            'referenceUrl': 'data:text/html,<script>x</script>', 'creatorKey': OWNER_KEY,
+        }, {'id': 'old-good', 'title': '好', 'positive': legit, 'previewUrl': 'https://market.rbq.my/previews/a.webp'}])
+        status, data = self.request('GET', '/api/presets')
+        self.assertEqual(status, 200)
+        bad, good = data
+        blob = json.dumps(bad, ensure_ascii=False)
+        for needle in ('<img', '<script', '<svg', '<a ', '<iframe', 'onerror=', 'onload=', 'javascript:', 'data:text', 'srcdoc=', '<style>@import'):
+            self.assertNotIn(needle, blob, needle)
+        self.assertTrue(bad['positive'].startswith(legit), 'legit part of the prompt kept verbatim')
+        self.assertEqual(bad['previewUrl'], server.DEFAULT_PREVIEW_URL)
+        self.assertEqual(bad['referenceUrl'], '')
+        self.assertEqual(good['positive'], legit)
+        self.assertEqual(good['previewUrl'], 'https://market.rbq.my/previews/a.webp')
+        # storage itself is untouched (neutralization only on output)
+        self.assertIn('<svg/onload', server.load_presets()[0]['positive'])
+        self.assert_no_secrets(data)
 
 
 if __name__ == '__main__':

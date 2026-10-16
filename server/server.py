@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import base64
 import hmac
@@ -54,9 +55,122 @@ def is_admin_key(req_admin_key):
     return bool(admin_key) and keys_equal(req_admin_key, admin_key)
 
 
+# ── 防 HTML 注入（保护仍在用 1.1.30 及更早、直接 innerHTML 渲染的旧客户端） ──
+# 提示词里的 <artist> … </artist>、<style> … </style> 这类“不带属性的纯标签”是 NAI 提示词语法，照常放行；
+# 下面这些才算危险片段：上传 / 编辑时直接 400 拒绝；已存量数据在公开响应里做“中和”处理。
+DANGEROUS_TAGS = (
+    'script', 'iframe', 'img', 'svg', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button',
+    'video', 'audio', 'source', 'base', 'math', 'details', 'marquee', 'body', 'html', 'a',
+    'textarea', 'select', 'option', 'frame', 'frameset', 'applet', 'template', 'noscript', 'xmp',
+    'plaintext', 'isindex', 'image', 'picture', 'track', 'dialog', 'portal', 'title', 'keygen', 'head',
+)
+DANGEROUS_PATTERNS = (
+    # 黑名单标签（开始或结束标签；<a 只匹配独立的 a，不会误伤 <artist>）
+    ('危险 HTML 标签', re.compile(r'<\s*/?\s*(?:%s)(?![\w-])' % '|'.join(DANGEROUS_TAGS), re.I)),
+    # 任何带属性的标签：<style media=…>、<artist onclick=…>、<x data-y=…>；纯 <style> / <artist> 不受影响
+    ('带属性的 HTML 标签', re.compile(r'<\s*/?\s*[a-z][\w:-]*(?:\s+|/)[^<>]*=', re.I)),
+    ('<style> 标签带属性或自闭合', re.compile(r'<\s*style(?![\w-])(?!\s*>)', re.I)),
+    # 事件处理器 onxxx=
+    ('事件处理器 (on…=)', re.compile(r'(?<![\w-])on[a-z]+\s*=', re.I)),
+    ('javascript: / vbscript: 链接', re.compile(r'(?:java|vb)script\s*:', re.I)),
+    ('data:text 链接', re.compile(r'data\s*:\s*text/', re.I)),
+    ('srcdoc 属性', re.compile(r'srcdoc\s*=', re.I)),
+    ('HTML 实体编码混淆 (&#…)', re.compile(r'&#x?[0-9a-f]+;?', re.I)),
+)
+# <style> … </style> 段落内若出现可执行 / 外链 CSS 写法也拒绝（旧客户端会把它当真正的样式表）
+STYLE_BLOCK_RE = re.compile(r'<\s*style\s*>(.*?)(?:<\s*/\s*style\s*>|$)', re.I | re.S)
+DANGEROUS_CSS_RE = re.compile(r'url\s*\(|@import|expression\s*\(|-moz-binding|behavior\s*:', re.I)
+TEXT_FIELDS = ('title', 'author', 'description', 'positive', 'negative', 'model')
+
+
+def iter_strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from iter_strings(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from iter_strings(v)
+
+
+def find_dangerous(text):
+    """返回第一处危险片段的说明 (label, 片段)；安全则返回 None。"""
+    if not isinstance(text, str) or not text:
+        return None
+    for label, rx in DANGEROUS_PATTERNS:
+        m = rx.search(text)
+        if m:
+            return label, text[m.start():m.end() + 20]
+    for block in STYLE_BLOCK_RE.finditer(text):
+        m = DANGEROUS_CSS_RE.search(block.group(1) or '')
+        if m:
+            return '<style> 中的外链/脚本 CSS', m.group(0)
+    return None
+
+
+def find_dangerous_in_payload(data):
+    """检查上传 / 编辑请求里所有会被展示的文本字段。返回 (字段名, label) 或 None。"""
+    for field in TEXT_FIELDS + ('tags', 'params'):
+        if field not in data:
+            continue
+        value = data.get(field)
+        if field == 'params':
+            value = clean_params(value)  # 只检查真正会保存的参数键，其余键本来就会被丢弃
+        for s in iter_strings(value):
+            hit = find_dangerous(s)
+            if hit:
+                return field, hit[0]
+    return None
+
+
+def dangerous_payload_error(hit):
+    field, label = hit
+    return (f'内容包含不安全的 HTML/脚本片段（字段 {field}：{label}），请删除后再提交。'
+            '提示词里不带属性的 <artist>、<style> 等标签写法不受影响。')
+
+
+def _neutralize_match(seg):
+    return (seg.replace('<', '\uff1c').replace('>', '\uff1e').replace('=', '\uff1d')
+               .replace(':', '\uff1a').replace('&', '\uff06').replace('(', '\uff08'))
+
+
+def neutralize_text(text):
+    """把已存量数据里的危险片段换成全角字符（＜ ＞ ＝ ： ＆ （），其余文本（含纯 <artist>/<style>）保持原样。"""
+    if not isinstance(text, str) or not find_dangerous(text):
+        return text
+    out = text
+    for _label, rx in DANGEROUS_PATTERNS:
+        out = rx.sub(lambda m: _neutralize_match(m.group(0)), out)
+    # <style> 段内含外链/脚本 CSS：连同开头的 <style> 一起中和，旧客户端就不会生成真正的样式表
+    def _fix_style(b):
+        body = b.group(1) or ''
+        if not DANGEROUS_CSS_RE.search(body):
+            return b.group(0)
+        return '\uff1c' + b.group(0)[1:].replace(body, DANGEROUS_CSS_RE.sub(lambda m: _neutralize_match(m.group(0)), body), 1)
+    out = STYLE_BLOCK_RE.sub(_fix_style, out)
+    return out
+
+
+def neutralize_value(value):
+    if isinstance(value, str):
+        return neutralize_text(value)
+    if isinstance(value, list):
+        return [neutralize_value(v) for v in value]
+    if isinstance(value, dict):
+        return {k: neutralize_value(v) for k, v in value.items()}
+    return value
+
+
 def public_preset(p):
-    """对外公开的预设视图：去掉 creatorKey / liked_by，只给出是否已绑定创作者 (hasOwner)。"""
+    """对外公开的预设视图：去掉 creatorKey / liked_by，只给出是否已绑定创作者 (hasOwner)；
+    文本字段里已存量的危险 HTML 片段被中和，图片地址只保留 http(s)。"""
     out = {k: v for k, v in dict(p).items() if k not in PRIVATE_FIELDS and not str(k).startswith('_')}
+    for field in TEXT_FIELDS + ('tags', 'params'):
+        if field in out:
+            out[field] = neutralize_value(out[field])
+    out['previewUrl'] = safe_http_url(out.get('previewUrl', ''), DEFAULT_PREVIEW_URL)
+    out['referenceUrl'] = safe_http_url(out.get('referenceUrl', ''), '')
     out['hasOwner'] = bool(str(p.get('creatorKey', '') or '').strip())
     return out
 
@@ -504,6 +618,11 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.finish_json(403, {'error': '鉴权失败：无权修改他人作品。请检查创作者个人码。'})
                     return
 
+                hit = find_dangerous_in_payload(data)
+                if hit:
+                    self.finish_json(400, {'success': False, 'error': dangerous_payload_error(hit)})
+                    return
+
                 # 更新允许修改的字段
                 if 'title' in data and clean_text(data['title'], MAX_TITLE):
                     target_preset['title'] = clean_text(data['title'], MAX_TITLE)
@@ -652,6 +771,11 @@ class MarketHandler(BaseHTTPRequestHandler):
             creator_key = clean_text(data.get('creatorKey', ''), MAX_KEY)
             if not title or not positive:
                 self.finish_json(400, {'error': '标题与正面提示词不能为空'})
+                return
+
+            hit = find_dangerous_in_payload(data)
+            if hit:
+                self.finish_json(400, {'success': False, 'error': dangerous_payload_error(hit)})
                 return
 
             model = str(data.get('model', 'v5')).strip().lower()

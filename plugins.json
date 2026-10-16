@@ -19,9 +19,9 @@
     "id": "rbq-prompt-market",
     "name": "提示词预设工坊 (Prompt Market)",
     "description": "社区画师串与提示词预设共享中心。3:4 竖版立绘纯净展厅，双图展示系统（官方基准测试封面与作者自制效果参考图自由切换），集成专属创作者个人码与我的上传集中管理、在线修改预设与标签、下架删除鉴权、点赞收藏、测串底模词库与现场出图实测对比。",
-    "version": "1.1.30",
+    "version": "1.1.32",
     "author": "TTWP-09",
-    "main": "plugins/prompt-market.js?v=1.1.30"
+    "main": "plugins/prompt-market.js?v=1.1.32"
   },
   {
     "id": "rbq-png-metadata",

@@ -1072,6 +1072,8 @@
       let currentSearchQuery = '';
       let currentSort = 'newest';
       let activePreset = null;
+      // 我的作品 ID 集合：由 /api/my-presets 凭个人码查询（公开列表不再包含 creatorKey）
+      let myPresetIds = new Set();
 
       const CREATOR_KEY_STORAGE = 'rbq_creator_key';
       const LIKED_STORAGE = 'rbq_liked_ids';
@@ -1138,6 +1140,22 @@
         }[m]));
       }
 
+      // 图片地址白名单：http(s)、data:image/*;base64、本站 /previews/ 路径；其余 (javascript:, data:text/html …) 一律丢弃
+      function safeImageUrl(url, fallback = '') {
+        if (typeof url !== 'string') return fallback;
+        const u = url.trim();
+        if (!u) return fallback;
+        if (/^https?:\/\/[^\s"'<>`\\]+$/i.test(u)) return u;
+        if (/^data:image\/(?:png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(u)) return u;
+        if (/^\/previews\/[^\s"'<>`\\]+$/.test(u)) return u;
+        return fallback;
+      }
+
+      function safeCount(v) {
+        const n = Math.floor(Number(v));
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      }
+
       async function copyText(text, successMsg = '已复制到剪贴板！') {
         if (!text) return toast('复制内容为空', 'error');
         try {
@@ -1165,11 +1183,28 @@
       }
 
       // 获取数据
+      async function refreshMyPresetIds() {
+        const key = getCreatorKey();
+        if (!key) { myPresetIds = new Set(); return; }
+        try {
+          const res = await fetch(`/api/my-presets?_t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${key}` } });
+          const data = res.ok ? await res.json() : null;
+          myPresetIds = new Set(Array.isArray(data?.ids) ? data.ids : []);
+        } catch (_) {
+          myPresetIds = new Set();
+        }
+      }
+
+      function isMyPreset(p) {
+        return Boolean(p && myPresetIds.has(p.id));
+      }
+
       async function fetchPresets() {
         try {
           const res = await fetch(`/api/presets?_t=${Date.now()}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           allPresets = await res.json();
+          await refreshMyPresetIds();
           renderTagPills();
           renderCards();
         } catch (err) {
@@ -1186,7 +1221,7 @@
 
         const modelFiltered = allPresets.filter(p => {
           if (currentFilterModel === 'mine') {
-            if (!myKey || p.creatorKey !== myKey) return false;
+            if (!isMyPreset(p)) return false;
           } else if (currentFilterModel === 'liked') {
             if (!likedIds.includes(p.id)) return false;
           } else if (currentFilterModel === 'v5') {
@@ -1246,7 +1281,7 @@
         let filtered = allPresets.filter(p => {
           // 模型维度
           if (currentFilterModel === 'mine') {
-            if (!myKey || p.creatorKey !== myKey) return false;
+            if (!isMyPreset(p)) return false;
           } else if (currentFilterModel === 'liked') {
             if (!likedIds.includes(p.id)) return false;
           } else if (currentFilterModel === 'v5') {
@@ -1318,28 +1353,28 @@
 
         let html = '';
         filtered.forEach(p => {
-          const isMine = myKey && p.creatorKey === myKey;
+          const isMine = isMyPreset(p);
           const isLiked = likedIds.includes(p.id);
           const rawModel = String(p.model || 'v5').toLowerCase();
           const modelType = rawModel.replace(/[^a-z0-9_-]/g, '-');
-          const previewImg = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+          const previewImg = safeImageUrl(p.previewUrl, '/previews/kami-greenhouse-girl.webp');
 
           html += `
-            <div class="preset-card" data-id="${p.id}">
+            <div class="preset-card" data-id="${escapeHtml(p.id)}">
               <div class="card-media">
                 <img src="${escapeHtml(previewImg)}" loading="lazy" alt="${escapeHtml(p.title)}">
                 <div class="media-badge-top-left ${modelType}">${escapeHtml(p.model || 'V5')}</div>
                 ${isMine ? '<div class="media-badge-top-right"><i class="fa-solid fa-crown"></i> 我的</div>' : ''}
-                ${(p.referenceUrl && p.referenceUrl.trim()) ? '<div class="media-badge-bottom-left" style="position: absolute; bottom: 8px; left: 8px; background: rgba(56, 189, 248, 0.85); backdrop-filter: blur(4px); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px; z-index: 2; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"><i class="fa-solid fa-image"></i> 附参考图</div>' : ''}
+                ${safeImageUrl(p.referenceUrl) ? '<div class="media-badge-bottom-left" style="position: absolute; bottom: 8px; left: 8px; background: rgba(56, 189, 248, 0.85); backdrop-filter: blur(4px); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px; z-index: 2; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"><i class="fa-solid fa-image"></i> 附参考图</div>' : ''}
                 
                 <div class="card-hover-actions" onclick="event.stopPropagation()">
-                  <button class="action-icon-btn copy-pos-quick" title="复制正面提示词" data-id="${p.id}">
+                  <button class="action-icon-btn copy-pos-quick" title="复制正面提示词" data-id="${escapeHtml(p.id)}">
                     <i class="fa-regular fa-copy"></i>
                   </button>
-                  <button class="action-icon-btn copy-neg-quick" title="复制负面提示词" data-id="${p.id}">
+                  <button class="action-icon-btn copy-neg-quick" title="复制负面提示词" data-id="${escapeHtml(p.id)}">
                     <i class="fa-solid fa-shield-halved"></i>
                   </button>
-                  <button class="action-icon-btn like-quick ${isLiked ? 'liked' : ''}" title="点赞" data-id="${p.id}">
+                  <button class="action-icon-btn like-quick ${isLiked ? 'liked' : ''}" title="点赞" data-id="${escapeHtml(p.id)}">
                     <i class="fa-solid fa-heart" style="${isLiked ? 'color:#f43f5e;' : ''}"></i>
                   </button>
                 </div>
@@ -1354,11 +1389,11 @@
                   <div class="card-stats">
                     <div class="card-stat-item ${isLiked ? 'liked' : ''}">
                       <i class="fa-solid fa-heart"></i>
-                      <span>${p.likes || 0}</span>
+                      <span>${safeCount(p.likes)}</span>
                     </div>
                     <div class="card-stat-item">
                       <i class="fa-solid fa-download"></i>
-                      <span>${p.downloads || 0}</span>
+                      <span>${safeCount(p.downloads)}</span>
                     </div>
                   </div>
                 </div>
@@ -1505,7 +1540,7 @@
           activePreset = p;
           const modal = document.getElementById('detail-modal');
           const myKey = getCreatorKey();
-          const isMine = myKey && p.creatorKey === myKey;
+          const isMine = isMyPreset(p);
 
           document.getElementById('modal-title').textContent = p.title || '';
           document.getElementById('modal-author').textContent = p.author || '匿名';
@@ -1534,10 +1569,11 @@
           const tabBm = document.getElementById('modal-tab-bm');
           const tabRef = document.getElementById('modal-tab-ref');
 
-          const bmSrc = p.previewUrl || '/previews/kami-greenhouse-girl.webp';
+          const bmSrc = safeImageUrl(p.previewUrl, '/previews/kami-greenhouse-girl.webp');
+          const refSrc = safeImageUrl(p.referenceUrl);
           modalImg.src = bmSrc;
 
-          if (p.referenceUrl && p.referenceUrl.trim()) {
+          if (refSrc) {
             if (viewTabs) viewTabs.style.display = 'flex';
             if (imgBadge) {
               imgBadge.style.display = 'inline-flex';
@@ -1550,10 +1586,8 @@
               tabRef.style.background = 'transparent';
               tabRef.style.color = '#94a3b8';
 
-              if (p.referenceUrl && p.referenceUrl.trim()) {
-                const preImg = new Image();
-                preImg.src = p.referenceUrl;
-              }
+              const preImg = new Image();
+              preImg.src = refSrc;
 
               const imgLoading = document.getElementById('modal-img-loading');
               function switchWebDetailView(targetSrc, isRef) {
@@ -1611,7 +1645,7 @@
 
               tabRef.onclick = (e) => {
                 e.stopPropagation();
-                switchWebDetailView(p.referenceUrl, true);
+                switchWebDetailView(refSrc, true);
               };
             }
           } else {
@@ -1734,7 +1768,9 @@
       document.getElementById('creator-gen-btn').onclick = () => {
         const chars = '0123456789abcdef';
         let rand = '';
-        for (let i = 0; i < 8; i++) rand += chars[Math.floor(Math.random() * chars.length)];
+        const bytes = new Uint8Array(8);
+        crypto.getRandomValues(bytes);
+        rand = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
         document.getElementById('creator-input').value = 'RBQ-U-' + rand;
       };
 
@@ -1743,7 +1779,7 @@
         setCreatorKey(val);
         creatorModal.classList.remove('open');
         toast(val ? `已绑定身份码: ${val}` : '已清空身份码', 'success');
-        renderCards();
+        refreshMyPresetIds().then(() => { renderTagPills(); renderCards(); });
       };
 
       // 编辑弹窗
@@ -1765,8 +1801,8 @@
         document.getElementById('edit-neg').value = activePreset.negative || '';
 
         editWebRefBase64 = null;
-        if (activePreset.referenceUrl && activePreset.referenceUrl.trim()) {
-          editRefImg.src = activePreset.referenceUrl;
+        if (safeImageUrl(activePreset.referenceUrl)) {
+          editRefImg.src = safeImageUrl(activePreset.referenceUrl);
           editRefImg.style.display = 'block';
           editRefPlaceholder.style.display = 'none';
           editRefStatus.textContent = '当前已绑定自制参考图';

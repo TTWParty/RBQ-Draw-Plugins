@@ -2,7 +2,7 @@
 
 剧情语音插件：LLM「情绪导演」把酒馆消息改写成带情绪标签的台词（含 NSFW 破限），送 Fish Audio (MiniMax 系) 合成，消息楼层内联播放。音色库搜索/试听/收藏、角色绑定、预设体系、内心戏/旁白生成模式。
 
-> v0.2.8 · 已注册 plugins.json（RBQ 插件管理器一键安装）
+> v0.2.9 · 已注册 plugins.json（RBQ 插件管理器一键安装）
 
 ## 功能总览
 
@@ -23,7 +23,7 @@
 ## 安装
 
 1. RBQ 插件管理器里一键安装「(xh)Fish语音」（或把 `plugins/fish-tts.js` 放入酒馆 RBQ 子插件目录，与 `grok-draw.js` 同级）
-2. 刷新酒馆，控制台看到 `(xh)Fish语音 (rbq-fish-tts) v0.2.8 Loaded!`，RBQ 设置里出现「(xh)Fish语音」面板
+2. 刷新酒馆，控制台看到 `(xh)Fish语音 (rbq-fish-tts) v0.2.9 Loaded!`，RBQ 设置里出现「(xh)Fish语音」面板
 
 ## 快速上手（「🔌 连接」页最上面的三步）
 
@@ -137,6 +137,7 @@ RUN_NET=1 node test/run-fish-tts-cors-route-tests.js # + 真实 CORS 预检检�
 
 ## 📝 更新日志
 
+- **v0.2.9**：升版本号，让已更新到早期 0.2.8 的用户也能拿到音色名后缀修复（显示「AD学姐 · zh」、设置里存纯名字）。
 - **v0.2.8**：修复语音合成跨域问题，并重做「🔌 连接」页。
   - 合成默认 **直连** Fish 官方兼容接口 `/compat/v1/audio/speech`（官方放行 CORS，免装插件免代理）；默认模式只走直连，不再偷偷依赖服务端插件。
   - 服务端插件转发 / 外部地址 / 「直连失败自动换转发」收进折叠的「🛠️ 高级：网络连不上 Fish 时」，附简短中文说明（含 `enableServerPlugins: true` 装法）。

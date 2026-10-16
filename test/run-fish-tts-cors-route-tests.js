@@ -69,9 +69,9 @@ function placeholderWav(dataBytes = 10) {
 }
 
 (async () => {
-    await test('fresh install defaults to direct route, settings v2, version 0.2.8', async () => {
+    await test('fresh install defaults to direct route, settings v2, version 0.2.9', async () => {
         const P = load();
-        assert.equal(P.version, '0.2.8');
+        assert.equal(P.version, '0.2.9');
         assert.equal(P.settings.synthRoute, 'direct');
         assert.equal(P.settings.version, 2);
         assert.deepEqual(P.routeChain(), ['direct'], 'default never touches the server plugin');

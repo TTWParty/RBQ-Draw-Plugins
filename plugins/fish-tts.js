@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw Sub-Plugin: Fish 语音 (Fish Audio TTS)
- * Version: 0.2.8
+ * Version: 0.2.9
  * Description: 剧情语音插件——LLM情绪导演改写台词(含NSFW破限) + Fish Audio 合成，
  *              音色库搜索/试听/收藏、角色绑定音色、预设体系、内心戏/旁白生成模式。
  *              全部配置独立存储于 settings._rbqFishTts，与生图连接完全隔离。
@@ -761,7 +761,7 @@
             `<button class="menu_button ${CSS_PREFIX}-btn" data-act="speak" data-mid="${mid}" title="重新生成(走LLM导演+合成)" onclick="event.stopPropagation();var b=this.closest('.mes'),i=b?Number(b.getAttribute('mesid')):${mid};window.RBQFishTTS&&window.RBQFishTTS.startSpeak(i,{force:true})">🔄</button>`;
         else if (st.phase === 'skip') right = `<span class="${CSS_PREFIX}-status">➖ ${esc(st.note || '智能跳过（无台词）')}</span><button class="menu_button ${CSS_PREFIX}-btn" data-act="speak" data-mid="${mid}" onclick="event.stopPropagation();var b=this.closest('.mes'),i=b?Number(b.getAttribute('mesid')):${mid};window.RBQFishTTS&&window.RBQFishTTS.startSpeak(i,{force:true})"><img src="${ICON}" class="${CSS_PREFIX}-icon ${CSS_PREFIX}-icon-sm" alt="">强制</button>`;
         else if (st.phase === 'error') right = `<span class="${CSS_PREFIX}-err">⚠ ${esc(st.note || '失败')}</span><button class="menu_button ${CSS_PREFIX}-btn" data-act="speak" data-mid="${mid}" onclick="event.stopPropagation();var b=this.closest('.mes'),i=b?Number(b.getAttribute('mesid')):${mid};window.RBQFishTTS&&window.RBQFishTTS.startSpeak(i,{force:true})">🔄 重试</button>`;
-        return `<div class="${CSS_PREFIX}-bar" data-mid="${mid}"><img src="${ICON}" class="${CSS_PREFIX}-icon" title="(xh)Fish语音 v0.2.8" alt="xh">${right}</div>`;
+        return `<div class="${CSS_PREFIX}-bar" data-mid="${mid}"><img src="${ICON}" class="${CSS_PREFIX}-icon" title="(xh)Fish语音 v0.2.9" alt="xh">${right}</div>`;
     }
 
     function renderBar(mid) {
@@ -1134,7 +1134,7 @@
     .${CSS_PREFIX}-opt code{background:#2a2a33;border-radius:4px;padding:0 4px}
     @media (max-width:760px){ .${CSS_PREFIX}-row{flex-direction:column} .${CSS_PREFIX}-row>div{min-width:100% !important} .${CSS_PREFIX}-vgrid{grid-template-columns:1fr} }
   </style>
-  <div class="${CSS_PREFIX}-hint" style="margin:0 0 2px"><img src="${ICON}" class="${CSS_PREFIX}-icon" alt=""> (xh)Fish语音 <b>v0.2.8</b> <span title="版本号不对说明页面还是旧代码，按 F5 刷新">（版本不对请 F5）</span></div>
+  <div class="${CSS_PREFIX}-hint" style="margin:0 0 2px"><img src="${ICON}" class="${CSS_PREFIX}-icon" alt=""> (xh)Fish语音 <b>v0.2.9</b> <span title="版本号不对说明页面还是旧代码，按 F5 刷新">（版本不对请 F5）</span></div>
   <div class="${CSS_PREFIX}-nav">${tabs}</div>
   <div id="${CSS_PREFIX}-body"></div>
 </div>`;
@@ -1735,7 +1735,7 @@
 
     // 对测试与控制台暴露最小接口
     window.RBQFishTTS = {
-        version: '0.2.8',
+        version: '0.2.9',
         get settings() { return S; },
         startSpeak, runDirector, ruleRewrite, matchBinding, resolveVoice,
         buildFinalPrompt, robustJsonParse, synthWithFailover, listVoices,
@@ -1750,7 +1750,7 @@
         cleanup: cleanupInstance,
     };
 
-    console.info('(xh)Fish语音 (rbq-fish-tts) v0.2.8 Loaded!');
+    console.info('(xh)Fish语音 (rbq-fish-tts) v0.2.9 Loaded!');
 })(typeof window !== 'undefined' ? (window.RBQ || null) : null,
     typeof jQuery !== 'undefined' ? jQuery : (typeof window !== 'undefined' ? window.$ : undefined),
     typeof toastr !== 'undefined' ? toastr : (typeof window !== 'undefined' ? window.toastr : undefined));

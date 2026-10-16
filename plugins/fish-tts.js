@@ -930,7 +930,7 @@
             return;
         }
 
-        setState(mid, { phase: 'working', note: preset.director ? 'LLM 改写中…' : '规则处理…', voiceTitle: voice ? voice.title : '' });
+        setState(mid, { phase: 'working', note: preset.director ? 'LLM 改写中…' : '规则处理…', voiceTitle: voice ? voiceLabel(voice.voiceId, voice.title) : '' });
         const dir = await runDirector(msg.mes || '', charName);
         if (!dir.shouldSpeak && !o.force) { setState(mid, { phase: 'skip', note: '智能跳过（无台词）' }); return; }
         if (!dir.lines || !dir.lines.length) { setState(mid, { phase: 'error', note: '未提取到台词' }); return; }
@@ -960,7 +960,7 @@
                         cached = true;
                     }
                 }
-                if (url) { urls.push({ url, cached, title: it.voice ? it.voice.title : '' }); continue; }
+                if (url) { urls.push({ url, cached, title: it.voice ? voiceLabel(it.voice.voiceId, it.voice.title) : '' }); continue; }
                 if (synthInFlight >= MAX_SYNTH_CONC) await new Promise(r => setTimeout(r, 500));
                 setState(mid, { phase: 'working', note: `合成中: ${(it.text || '').slice(0, 12)}…` });
                 synthInFlight++;
@@ -974,7 +974,7 @@
                     try {
                         if (RBQ.api.setMessageExtra) RBQ.api.setMessageExtra(mid, 'rbq_fish_tts', { v: it.voice ? it.voice.voiceId : '', h: hashStr(it.text), at: Date.now() });
                     } catch (e) { /* 背包写失败不影响播放 */ }
-                    urls.push({ url, cached: false, title: it.voice ? it.voice.title : '' });
+                    urls.push({ url, cached: false, title: it.voice ? voiceLabel(it.voice.voiceId, it.voice.title) : '' });
                 } finally { synthInFlight--; }
             }
             const first = urls[0] || { url: '', cached: false, title: '' };
@@ -1167,7 +1167,7 @@
         const pill = (ok, text) => `<span class="${CSS_PREFIX}-pill ${ok ? 'ok' : 'bad'}">${text}</span>`;
         return `<div class="${CSS_PREFIX}-statusline" id="${CSS_PREFIX}-connstate">` +
             pill(keys.length > 0, keys.length ? `✓ Key 已填${keys.length > 1 ? ` ×${keys.length}` : ''}` : '✗ 还没填 Key') +
-            pill(!!dv, dv ? `✓ 默认音色：${esc(dv.title)}` : '✗ 还没选默认音色') +
+            pill(!!dv, dv ? `✓ 默认音色：${esc(voiceLabel(dv.id, dv.title))}` : '✗ 还没选默认音色') +
             `<span class="${CSS_PREFIX}-pill">连接方式：${esc(ROUTE_LABEL[route] || route)}</span>` +
             `</div>`;
     }
@@ -1275,7 +1275,7 @@
     function tabBind() {
         const voiceOpts = listVoiceOptions();
         const rows = (S.bindings || []).map((b, i) => `
-<tr><td>${esc(b.name)}</td><td style="color:#c9baff">${esc(b.voiceTitle)}</td><td>${esc(b.speed)}</td><td>${b.volume >= 0 ? '+' : ''}${esc(b.volume)}dB</td><td>${esc(STYLES[b.style] || '')}</td><td>${b.enabled ? '✅' : '❌'}</td>
+<tr><td>${esc(b.name)}</td><td style="color:#c9baff">${esc(voiceLabel(b.voiceId, b.voiceTitle))}</td><td>${esc(b.speed)}</td><td>${b.volume >= 0 ? '+' : ''}${esc(b.volume)}dB</td><td>${esc(STYLES[b.style] || '')}</td><td>${b.enabled ? '✅' : '❌'}</td>
 <td><button class="menu_button rbq-fishtts-btn" style="min-height:32px;font-size:12px" data-act="bindEdit" data-i="${i}">改</button> <button class="menu_button rbq-fishtts-btn" style="min-height:32px;font-size:12px" data-act="bindDel" data-i="${i}">删</button></td></tr>`).join('');
         return `
 <div class="${CSS_PREFIX}-card"><b>全局兜底</b>
@@ -1301,6 +1301,24 @@
         [S.defaultVoice, S.narratorVoice].forEach(v => { if (v && v.id && !opts.some(o => o[0] === v.id)) opts.push([v.id, v.title || v.id]); });
         (S.bindings || []).forEach(b => { if (b.voiceId && !opts.some(o => o[0] === b.voiceId)) opts.push([b.voiceId, b.voiceTitle]); });
         return opts;
+    }
+    // 存设置用的纯音色名(不带下拉里的「 · zh」语言后缀, 否则状态条/朗读条显示成「AD学姐 · zh」)
+    const stripLang = t => String(t || '').replace(/ · [a-z]{2}(?:\/[a-z]{2})*$/i, '');
+    // 显示用: 纯音色名 + 收藏夹里的语言(同下拉格式「AD学姐 · zh」); 查不到语言就只显示名字。只用于展示, 不存回设置
+    function voiceLabel(id, title) {
+        const name = stripLang(title) || (id ? voiceTitleById(id) : '');
+        const f = id ? (S.favorites || []).find(x => x.id === id) : null;
+        return f && f.lang && name ? `${name} · ${f.lang}` : name;
+    }
+    function voiceTitleById(id) {
+        const strip = stripLang;
+        const f = (S.favorites || []).find(x => x.id === id);
+        if (f && f.title) return f.title;
+        const known = [S.defaultVoice, S.narratorVoice].find(x => x && x.id === id && x.title);
+        if (known) return strip(known.title);
+        const b = (S.bindings || []).find(x => x.voiceId === id && x.voiceTitle);
+        if (b) return strip(b.voiceTitle);
+        return id;
     }
     function bindEditorHtml(i) {
         const b = S.bindings[i];
@@ -1486,15 +1504,15 @@
         if (act === 'bindSave') {
             const i = Number(t.dataset.i); const b = S.bindings[i]; if (!b) return;
             b.name = gv('b-name'); b.voiceId = gv('b-voice');
-            b.voiceTitle = (listVoiceOptions().find(o => o[0] === b.voiceId) || ['', '(未知)'])[1];
+            b.voiceTitle = b.voiceId ? voiceTitleById(b.voiceId) : '';
             b.speed = parseFloat(gv('b-speed')) || 1; b.volume = parseFloat(gv('b-vol')) || 0;
             b.style = Number(gv('b-style')) || 0; b.enabled = gv('b-on') === '1';
             saveSettings(); renderTabBody(); note('success', '绑定已保存'); return;
         }
         if (act === 'saveBindGlobal') {
             const dv = gv('defvoice'), nv = gv('narrvoice');
-            S.defaultVoice = dv ? { id: dv, title: (listVoiceOptions().find(o => o[0] === dv) || [, dv])[1] } : null;
-            S.narratorVoice = nv ? { id: nv, title: (listVoiceOptions().find(o => o[0] === nv) || [, nv])[1] } : null;
+            S.defaultVoice = dv ? { id: dv, title: voiceTitleById(dv) } : null;
+            S.narratorVoice = nv ? { id: nv, title: voiceTitleById(nv) } : null;
             S.trigger.readUser = gc('readuser');
             saveSettings(); note('success', '兜底配置已保存'); return;
         }
@@ -1563,7 +1581,7 @@
         let b = S.bindings.find(x => x.name === nm);
         if (!b) { b = { id: 'b' + Date.now(), name: nm, voiceId: '', voiceTitle: '', speed: 1.0, volume: 0, style: 0, enabled: true }; S.bindings.push(b); }
         b.voiceId = voiceId; b.voiceTitle = voiceTitle;
-        saveSettings(); note('success', `${nm} → ${voiceTitle}`);
+        saveSettings(); note('success', `${nm} → ${voiceLabel(voiceId, voiceTitle)}`);
     }
 
     // 读「🔌 连接」页输入框; 元素不存在(没渲染)时保留原值, 不会把设置清空
@@ -1577,7 +1595,7 @@
         if (has('persist')) S.persistCache = gc('persist');
         if (has('connvoice')) {
             const v = gv('connvoice');
-            S.defaultVoice = v ? { id: v, title: (listVoiceOptions().find(o => o[0] === v) || [, v])[1] } : null;
+            S.defaultVoice = v ? { id: v, title: voiceTitleById(v) } : null;
         }
     }
     function updateConnState() {
@@ -1722,7 +1740,7 @@
         startSpeak, runDirector, ruleRewrite, matchBinding, resolveVoice,
         buildFinalPrompt, robustJsonParse, synthWithFailover, listVoices,
         compatTtsBody, fixWavHeader, get lastRoute() { return lastRoute; },
-        routeChain, _fishHttpError: fishHttpError, _tabConn: tabConn, _listVoiceOptions: listVoiceOptions,
+        routeChain, _fishHttpError: fishHttpError, _voiceTitleById: voiceTitleById, _voiceLabel: voiceLabel, _readConnInputs: readConnInputs, _tabConn: tabConn, _listVoiceOptions: listVoiceOptions,
         _resetRoute() { preferServer = false; lastRoute = null; },
         CacheStore, cacheUsage, clipKey,
         _setCacheBackend(b) { cacheBackend = b; },

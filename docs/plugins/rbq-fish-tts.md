@@ -131,7 +131,7 @@ export default {
 node --check plugins/fish-tts.js
 node test/test_fish_tts.js              # 本地断言
 RUN_NET=1 node test/test_fish_tts.js    # + 真实音色库联网检查
-node test/run-fish-tts-cors-route-tests.js           # 连接方式/跨域回退/报错文案/连接页结构/默认音色 (17 项)
+node test/run-fish-tts-cors-route-tests.js           # 连接方式/跨域回退/报错文案/连接页结构/默认音色/音色名保存与显示 (19 项)
 RUN_NET=1 node test/run-fish-tts-cors-route-tests.js # + 真实 CORS 预检检查
 ```
 
@@ -145,4 +145,5 @@ RUN_NET=1 node test/run-fish-tts-cors-route-tests.js # + 真实 CORS 预检检�
   - 设置迁移（version 2）：旧默认「酒馆服务器转发」与未设置的改为「直连」，手动选过「外部地址」的保留。
   - 默认音色：还没设置默认音色时（新装或之前留空）自动预选内置收藏「AD学姐」，填完 Key 即可出声；已选过的音色不会被覆盖。
   - 修复：从搜索结果「设为默认」的音色不在收藏夹时，在绑定页/连接页保存会被清空。
+  - 修复：保存音色时把下拉里的「 · zh」语言后缀一起存进了音色名。现在设置里只存纯音色名，状态条/朗读条/绑定表显示时再按收藏夹补上语言（如「AD学姐 · zh」，查不到语言就只显示名字）。
   - 兼容接口 WAV 占位头本地修正；测试连接提示实际走的通道。

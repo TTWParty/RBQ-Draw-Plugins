@@ -190,6 +190,38 @@ function placeholderWav(dataBytes = 10) {
         P = load({ version: 2, favorites: [{ id: 'f1', title: '别的' }] });
         assert.deepEqual(P.settings.defaultVoice, AD, 'uses built-in AD学姐 even when user favourites changed');
     });
+    await test('saving voices stores the plain title, not the dropdown label with language suffix', async () => {
+        const P = load({ version: 2 });
+        assert.equal(P._voiceTitleById('7f92f8afb8ec43bf81429cc1c9199cb1'), 'AD学姐');
+        assert.ok(P._listVoiceOptions().some(o => o[1] === 'AD学姐 · zh'), 'dropdown label still shows language');
+        const vals = { 'rbq-fishtts-connvoice': '23e171c3bbaa4642badf9c98ca31835c', 'rbq-fishtts-apikey': ' sk-x ' };
+        const realGet = global.document.getElementById;
+        global.document.getElementById = id => (id in vals ? { value: vals[id] } : null);
+        try { P._readConnInputs(); } finally { global.document.getElementById = realGet; }
+        assert.deepEqual(P.settings.defaultVoice, { id: '23e171c3bbaa4642badf9c98ca31835c', title: '少女' });
+        assert.equal(P.settings.apiKey, 'sk-x');
+        assert.equal(P.settings.synthRoute, 'direct', 'inputs not rendered keep their saved value');
+        const P2 = load({ version: 2, defaultVoice: { id: 'zz', title: '旧 · zh' } });
+        assert.equal(P2._voiceTitleById('zz'), '旧', 'legacy polluted titles are cleaned');
+        assert.equal(P2._voiceTitleById('unknown-id'), 'unknown-id');
+    });
+    await test('display shows language like the dropdown (AD学姐 · zh) while stored title stays plain', async () => {
+        const P = load();
+        assert.equal(P.settings.defaultVoice.title, 'AD学姐');
+        assert.match(P._tabConn(), /✓ 默认音色：AD学姐 · zh</);
+        assert.equal(P._voiceLabel('7f92f8afb8ec43bf81429cc1c9199cb1', 'AD学姐'), 'AD学姐 · zh');
+        assert.equal(P._voiceLabel('7f92f8afb8ec43bf81429cc1c9199cb1', 'AD学姐 · zh'), 'AD学姐 · zh', 'no double suffix');
+        assert.equal(P._voiceLabel('not-a-fav', '搜索来的'), '搜索来的', 'unknown language -> plain name');
+        assert.equal(P.settings.defaultVoice.title, 'AD学姐', 'display never writes back');
+        // message bar path: startSpeak stores the display label in state, not in settings
+        routes = [[COMPAT, () => audio()]];
+        P.settings.apiKey = 'sk-A'; P.settings.trigger.autoplay = false; P.settings.persistCache = false;
+        P.settings.presets.forEach(p => { p.director = false; });
+        await P.startSpeak(3, { force: true });
+        assert.equal(P._getState(3).phase, 'ready');
+        assert.equal(P._getState(3).voiceTitle, 'AD学姐 · zh');
+        assert.equal(P.settings.defaultVoice.title, 'AD学姐');
+    });
     await test('plain-Chinese HTTP errors: 401 Key无效, 402 余额不足, 429 限流, 400 voice, 5xx; server 401 adds F5 hint', async () => {
         const P = load({ version: 2 });
         const m = (st, body, route) => P._fishHttpError(st, typeof body === 'string' ? body : JSON.stringify(body), route);

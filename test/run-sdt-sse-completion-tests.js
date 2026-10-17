@@ -29,6 +29,7 @@ function host(toolCallMode = false) {
             return args !== undefined ? typeof args === 'string' ? JSON.parse(args) : args : JSON.parse(message.content);
         }, safeReadJsonResponse: response => response.json(), toastr: { warning() {} }
     });
+    vm.runInContext(source.slice(source.indexOf('    function extractJson('), source.indexOf('    function processSseLine(')), context);
     vm.runInContext(source.slice(source.indexOf('    function processSseLine('), source.indexOf('    function parseSseStringToOpenAiJson(')), context);
     vm.runInContext(source.slice(source.indexOf('    function buildStandardDrawRequest('), source.indexOf('    const DRAW_SPEC_TOOL_INPUT_MESSAGE')), context);
     vm.runInContext(source.slice(source.indexOf('    async function callOpenAiCompatible('), source.indexOf('    async function callCustomHttp(')), context);
@@ -270,8 +271,9 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
         assert.deepEqual(context.normalizeTaggerResult(result), ordinary);
     });
 
-    await test('tool mode rejects ordinary text without silently switching protocols', async () => {
-        await assert.rejects(completeJson({ choices: [{ message: { content: raw }, finish_reason: 'stop' }] }), /未返回工具调用参数/);
+    await test('6.5.49: tool mode adopts a valid draw-spec JSON returned as ordinary text (no extra request)', async () => {
+        const result = await completeJson({ choices: [{ message: { content: raw }, finish_reason: 'stop' }] });
+        assert.equal(result.isToolCall, true); assert.deepEqual(JSON.parse(result.rawReply), ordinary);
     });
 
     await test('DONE across chunk boundaries ends an otherwise open stream', async () => {
@@ -342,10 +344,18 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
         closedAtTerminal(fixture.trace, 1);
     });
 
-    await test('DONE without required tool arguments still reports missing tool output', async () => {
-        const fixture = stream(['data: [DONE]\n\n']);
-        await assert.rejects(complete(fixture, true), /未返回工具调用参数/);
-        closedAtTerminal(fixture.trace, 1);
+    await test('6.5.49: DONE without tool arguments retries once without tools, then reports a clear error', async () => {
+        const { context } = host(true), bodies = [];
+        context.callApiWithJsonFallback = async (_url, _options, body) => {
+            bodies.push(body);
+            return stream(['data: [DONE]\n\n']).response;
+        };
+        await assert.rejects(bounded(context.callStructuredCompletion({ messages: [], tool })), error => {
+            assert.equal(error.code, 'SDT_TOOL_RESPONSE_MISSING');
+            assert.match(error.message, /没有按工具调用返回/);
+            return true;
+        });
+        assert.equal(bodies.length, 2); assert.ok(bodies[0].tools); assert.equal(bodies[1].tools, undefined);
     });
 
     for (const toolMode of [false, true]) await test('chat ' + (toolMode ? 'tool' : 'JSON') + ' stream also finishes without EOF', async () => {

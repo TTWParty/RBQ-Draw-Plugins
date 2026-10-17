@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.48';
+    const PLUGIN_VERSION = '6.5.49';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -3023,28 +3023,10 @@ Zimage 擅长理解复杂的英文长句和语境。
             store.postProcessPrompt = DEFAULT_POST_PROCESS_PROMPT;
         }
 
-        // 对于预设（sandbox、classic_multiturn、render_pipeline），确保工具调用与消息合并符合预设要求
-        if (store.geminiJailbreakPreset === 'sandbox' || store.geminiJailbreakPreset === 'classic_multiturn') {
-            const currentPreset = JAILBREAK_PRESETS[store.geminiJailbreakPreset];
-            if (currentPreset) {
-                if (store.toolCallMode === false && currentPreset.toolCallMode === true) {
-                    store.toolCallMode = true;
-                }
-                if (store.squashMessages === false && currentPreset.squashMessages === true) {
-                    store.squashMessages = true;
-                }
-            }
-        } else if (store.geminiJailbreakPreset === 'render_pipeline' || store.geminiJailbreakPreset === 'render_pipeline_v2') {
-            const currentPreset = JAILBREAK_PRESETS[store.geminiJailbreakPreset];
-            if (currentPreset) {
-                if (store.toolCallMode === false) {
-                    store.toolCallMode = true;
-                }
-                if (store.squashMessages === true) {
-                    store.squashMessages = false;
-                }
-            }
-        }
+        // 6.5.49: 预设里的「结构化工具调用」「合并消息」只是默认值，只在用户选中/载入预设时套用
+        // （见 applyJailbreakPresetSwitches 与 API 模板载入）。以前这里每次 getStore() 都把
+        // sandbox / classic_multiturn / render_pipeline(_v2) 的 toolCallMode 强制改回 true，
+        // 导致用户关掉「结构化工具调用 (Tool Call)」后依旧发送 tools，报「未返回工具调用参数」。
 
         return store;
     }
@@ -7615,6 +7597,81 @@ ${getCharacterMemoryTagSpecification()}
                 && !matchesType(value[field], definition.type)) mismatch(`$.${field}`);
         }
         return value;
+    }
+
+    /**
+     * 6.5.49: 请求了工具调用、模型却只在正文（或思维链）里返回了参数时，尝试从文本中取回工具参数。
+     * 兼容：纯 JSON、```json 代码块、前置说明文字/思考标签、中转模拟工具调用时留下的
+     * <<TOOL_CALL>>{"name":..,"arguments":{..}}、<tool_call>…</tool_call>、{"function":{..}} 等包装。
+     * 只有通过工具 schema 根校验（generate_draw_spec 还要求 shouldDraw/segments）才采用，否则返回 null。
+     */
+    function recoverToolArgumentsFromText(texts, tool = null) {
+        const toolName = tool?.function?.name || '';
+        const list = (Array.isArray(texts) ? texts : [texts]).filter(text => typeof text === 'string' && text.trim());
+        const unwrap = (value, depth = 0) => {
+            if (!value || typeof value !== 'object' || depth > 3) return null;
+            if (Array.isArray(value)) return value.length === 1 ? unwrap(value[0], depth + 1) : null;
+            if (Array.isArray(value.tool_calls)) return value.tool_calls.length ? unwrap(value.tool_calls[0], depth + 1) : null;
+            if (value.function && typeof value.function === 'object' && !Array.isArray(value.function)) return unwrap(value.function, depth + 1);
+            const wrapped = value.arguments ?? value.parameters ?? value.args ?? value.input;
+            const named = typeof value.name === 'string' || typeof value.type === 'string';
+            if (wrapped !== undefined && (named || Object.keys(value).length === 1)) {
+                if (toolName && typeof value.name === 'string' && value.name && value.name !== toolName) return null;
+                if (typeof wrapped === 'string') {
+                    try { return unwrap(JSON.parse(wrapped), depth + 1) || null; } catch (_) { return null; }
+                }
+                return wrapped && typeof wrapped === 'object' && !Array.isArray(wrapped) ? wrapped : null;
+            }
+            return value;
+        };
+        const accept = candidate => {
+            if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate) || !Object.keys(candidate).length) return null;
+            if (toolName === 'generate_draw_spec' && typeof candidate.shouldDraw !== 'boolean' && !Array.isArray(candidate.segments)) return null;
+            try { return validateCompletionToolArguments(candidate, tool); } catch (_) { return null; }
+        };
+        for (const text of list) {
+            const cleaned = text
+                .replace(/<<\/?\s*TOOL_CALLS?\s*>>/gi, '\n')
+                .replace(/<\|?\/?\s*(?:tool_calls?|function_calls?|tool_use|invoke)\s*\|?>/gi, '\n')
+                .replace(/\[\/?TOOL_CALLS?\]/gi, '\n')
+                .trim();
+            let parsed;
+            try { parsed = extractJson(cleaned); } catch (_) { parsed = null; }
+            const value = accept(unwrap(parsed));
+            if (value) return value;
+            // Fenced block after explanatory prose (extractJson only strips a fence spanning the whole text).
+            const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            if (fence) {
+                try { parsed = extractJson(fence[1]); } catch (_) { parsed = null; }
+                const fenced = accept(unwrap(parsed));
+                if (fenced) return fenced;
+            }
+        }
+        return null;
+    }
+
+    /** 6.5.49: some relays stream an upstream failure as ordinary text with finish_reason "stop" (seen live: "[proxy error] {...}"). */
+    function isRelayErrorText(text) {
+        const t = String(text || '').trim();
+        return /^\[?\s*(?:proxy\s*)?error\b/i.test(t) || /^\{\s*"(?:error|success)"\s*:/.test(t);
+    }
+
+    function makeRelayErrorTextError(text) {
+        const snippet = String(text || '').trim();
+        const err = new Error(`中转站/上游模型返回了错误，这次不是工具调用的问题：${snippet.slice(0, 200)}${snippet.length > 200 ? '…' : ''}。常见原因是上游超时或额度/渠道故障，稍后重试或换个渠道/模型。`);
+        err.code = 'SDT_RELAY_ERROR_TEXT';
+        err.rawOutput = `【错误】: 中转站把上游错误当成普通正文返回 (finish_reason: stop)。\n【服务端原始响应正文】:\n${snippet || '（空）'}`;
+        return err;
+    }
+
+    function makeToolFallbackError(finishReason, rawText, retried) {
+        const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
+        const err = new Error(retried
+            ? `大模型没有按工具调用返回分镜${finishReasonInfo}，自动改用普通 JSON 模式重试后仍未得到有效结果。这个模型/渠道可能不支持工具调用，或中转站没有正确转发，请换一个模型或渠道再试。`
+            : `大模型没有按工具调用返回分镜${finishReasonInfo}，正文里也没有可用的分镜 JSON。这个模型/渠道可能不支持工具调用，或中转站没有正确转发。`);
+        err.code = 'SDT_TOOL_RESPONSE_MISSING';
+        err.rawOutput = `【错误】: 请求了工具调用 (Tool Call)，但大模型 / 中转站没有返回 generate_draw_spec 工具参数，正文中也解析不出分镜 JSON${retried ? '；已自动去掉工具调用用普通 JSON 模式重试一次，仍然失败' : ''}。\n【服务端原始响应正文】:\n${rawText || '（空）'}\n\n【排查建议】: 换一个支持 Function Calling 的模型或渠道；或在设置中关闭「结构化工具调用 (Tool Call)」并点保存，直接走普通 JSON 模式。`;
+        return err;
     }
 
     async function readSseCompletion(response, signal, onProgress = null, expectedToolName = '') {
@@ -12955,7 +13012,9 @@ SCHEMA:
                 let errText = '';
                 try { errText = await autoRes.text(); } catch (_) {}
                 const err = new Error(`大模型接口不支持工具调用 (Tool Call / Function Calling)。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持 Tool Calling 的中转渠道。(HTTP ${autoRes.status})`);
+                err.code = 'SDT_TOOLS_UNSUPPORTED';
                 err.status = autoRes.status;
+                err.responseText = errText;
                 err.rawOutput = `【错误】: 当前 API 接口不支持工具调用 (Tool Call / Function Calling)\n【HTTP 状态码】: ${autoRes.status}\n【服务端返回报文】:\n${errText || '（无响应体）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」以改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
                 throw err;
             }
@@ -13073,11 +13132,16 @@ SCHEMA:
         }
     }
 
-    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, promptSnapshot = null } = {}) {
+    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, promptSnapshot = null, forceJsonMode = false } = {}) {
         const liveStore = getStore();
-        const layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
+        let layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
             ? captureLayeredMangaPromptSnapshot(liveStore) : null);
-        const store = layeredSnapshot?.storeSnapshot || liveStore;
+        // 6.5.49: forceJsonMode = 工具调用没拿到结果后的一次性普通 JSON 重试；只改本次请求，不动用户设置。
+        if (forceJsonMode && layeredSnapshot?.storeSnapshot) {
+            layeredSnapshot = { ...layeredSnapshot, storeSnapshot: { ...layeredSnapshot.storeSnapshot, toolCallMode: false } };
+        }
+        const baseStore = layeredSnapshot?.storeSnapshot || liveStore;
+        const store = forceJsonMode ? { ...baseStore, toolCallMode: false } : baseStore;
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
@@ -13162,14 +13226,56 @@ SCHEMA:
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                 assertMangaRequestContext(requestContext);
-                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
             }
             throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
         }
 
         let json;
+        let toolFallbackResult = null;
         const ct = response.headers.get('content-type') || '';
         const isSseStream = (ct.includes('text/event-stream') || reqBody.stream === true) && response.body && typeof response.body.getReader === 'function';
+
+        // 6.5.49: 请求了 tools 却没拿到工具调用：先从正文/思维链里找分镜 JSON，找不到就去掉 tools 用普通 JSON 模式重试一次。
+        const recoverMissingToolCall = async (finishReason, texts, rawText) => {
+            const requestedTool = reqBody.tools[0];
+            const recovered = recoverToolArgumentsFromText(texts, requestedTool);
+            if (recovered) {
+                console.info(`[${PLUGIN_NAME}] 模型未返回 tool_calls，已从正文中解析出 ${requestedTool.function.name} 参数并采用`);
+                return { recovered };
+            }
+            const relayError = (texts || []).find(isRelayErrorText);
+            if (relayError) throw makeRelayErrorTextError(relayError);
+            assertMangaRequestContext(requestContext);
+            if (signal?.aborted) {
+                throw signal.reason && typeof signal.reason.message === 'string'
+                    ? signal.reason : Object.assign(new Error('大模型请求已取消'), { name: 'AbortError' });
+            }
+            console.warn(`[${PLUGIN_NAME}] ⚠️ 模型未返回工具调用参数${finishReason ? ` (finish_reason: ${finishReason})` : ''}，自动去掉 tools 改用普通 JSON 模式重试一次`);
+            if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') toastr.info('模型没按工具调用返回，已自动改用普通模式重试', PLUGIN_NAME);
+            try {
+                return { result: await callOpenAiCompatible(messageId, trigger, {
+                    signal, retryWithoutLorebook, promptSnapshot: promptSnapshot || layeredSnapshot, forceJsonMode: true }) };
+            } catch (retryErr) {
+                if (retryErr?.name === 'AbortError' || signal?.aborted
+                    || /^(?:SDT_TOOL_RESPONSE_BLOCKED|SDT_TOOL_RESPONSE_TRUNCATED|SDT_RELAY_ERROR_TEXT)$/.test(String(retryErr?.code || ''))
+                    || /^MANGA_/.test(String(retryErr?.code || ''))) throw retryErr;
+                const err = makeToolFallbackError(finishReason, rawText, true);
+                err.retryError = retryErr;
+                err.rawOutput += `\n\n【普通 JSON 模式重试的错误】: ${retryErr?.message || String(retryErr)}${retryErr?.rawOutput ? `\n${retryErr.rawOutput}` : ''}`;
+                throw err;
+            }
+        };
+        const synthesizeToolEnvelope = (args, finishReason, content, reasoning) => ({
+            choices: [{
+                finish_reason: finishReason || 'stop',
+                message: {
+                    tool_calls: [{ type: 'function', function: { name: reqBody.tools[0].function.name, arguments: JSON.stringify(args) } }],
+                    content: content || '',
+                    reasoning_content: reasoning || '',
+                },
+            }],
+        });
 
         if (isSseStream) {
             const { sseState, rawStreamText } = await readSseCompletion(response, signal, null, reqBody.tools?.[0]?.function?.name || '');
@@ -13214,7 +13320,7 @@ SCHEMA:
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${safetyDetail})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                             assertMangaRequestContext(requestContext);
-                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
                         }
 
                         const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
@@ -13243,16 +13349,8 @@ SCHEMA:
                     }
 
                     if (reqBody.tools) {
-                        const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
-                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                        err.debugInfo = {
-                            reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
-                            model: modelName,
-                            llmOutput: '(空)',
-                            chunks: sseState.rawDebugChunks,
-                        };
-                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                        throw err;
+                        const outcome = await recoverMissingToolCall(sseState.lastFinishReason, [], rawStreamText);
+                        return outcome.result;
                     }
 
                     const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
@@ -13296,18 +13394,13 @@ SCHEMA:
                             throw err;
                         }
 
-                        const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
-                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                        err.debugInfo = {
-                            reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
-                            model: modelName,
-                            llmOutput: sseState.accumulatedContent || '(空)',
-                            chunks: sseState.rawDebugChunks,
-                        };
-                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                        throw err;
+                        const outcome = await recoverMissingToolCall(sseState.lastFinishReason,
+                            [sseState.accumulatedContent, sseState.accumulatedReasoning], sseState.accumulatedContent || rawStreamText);
+                        if (!outcome.recovered) return outcome.result;
+                        toolFallbackResult = synthesizeToolEnvelope(outcome.recovered, sseState.lastFinishReason,
+                            sseState.accumulatedContent, sseState.accumulatedReasoning);
                     }
-                    json = {
+                    json = toolFallbackResult || {
                         choices: [{
                             finish_reason: sseState.lastFinishReason || 'stop',
                             message: {
@@ -13349,7 +13442,7 @@ SCHEMA:
                     console.warn(`[${PLUGIN_NAME}] ⚠️ 非流式检测到触发内容审查拦截 (${safetyDetail})，正在自动剥离世界书发起自愈重试...`);
                     toastr.warning('世界书触发敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                     assertMangaRequestContext(requestContext);
-                    return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                    return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
                 }
                 const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
                 err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
@@ -13376,15 +13469,14 @@ SCHEMA:
 
             const hasTool = getCompletionToolCalls(json).length > 0;
             if (!hasTool) {
-                const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
-                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                err.debugInfo = {
-                    reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
-                    model: modelName,
-                    llmOutput: choice?.message?.content || '(空)',
-                };
-                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${choice?.message?.content || JSON.stringify(json, null, 2)}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                throw err;
+                const content = choice?.message?.content ?? choice?.text
+                    ?? (Array.isArray(candidate?.content?.parts)
+                        ? candidate.content.parts.filter(part => !part?.thought && typeof part?.text === 'string').map(part => part.text).join('') : '');
+                const reasoning = choice?.message?.reasoning_content || choice?.reasoning_content || '';
+                const outcome = await recoverMissingToolCall(finishReason, [content, reasoning],
+                    (typeof content === 'string' && content) || JSON.stringify(json, null, 2));
+                if (!outcome.recovered) return outcome.result;
+                json = synthesizeToolEnvelope(outcome.recovered, finishReason, typeof content === 'string' ? content : '', reasoning);
             }
         }
 
@@ -13394,6 +13486,21 @@ SCHEMA:
                 validateCompletionToolArguments(call?.arguments, reqBody.tools[0]);
             } catch (err) {
                 err.rawOutput = JSON.stringify(json, null, 2);
+                throw err;
+            }
+        }
+
+        if (forceJsonMode) {
+            // 6.5.49: 兜底重试必须真的拿到分镜 JSON；否则普通 JSON 解析会把垃圾当成「无需生图」静默吞掉。
+            const choice = json?.choices?.[0];
+            const parts = Array.isArray(json?.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts : [];
+            const text = choice?.message?.content ?? choice?.text ?? parts.filter(part => !part?.thought && typeof part?.text === 'string').map(part => part.text).join('');
+            const reasoning = choice?.message?.reasoning_content || choice?.reasoning_content || '';
+            if (isRelayErrorText(text)) throw makeRelayErrorTextError(text);
+            if (!recoverToolArgumentsFromText([text, reasoning], { type: 'function', function: { name: 'generate_draw_spec' } })) {
+                const err = new Error('普通 JSON 模式重试也没有返回有效的分镜 JSON');
+                err.code = 'SDT_JSON_RETRY_INVALID';
+                err.rawOutput = typeof text === 'string' && text ? text : JSON.stringify(json, null, 2);
                 throw err;
             }
         }
@@ -13437,6 +13544,119 @@ SCHEMA:
         return normalized;
     }
 
+    /* ── 6.5.49: 「🔍 检测工具调用」 ── */
+    const TOOL_PROBE_TOOL = {
+        type: 'function',
+        function: {
+            name: 'rbq_tool_probe',
+            description: 'Connectivity check. Call this tool with answer "ok".',
+            parameters: { type: 'object', properties: { answer: { type: 'string', description: 'Always "ok".' } }, required: ['answer'] },
+        },
+    };
+
+    /** Pure classification of one probe outcome. verdict: 'supported' | 'unsupported' | 'error'. */
+    function classifyToolProbe({ httpStatus = 200, httpText = '', toolCalls = [], content = '', thrown = null } = {}) {
+        if (thrown) {
+            if (thrown.name === 'AbortError') return { verdict: 'error', message: '检测超时或已取消，开关没有改动。' };
+            if (thrown.code === 'SDT_TOOLS_UNSUPPORTED') {
+                // callApiWithJsonFallback already retried tool_choice:'auto'. A 500 without a tools/function hint is a server fault.
+                if (thrown.status !== 500 || /tool|function/i.test(String(thrown.responseText || ''))) {
+                    return { verdict: 'unsupported', message: `接口拒绝了工具调用请求 (HTTP ${thrown.status || '?'})。${String(thrown.responseText || '').slice(0, 160)}` };
+                }
+                return { verdict: 'error', message: `接口出错 (HTTP 500)，无法判断是否支持工具调用，开关没有改动。\n${String(thrown.responseText || '').slice(0, 200)}` };
+            }
+            return { verdict: 'error', message: `请求失败：${thrown.message || String(thrown)}\n开关没有改动，请检查网络、地址和 Key。` };
+        }
+        if (httpStatus < 200 || httpStatus >= 300) {
+            const text = String(httpText || '');
+            if ((httpStatus === 400 || httpStatus === 422 || httpStatus === 501) && /tool|function/i.test(text)) {
+                return { verdict: 'unsupported', message: `接口不接受工具调用参数 (HTTP ${httpStatus})。` };
+            }
+            const hint = httpStatus === 401 || httpStatus === 403 ? 'Key 无效或没有权限'
+                : httpStatus === 404 ? '地址或模型名不对' : httpStatus === 429 ? '请求太频繁或额度不足' : '接口出错';
+            return { verdict: 'error', message: `HTTP ${httpStatus}：${hint}。开关没有改动。\n${text.slice(0, 200)}` };
+        }
+        const call = (toolCalls || []).find(c => !c?.name || c.name === TOOL_PROBE_TOOL.function.name);
+        if (call) {
+            let args = call.arguments;
+            try { args = typeof args === 'string' ? JSON.parse(args) : args; } catch (_) { args = null; }
+            if (args && typeof args === 'object' && !Array.isArray(args)) return { verdict: 'supported', message: '模型按要求返回了工具调用。' };
+            return { verdict: 'unsupported', message: '模型返回了工具调用，但参数不是合法 JSON。' };
+        }
+        const text = String(content || '').trim();
+        if (!text) return { verdict: 'error', message: '接口没有返回任何内容，开关没有改动，请稍后再试。' };
+        // Relays that swallow upstream failures into the text body (e.g. "[proxy error] {...}") are errors, not a verdict.
+        if (isRelayErrorText(text)) {
+            return { verdict: 'error', message: `中转站返回了错误：${text.slice(0, 200)}\n开关没有改动。` };
+        }
+        return { verdict: 'unsupported', message: `模型只回了普通文字，没有返回工具调用：「${text.slice(0, 80)}${text.length > 80 ? '…' : ''}」` };
+    }
+
+    async function probeToolCallSupport(store, { signal = null, fetchFn = null } = {}) {
+        const url = normalizeBaseUrl(store.openaiBaseUrl);
+        if (!url) return { verdict: 'error', message: '请先填写 OpenAI 兼容接口 Base URL。' };
+        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+        if (!modelName) return { verdict: 'error', message: '请先选择或填写模型。' };
+        try { checkUrlSafety(url); } catch (err) { return { verdict: 'error', message: err.message || String(err) }; }
+        // Same shape SDT uses for real tool-mode requests: forced tool_choice, stream=true, thinking params.
+        const reqBody = {
+            model: modelName,
+            temperature: 0,
+            stream: true,
+            messages: [
+                { role: 'system', content: 'You are a connectivity test. Always answer by calling the rbq_tool_probe tool.' },
+                { role: 'user', content: '请调用 rbq_tool_probe 工具，answer 填 "ok"。' },
+            ],
+            ...buildThinkingParams(store),
+            tools: [TOOL_PROBE_TOOL],
+            tool_choice: { type: 'function', function: { name: TOOL_PROBE_TOOL.function.name } },
+        };
+        let response;
+        try {
+            response = await callApiWithJsonFallback(url, {
+                method: 'POST',
+                signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                },
+            }, reqBody, fetchFn || smartFetch);
+        } catch (err) {
+            return classifyToolProbe({ thrown: err });
+        }
+        if (!response.ok) {
+            let text = '';
+            try { text = await response.text(); } catch (_) {}
+            return classifyToolProbe({ httpStatus: response.status, httpText: text });
+        }
+        try {
+            const ct = response.headers?.get?.('content-type') || '';
+            let toolCalls = [], content = '';
+            const fromEnvelope = json => {
+                if (json?.error) throw Object.assign(new Error(`接口返回错误：${json.error.message || JSON.stringify(json.error)}`), { code: 'SDT_PROBE_API_ERROR' });
+                toolCalls = getCompletionToolCalls(json);
+                const choice = json?.choices?.[0];
+                const parts = Array.isArray(json?.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts : [];
+                content = choice?.message?.content ?? choice?.text ?? parts.filter(p => !p?.thought && typeof p?.text === 'string').map(p => p.text).join('');
+            };
+            if (response.body && typeof response.body.getReader === 'function' && (ct.includes('text/event-stream') || reqBody.stream)) {
+                const { sseState, rawStreamText } = await readSseCompletion(response, signal, null, TOOL_PROBE_TOOL.function.name);
+                if (!sseState.toolCalls?.length && !sseState.accumulatedArgs && !sseState.accumulatedContent && rawStreamText.trim().startsWith('{')) {
+                    fromEnvelope(JSON.parse(rawStreamText.trim()));
+                } else {
+                    toolCalls = sseState.toolCalls?.length ? sseState.toolCalls
+                        : (sseState.accumulatedArgs ? [{ name: TOOL_PROBE_TOOL.function.name, arguments: sseState.accumulatedArgs }] : []);
+                    content = sseState.accumulatedContent || '';
+                }
+            } else {
+                fromEnvelope(await safeReadJsonResponse(response));
+            }
+            return classifyToolProbe({ toolCalls, content });
+        } catch (err) {
+            return classifyToolProbe({ thrown: err });
+        }
+    }
+
     async function callStructuredCompletion({
         messages,
         tool = null,
@@ -13444,7 +13664,8 @@ SCHEMA:
         signal = null,
         customStore = null,
         fetchFn = null,
-        onProgress = null
+        onProgress = null,
+        _toolFallbackRetried = false
     }) {
         const store = customStore || getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
@@ -13618,10 +13839,53 @@ SCHEMA:
                 throw err;
             }
             if (!isToolCall || !rawReply) {
-                const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
-                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。\n\n【服务端原始响应】:\n${rawReply || rawOutput || '（空）'}`;
-                throw err;
+                // 6.5.49: 正文里带了参数（含中转模拟的 <<TOOL_CALL>> 文本）就直接采用；否则去掉 tools 普通 JSON 重试一次。
+                const recovered = recoverToolArgumentsFromText([rawReply, reasoning, sseState?.accumulatedContent], tool);
+                if (recovered) {
+                    console.info(`[${PLUGIN_NAME}] 模型未返回 tool_calls，已从正文中解析出 ${toolName} 参数并采用`);
+                    isToolCall = true;
+                    rawReply = JSON.stringify(recovered);
+                } else {
+                    const relayError = [rawReply, sseState?.accumulatedContent].find(isRelayErrorText);
+                    if (relayError) throw makeRelayErrorTextError(relayError);
+                    if (signal?.aborted) {
+                        throw signal.reason && typeof signal.reason.message === 'string'
+                            ? signal.reason : Object.assign(new Error('大模型请求已取消'), { name: 'AbortError' });
+                    }
+                    if (_toolFallbackRetried) throw makeToolFallbackError(finishReason, rawReply || rawOutput, true);
+                    console.warn(`[${PLUGIN_NAME}] ⚠️ 模型未返回 ${toolName} 工具调用参数${finishReason ? ` (finish_reason: ${finishReason})` : ''}，自动去掉 tools 改用普通 JSON 模式重试一次`);
+                    if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') toastr.info('模型没按工具调用返回，已自动改用普通模式重试', PLUGIN_NAME);
+                    const schemaText = (() => { try { return JSON.stringify(tool?.function?.parameters || {}); } catch (_) { return '{}'; } })();
+                    const formatNote = `[输出格式] 不要调用任何工具/函数。直接只输出一个 JSON 对象（不要代码块、不要解释），它就是 ${toolName} 工具的参数，结构遵循此 JSON Schema：${schemaText}`;
+                    const retryMessages = (Array.isArray(messages) ? messages : []).map(m => ({ ...m }));
+                    const lastUser = [...retryMessages].reverse().find(m => m.role === 'user' && typeof m.content === 'string');
+                    if (lastUser) lastUser.content += `\n\n${formatNote}`;
+                    else retryMessages.push({ role: 'user', content: formatNote });
+                    let retry;
+                    try {
+                        retry = await callStructuredCompletion({
+                            messages: retryMessages, tool, temperature, signal, fetchFn, onProgress,
+                            customStore: { ...store, toolCallMode: false }, _toolFallbackRetried: true,
+                        });
+                    } catch (retryErr) {
+                        if (retryErr?.name === 'AbortError' || signal?.aborted) throw retryErr;
+                        const err = makeToolFallbackError(finishReason, rawReply || rawOutput, true);
+                        err.retryError = retryErr;
+                        err.rawOutput += `\n\n【普通 JSON 模式重试的错误】: ${retryErr?.message || String(retryErr)}`;
+                        throw err;
+                    }
+                    const retryArgs = recoverToolArgumentsFromText([retry.rawReply, retry.reasoning], tool);
+                    if (retryArgs) return { ...retry, rawReply: JSON.stringify(retryArgs), isToolCall: true, toolName };
+                    let parsedRetry = {};
+                    try { parsedRetry = extractJson(retry.rawReply); } catch (_) {}
+                    if (!parsedRetry || typeof parsedRetry !== 'object' || !Object.keys(parsedRetry).length) {
+                        const err = makeToolFallbackError(finishReason, rawReply || rawOutput, true);
+                        err.rawOutput += `\n\n【普通 JSON 模式重试的返回】:\n${retry.rawOutput || retry.rawReply || '（空）'}`;
+                        throw err;
+                    }
+                    // Let the caller's own parser report schema-level problems (more specific than ours).
+                    return { ...retry, toolName };
+                }
             }
         }
 
@@ -16426,6 +16690,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="通过 generate_draw_spec 工具参数返回分镜结果，自动、手动、测试统一使用。需接口支持 Function Calling；不会关闭服务商的内容审核。"><span>结构化工具调用 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tool-probe-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="用当前填写的接口地址、Key 和模型发一个很小的测试请求，看它能不能正确返回工具调用，并自动打开或关闭左边的开关。"><button id="rbq-sdt-tool-probe" class="menu_button" type="button" style="width:auto;display:inline-flex;align-items:center;gap:6px;">🔍 检测工具调用</button><span id="rbq-sdt-tool-probe-result" style="display:block;margin-top:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;"></span></div>
                         <div id="rbq-sdt-tool-input-description-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" style="min-height:44px;"><span>剧情与资料写入工具说明</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-input-description" type="checkbox" aria-label="剧情与资料写入工具说明"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
@@ -16918,6 +17183,44 @@ SCHEMA:
             }
         });
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
+
+        // 6.5.49: 「🔍 检测工具调用」：用当前表单里的接口/Key/模型测一次，结果决定开关并立即保存。
+        const toolProbeBtn = document.getElementById('rbq-sdt-tool-probe');
+        if (toolProbeBtn) toolProbeBtn.onclick = async () => {
+            const resultEl = document.getElementById('rbq-sdt-tool-probe-result');
+            const toggle = document.getElementById('rbq-sdt-tool-call-mode');
+            const show = (text, color) => { if (resultEl) { resultEl.textContent = text; resultEl.style.color = color || ''; } };
+            const live = getStore();
+            const probeStore = {
+                ...live,
+                openaiBaseUrl: val('rbq-sdt-openai-base').trim(),
+                openaiApiKey: val('rbq-sdt-openai-key').trim(),
+                openaiModel: val('rbq-sdt-openai-model').trim(),
+                openaiModelCustom: val('rbq-sdt-openai-model-custom').trim(),
+                thinkingEffort: val('rbq-sdt-thinking-effort') || live.thinkingEffort || 'default',
+                thinkingBudget: Math.max(0, Number(val('rbq-sdt-thinking-budget')) || live.thinkingBudget || 2048),
+            };
+            toolProbeBtn.disabled = true;
+            show('⏳ 检测中…（发一个很小的测试请求，最多等 60 秒）', '');
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 60000);
+            let outcome;
+            try { outcome = await probeToolCallSupport(probeStore, { signal: controller.signal }); }
+            catch (err) { outcome = classifyToolProbe({ thrown: err }); }
+            finally { clearTimeout(timer); toolProbeBtn.disabled = false; }
+            if (outcome.verdict === 'supported' || outcome.verdict === 'unsupported') {
+                const on = outcome.verdict === 'supported';
+                const s = getStore();
+                s.toolCallMode = on;
+                if (toggle) toggle.checked = on;
+                save();
+                updateProviderVisibility();
+                show(on ? `✅ 支持工具调用（已自动打开并保存）\n${outcome.message}` : `❌ 不支持（已自动关闭并保存）\n${outcome.message}`,
+                    on ? '#4ade80' : '#f87171');
+            } else {
+                show(`⚠️ 检测没有完成\n${outcome.message}`, '#fbbf24');
+            }
+        };
 
         document.getElementById('rbq-sdt-save').onclick = () => {
             const s = getStore();

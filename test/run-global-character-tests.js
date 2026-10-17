@@ -161,7 +161,7 @@ test('updateCharacterProfile (card/manga paths) imports instead of duplicating; 
 
 test('static: SDT never assigns to globalCharacters (parse is read-only)', () => {
     const src = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-trigger.js'), 'utf8');
-    assert.match(src, /const PLUGIN_VERSION = '6\.5\.48'/);
+    assert.match(src, /const PLUGIN_VERSION = '6\.5\.49'/);
     assert.doesNotMatch(src, /globalCharacters\s*(?:\[[^\]]*\]|\.\w+)*\s*=[^=]/);
     assert.doesNotMatch(src, /delete\s+[\w.]*globalCharacters/);
     assert.doesNotMatch(src, /已知全局角色资产/);

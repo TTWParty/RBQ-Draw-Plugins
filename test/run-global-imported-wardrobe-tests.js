@@ -74,12 +74,14 @@ test('manga refs: imported copy carries full wardrobe (with lock flags); ordinar
     const prompt = sdt.buildCharacterMemoryPromptModule(undefined, 3);
     assert.ok(prompt.includes('OUTFIT-11') && prompt.includes('BIKINI'), 'manga prompt JSON carries all outfits');
 });
-test('source: no remaining wardrobe slice(0, 8) outside the helper; version 6.5.48', () => {
+test('source: no remaining wardrobe slice(0, 8) outside the helper; version matches plugins.json', () => {
     const src = fs.readFileSync(path.join(__dirname, '../plugins/smart-draw-trigger.js'), 'utf8');
     assert.equal((src.match(/wardrobe[^\n]*\.slice\(0, 8\)/g) || []).length, 0);
     assert.match(src, /p\?\.importedFromGlobal \? list\.slice\(\) : list\.slice\(0, 8\)/);
-    assert.match(src, /const PLUGIN_VERSION = '6\.5\.48'/);
-    assert.match(fs.readFileSync(path.join(__dirname, '../plugins.json'), 'utf8'), /smart-draw-trigger\.js\?v=6\.5\.48/);
+    const version = (src.match(/const PLUGIN_VERSION = '([\d.]+)'/) || [])[1];
+    const num = v => v.split('.').map(Number).reduce((a, b) => a * 1000 + b, 0);
+    assert.ok(version && num(version) >= num('6.5.48'), 'SDT version present and >= 6.5.48');
+    assert.ok(fs.readFileSync(path.join(__dirname, '../plugins.json'), 'utf8').includes(`smart-draw-trigger.js?v=${version}`));
 });
 
 console.log(`\n${passed} imported global wardrobe tests passed.`);

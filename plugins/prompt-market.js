@@ -24,14 +24,17 @@
         }
     ];
 
-    // 生成专属创作者个人身份码 (RBQ-U-xxxxxxxx)
+    // 生成专属创作者个人身份码 (RBQ-U-xxxxxxxxxxxxxxxx，16 位 hex / 64 bit)
+    // 1.1.31 起使用 crypto.getRandomValues 且长度由 8 位提升到 16 位；旧的 8 位码仍然有效。
     function generateCreatorKey() {
-        const chars = '0123456789abcdef';
-        let rand = '';
-        for (let i = 0; i < 8; i++) {
-            rand += chars[Math.floor(Math.random() * chars.length)];
+        const bytes = new Uint8Array(8);
+        const c = (typeof globalThis !== 'undefined' && globalThis.crypto) || null;
+        if (c && typeof c.getRandomValues === 'function') {
+            c.getRandomValues(bytes);
+        } else {
+            for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
         }
-        return 'RBQ-U-' + rand;
+        return 'RBQ-U-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
     }
 
     // NovelAI 官方常用推荐采样器列表
@@ -52,6 +55,35 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    // 图片 / 封面地址白名单：只允许 http(s) 与 data:image/(png|jpeg|webp|gif|avif);base64；
+    // allowLocal 仅用于本机生图结果 (blob: 与同源 /路径)，社区数据一律不放行。其他协议 (javascript:, data:text/html ...) 返回 fallback。
+    function safeImageUrl(url, fallback = '', opts = {}) {
+        if (typeof url !== 'string') return fallback;
+        const u = url.trim();
+        if (!u) return fallback;
+        if (/^https?:\/\/[^\s"'<>`\\]+$/i.test(u)) return u;
+        if (/^data:image\/(?:png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(u)) return u;
+        if (opts.allowLocal && /^blob:https?:\/\/[^\s"'<>`\\]+$/i.test(u)) return u;
+        if (opts.allowLocal && /^\/(?!\/)[^\s"'<>`\\]*$/.test(u)) return u;
+        return fallback;
+    }
+
+    // 社区计数字段只按非负整数显示
+    function safeCount(v) {
+        const n = Math.floor(Number(v));
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function safeNumber(v, def) {
+        if (v === undefined || v === null || v === '') return def;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : def;
+    }
+
+    function safeTags(tags) {
+        return Array.isArray(tags) ? tags.map(t => String(t ?? '').trim()).filter(Boolean) : [];
     }
 
     // 图片高保真压缩通用函数 (720px / 0.82 WebP，在不支持 WebP 的 Safari/WebKit 环境下智能回退到 high-quality JPEG)
@@ -342,7 +374,7 @@
         try {
             const selectEls = document.querySelectorAll('#rbq-pp-select, #rbq-pp-floating-select');
             selectEls.forEach(sel => {
-                let opt = sel.querySelector(`option[value="${newPresetObj.id}"]`);
+                let opt = Array.from(sel.options || []).find(o => o.value === String(newPresetObj.id));
                 if (!opt) {
                     opt = document.createElement('option');
                     opt.value = newPresetObj.id;
@@ -1360,7 +1392,7 @@
         const cfg = getConfig();
         const modelFilteredList = (cachedList || []).filter(it => {
             if (activeModelFilter === 'mine') {
-                return Boolean((it.creatorKey && cfg.creatorKey && it.creatorKey === cfg.creatorKey) || (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(it.id)));
+                return isMyPreset(it, cfg);
             } else if (activeModelFilter === 'liked') {
                 return Array.isArray(cfg.likedIds) && cfg.likedIds.includes(it.id);
             } else if (activeModelFilter === 'v5') {
@@ -1425,6 +1457,47 @@
         });
     }
 
+    // ── 作品归属判定 ──
+    // 1.1.31 起服务器的公开列表不再返回 creatorKey；改为带鉴权头调用 GET /api/my-presets
+    // 取回“属于我的预设 id 列表”。旧服务器没有该接口时 (404/网络错误) 退回只用本地 myUploadedIds。
+    let serverOwnedIds = new Set();
+
+    function isMyPreset(item, cfg = getConfig()) {
+        if (!item || item.id === undefined || item.id === null) return false;
+        return serverOwnedIds.has(item.id) || (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(item.id));
+    }
+
+    async function refreshMyPresetIds() {
+        const cfg = getConfig();
+        const key = String(cfg.creatorKey || '').trim();
+        const endpoint = String(cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
+        serverOwnedIds = new Set();
+        if (!key || !endpoint) return serverOwnedIds;
+        try {
+            const res = await fetch(`${endpoint}/api/my-presets?_t=${Date.now()}`, {
+                headers: { 'Authorization': `Bearer ${key}` }
+            });
+            if (!res.ok) return serverOwnedIds;
+            const data = await res.json();
+            if (data && Array.isArray(data.ids)) {
+                serverOwnedIds = new Set(data.ids);
+                // 同步到本地，保持“跨端填入个人码即可认领点亮”的旧体验
+                if (!Array.isArray(cfg.myUploadedIds)) cfg.myUploadedIds = [];
+                let syncedAny = false;
+                data.ids.forEach(id => {
+                    if (!cfg.myUploadedIds.includes(id)) {
+                        cfg.myUploadedIds.push(id);
+                        syncedAny = true;
+                    }
+                });
+                if (syncedAny) saveConfig();
+            }
+        } catch (e) {
+            console.warn('[RBQ-Market] 获取我的作品列表失败 (旧版服务器或网络问题)，仅使用本地记录:', e);
+        }
+        return serverOwnedIds;
+    }
+
     // ── 历史预设静默无感自动认领 ──
     async function silentlyClaimMyHistoricalPresets(list) {
         if (!Array.isArray(list) || list.length === 0) return;
@@ -1434,9 +1507,13 @@
         if (!uploadEndpoint) return;
 
         // 筛选出本地记录了上传凭据、但云端尚未绑定创作者码的预设
-        const unclaimed = list.filter(item =>
-            cfg.myUploadedIds.includes(item.id) && (!item.creatorKey || !item.creatorKey.trim())
-        );
+        // 1.1.31+ 服务器只返回 hasOwner 布尔值；旧服务器仍可能返回 creatorKey
+        const alreadyBound = (item) => {
+            if (serverOwnedIds.has(item.id)) return true;
+            if (typeof item.hasOwner === 'boolean') return item.hasOwner;
+            return Boolean(item.creatorKey && String(item.creatorKey).trim());
+        };
+        const unclaimed = list.filter(item => cfg.myUploadedIds.includes(item.id) && !alreadyBound(item));
 
         if (unclaimed.length === 0) return;
 
@@ -1454,7 +1531,8 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    item.creatorKey = cfg.creatorKey;
+                    item.hasOwner = true;
+                    serverOwnedIds.add(item.id);
                     claimedAny = true;
                     console.log(`[RBQ-Market] 静默认领成功: 预设「${item.title}」已永久固化至创作者码`);
                 }
@@ -1474,20 +1552,8 @@
         try {
             const list = await fetchCloudIndex();
             cachedList = Array.isArray(list) ? list : BUILTIN_PRESETS;
-            // 自动同步属于当前创作者个人码的预设到本地缓存，跨端/跨浏览器即时认领点亮
-            const cfg = getConfig();
-            if (cfg.creatorKey && Array.isArray(cachedList)) {
-                let syncedAny = false;
-                cachedList.forEach(item => {
-                    if (item.creatorKey && item.creatorKey === cfg.creatorKey) {
-                        if (!cfg.myUploadedIds.includes(item.id)) {
-                            cfg.myUploadedIds.push(item.id);
-                            syncedAny = true;
-                        }
-                    }
-                });
-                if (syncedAny) saveConfig();
-            }
+            // 自动同步属于当前创作者个人码的预设，跨端/跨浏览器即时认领点亮 (鉴权接口，不再读公开列表里的 creatorKey)
+            await refreshMyPresetIds();
             refreshDynamicTags();
             renderCards();
             silentlyClaimMyHistoricalPresets(cachedList);
@@ -1496,6 +1562,72 @@
             refreshDynamicTags();
             renderCards();
         }
+    }
+
+    // ── 卡片 HTML（纯函数：所有社区字段都经过转义 / URL 校验） ──
+    function buildCardHtml(item, flags = {}) {
+        const { isInstalled = false, isLiked = false, isMyWork = false, isAdmin = false } = flags;
+        const previewSrc = safeImageUrl(item.previewUrl, KAMI_DEFAULT_PREVIEW);
+
+        // 模型 Badge 样式判定
+        const m = String(item.model || '').toLowerCase();
+        const itemTags = safeTags(item.tags);
+        let modelBadgeClass = 'rbq-pm-badge-gen';
+        let modelBadgeText = '通用';
+        let modelBadgeIcon = '';
+        if (m === 'v5' || itemTags.includes('NAI V5')) {
+            modelBadgeClass = 'rbq-pm-badge-v5';
+            modelBadgeText = 'NAI V5';
+            modelBadgeIcon = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
+        } else if (m === 'v4.5' || itemTags.includes('NAI V4.5')) {
+            modelBadgeClass = 'rbq-pm-badge-v45';
+            modelBadgeText = 'NAI V4.5';
+            modelBadgeIcon = '<i class="fa-solid fa-bolt"></i>';
+        }
+
+        return `
+            <div class="rbq-pm-img-wrap">
+                <img src="${escapeHtml(previewSrc)}" alt="${escapeHtml(item.title)}" loading="lazy">
+                <div class="rbq-pm-badge-model ${modelBadgeClass}">${modelBadgeIcon} <span>${modelBadgeText}</span></div>
+                ${isMyWork ? '<div class="rbq-pm-badge-mine" title="你发布的作品"><i class="fa-solid fa-crown"></i> <span>我的</span></div>' : ''}
+                <button class="rbq-pm-card-like ${isLiked ? 'is-liked' : ''}" title="点赞预设">
+                    <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
+                    <span class="rbq-pm-like-num">${safeCount(item.likes)}</span>
+                </button>
+                ${safeImageUrl(item.referenceUrl) ? `
+                <div class="rbq-pm-badge-ref" title="附带作者自制效果参考图" style="position:absolute; bottom:6px; left:6px; background:rgba(0,0,0,0.72); backdrop-filter:blur(4px); font-size:9.5px; padding:2px 6px; border-radius:4px; color:#38bdf8; border:1px solid rgba(56,189,248,0.35); z-index:2; display:flex; align-items:center; gap:3px; font-weight:600;">
+                    <i class="fa-solid fa-images"></i> 附参考图
+                </div>` : ''}
+                <div style="position: absolute; bottom: 0; inset-inline: 0; height: 32px; background: linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events: none;"></div>
+            </div>
+            <div class="rbq-pm-card-info">
+                <div class="rbq-pm-card-title" title="${escapeHtml(item.title)}">
+                    ${escapeHtml(item.title)}
+                </div>
+                <div class="rbq-pm-card-meta">
+                    <span class="rbq-pm-card-author" title="${escapeHtml(item.author || '匿名')}">
+                        <i class="fa-regular fa-user" style="font-size: 9.5px;"></i>
+                        <span>${escapeHtml(item.author || '匿名')}</span>
+                        ${(isAdmin && !isMyWork) ? '<span title="管理员巡查模式" style="font-size:9.5px; opacity:0.75;">🛡️</span>' : ''}
+                    </span>
+                    <div class="rbq-pm-card-actions">
+                        <button class="rbq-pm-card-test-btn menu_button" title="现场出图试用此画师串">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>测试</span>
+                        </button>
+                        <button class="rbq-pm-install-btn menu_button" style="
+                            background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
+                            border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
+                            color: ${isInstalled ? '#22c55e' : '#fff'};
+                            cursor: pointer;
+                        ">
+                            <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
+                            <span>${isInstalled ? '已装' : '安装'}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     function renderCards() {
@@ -1510,10 +1642,7 @@
         if (activeModelFilter !== 'all') {
             if (activeModelFilter === 'mine') {
                 items = items.filter(it => {
-                    return Boolean(
-                        (it.creatorKey && cfg.creatorKey && it.creatorKey === cfg.creatorKey) ||
-                        (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(it.id))
-                    );
+                    return isMyPreset(it, cfg);
                 });
             } else if (activeModelFilter === 'liked') {
                 items = items.filter(it => Array.isArray(cfg.likedIds) && cfg.likedIds.includes(it.id));
@@ -1595,74 +1724,12 @@
         items.forEach(item => {
             const isInstalled = cfg.installedIds.includes(item.id);
             const isLiked = cfg.likedIds.includes(item.id);
-            const isMyWork = Boolean(
-                (item.creatorKey && cfg.creatorKey && item.creatorKey === cfg.creatorKey) ||
-                (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(item.id))
-            );
+            const isMyWork = isMyPreset(item, cfg);
             const isAdmin = Boolean(cfg.adminKey && cfg.adminKey.trim());
             const card = document.createElement('div');
             card.className = 'rbq-pm-card';
 
-            const previewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
-
-            // 模型 Badge 样式判定
-            const m = (item.model || '').toLowerCase();
-            let modelBadgeClass = 'rbq-pm-badge-gen';
-            let modelBadgeText = '通用';
-            let modelBadgeIcon = '';
-            if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
-                modelBadgeClass = 'rbq-pm-badge-v5';
-                modelBadgeText = 'NAI V5';
-                modelBadgeIcon = '<i class="fa-solid fa-wand-magic-sparkles"></i>';
-            } else if (m === 'v4.5' || (item.tags || []).includes('NAI V4.5')) {
-                modelBadgeClass = 'rbq-pm-badge-v45';
-                modelBadgeText = 'NAI V4.5';
-                modelBadgeIcon = '<i class="fa-solid fa-bolt"></i>';
-            }
-
-            card.innerHTML = `
-                <div class="rbq-pm-img-wrap">
-                    <img src="${previewSrc}" alt="${item.title}" loading="lazy">
-                    <div class="rbq-pm-badge-model ${modelBadgeClass}">${modelBadgeIcon} <span>${modelBadgeText}</span></div>
-                    ${isMyWork ? '<div class="rbq-pm-badge-mine" title="你发布的作品"><i class="fa-solid fa-crown"></i> <span>我的</span></div>' : ''}
-                    <button class="rbq-pm-card-like ${isLiked ? 'is-liked' : ''}" title="点赞预设">
-                        <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i>
-                        <span class="rbq-pm-like-num">${item.likes || 0}</span>
-                    </button>
-                    ${item.referenceUrl ? `
-                    <div class="rbq-pm-badge-ref" title="附带作者自制效果参考图" style="position:absolute; bottom:6px; left:6px; background:rgba(0,0,0,0.72); backdrop-filter:blur(4px); font-size:9.5px; padding:2px 6px; border-radius:4px; color:#38bdf8; border:1px solid rgba(56,189,248,0.35); z-index:2; display:flex; align-items:center; gap:3px; font-weight:600;">
-                        <i class="fa-solid fa-images"></i> 附参考图
-                    </div>` : ''}
-                    <div style="position: absolute; bottom: 0; inset-inline: 0; height: 32px; background: linear-gradient(transparent, rgba(15,23,42,0.85)); pointer-events: none;"></div>
-                </div>
-                <div class="rbq-pm-card-info">
-                    <div class="rbq-pm-card-title" title="${item.title}">
-                        ${item.title}
-                    </div>
-                    <div class="rbq-pm-card-meta">
-                        <span class="rbq-pm-card-author" title="${item.author || '匿名'}">
-                            <i class="fa-regular fa-user" style="font-size: 9.5px;"></i>
-                            <span>${item.author || '匿名'}</span>
-                            ${(isAdmin && !isMyWork) ? '<span title="管理员巡查模式" style="font-size:9.5px; opacity:0.75;">🛡️</span>' : ''}
-                        </span>
-                        <div class="rbq-pm-card-actions">
-                            <button class="rbq-pm-card-test-btn menu_button" title="现场出图试用此画师串">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                <span>测试</span>
-                            </button>
-                            <button class="rbq-pm-install-btn menu_button" style="
-                                background: ${isInstalled ? 'rgba(34, 197, 94, 0.15)' : 'linear-gradient(135deg, #0284c7, #2563eb)'};
-                                border: 1px solid ${isInstalled ? '#22c55e' : 'transparent'};
-                                color: ${isInstalled ? '#22c55e' : '#fff'};
-                                cursor: pointer;
-                            ">
-                                <i class="fa-solid ${isInstalled ? 'fa-check' : 'fa-download'}"></i>
-                                <span>${isInstalled ? '已装' : '安装'}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
+            card.innerHTML = buildCardHtml(item, { isInstalled, isLiked, isMyWork, isAdmin });
 
             // 点击卡片直接打开详情 (排除点赞、测试、安装等交互按钮)
             card.onclick = async (e) => {
@@ -1819,7 +1886,7 @@
                         </div>
                         <div style="display:flex; align-items:center; gap:12px; background:rgba(0,0,0,0.25); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:8px 10px;">
                             <div id="rbq-pm-edit-bm-card" style="width:70px; aspect-ratio:3/4; border-radius:6px; overflow:hidden; background:#070b13; border:1px solid rgba(217,70,239,0.5); position:relative; cursor:zoom-in; flex-shrink:0;" title="点击放大">
-                                <img id="rbq-pm-edit-bm-img" src="${escapeHtml(item.previewUrl || KAMI_DEFAULT_PREVIEW)}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                                <img id="rbq-pm-edit-bm-img" src="${escapeHtml(safeImageUrl(item.previewUrl, KAMI_DEFAULT_PREVIEW))}" style="width:100%; height:100%; object-fit:cover; display:block;">
                             </div>
                             <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
                                 <div id="rbq-pm-edit-bm-status" style="font-size:11px; color:#f0abfc; font-weight:600;">
@@ -1861,7 +1928,7 @@
                         <!-- 参考图展示态 (已有或新选中) -->
                         <div id="rbq-pm-edit-ref-card-box" style="display:${item.referenceUrl ? 'flex' : 'none'}; align-items:center; gap:12px; background:rgba(0,0,0,0.25); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:8px 10px;">
                             <div id="rbq-pm-edit-ref-card" style="width:70px; aspect-ratio:3/4; border-radius:6px; overflow:hidden; background:#070b13; border:1px solid rgba(56,189,248,0.5); position:relative; cursor:zoom-in; flex-shrink:0;" title="点击放大">
-                                <img id="rbq-pm-edit-ref-img" src="${escapeHtml(item.referenceUrl || '')}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                                <img id="rbq-pm-edit-ref-img" src="${escapeHtml(safeImageUrl(item.referenceUrl))}" style="width:100%; height:100%; object-fit:cover; display:block;">
                             </div>
                             <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
                                 <div id="rbq-pm-edit-ref-status" style="font-size:11px; color:#7dd3fc; font-weight:600;">
@@ -2056,7 +2123,7 @@
                     refImg.src = b64;
                     refEmptyEl.style.display = 'none';
                     refCardBox.style.display = 'flex';
-                    refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 新选中的参考图 (${file.name})`;
+                    refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 新选中的参考图 (${escapeHtml(file.name)})`;
                     refSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
                     toastr.success(`🎉 已选择「${file.name}」作为新参考图！`);
                 };
@@ -2202,41 +2269,33 @@
         };
     }
 
-    // ── 预设详情弹窗 (2-Column 视觉工作台 + NAI 生图参数罗盘) ──
-    function openDetailDialog(item) {
-        const cfg = getConfig();
-        const isMyWork = Boolean(
-            (item.creatorKey && cfg.creatorKey && item.creatorKey === cfg.creatorKey) ||
-            (Array.isArray(cfg.myUploadedIds) && cfg.myUploadedIds.includes(item.id))
-        );
-        const isAdmin = Boolean(cfg.adminKey && cfg.adminKey.trim());
-
-        const overlay = document.createElement('div');
-        overlay.id = 'rbq-pm-detail-dialog';
-        overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483642; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
-
-        const previewSrc = item.previewUrl || KAMI_DEFAULT_PREVIEW;
-        let currentViewSrc = previewSrc;
-        const hasReference = Boolean(item.referenceUrl && item.referenceUrl.trim());
-        const m = (item.model || '').toLowerCase();
+    // ── 详情弹窗 HTML（纯函数：所有社区字段都经过转义 / URL 校验） ──
+    function buildDetailHtml(item, flags = {}) {
+        const { isMyWork = false, isAdmin = false } = flags;
+        const previewSrc = safeImageUrl(item.previewUrl, KAMI_DEFAULT_PREVIEW);
+        const referenceSrc = safeImageUrl(item.referenceUrl);
+        const currentViewSrc = previewSrc;
+        const hasReference = Boolean(referenceSrc);
+        const m = String(item.model || '').toLowerCase();
+        const itemTags = safeTags(item.tags);
         let modelBadge = '<span style="font-size:10px; background:rgba(255,255,255,0.1); color:#cbd5e1; padding:2px 7px; border-radius:4px;">通用</span>';
-        if (m === 'v5' || (item.tags || []).includes('NAI V5')) {
+        if (m === 'v5' || itemTags.includes('NAI V5')) {
             modelBadge = '<span style="font-size:10px; background:rgba(217,70,239,0.25); color:#f0abfc; padding:2px 7px; border-radius:4px; border:1px solid rgba(217,70,239,0.5);"><i class="fa-solid fa-wand-magic-sparkles"></i> NAI V5</span>';
-        } else if (m === 'v4.5' || (item.tags || []).includes('NAI V4.5')) {
+        } else if (m === 'v4.5' || itemTags.includes('NAI V4.5')) {
             modelBadge = '<span style="font-size:10px; background:rgba(56,189,248,0.25); color:#7dd3fc; padding:2px 7px; border-radius:4px; border:1px solid rgba(56,189,248,0.5);"><i class="fa-solid fa-bolt"></i> NAI V4.5</span>';
         }
 
-        const p = item.params || {};
-        const scaleVal = p.scale !== undefined && p.scale !== null ? Number(p.scale) : 6.0;
-        const samplerVal = p.sampler || 'k_euler_ancestral';
-        const stepsVal = p.steps !== undefined && p.steps !== null ? Number(p.steps) : 28;
-        const cfgRescaleVal = p.cfgRescale !== undefined && p.cfgRescale !== null ? Number(p.cfgRescale) : 0;
+        const p = (item.params && typeof item.params === 'object') ? item.params : {};
+        const scaleVal = safeNumber(p.scale, 6.0);
+        const samplerVal = String(p.sampler || 'k_euler_ancestral');
+        const stepsVal = safeNumber(p.steps, 28);
+        const cfgRescaleVal = safeNumber(p.cfgRescale, 0);
 
-        overlay.innerHTML = `
+        return `
             <div style="width:92vw; max-width:780px; max-height:88vh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
                 <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:15px; font-weight:700; display:flex; align-items:center; gap:8px;">
-                        <span>${item.title}</span>
+                        <span>${escapeHtml(item.title)}</span>
                         ${modelBadge}
                         ${isMyWork ? '<span class="rbq-pm-badge-author-mine"><i class="fa-solid fa-crown"></i> 我的作品</span>' : ''}
                     </div>
@@ -2260,7 +2319,7 @@
                                 <i class="fa-solid fa-spinner fa-spin" style="font-size:22px;"></i>
                                 <span style="font-weight:600;">正在加载展示图...</span>
                             </div>
-                            <img id="rbq-pm-detail-main-img" src="${currentViewSrc}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:opacity 0.25s ease;">
+                            <img id="rbq-pm-detail-main-img" src="${escapeHtml(currentViewSrc)}" style="width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; transition:opacity 0.25s ease;">
                             <div id="rbq-pm-detail-img-badge" style="position:absolute; top:7px; left:7px; z-index:4; background:linear-gradient(135deg, rgba(168,85,247,0.9), rgba(236,72,153,0.9)); color:#fff; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4);">
                                 <i class="fa-solid fa-flask"></i> 官方基准图
                             </div>
@@ -2269,9 +2328,9 @@
                             </div>
                         </div>
                         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px; font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:4px;">
-                            <div>作者: <strong style="color:#f1f5f9;">${item.author || '匿名'}</strong></div>
-                            <div>获赞: <strong style="color:#fb7185;">${item.likes || 0}</strong> | 下载: ${item.downloads || 0}</div>
-                            ${(item.tags && item.tags.length) ? `<div>标签: ${item.tags.map(t => '#' + t).join(' ')}</div>` : ''}
+                            <div>作者: <strong style="color:#f1f5f9;">${escapeHtml(item.author || '匿名')}</strong></div>
+                            <div>获赞: <strong style="color:#fb7185;">${safeCount(item.likes)}</strong> | 下载: ${safeCount(item.downloads)}</div>
+                            ${itemTags.length ? `<div>标签: ${itemTags.map(t => '#' + escapeHtml(t)).join(' ')}</div>` : ''}
                         </div>
                     </div>
 
@@ -2285,7 +2344,7 @@
                                 </button>
                             </div>
                             <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#e2e8f0; line-height:1.55; word-break:break-word; max-height:110px; overflow-y:auto; user-select:text;">
-                                ${item.positive || '(无)'}
+                                ${escapeHtml(item.positive || '(无)')}
                             </div>
                         </div>
 
@@ -2298,7 +2357,7 @@
                                 </button>
                             </div>
                             <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; font-size:12px; color:#fca5a5; line-height:1.55; word-break:break-word; max-height:75px; overflow-y:auto; user-select:text;">
-                                ${item.negative}
+                                ${escapeHtml(item.negative)}
                             </div>
                         </div>` : ''}
 
@@ -2312,19 +2371,19 @@
                             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(75px, 1fr)); gap:8px;">
                                 <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; text-align:center;">
                                     <div style="font-size:10px; color:#94a3b8; margin-bottom:2px;">Scale (CFG)</div>
-                                    <div style="font-size:13.5px; font-weight:700; color:#38bdf8; font-family:monospace;">${scaleVal}</div>
+                                    <div style="font-size:13.5px; font-weight:700; color:#38bdf8; font-family:monospace;">${escapeHtml(scaleVal)}</div>
                                 </div>
-                                <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; text-align:center;" title="${samplerVal}">
+                                <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; text-align:center;" title="${escapeHtml(samplerVal)}">
                                     <div style="font-size:10px; color:#94a3b8; margin-bottom:2px;">采样器</div>
-                                    <div style="font-size:11px; font-weight:700; color:#f0abfc; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${formatSampler(samplerVal)}</div>
+                                    <div style="font-size:11px; font-weight:700; color:#f0abfc; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(formatSampler(samplerVal))}</div>
                                 </div>
                                 <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; text-align:center;">
                                     <div style="font-size:10px; color:#94a3b8; margin-bottom:2px;">步数 (Steps)</div>
-                                    <div style="font-size:13.5px; font-weight:700; color:#4ade80; font-family:monospace;">${stepsVal}</div>
+                                    <div style="font-size:13.5px; font-weight:700; color:#4ade80; font-family:monospace;">${escapeHtml(stepsVal)}</div>
                                 </div>
                                 <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; text-align:center;">
                                     <div style="font-size:10px; color:#94a3b8; margin-bottom:2px;">CFG Rescale</div>
-                                    <div style="font-size:13.5px; font-weight:700; color:#fbbf24; font-family:monospace;">${cfgRescaleVal}</div>
+                                    <div style="font-size:13.5px; font-weight:700; color:#fbbf24; font-family:monospace;">${escapeHtml(cfgRescaleVal)}</div>
                                 </div>
                             </div>
                         </div>
@@ -2332,7 +2391,7 @@
                 </div>
                 <div class="rbq-pm-detail-foot" style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                     <div style="font-size:11px; color:#64748b; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <span>预设ID: <code style="color:#94a3b8; font-size:10.5px;">${item.id || 'community'}</code></span>
+                        <span>预设ID: <code style="color:#94a3b8; font-size:10.5px;">${escapeHtml(item.id || 'community')}</code></span>
                         ${(isMyWork || isAdmin) ? `
                             <button id="rbq-pm-detail-edit-btn" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(56,189,248,0.18); border:1px solid rgba(56,189,248,0.45); color:#7dd3fc; font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer;" title="修改预设信息、追加标签或编辑提示词">
                                 <i class="fa-solid fa-pen-to-square"></i>
@@ -2351,14 +2410,32 @@
                 </div>
             </div>
         `;
+    }
+
+    // ── 预设详情弹窗 (2-Column 视觉工作台 + NAI 生图参数罗盘) ──
+    function openDetailDialog(item) {
+        const cfg = getConfig();
+        const isMyWork = isMyPreset(item, cfg);
+        const isAdmin = Boolean(cfg.adminKey && cfg.adminKey.trim());
+
+        const overlay = document.createElement('div');
+        overlay.id = 'rbq-pm-detail-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483642; background:rgba(0,0,0,0.82); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
+
+        const previewSrc = safeImageUrl(item.previewUrl, KAMI_DEFAULT_PREVIEW);
+        const referenceSrc = safeImageUrl(item.referenceUrl);
+        let currentViewSrc = previewSrc;
+        const hasReference = Boolean(referenceSrc);
+
+        overlay.innerHTML = buildDetailHtml(item, { isMyWork, isAdmin });
         document.body.appendChild(overlay);
         bindFastClose(overlay.querySelector('#rbq-pm-detail-close'), () => closeSubDialog(overlay));
         bindDialogBackdropClose(overlay);
 
         // 预加载作者自制参考图（如果存在），消除切换白屏或等待延迟
-        if (hasReference && item.referenceUrl) {
+        if (hasReference) {
             const preImg = new Image();
-            preImg.src = item.referenceUrl;
+            preImg.src = referenceSrc;
         }
 
         // 双图平滑切换逻辑 (官方基准测试图 vs 作者自制参考图)
@@ -2420,8 +2497,8 @@
         }
 
         if (tabBm && tabRef && mainImg) {
-            tabBm.onclick = () => switchDetailView(item.previewUrl || KAMI_DEFAULT_PREVIEW, false);
-            tabRef.onclick = () => switchDetailView(item.referenceUrl, true);
+            tabBm.onclick = () => switchDetailView(previewSrc, false);
+            tabRef.onclick = () => switchDetailView(referenceSrc, true);
         }
 
         // 点击预览图放大 Lightbox
@@ -2431,7 +2508,7 @@
                 const lb = document.createElement('div');
                 lb.id = 'rbq-pm-lightbox';
                 lb.style.cssText = 'position:fixed; inset:0; z-index:2147483646; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; backdrop-filter:blur(10px);';
-                lb.innerHTML = `<img src="${currentViewSrc}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
+                lb.innerHTML = `<img src="${escapeHtml(safeImageUrl(currentViewSrc, KAMI_DEFAULT_PREVIEW))}" style="max-width:92vw; max-height:92vh; object-fit:contain; border-radius:8px; box-shadow:0 0 40px rgba(0,0,0,0.9);">`;
                 bindFastClose(lb, () => closeSubDialog(lb));
                 bindDialogBackdropClose(lb);
                 document.body.appendChild(lb);
@@ -2481,6 +2558,7 @@
                         cachedList = cachedList.filter(x => x.id !== item.id);
                         if (Array.isArray(cfg.myUploadedIds)) {
                             cfg.myUploadedIds = cfg.myUploadedIds.filter(id => id !== item.id);
+                            serverOwnedIds.delete(item.id);
                             saveConfig();
                         }
                         closeSubDialog(overlay);
@@ -2543,15 +2621,15 @@
                 <div style="padding:14px 16px; display:flex; flex-direction:column; gap:10px; overflow-y:auto;">
                     <div>
                         <label style="font-size:11px; color:#94a3b8; display:block; margin-bottom:4px;">底模名称 *</label>
-                        <input id="rbq-pm-edit-title" type="text" placeholder="例如: 我的自设OC / 水手服特写 / 动作体态测试" value="${initialTitle.replace(/"/g, '&quot;')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-edit-title" type="text" placeholder="例如: 我的自设OC / 水手服特写 / 动作体态测试" value="${escapeHtml(initialTitle)}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                     </div>
                     <div>
                         <label style="font-size:11px; color:#38bdf8; font-weight:600; display:block; margin-bottom:4px;">正面底模提示词 (Positive) *</label>
-                        <textarea id="rbq-pm-edit-pos" rows="5" placeholder="输入主体底模提示词，如: 1girl, solo, silver hair, blue eyes..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:11.5px; font-family:monospace; box-sizing:border-box;">${initialPos}</textarea>
+                        <textarea id="rbq-pm-edit-pos" rows="5" placeholder="输入主体底模提示词，如: 1girl, solo, silver hair, blue eyes..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:11.5px; font-family:monospace; box-sizing:border-box;">${escapeHtml(initialPos)}</textarea>
                     </div>
                     <div>
                         <label style="font-size:11px; color:#f87171; font-weight:600; display:block; margin-bottom:4px;">负面提示词 (Negative - 可选)</label>
-                        <textarea id="rbq-pm-edit-neg" rows="2" placeholder="可选负面提示词，如: lowres, bad anatomy..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:11.5px; font-family:monospace; box-sizing:border-box;">${initialNeg}</textarea>
+                        <textarea id="rbq-pm-edit-neg" rows="2" placeholder="可选负面提示词，如: lowres, bad anatomy..." style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:8px; color:#fff; font-size:11.5px; font-family:monospace; box-sizing:border-box;">${escapeHtml(initialNeg)}</textarea>
                     </div>
                     <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#cbd5e1; cursor:pointer; user-select:none; margin-top:2px;">
                         <input id="rbq-pm-edit-is-default" type="checkbox" ${initialDefault ? 'checked' : ''} style="cursor:pointer; accent-color:#a855f7;">
@@ -2595,6 +2673,52 @@
             onSave(updatedObj);
             closeSubDialog(subOverlay);
         };
+    }
+
+    // ── 测串词卡片 HTML（本地/导入的测串词同样按不可信文本转义） ──
+    function buildTestPromptCardHtml(item, idx) {
+        return `
+        <div class="rbq-pm-test-card" data-idx="${Number(idx)}" style="background:#131c2e; border:1px solid ${item.isDefault ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)'}; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:13.5px; font-weight:700; color:#f1f5f9;">${escapeHtml(item.title || '未命名测串词')}</span>
+                    ${item.isDefault ? `
+                        <span style="font-size:10px; font-weight:700; background:rgba(168,85,247,0.25); color:#d8b4fe; border:1px solid rgba(168,85,247,0.5); padding:1px 6px; border-radius:4px;">
+                            <i class="fa-solid fa-star"></i> 默认底模
+                        </span>
+                    ` : `
+                        <button class="rbq-pm-test-set-default menu_button" data-idx="${Number(idx)}" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:10.5px; padding:1.5px 7px; border-radius:4px; cursor:pointer;">
+                            设为默认
+                        </button>
+                    `}
+                    ${item.isBuiltin ? `
+                        <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">官方基准</span>
+                    ` : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button class="rbq-pm-test-copy-btn menu_button" data-idx="${Number(idx)}" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;" title="复制正面提示词">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                    <button class="rbq-pm-test-edit-btn menu_button" data-idx="${Number(idx)}" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#38bdf8; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
+                        <i class="fa-solid fa-pen-to-square"></i> 编辑
+                    </button>
+                    ${!item.isBuiltin ? `
+                        <button class="rbq-pm-test-del-btn menu_button" data-idx="${Number(idx)}" style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+            <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:8px 10px; font-size:11.5px; color:#cbd5e1; line-height:1.45; word-break:break-word; max-height:60px; overflow-y:auto; font-family:monospace;">
+                ${escapeHtml(item.positive || '(无正面提示词)')}
+            </div>
+            ${item.negative ? `
+                <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(239,68,68,0.15); border-radius:6px; padding:6px 10px; font-size:11px; color:#fca5a5; line-height:1.4; word-break:break-word; max-height:45px; overflow-y:auto; font-family:monospace;">
+                    <span style="color:#ef4444; font-weight:600;">负面: </span>${escapeHtml(item.negative)}
+                </div>
+            ` : ''}
+        </div>
+        `;
     }
 
     // ── 测串提示词库管理弹窗 ──
@@ -2648,48 +2772,7 @@
 
                     <!-- Items List -->
                     <div id="rbq-pm-test-list" style="padding:14px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:12px;">
-                        ${list.map((item, idx) => `
-                            <div class="rbq-pm-test-card" data-idx="${idx}" style="background:#131c2e; border:1px solid ${item.isDefault ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)'}; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; box-shadow:0 4px 12px rgba(0,0,0,0.25);">
-                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                                    <div style="display:flex; align-items:center; gap:8px;">
-                                        <span style="font-size:13.5px; font-weight:700; color:#f1f5f9;">${item.title || '未命名测串词'}</span>
-                                        ${item.isDefault ? `
-                                            <span style="font-size:10px; font-weight:700; background:rgba(168,85,247,0.25); color:#d8b4fe; border:1px solid rgba(168,85,247,0.5); padding:1px 6px; border-radius:4px;">
-                                                <i class="fa-solid fa-star"></i> 默认底模
-                                            </span>
-                                        ` : `
-                                            <button class="rbq-pm-test-set-default menu_button" data-idx="${idx}" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:10.5px; padding:1.5px 7px; border-radius:4px; cursor:pointer;">
-                                                设为默认
-                                            </button>
-                                        `}
-                                        ${item.isBuiltin ? `
-                                            <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">官方基准</span>
-                                        ` : ''}
-                                    </div>
-                                    <div style="display:flex; align-items:center; gap:6px;">
-                                        <button class="rbq-pm-test-copy-btn menu_button" data-idx="${idx}" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; padding:2px 7px; border-radius:4px; cursor:pointer;" title="复制正面提示词">
-                                            <i class="fa-solid fa-copy"></i>
-                                        </button>
-                                        <button class="rbq-pm-test-edit-btn menu_button" data-idx="${idx}" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#38bdf8; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
-                                            <i class="fa-solid fa-pen-to-square"></i> 编辑
-                                        </button>
-                                        ${!item.isBuiltin ? `
-                                            <button class="rbq-pm-test-del-btn menu_button" data-idx="${idx}" style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">
-                                                <i class="fa-solid fa-trash"></i>
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                </div>
-                                <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:8px 10px; font-size:11.5px; color:#cbd5e1; line-height:1.45; word-break:break-word; max-height:60px; overflow-y:auto; font-family:monospace;">
-                                    ${item.positive || '(无正面提示词)'}
-                                </div>
-                                ${item.negative ? `
-                                    <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(239,68,68,0.15); border-radius:6px; padding:6px 10px; font-size:11px; color:#fca5a5; line-height:1.4; word-break:break-word; max-height:45px; overflow-y:auto; font-family:monospace;">
-                                        <span style="color:#ef4444; font-weight:600;">负面: </span>${item.negative}
-                                    </div>
-                                ` : ''}
-                            </div>
-                        `).join('')}
+                        ${list.map((item, idx) => buildTestPromptCardHtml(item, idx)).join('')}
                     </div>
 
                     <!-- Footer -->
@@ -2860,7 +2943,7 @@
         let currentTab = 'original'; // 默认直接呈现工坊原展示图，出图后自动切至现场实测
         let isGenerating = false;
 
-        const originalSrc = preset.previewUrl || preset.preview || preset.previewBase64 || preset.image || KAMI_DEFAULT_PREVIEW;
+        const originalSrc = safeImageUrl(preset.previewUrl || preset.preview || preset.previewBase64 || preset.image, KAMI_DEFAULT_PREVIEW);
 
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-live-test-dialog';
@@ -3084,7 +3167,7 @@
                 } else if (liveImageUrl) {
                     frame.innerHTML = `
                         <div id="rbq-pm-live-img-inner" style="width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; cursor:zoom-in;">
-                            <img src="${liveImageUrl}" style="width:100%; height:100%; object-fit:contain; border-radius:10px;">
+                            <img src="${escapeHtml(safeImageUrl(liveImageUrl, '', { allowLocal: true }))}" style="width:100%; height:100%; object-fit:contain; border-radius:10px;">
                             <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); border:1px solid rgba(168,85,247,0.5); color:#d8b4fe; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:5px;">
                                 <i class="fa-solid fa-bolt"></i> 现场实测图 (点击放大)
                             </div>
@@ -3114,7 +3197,7 @@
                 // 原展示图
                 frame.innerHTML = `
                     <div id="rbq-pm-live-orig-inner" style="width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; cursor:zoom-in;">
-                        <img src="${originalSrc}" style="width:100%; height:100%; object-fit:contain; border-radius:10px;">
+                        <img src="${escapeHtml(originalSrc)}" style="width:100%; height:100%; object-fit:contain; border-radius:10px;">
                         <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); border:1px solid rgba(56,189,248,0.5); color:#7dd3fc; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:5px;">
                             <i class="fa-solid fa-image"></i> 工坊展示原图 (点击放大)
                         </div>
@@ -3142,7 +3225,8 @@
 
         // 保存图片
         overlay.querySelector('#rbq-pm-live-download-btn').onclick = () => {
-            const targetUrl = (currentTab === 'live' && liveImageUrl) ? liveImageUrl : originalSrc;
+            const rawTarget = (currentTab === 'live' && liveImageUrl) ? liveImageUrl : originalSrc;
+            const targetUrl = safeImageUrl(rawTarget, '', { allowLocal: true });
             if (!targetUrl) return toastr.warning('当前无可用图片');
             const a = document.createElement('a');
             a.href = targetUrl;
@@ -3184,7 +3268,7 @@
                 selectedBenchmarkId = testPrompts.find(tp => tp.isDefault)?.id || testPrompts[0]?.id || 'kami-greenhouse';
             }
             bmSelect.innerHTML = testPrompts.map(tp => `
-                <option value="${tp.id}" ${tp.id === selectedBenchmarkId ? 'selected' : ''}>
+                <option value="${escapeHtml(tp.id)}" ${tp.id === selectedBenchmarkId ? 'selected' : ''}>
                     ${escapeHtml(tp.title || '未命名')} ${tp.isDefault ? '⭐' : ''}
                 </option>
             `).join('');
@@ -3291,7 +3375,7 @@
             stepsInput.value = prSteps;
             rescaleInput.value = prRescale;
             updateParamModeButtons('preset');
-            hintSpan.innerHTML = `<span style="color:#c084fc;"><i class="fa-solid fa-wand-magic-sparkles"></i> 已载入预设推荐参数 (CFG: ${prScale} | 采样器: ${prSampler} | 步数: ${prSteps})</span>`;
+            hintSpan.innerHTML = `<span style="color:#c084fc;"><i class="fa-solid fa-wand-magic-sparkles"></i> 已载入预设推荐参数 (CFG: ${escapeHtml(prScale)} | 采样器: ${escapeHtml(prSampler)} | 步数: ${escapeHtml(prSteps)})</span>`;
             toastr.info('已载入该预设作者推荐参数');
         };
 
@@ -3307,7 +3391,7 @@
             stepsInput.value = mySteps;
             rescaleInput.value = myRescale;
             updateParamModeButtons('mine');
-            hintSpan.innerHTML = `<span style="color:#38bdf8;"><i class="fa-solid fa-user-gear"></i> 已载入我的酒馆 NAI 设置 (CFG: ${myScale} | 采样器: ${mySampler} | 步数: ${mySteps})</span>`;
+            hintSpan.innerHTML = `<span style="color:#38bdf8;"><i class="fa-solid fa-user-gear"></i> 已载入我的酒馆 NAI 设置 (CFG: ${escapeHtml(myScale)} | 采样器: ${escapeHtml(mySampler)} | 步数: ${escapeHtml(mySteps)})</span>`;
             toastr.info('已载入当前酒馆全局生图设置');
         };
 
@@ -3383,7 +3467,7 @@
                 };
                 const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-live-test', meta, (progress) => {
                     if (progress) {
-                        drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
+                        drawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${escapeHtml(progress)}</span>`;
                         const statusText = overlay.querySelector('#rbq-pm-live-status-text');
                         if (statusText) statusText.textContent = progress;
                     }
@@ -3398,7 +3482,7 @@
                 hintSpan.innerHTML = '<span style="color:#22c55e; font-weight:700;"><i class="fa-solid fa-circle-check"></i> 实测出图成功！</span>';
                 toastr.success(`🎉 预设「${preset.title || '画风'}」实测渲染完成！所见即所得。`);
             } catch (err) {
-                hintSpan.innerHTML = `<span style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> 生图失败: ${err.message || String(err)}</span>`;
+                hintSpan.innerHTML = `<span style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> 生图失败: ${escapeHtml(err.message || String(err))}</span>`;
                 toastr.error('实测出图失败: ' + (err.message || String(err)));
             } finally {
                 // 安全恢复用户日常生图配置
@@ -3469,7 +3553,7 @@
                             <label style="font-size:11px; color:#94a3b8; display:block; margin-bottom:3px;">从本地已有预设快速导入</label>
                             <select id="rbq-pm-local-select" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:5px; color:#fff; font-size:11.5px;">
                                 <option value="">-- 手动填写或从本地选择 --</option>
-                                ${localPresets.map((p, idx) => `<option value="${idx}">${p.name || p.id}</option>`).join('')}
+                                ${localPresets.map((p, idx) => `<option value="${idx}">${escapeHtml(p.name || p.id)}</option>`).join('')}
                             </select>
                         </div>
                     </div>
@@ -3797,7 +3881,7 @@
             bmImg.src = b64;
             bmEmptyEl.style.display = 'none';
             bmCardBox.style.display = 'flex';
-            bmStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定基准封面 (${sourceName})`;
+            bmStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定基准封面 (${escapeHtml(sourceName)})`;
             bmSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
             updateSubmitButtonState();
         }
@@ -3853,7 +3937,7 @@
                     cfgRescale: capturedParams.cfgRescale
                 };
                 const drawRes = await RBQ.api.generateImage(finalPrompt, 'market-preset-benchmark', uploadMeta, (progress) => {
-                    if (progress) bmDrawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${progress}</span>`;
+                    if (progress) bmDrawBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${escapeHtml(progress)}</span>`;
                 });
 
                 if (!drawRes || !drawRes.url) {
@@ -3919,7 +4003,7 @@
             refImg.src = b64;
             refEmptyEl.style.display = 'none';
             refCardBox.style.display = 'flex';
-            refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定自制参考图 (${fileName})`;
+            refStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> 已绑定自制参考图 (${escapeHtml(fileName)})`;
             refSpec.textContent = `${width}x${height} ${format || 'WebP'} (~${approxKb}KB)`;
             updateSubmitButtonState();
         }
@@ -4056,6 +4140,7 @@
                 if (res.ok && data?.success) {
                     if (data.item?.id && !cfg.myUploadedIds.includes(data.item.id)) {
                         cfg.myUploadedIds.push(data.item.id);
+                        serverOwnedIds.add(data.item.id);
                         saveConfig();
                     }
                     toastr.success('🎉 发布成功！你的预设已同步至云端工坊！');
@@ -4107,6 +4192,12 @@
                                 <i class="fa-solid fa-copy"></i> 复制
                             </button>
                         </div>
+                        <div style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+                            <button id="rbq-pm-cfg-rotate-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(234,179,8,0.14); border:1px solid rgba(234,179,8,0.45); color:#fde68a; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="生成新的个人码，并把旧码名下的全部作品迁移过去；旧码随即失效">
+                                <i class="fa-solid fa-key"></i> 换码 / 重新生成并迁移
+                            </button>
+                            <span style="font-size:10.5px; color:#a3a3a3; line-height:1.4;">旧码可能已泄露？在上方填入（或粘贴）旧码后点这里，作品会转到新码，旧码立即失效。</span>
+                        </div>
                         <div style="font-size:11px; color:#94a3b8; margin-top:6px; line-height:1.45;">
                             ✨ 用于发布预设时的作品归属与<strong>随时下架删除/在线编辑</strong>。输入你的专属身份码（例如：<code>RBQ-U-d31879f4</code>）即可同步认领并管理历史作品；也可点击「随机生成」；复制到其他设备即可漫游！
                         </div>
@@ -4115,7 +4206,7 @@
                     <!-- 基础服务设置 -->
                     <div>
                         <label style="font-size:12px; color:#94a3b8; display:block; margin-bottom:4px;">工坊服务器地址 (API 接口)</label>
-                        <input id="rbq-pm-cfg-server" type="text" placeholder="https://market.rbq.my" value="${cfg.serverUrl || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-cfg-server" type="text" placeholder="https://market.rbq.my" value="${escapeHtml(cfg.serverUrl || '')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:6px 10px; color:#fff; font-size:12px; box-sizing:border-box;">
                         <div style="font-size:11px; color:#64748b; margin-top:3px;">默认直连社区工坊服务器 (https://market.rbq.my)。</div>
                     </div>
 
@@ -4129,7 +4220,7 @@
                         <label style="font-size:12px; color:#cbd5e1; display:flex; align-items:center; gap:6px; margin-bottom:4px; font-weight:600;">
                             <i class="fa-solid fa-shield-halved" style="color:#ef4444;"></i> 服主管理密钥 (Admin Key - 普通用户留空)
                         </label>
-                        <input id="rbq-pm-cfg-admin-key" type="password" placeholder="未设置 (仅服主/巡查管理员填写)" value="${cfg.adminKey || ''}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:6px 10px; color:#fca5a5; font-size:12px; box-sizing:border-box;">
+                        <input id="rbq-pm-cfg-admin-key" type="password" placeholder="未设置 (仅服主/巡查管理员填写)" value="${escapeHtml(cfg.adminKey || '')}" style="width:100%; background:#1e293b; border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:6px 10px; color:#fca5a5; font-size:12px; box-sizing:border-box;">
                         <div style="font-size:11px; color:#64748b; margin-top:3px;">填入正确的服主密钥后，将激活全局巡查管理权限，可一键下架清理任何违规预设。</div>
                     </div>
                 </div>
@@ -4167,6 +4258,63 @@
             toastr.success(`已生成专属创作者码「${newKey}」，请点击「保存设置」生效！`);
         };
 
+        // 换码：生成新码 → 服务器把旧码名下的作品全部迁移 → 本地保存新码
+        const rotateBtn = overlay.querySelector('#rbq-pm-cfg-rotate-key');
+        rotateBtn.onclick = async () => {
+            const inputEl = overlay.querySelector('#rbq-pm-cfg-creator-key');
+            const oldKey = inputEl.value.trim();
+            if (!oldKey) {
+                toastr.warning('请先在上方输入框填入（或粘贴）你要更换的旧个人码');
+                return;
+            }
+            const rawServer = overlay.querySelector('#rbq-pm-cfg-server').value.trim() || cfg.serverUrl || 'https://market.rbq.my';
+            const endpoint = rawServer.replace(/\/+$/, '');
+            if (!confirm(`确定要换码吗？\n\n· 将生成一个新的个人码，并把旧码「${oldKey.slice(0, 10)}…」名下的全部作品迁移到新码。\n· 迁移成功后旧码立即失效：其他设备上的旧码将无法再编辑/下架这些作品，需要改填新码。\n· 新码会自动保存到本机，请务必复制备份！`)) {
+                return;
+            }
+            const newKey = generateCreatorKey();
+            rotateBtn.disabled = true;
+            try {
+                const res = await fetch(`${endpoint}/api/rotate-key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${oldKey}` },
+                    body: JSON.stringify({ oldKey, newKey })
+                });
+                let data = null;
+                try { data = await res.json(); } catch (_) {}
+                if (res.status === 404) {
+                    toastr.error('当前服务器版本不支持换码 (/api/rotate-key)，请联系服主升级服务器。');
+                    return;
+                }
+                if (!res.ok || !data?.success) {
+                    toastr.error('换码失败: ' + (data?.error || `HTTP ${res.status}`));
+                    return;
+                }
+                const moved = Number(data.moved) || 0;
+                if (moved === 0 && !confirm('旧码名下没有找到任何作品（可能输错了、或已经换过码）。\n仍然要改用新生成的个人码吗？')) {
+                    return;
+                }
+                inputEl.value = newKey;
+                cfg.creatorKey = newKey;
+                if (rawServer) cfg.serverUrl = endpoint;
+                saveConfig();
+                await refreshMyPresetIds();
+                if (moved > 0) {
+                    toastr.success(`换码成功！已将 ${moved} 个作品迁移到新个人码「${newKey}」，旧码已失效。请复制备份新码。`);
+                } else {
+                    toastr.success(`已改用新个人码「${newKey}」。请复制备份新码。`);
+                }
+                if (marketModal) {
+                    refreshDynamicTags();
+                    renderCards();
+                }
+            } catch (err) {
+                toastr.error('换码请求网络错误: ' + (err.message || String(err)));
+            } finally {
+                rotateBtn.disabled = false;
+            }
+        };
+
         // 保存设置
         overlay.querySelector('#rbq-pm-set-save').onclick = () => {
             const rawServer = overlay.querySelector('#rbq-pm-cfg-server').value.trim();
@@ -4190,7 +4338,9 @@
         const overlay = document.createElement('div');
         overlay.id = 'rbq-pm-zoom-overlay';
         overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483646; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; backdrop-filter:blur(14px);';
-        overlay.innerHTML = `<img src="${url}" style="max-width:92vw; max-height:92vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.85);">`;
+        const safeUrl = safeImageUrl(url, '', { allowLocal: true });
+        if (!safeUrl) return;
+        overlay.innerHTML = `<img src="${escapeHtml(safeUrl)}" style="max-width:92vw; max-height:92vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.85);">`;
         bindFastClose(overlay, () => closeSubDialog(overlay));
         bindDialogBackdropClose(overlay);
         document.body.appendChild(overlay);
@@ -4317,5 +4467,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.31 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.32 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

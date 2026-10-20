@@ -204,6 +204,13 @@ SDT 的独立世界书路径读取自己的 `lorebookSources`。用户可以在�
 
 自动、手动和测试三个 OpenAI 兼容请求开启 `toolCallMode` 后，代码发送 `generate_draw_spec` 工具定义，并首次强指定该工具，使用流式响应。关闭后，请求 `response_format: {type: "json_object"}`，保留原来的非流式 JSON 路径。
 
+v6.5.49 起：
+
+- `toolCallMode` 完全由用户开关决定。`getStore()` 不再按破限预设强制改写 `toolCallMode` / `squashMessages`；预设默认值只在选中预设（`applyJailbreakPresetSwitches`）或载入 API 模板时写入一次。
+- 请求了工具却没有工具调用时：`recoverToolArgumentsFromText` 先从正文/思维链取回参数（兼容代码块、前置文字、`<<TOOL_CALL>>`、`<tool_call>`、`{"function":…}` 包装，需通过根 schema 校验且工具名一致），取回后合成一个工具调用继续原有流程；取不回则 `forceJsonMode` 去掉 tools 用 JSON 模式重试一次（`callOpenAiCompatible`），或在 `callStructuredCompletion` 中去掉 tools、在最后一条 user 消息附上「直接输出符合该工具 parameters 的 JSON」与 schema 后重试一次。重试仍无有效分镜时报 `SDT_TOOL_RESPONSE_MISSING`。
+- 正文是中转站错误文本（如 `[proxy error] {...}`）时报 `SDT_RELAY_ERROR_TEXT`，不重试。
+- 设置页「🔍 检测工具调用」（`probeToolCallSupport` / `classifyToolProbe`）发送一个极小的强指定工具流式请求，按结果打开或关闭开关；网络与鉴权类错误不改开关。
+
 “JSON 模式”主要约束返回可解析 JSON；“工具调用”规定模型用工具参数交付结果；“严格 schema”进一步约束字段与类型。三者相关，但并不等同。
 
 当前普通插画工具 schema 没有声明 `strict: true`，也未系统设置 `additionalProperties: false`。默认顶层只要求 `shouldDraw`；部分预设和漫画分支会额外要求 `segments`。本轮新增的本地检查只覆盖完整 JSON 对象、根 schema 的必填字段及已声明的顶层类型，因此打开 Tool Call 不能被描述为已经完成严格 schema 校验。
@@ -275,7 +282,7 @@ user 任务消息固定为：“请读取 generate_draw_spec 工具说明中的�
 - 根结构检查没有覆盖嵌套 schema、枚举、额外字段或全部 JSON Schema 关键字，分镜语义与漫画规则仍由后续模式逻辑检查。完整对象检查也不等于已经实现所有异常 EOF 的传输完整性检查。
 - 手动和测试的工具请求复用 SSE 解析，自动与共享请求在检查工具名称及参数前先处理拒绝、内容拦截与 `length`／`MAX_TOKENS` 截断，错误码保持一致。兼容端点忽略流式选项并返回完整现代、旧式或 Gemini 原生工具响应时，也按实际函数名选择结果。
 - 自动和共享解析器收到 HTTP 200 的完整错误对象时保留服务端错误，不再将上游错误误报为缺少工具参数。
-- 工具请求遇到 HTTP 400 或 500 会尝试 `auto`，失败后统一提示“不支持工具调用”；这不足以区分格式错误、服务故障、限制响应和真正的能力缺失。
+- 工具请求遇到 HTTP 400 或 500 会尝试 `auto`，失败后统一提示“不支持工具调用”；这不足以区分格式错误、服务故障、限制响应和真正的能力缺失。（v6.5.49：该错误带 `code: SDT_TOOLS_UNSUPPORTED`；「🔍 检测工具调用」把不含 tool/function 字样的 HTTP 500 视为服务故障，不改开关。）
 
 这些是当前源码审阅发现，不代表所有模型或中转渠道都会触发相同问题。
 
@@ -289,6 +296,9 @@ user 任务消息固定为：“请读取 generate_draw_spec 工具说明中的�
 | `SDT_TOOL_RESPONSE_SCHEMA_MISMATCH` | 根类型、必填字段或已声明顶层字段类型不符 |
 | `SDT_TOOL_RESPONSE_BLOCKED` | 服务商或模型明确拒绝／拦截响应 |
 | `SDT_TOOL_RESPONSE_TRUNCATED` | 响应被输出长度限制截断 |
+| `SDT_TOOL_RESPONSE_MISSING` | v6.5.49：请求了工具但没有工具调用，正文取不回参数，且去掉 tools 的 JSON 重试也失败 |
+| `SDT_RELAY_ERROR_TEXT` | v6.5.49：中转站把上游错误作为普通正文返回 |
+| `SDT_TOOLS_UNSUPPORTED` | v6.5.49 标注：接口拒绝 tools（强指定与 `auto` 都失败） |
 
 ## 8 工具调用的推荐用法
 

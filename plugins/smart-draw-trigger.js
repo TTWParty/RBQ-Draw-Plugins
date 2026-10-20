@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.45';
+    const PLUGIN_VERSION = '6.5.49';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2743,7 +2743,9 @@ Zimage 擅长理解复杂的英文长句和语境。
         showCharCoordBadge: false,
         cardPosition: 'bottom', // 'bottom' | 'top' | 'message_actions'
 
-        characterMemoryEnabled: false,
+        // 6.5.48: new installs default ON (the 角色工坊 / ⭐全局角色 / locks only affect images when this is on).
+        // getStore() only fills undefined keys, so users who already have a saved value keep it.
+        characterMemoryEnabled: true,
         characterProfiles: {},
         injectCharacterCard: true,
 
@@ -3021,28 +3023,10 @@ Zimage 擅长理解复杂的英文长句和语境。
             store.postProcessPrompt = DEFAULT_POST_PROCESS_PROMPT;
         }
 
-        // 对于预设（sandbox、classic_multiturn、render_pipeline），确保工具调用与消息合并符合预设要求
-        if (store.geminiJailbreakPreset === 'sandbox' || store.geminiJailbreakPreset === 'classic_multiturn') {
-            const currentPreset = JAILBREAK_PRESETS[store.geminiJailbreakPreset];
-            if (currentPreset) {
-                if (store.toolCallMode === false && currentPreset.toolCallMode === true) {
-                    store.toolCallMode = true;
-                }
-                if (store.squashMessages === false && currentPreset.squashMessages === true) {
-                    store.squashMessages = true;
-                }
-            }
-        } else if (store.geminiJailbreakPreset === 'render_pipeline' || store.geminiJailbreakPreset === 'render_pipeline_v2') {
-            const currentPreset = JAILBREAK_PRESETS[store.geminiJailbreakPreset];
-            if (currentPreset) {
-                if (store.toolCallMode === false) {
-                    store.toolCallMode = true;
-                }
-                if (store.squashMessages === true) {
-                    store.squashMessages = false;
-                }
-            }
-        }
+        // 6.5.49: 预设里的「结构化工具调用」「合并消息」只是默认值，只在用户选中/载入预设时套用
+        // （见 applyJailbreakPresetSwitches 与 API 模板载入）。以前这里每次 getStore() 都把
+        // sandbox / classic_multiturn / render_pipeline(_v2) 的 toolCallMode 强制改回 true，
+        // 导致用户关掉「结构化工具调用 (Tool Call)」后依旧发送 tools，报「未返回工具调用参数」。
 
         return store;
     }
@@ -3165,29 +3149,97 @@ Zimage 擅长理解复杂的英文长句和语境。
         return !!a && a === b;
     }
 
+    // Series (作品) keys of an identity: trailing parenthetical groups written in Latin script, excluding
+    // original/原创/同人/fanart/oc and obvious skins/outfits. Translated (e.g. Chinese) series are not compared.
+    function isCharSkinGroup(g) { return /^(?:swim\s*suit|swimwear|bikini|school\s*uniform|uniform|casual|dress|maid|bunny|pajamas|kimono|yukata|armor|track\s*suit|gym|sportswear|nurse|wedding|winter|summer|new\s*year|christmas|halloween|cheer\s*leader|idol|alt|alternate|young|adult|child|kid|teen|older|younger|past|future|\d+)$/i.test(g); }
+    function getCharSeriesKeys(name) {
+        let s = stripCharWeight(name);
+        const keys = [];
+        let m;
+        while ((m = /\s*[(\[【]([^()\[\]【】]+)[)\]】]\s*$/.exec(s))) {
+            const g = m[1].trim();
+            s = s.slice(0, m.index).trim();
+            if (!s) break; // the whole name is bracketed ([Name] / {Name}) — not a series
+            if (/^(?:original|原创|同人|fanart|oc)$/i.test(g) || isCharSkinGroup(g)) continue;
+            if (!/^[A-Za-z0-9\u00c0-\u024f\s'’.:：&!?+\-_]+$/.test(g) || !/[A-Za-z]/.test(g)) continue;
+            keys.push(g.toLowerCase().replace(/[\s_·・‧･\-'’.:：]+/g, ''));
+        }
+        return keys;
+    }
+    function getCharSeriesKey(name) { return getCharSeriesKeys(name)[0] || ''; }
+    function getProfileSeriesKeys(k, p) {
+        for (const v of [p?.nameTag, p?.displayName, k]) { const keys = getCharSeriesKeys(v || ''); if (keys.length) return keys; }
+        return [];
+    }
+    function getProfileSeriesKey(k, p) { return getProfileSeriesKeys(k, p)[0] || ''; }
+    // Two different series = two different people, whatever the bare names say.
+    function isCharSeriesConflict(expectedSeries, k, p) {
+        const expected = (Array.isArray(expectedSeries) ? expectedSeries : [expectedSeries]).filter(Boolean);
+        if (!expected.length) return false;
+        const own = getProfileSeriesKeys(k, p);
+        return own.length > 0 && !own.some(x => expected.includes(x));
+    }
+    // name_tag identity compared verbatim (series included); only weights/width/case/separators are normalized.
+    function getExactNameTagKey(tag) {
+        return stripCharWeight(tag).replace(/[_\s]+/g, ' ').trim().toLowerCase();
+    }
+    function findProfileByExactNameTag(profiles, nameTag, opts = {}) {
+        if (!profiles || typeof profiles !== 'object') return null;
+        const key = getExactNameTagKey(nameTag);
+        if (!key) return null;
+        const hits = Object.entries(profiles).filter(([, p]) => p && typeof p === 'object' && p.nameTag && getExactNameTagKey(p.nameTag) === key);
+        if (hits.length > 1 && opts.unique) {
+            debugInfo(`⚠️ name_tag「${nameTag}」同时命中多个档案（${hits.map(h => h[0]).join(' / ')}），为避免误合并不做匹配`);
+            return null;
+        }
+        return hits[0] || null;
+    }
+
     // exact → normalized → swapped(2-word Latin). Ambiguous normalized hits prefer an exact
     // displayName/nameTag hit, otherwise refuse to merge.
-    function findCharacterProfileEntry(profiles, rawName) {
+    // opts.series: expected series key (default: from rawName); a profile of another series never matches.
+    // opts.strictNameTag: name_tag only matches verbatim (fuzzy matching only for names/aliases).
+    // opts.unique: an exact name/alias hit on several profiles is ambiguous → no match.
+    function findCharacterProfileEntry(profiles, rawName, opts = {}) {
         if (!profiles || typeof profiles !== 'object') return null;
         const raw = String(rawName || '').trim();
         if (!raw) return null;
+        const expectedSeries = Object.hasOwn(opts, 'series') ? (opts.series || []) : getCharSeriesKeys(raw);
+        const ok = (k, p) => p && typeof p === 'object' && !isCharSeriesConflict(expectedSeries, k, p);
         const canonical = getCanonicalCharName(raw);
-        if (canonical && profiles[canonical]) return [canonical, profiles[canonical]];
-        if (profiles[raw]) return [raw, profiles[raw]];
+        if (canonical && ok(canonical, profiles[canonical])) return [canonical, profiles[canonical]];
+        if (ok(raw, profiles[raw])) return [raw, profiles[raw]];
 
-        const entries = Object.entries(profiles).filter(([k, p]) => p && typeof p === 'object');
+        const entries = Object.entries(profiles).filter(([k, p]) => ok(k, p));
         const lowerCanon = canonical.toLowerCase();
+        const rawTagKey = getExactNameTagKey(raw);
+        const exactHits = [];
         for (const [k, p] of entries) {
             const pCanon = getCanonicalCharName(p.displayName || k).toLowerCase();
-            const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase();
+            const tagHit = opts.strictNameTag
+                ? !!(p.nameTag && getExactNameTagKey(p.nameTag) === rawTagKey)
+                : (() => { const tagCanon = getCanonicalCharName(p.nameTag || '').toLowerCase(); return !!tagCanon && tagCanon === lowerCanon; })();
             const aliasHit = getProfileAliasList(p).some(a => getCanonicalCharName(a).toLowerCase() === lowerCanon);
-            if (k.toLowerCase() === lowerCanon || pCanon === lowerCanon || (tagCanon && tagCanon === lowerCanon) || aliasHit) return [k, p];
+            if (k.toLowerCase() === lowerCanon || pCanon === lowerCanon || tagHit || aliasHit) {
+                if (!opts.unique) return [k, p];
+                exactHits.push({ entry: [k, p], primary: k.toLowerCase() === lowerCanon || pCanon === lowerCanon || tagHit });
+            }
+        }
+        if (exactHits.length === 1) return exactHits[0].entry;
+        if (exactHits.length > 1) {
+            const primary = exactHits.filter(h => h.primary);
+            if (primary.length === 1) return primary[0].entry;
+            debugInfo(`⚠️ 角色名「${raw}」同时命中多个档案的姓名/别名（${exactHits.map(h => h.entry[0]).join(' / ')}），为避免误认不做匹配`);
+            return null;
         }
 
         const key = getCharMatchKey(raw);
         if (!key || key.length < 2) return null;
+        const candidatesOf = (k, p) => opts.strictNameTag
+            ? [k, p && p.displayName, ...getProfileAliasList(p)].filter(v => typeof v === 'string' && v.trim())
+            : getProfileNameCandidates(k, p);
         const pick = (target) => {
-            const hits = entries.filter(([k, p]) => getProfileNameCandidates(k, p).some(c => getCharMatchKey(c) === target));
+            const hits = entries.filter(([k, p]) => candidatesOf(k, p).some(c => getCharMatchKey(c) === target));
             if (hits.length <= 1) return hits[0] || null;
             const rawLower = stripCharWeight(raw).toLowerCase();
             const exact = hits.filter(([k, p]) => [p.displayName, p.nameTag].some(v => v && stripCharWeight(v).toLowerCase() === rawLower));
@@ -3205,6 +3257,314 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         return null;
     }
+
+    // ── 三层角色：角色库(全部会话档案，不自动发给 LLM) / ⭐全局角色(所有会话常驻) / 当前会话角色 ──
+    // store.globalCharacters 结构 { [name]: { profile, setAt, updatedAt } } 只由角色工坊手动写入；解析只读不写。
+    function getGlobalCharacterProfiles(store = null) {
+        const s = store || getStore();
+        const raw = s && s.globalCharacters;
+        const out = {};
+        if (!raw || typeof raw !== 'object') return out;
+        for (const [k, entry] of Object.entries(raw)) {
+            const p = entry && typeof entry === 'object' && entry.profile && typeof entry.profile === 'object' ? entry.profile : null;
+            if (!p || !k || isJunkCharacterName(k)) continue;
+            out[k] = p;
+        }
+        return out;
+    }
+
+    // Global characters usable in this chat. (Deleting an imported copy does not suppress re-import: user decision.)
+    function getActiveGlobalCharacterProfiles(store = null) {
+        return getGlobalCharacterProfiles(store);
+    }
+
+    function findGlobalCharacterEntry(rawName, store = null, nameTag = '') {
+        const globals = getActiveGlobalCharacterProfiles(store);
+        const tag = getCharacterNameTag('', nameTag);
+        const series = [...getCharSeriesKeys(tag), ...getCharSeriesKeys(rawName)];
+        return findCharacterProfileEntry(globals, rawName, { series, strictNameTag: true, unique: true })
+            || (tag ? findProfileByExactNameTag(globals, tag, { unique: true }) : null);
+    }
+
+    // Current-session profile for a global character, if already present: its names/aliases (same series only)
+    // or its exact name_tag. A same-named person from another series is not her.
+    function findCurrentProfileForGlobal(profiles, globalKey, globalProfile) {
+        const series = getProfileSeriesKeys(globalKey, globalProfile);
+        for (const n of [globalKey, globalProfile?.displayName, ...getProfileAliasList(globalProfile)]) {
+            if (!n) continue;
+            const hit = findCharacterProfileEntry(profiles, n, { series, strictNameTag: true });
+            if (hit) return hit;
+        }
+        return globalProfile?.nameTag ? findProfileByExactNameTag(profiles, globalProfile.nameTag) : null;
+    }
+
+    // Wardrobe for a copy of a global character: every outfit locked; a current outfit that is not in the
+    // wardrobe is seeded as a locked 「默认服装」 so the first outfit change cannot lose it.
+    function buildLockedGlobalWardrobe(copy) {
+        const wardrobe = (Array.isArray(copy.wardrobe) ? copy.wardrobe : []).filter(w => w && typeof w === 'object')
+            .map(w => ({ ...w, locked: true, fromGlobal: true }));
+        const current = String(copy.currentOutfit || '').trim();
+        if (current && !wardrobe.some(w => (w.outfit || w.tags || '') === copy.currentOutfit)) {
+            const seeded = { id: `w-g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+                name: uniqueWardrobeName(wardrobe, '默认服装'), outfit: copy.currentOutfit, triggers: [], locked: true, fromGlobal: true, createdAt: Date.now() };
+            wardrobe.unshift(seeded);
+            copy.currentOutfitId = seeded.id;
+        }
+        copy.wardrobe = wardrobe;
+        if (copy.currentOutfitId && !wardrobe.some(w => w.id === copy.currentOutfitId)) {
+            const worn = wardrobe.find(w => (w.outfit || w.tags || '') === copy.currentOutfit);
+            if (worn) copy.currentOutfitId = worn.id; else delete copy.currentOutfitId;
+        }
+        return copy;
+    }
+
+    // Copy of a global character for the current chat: same identity (createdAt), base + every outfit locked.
+    // Locked outfits keep their text; parse can still ADD new wardrobe entries.
+    function buildImportedGlobalProfile(globalKey, source) {
+        const copy = JSON.parse(JSON.stringify(source || {}));
+        for (const k of Object.keys(copy)) if (/^manga[A-Z]/.test(k)) delete copy[k]; // per-chat floor history
+        copy.displayName = copy.displayName || globalKey;
+        copy.baseLocked = true;
+        copy.isBaseLocked = true;
+        copy.outfitLocked = true;
+        copy.isOutfitLocked = true;
+        buildLockedGlobalWardrobe(copy);
+        if (!Number(copy.createdAt || 0)) copy.createdAt = Date.now();
+        copy.importedFromGlobal = { name: globalKey, at: Date.now() };
+        copy.updatedAt = Date.now();
+        return copy;
+    }
+
+    // Current session first (by name, then exact name_tag); otherwise a matching global character is copied
+    // into the current chat (never written back). Returns [key, profile] or null.
+    // opts.nameIsArchiveKey: rawName is an already-resolved archive name (internal writers); the name_tag
+    // then only serves as a fallback lookup and does not impose its series on the name match.
+    function resolveCharacterProfileEntry(rawName, nameTag = '', opts = {}) {
+        const raw = String(rawName || '').trim();
+        if (!raw) return null;
+        const profiles = getCharacterProfiles();
+        const tag = getCharacterNameTag('', nameTag);
+        const series = opts.nameIsArchiveKey ? getCharSeriesKeys(raw) : [...getCharSeriesKeys(tag), ...getCharSeriesKeys(raw)];
+        const current = findCharacterProfileEntry(profiles, raw, { series })
+            || (tag ? findProfileByExactNameTag(profiles, tag, { unique: true }) : null);
+        if (current) return current;
+        const store = getStore();
+        const hit = findGlobalCharacterEntry(raw, store, tag);
+        if (!hit) return null;
+        const [globalKey, source] = hit;
+        const existing = findCurrentProfileForGlobal(profiles, globalKey, source);
+        if (existing) return existing;
+        const key = getCanonicalCharName(globalKey) || globalKey;
+        profiles[key] = buildImportedGlobalProfile(globalKey, source);
+        const importEvent = recordGlobalImportEvent({ globalKey, key, rawName: raw, nameTag: tag });
+        debugInfo(`⭐ 全局角色「${globalKey}」在剧情中登场（剧情名「${raw}」${tag ? ` / ${tag}` : ''}），已导入当前会话（人设与服装默认锁定）`);
+        announceGlobalImport(importEvent);
+        save();
+        return [key, profiles[key]];
+    }
+
+    function getOrImportCharacterProfile(rawName, nameTag = '', opts = {}) {
+        const hit = resolveCharacterProfileEntry(rawName, nameTag, opts);
+        return hit ? hit[1] : null;
+    }
+
+    /* ── Global import toast: 「已从全局角色导入「X」到当前会话（人设与服装已锁定）」 + 「撤销」 ── */
+    // Function-property state (no module-level const) so test slices can load this block repeatedly.
+    function getGlobalImportEventLog() { return (recordGlobalImportEvent.log ||= []); }
+    function getGlobalImportEventSeq() { return recordGlobalImportEvent.seq || 0; }
+    function recordGlobalImportEvent(ev) {
+        const log = getGlobalImportEventLog();
+        const seq = recordGlobalImportEvent.seq = getGlobalImportEventSeq() + 1;
+        const entry = { ...ev, seq, id: `gi-${Date.now().toString(36)}-${seq}`, chatKey: getChatKey(), at: Date.now() };
+        log.push(entry);
+        if (log.length > 50) log.splice(0, log.length - 50);
+        return entry;
+    }
+    function findGlobalImportEventSince(seq, key) {
+        return getGlobalImportEventLog().find(e => e.seq > seq && e.key === key) || null;
+    }
+    function getGlobalImportToastText(globalKey) { return `已从全局角色导入「${globalKey}」到当前会话（人设与服装已锁定）`; }
+    function getGlobalImportLockHint() { return '锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局'; }
+    /** Toast body: first line = import notice, second (small) line = what the lock means. */
+    function getGlobalImportToastHtml(globalKey) { return `${escapeHtml(getGlobalImportToastText(globalKey))}<br><small style="opacity:.8">${escapeHtml(getGlobalImportLockHint())}</small>`; }
+
+    /**
+     * Imports inside a tagger parse wait for the caller (which knows the result to rebind for 「撤销」);
+     * any other import (card extraction, etc.) shows a plain toast at once.
+     * A safety timer still shows a pending one if the parse caller never got to it (e.g. the parse threw later).
+     */
+    function announceGlobalImport(ev) {
+        if (!ev) return;
+        if (!normalizeTaggerResult.active) { showGlobalImportToast(ev, null); return; }
+        ev.toastPending = true;
+        if (typeof setTimeout === 'function') setTimeout(() => { if (ev.toastPending) showGlobalImportToast(ev, null); }, 3000);
+    }
+    function getPendingGlobalImportEvents(sinceSeq = 0) {
+        return getGlobalImportEventLog().filter(e => e.toastPending && e.seq > sinceSeq);
+    }
+    /** Manual / test parse: no stored result to rebind, so plain toasts. */
+    function flushPendingGlobalImportToasts() {
+        for (const ev of getPendingGlobalImportEvents()) showGlobalImportToast(ev, null);
+    }
+
+    function collectResultCharacterLists(result) {
+        const lists = [];
+        if (Array.isArray(result?.characters)) lists.push({ holder: result, list: result.characters });
+        for (const seg of Array.isArray(result?.segments) ? result.segments : []) {
+            if (Array.isArray(seg?.characters)) lists.push({ holder: seg, list: seg.characters });
+        }
+        return lists;
+    }
+
+    /** Message parse: one toast per import event; 「撤销」 when this stored result has characters bound to it. */
+    function notifyGlobalImports(messageId, cacheKey, result) {
+        const bound = new Set();
+        if (!result?.mangaPage && !isMangaRequest()) {
+            for (const { list } of collectResultCharacterLists(result)) for (const c of list) if (c?._globalImport?.id) bound.add(c._globalImport.id);
+        }
+        return getPendingGlobalImportEvents().map(ev => showGlobalImportToast(ev, bound.has(ev.id) ? { messageId, cacheKey } : null));
+    }
+
+    function showGlobalImportToast(ev, undoTarget) {
+        if (!ev) return null;
+        ev.toastPending = false;
+        const text = getGlobalImportToastText(ev.globalKey);
+        if (!undoTarget) {
+            try { toastr.info(getGlobalImportToastHtml(ev.globalKey), '智能生图', { escapeHtml: false }); } catch (_) {}
+            return { eventId: ev.id, globalKey: ev.globalKey, text, undo: false };
+        }
+        const html = `${getGlobalImportToastHtml(ev.globalKey)}<br><button type="button" class="menu_button rbq-sdt-undo-global-import" style="margin-top:6px;display:inline-block;width:auto;">撤销</button>`;
+        let toast = null;
+        try {
+            toast = toastr.info(html, '智能生图', { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false, escapeHtml: false });
+        } catch (_) { /* toastr unavailable */ }
+        const el = toast?.[0] || toast;
+        const btn = el?.querySelector?.('.rbq-sdt-undo-global-import');
+        // toastr.clear() skips a toast that holds focus (our just-clicked button), so force it and remove as a fallback.
+        const close = () => {
+            try { btn?.blur?.(); } catch (_) {}
+            try { toastr.clear(toast, { force: true }); } catch (_) {}
+            const drop = () => { try { if (el?.isConnected !== false) el?.remove?.(); } catch (_) {} };
+            if (typeof setTimeout === 'function') setTimeout(drop, 400); else drop();
+        };
+        const closeBtn = el?.querySelector?.('.toast-close-button');
+        if (closeBtn) closeBtn.addEventListener('click', (e) => { e?.stopPropagation?.(); close(); });
+        const target = { ...undoTarget, eventId: ev.id, globalKey: ev.globalKey, chatKey: ev.chatKey };
+        if (btn) btn.addEventListener('click', async (e) => {
+            e?.stopPropagation?.();
+            btn.disabled = true;
+            let ok = false;
+            try { ok = await undoGlobalCharacterImport(target); } catch (err) { console.error(`[${PLUGIN_NAME}] 撤销全局角色导入失败`, err); }
+            if (ok) close(); else btn.disabled = false;
+        });
+        return { ...target, text, undo: true, toast, close };
+    }
+
+    /**
+     * 「撤销」: replace the locked imported copy with an ordinary unlocked local profile of the same name,
+     * built from this parse's LLM output, and rebind this result's characters/cards to it in place.
+     * The local profile takes priority over the global on later lookups, so it is not re-imported. Global untouched.
+     */
+    async function undoGlobalCharacterImport({ messageId, cacheKey, eventId, globalKey, chatKey }) {
+        const warn = msg => { try { toastr.warning(msg, '智能生图'); } catch (_) {} return false; };
+        if (chatKey !== undefined && JSON.stringify(chatKey) !== JSON.stringify(getChatKey())) return warn('已经切换到别的对话，无法撤销这次导入');
+        const store = getStore();
+        const entry = store.cache?.[cacheKey];
+        const hits = [];
+        for (const { holder, list } of collectResultCharacterLists(entry)) {
+            list.forEach((c, i) => { if (c?._globalImport?.id === eventId) hits.push({ holder, list, i, c }); });
+        }
+        if (!entry || !hits.length) return warn('找不到这次解析结果（可能已重新解析），无法撤销');
+        const profiles = getCharacterProfiles();
+        const info = hits[0].c._globalImport;
+        const key = info.key;
+        if (profiles[key] && !profiles[key].importedFromGlobal) return warn(`「${key}」已经是当前会话的独立角色了`);
+        delete profiles[key];
+        try { forgetMangaCharacterMemory(key); } catch (_) {}
+        const src = hits[0].c;
+        const nameTag = getCharacterNameTag('', info.llmNameTag || '');
+        const base = stripCharacterIdentityFromBase(src._rawBase || src.base || '', nameTag, key);
+        updateCharacterProfile(key, base, src._rawOutfit || src.outfit || '', null, true, { noGlobalImport: true, nameTag });
+        const touched = new Set();
+        for (const { holder, list, i, c } of hits) {
+            const oldCaption = String(c.caption || '');
+            const caption = mergeCharacterCaption(key, c._rawBase || '', c._rawOutfit || '', c._rawAction || '', '', nameTag, c._rawWardrobeOutfit || '');
+            const profile = getCharacterProfiles()[key];
+            const { _globalImport, ...rest } = c;
+            list[i] = { ...rest, name: key, _rawName: key, name_tag: getCharacterNameTag(key, profile?.nameTag || nameTag),
+                caption, _globalImportUndone: { global: globalKey, at: Date.now() } };
+            if (typeof holder.prompt === 'string' && oldCaption && holder.prompt.includes(oldCaption)) holder.prompt = holder.prompt.split(oldCaption).join(caption);
+            touched.add(holder);
+        }
+        save();
+        try {
+            const extra = getMsgExtraSdt(messageId);
+            if (!extra || extra.key === cacheKey) saveMsgExtraSdt(messageId, entry);
+        } catch (_) {}
+        try {
+            const container = RBQ.api.getMessageTextContainer(messageId);
+            const cards = container?.querySelectorAll ? [...container.querySelectorAll(`.${CARD_CLASS}`)] : [];
+            for (const card of cards) {
+                if (card.dataset?.rbqSdtBaseKey !== cacheKey) continue;
+                const m = String(card.dataset.rbqSdtSegmentKey || '').match(/-seg-(\d+)$/);
+                const seg = Array.isArray(entry.segments) && entry.segments.length
+                    ? entry.segments[m ? Number(m[1]) : (entry.segments.length === 1 ? 0 : -1)] : entry;
+                if (!seg || !touched.has(seg)) continue;
+                const prompt = getFinalPrompt(seg) || seg.prompt || '';
+                if (prompt) { card.dataset.prompt = prompt; card.dataset.rbqSdtFinalPrompt = prompt; }
+                cacheWrapperCharacterData(card, seg);
+                try { renderCardBadges(card, seg); } catch (_) {}
+            }
+        } catch (_) {}
+        try { toastr.success(`已撤销：「${key}」改用本次解析的人设与服装（未锁定），重新生图会用它。全局角色没有改动`, '智能生图'); } catch (_) {}
+        return true;
+    }
+    RBQ.api.undoGlobalCharacterImport = undoGlobalCharacterImport;
+
+    // Global wardrobe in prompts: ALL outfits (user decision: no cap), current outfit first.
+    function getGlobalPromptWardrobe(p) {
+        const list = (Array.isArray(p?.wardrobe) ? p.wardrobe : []).filter(w => w && (w.name || w.outfit || w.tags));
+        const worn = list.findIndex(w => w.id && w.id === p.currentOutfitId);
+        if (worn > 0) list.unshift(list.splice(worn, 1)[0]);
+        return list;
+    }
+
+    // Copies imported from a ⭐全局角色 keep the global rule (user decision: 全部服装都发给 LLM, no cap);
+    // other current-chat characters keep the first 8 outfits as before (normal-mode cap).
+    function getPromptWardrobeForProfile(p) {
+        const list = Array.isArray(p?.wardrobe) ? p.wardrobe : [];
+        return p?.importedFromGlobal ? list.slice() : list.slice(0, 8);
+    }
+    RBQ.api.getPromptWardrobeForProfile = getPromptWardrobeForProfile;
+
+    function formatGlobalCharacterForPrompt(name, p) {
+        const display = p.displayName || name;
+        const aliases = getProfileAliasList(p);
+        const base = String(p.baseTags || '').trim();
+        const outfit = String(p.currentOutfit || '').trim();
+        const wardrobe = getGlobalPromptWardrobe(p);
+        return `  * 全局角色「${display}」:${aliases.length ? `\n    - 别名/昵称: ${aliases.join('、')}` : ''}
+    - name_tag (英文绘图身份): ${p.nameTag || '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
+    - base (固定外貌DNA · 🔒全局锁定): ${base || '(首次登场提炼)'}
+    - outfit (默认服装 · 🔒锁定，换装时另行收录新服装): ${outfit || '(根据剧情即时提炼)'}${wardrobe.length ? `\n    - 衣柜服装: ${wardrobe.map(w => `【${w.name || '未命名服装'}】(🔒锁定): ${w.outfit || w.tags || ''}`).join(' | ')}` : ''}`;
+    }
+
+    // All active global characters (no cap) that the current session does not already hold.
+    function getPromptGlobalCharacterEntries(profiles, store = null) {
+        return Object.entries(getActiveGlobalCharacterProfiles(store))
+            .filter(([k, p]) => !findCurrentProfileForGlobal(profiles || {}, k, p));
+    }
+
+    // Manga references for global characters not yet in this chat (marked global; used only when they appear).
+    function getMangaGlobalMemoryReferences(profiles, store = null) {
+        return getPromptGlobalCharacterEntries(profiles, store).filter(([k]) => !isJunkCharacterName(k)).map(([k, p]) => ({
+            name: p.displayName || k, name_tag: p.nameTag || '', base: p.baseTags || '', outfit: p.currentOutfit || '',
+            global: true, aliases: getProfileAliasList(p),
+            wardrobe: getGlobalPromptWardrobe(p).map(w => ({ name: w.name || '', outfit: w.outfit || w.tags || '', locked: true })),
+            note: '⭐全局角色：当前会话尚未建档；仅当剧情中登场（含别名）时使用，name 用 name_tag，base 原样复用，服装锁定不改写',
+        }));
+    }
+
     RBQ.api.getCharMatchKey = getCharMatchKey;
 
     function getCharacterMemoryTagSpecification() {
@@ -3225,8 +3585,11 @@ name 用于资料关联，已有档案沿用其 name，不改名另建档。中�
         if (!store) store = getStore();
         const profiles = getCharacterProfiles();
         const profileEntries = Object.entries(profiles).filter(([k, p]) => p && !isJunkCharacterName(k));
+        const globalEntries = getPromptGlobalCharacterEntries(profiles, store).filter(([k]) => !isJunkCharacterName(k));
         if (isMangaRequest(store)) {
+            // Global characters ride inside the references (global:true) so the layered/studio paths see them too.
             const references = getMangaMemoryReferences(messageId);
+            const hasMangaGlobalRefs = references.some(r => r && r.global === true);
             return `【漫画角色记忆】
 以下为本聊天已保存的人物资料。name 使用稳定关联姓名，与各格 characters.name 一致；绘图身份用英文 name 或 name_tag，同人跨页跨格保持同名，C1/P1 仅是编号，不是姓名。与普通模式一样使用完整 base 与当前 outfit；特写用镜头表达，不由程序裁剪资料。
 各格 base/outfit 与普通模式共用建档和复用原则；不另发请求。character_memory 为兼容字段，可省略或写 []；需要补充独立长期资料时每人最多一项 {name,base,initial_outfit,outfit}。
@@ -3235,7 +3598,8 @@ initial_outfit 仅新人物/尚无服装档案时填写进入本楼的完整已�
 兼容字段 character_memory[].outfit 写此人本楼最后一次出场时的完整已知着装状态；首次建档或明确换装/穿脱时才提交更新，否则写空字符串。格内 characters[].outfit 始终对应当前格，不能套用末格状态。特写只见领口、换镜头或暂时遮挡不代表换装，不用局部可见衣物替换完整服装；未知细节不猜。
 base/outfit 不含动作、表情、手持物、对白、Text/BubbleType、格位、景别、背景或画风质量词；不得直接复制 positive。匿名路人、空镜、旁白不建档。记忆资料与最终绘图词分别填写，更新后的衣着不能提前作用于前面的画格。
 ${getCharacterMemoryTagSpecification()}
-已有资料：` + JSON.stringify(references);
+已有资料：` + JSON.stringify(references) + (hasMangaGlobalRefs ? `
+其中 global:true 的是⭐全局角色（用户设定的所有会话常驻角色，当前会话尚未建档）：登场时（含中文名、别名、昵称）视为已建档，name 逐字沿用其 name_tag（无则用档案名），base 原样复用不重写；服装锁定不改写，剧情换穿未收录服装时按新服装填写 outfit。未登场者仅作背景参考，不加入画格。` : '');
         }
 
         let activeRegistrySection = '';
@@ -3246,10 +3610,11 @@ ${getCharacterMemoryTagSpecification()}
                 const outfit = String(p.currentOutfit || '').trim();
                 const isBaseLocked = !!(p.baseLocked || p.isBaseLocked);
                 const isOutfitLocked = !!(p.outfitLocked || p.isOutfitLocked);
-                const wardrobe = Array.isArray(p.wardrobe) && p.wardrobe.length > 0
-                    ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
+                const wardrobeItems = getPromptWardrobeForProfile(p);
+                const wardrobe = wardrobeItems.length > 0
+                    ? `\n    - 可选衣柜预设: ${wardrobeItems.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).join(' | ')}`
                     : '';
-                return `  * 角色「${name}」:
+                return `  * 角色「${name}」${p.importedFromGlobal ? ' (⭐ 来自全局角色)' : ''}:
     - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
     - base (固定外貌DNA · ${isBaseLocked ? '🔒已锁定防篡改' : '跨图绝对锁定'}): ${base || '(首次登场提炼)'}
     - outfit (当前服装签名${isOutfitLocked ? ' · 🔒内容锁定（可换装，新服装另行收录）' : ' · 随换装剧情演进'}): ${outfit || '(根据剧情即时提炼)'}${wardrobe}`;
@@ -3268,36 +3633,30 @@ ${getCharacterMemoryTagSpecification()}
 4. 若剧情未发生换装/脱衣，且未命中新的衣柜预设，outfit 默认沿用当前服装；若剧情发生明确解衣、湿身、撕裂或换装，则在本格更新 outfit。
 ${listText}
 `;
-        } else {
-            const globalProfiles = getAllKnownCharacterProfiles();
-            const globalEntries = Object.entries(globalProfiles).filter(([k, p]) => p && !isJunkCharacterName(k));
-            if (globalEntries.length > 0) {
-                const globalListText = globalEntries.slice(0, 5).map(([k, p]) => {
-                    const name = p.displayName || k;
-                    const base = String(p.baseTags || '').trim();
-                    const outfit = String(p.currentOutfit || '').trim();
-                    const isBaseLocked = !!(p.baseLocked || p.isBaseLocked);
-                    const isOutfitLocked = !!(p.outfitLocked || p.isOutfitLocked);
-                    const wardrobe = Array.isArray(p.wardrobe) && p.wardrobe.length > 0
-                        ? `\n    - 可选衣柜预设: ${p.wardrobe.map(w => `【${w.name}】${w.locked ? '(🔒锁定)' : ''}: ${w.outfit || w.tags || ''}`).slice(0, 8).join(' | ')}`
-                        : '';
-                    return `  * 已知全局角色资产「${name}」:
-    - name_tag (英文绘图身份): ${p.nameTag && !(getNameTagSource(p) === 'llm' && !hasCharSeriesSuffix(p.nameTag)) ? p.nameTag : (p.nameTag ? p.nameTag + ' ' : '') + '(待确认：依据正文/世界书/角色卡判断所属作品，已有作品写 Name (作品英文名)，确为原创才用 (original)；不改档案姓名)'}
-    - base (固定外貌DNA · ${isBaseLocked ? '🔒已锁定' : '跨图锁定'}): ${base || '(首次登场提炼)'}
-    - outfit (典型服装${isOutfitLocked ? ' · 🔒内容锁定（可换装）' : ''}): ${outfit || '(剧情提炼)'}${wardrobe}`;
-                }).join('\n');
-                activeRegistrySection = `
-【🧠 角色外貌记忆资产库参考 (Known Global Character Profiles)】
-当前会话为新聊天，但系统中已收录以下全局角色资产。若本剧情中包含这些角色（含中文名、别名、昵称），name 必须逐字复制其 name_tag（无则复制「」内档案名），禁止翻译改写或自行追加作品名，并直接继承其 base；2::Name (Series):: 格式仅用于新角色：
-${globalListText}
-遇到其他新登场角色时，请严格按下述 7 维外貌防伪矩阵建立专属 base。
+        }
+
+        // ⭐ 全局角色：所有会话常驻，无数量上限；当前会话已有同名档案时以当前会话为准，不再重复列出。
+        let globalSection = '';
+        if (globalEntries.length > 0) {
+            globalSection = `
+【⭐ 全局角色 (Global Characters · 所有会话常驻)】
+以下是用户设定的全局常驻角色，在任何会话中都有效，当前会话尚未为其建档。
+1. 若剧情中登场的人物是其中之一（含中文名、别名、昵称、姓名顺序不同的同一人），视为已建档角色：name 必须逐字复制其 name_tag（无 name_tag 时复制「」内的档案名），禁止另建新档、翻译或改写姓名；
+2. 100% 原样复用其 base，不得改写发色、瞳色、族裔与五官；
+3. 服装已锁定：穿着符合某套衣柜服装时在 wardrobe_outfit 填写该服装名；换穿衣柜未收录的新服装时 wardrobe_outfit 留空，在 outfit 输出当次英文服装描述，可另填 outfit_name，系统会作为新服装收录，不改动已有服装；
+4. 未在剧情中登场的全局角色仅作背景参考，不要凭空加入画面。
+${globalEntries.map(([k, p]) => formatGlobalCharacterForPrompt(k, p)).join('\n')}
 `;
-            } else {
-                activeRegistrySection = `
+        }
+        if (profileEntries.length === 0) {
+            activeRegistrySection = globalEntries.length > 0
+                ? `${globalSection}遇到全局角色以外的新登场角色时，请严格按下述 7 维外貌防伪矩阵建立专属 base。\n`
+                : `
 【🧠 角色外貌记忆建档指示 (Initial Profiling)】
 当前会话尚未记忆任何角色。遇到剧情中登场的角色时，请严格执行下述「7维外貌防伪矩阵」为该角色建立专属的 base DNA，并用「四要素签名法则」提炼其当前 outfit。系统将在生图后自动学习建档，使其成为一个可独立替换、全局复用的自洽角色资产。
 `;
-            }
+        } else {
+            activeRegistrySection += globalSection;
         }
 
         return `【🧬 角色外貌记忆与视觉资产规格引擎 (Character Appearance Memory Specification)】
@@ -3361,11 +3720,12 @@ ${activeRegistrySection}`;
     function getAllKnownCharacterProfiles() {
         const store = getStore();
         const profiles = {};
-        if (store.characterProfiles && typeof store.characterProfiles === 'object') {
+        // Two passes: real archives first; copies imported from a ⭐全局角色 only fill names nobody else has.
+        if (store.characterProfiles && typeof store.characterProfiles === 'object') for (const importedPass of [false, true]) {
             for (const chatDict of Object.values(store.characterProfiles)) {
                 if (chatDict && typeof chatDict === 'object') {
                     for (const [name, prof] of Object.entries(chatDict)) {
-                        if (name && prof && typeof prof === 'object') {
+                        if (name && prof && typeof prof === 'object' && !!prof.importedFromGlobal === importedPass) {
                             if (isJunkCharacterName(name) || isJunkCharacterName(prof.displayName)) {
                                 continue;
                             }
@@ -3516,7 +3876,11 @@ ${activeRegistrySection}`;
         const profiles = getCharacterProfiles();
         const canonical = getCanonicalCharName(rawName);
 
-        let existing = getCharacterProfile(canonical);
+        // Never create a duplicate of a global character: import its locked copy first (global itself is read-only).
+        // noGlobalImport: the user just said this is NOT the global character (undo of an import).
+        let existing = options.noGlobalImport
+            ? (findCharacterProfileEntry(profiles, canonical, { series: getCharSeriesKeys(canonical) })?.[1] || null)
+            : getOrImportCharacterProfile(canonical, options.nameTag, { nameIsArchiveKey: true });
         const nameTag = getCharacterNameTag(rawName, options.nameTag);
         if (existing) {
             const isBaseLocked = !!(existing.baseLocked || existing.isBaseLocked) && !options.forceUnlock;
@@ -3588,8 +3952,11 @@ ${activeRegistrySection}`;
             if (!options.matchedPresetId && wroteOutfit) {
                 const active = existing.wardrobe.find(w => (w.outfit || w.tags || '') === existing.currentOutfit)
                     || existing.wardrobe.find(w => isSameOutfit(w.outfit || w.tags, existing.currentOutfit));
-                if (active) existing.currentOutfitId = active.id;
-                else delete existing.currentOutfitId;
+                if (active) {
+                    existing.currentOutfitId = active.id;
+                    // A locked outfit is never rewritten: wearing it means wearing its stored text verbatim.
+                    if (active.locked && (active.outfit || active.tags)) existing.currentOutfit = active.outfit || active.tags;
+                } else delete existing.currentOutfitId;
             }
             // Profile-level lock mirrors the worn item's lock (same as the SDT panel and 角色工坊) after a switch.
             if (options.matchedPresetId || wroteOutfit) {
@@ -3686,6 +4053,30 @@ ${activeRegistrySection}`;
         }
     }
 
+    /** Names that exist only in this chat: 角色库 is just a view over all chats, so clearing this chat drops them from 角色库 too.
+     *  ⭐全局角色 keep their own snapshot (sdt.globalCharacters) and are not counted. */
+    function getChatOnlyCharacterNames(store, chatKey) {
+        const all = store?.characterProfiles || {};
+        const mine = all[chatKey] && typeof all[chatKey] === 'object' ? Object.keys(all[chatKey]) : [];
+        const globals = store?.globalCharacters && typeof store.globalCharacters === 'object' ? store.globalCharacters : {};
+        return mine.filter(name => !Object.prototype.hasOwnProperty.call(globals, name)
+            && !Object.entries(all).some(([k, dict]) => k !== chatKey && dict && typeof dict === 'object'
+                && Object.prototype.hasOwnProperty.call(dict, name)));
+    }
+
+    function buildClearCharacterProfilesConfirm(store, chatKey) {
+        const count = Object.keys(store?.characterProfiles?.[chatKey] || {}).length;
+        const only = getChatOnlyCharacterNames(store, chatKey);
+        let msg = `确定清空当前聊天的所有角色记忆吗？（共 ${count} 位）`;
+        if (only.length) {
+            const shown = only.slice(0, 10).map(n => `「${n}」`).join('、') + (only.length > 10 ? ` 等` : '');
+            msg += `\n\n⚠️ 其中 ${only.length} 位只存在于这个对话：${shown}\n清空后这些角色也会从「角色库」里消失，且无法撤销。需要的话请先在角色工坊「角色库」里「导出备份」或设为⭐全局角色。`;
+        } else if (count) {
+            msg += '\n\n这些角色在其他对话或⭐全局角色里还有存档，「角色库」里仍能找到。';
+        }
+        return msg;
+    }
+
     function clearAllCharacterProfiles() {
         const store = getStore();
         const chatKey = getChatKey();
@@ -3715,6 +4106,7 @@ ${activeRegistrySection}`;
                         <div style="display: inline-flex; align-items: center; gap: 6px; background: var(--linear-surface, rgba(255,255,255,0.04)); border: 1px solid var(--linear-border-standard, rgba(255,255,255,0.12)); padding: 4px 10px; border-radius: 8px;">
                             ${profile.avatarUrl ? `<img src="${escapeHtml(profile.avatarUrl)}" style="width: 20px; height: 20px; border-radius: 4px; object-fit: cover;" />` : '<span>👤</span>'}
                             <strong style="color: var(--linear-brand, #79e4ff); font-size: 12.5px;">${escapeHtml(name)}</strong>
+                            ${profile.importedFromGlobal ? '<span style="font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.45); color: #fde047;" title="从全局角色导入（导入时人设与服装默认锁定）。锁定只是不让自动改写，在角色工坊里可以直接编辑；会话里的改动不会同步回全局">⭐来自全局</span>' : ''}
                             <button type="button" class="rbq-sdt-toggle-base-lock-btn" data-char="${escapeHtml(key)}" style="background: ${isBaseLocked ? 'rgba(163,230,53,0.18)' : 'rgba(255,255,255,0.06)'}; border: 1px solid ${isBaseLocked ? 'rgba(163,230,53,0.5)' : 'rgba(255,255,255,0.15)'}; color: ${isBaseLocked ? '#a3e635' : '#94a3b8'}; border-radius: 4px; font-size: 10.5px; padding: 1px 5px; cursor: pointer;" title="${isBaseLocked ? '人设已锁定：生图绝不回填人设（点击解锁）' : '人设未锁定（点击锁定防篡改）'}">${isBaseLocked ? '🔒人设' : '🔓人设'}</button>
                             <button type="button" class="rbq-sdt-toggle-outfit-lock-btn" data-char="${escapeHtml(key)}" style="background: ${isOutfitLocked ? 'rgba(244,114,182,0.18)' : 'rgba(255,255,255,0.06)'}; border: 1px solid ${isOutfitLocked ? 'rgba(244,114,182,0.5)' : 'rgba(255,255,255,0.15)'}; color: ${isOutfitLocked ? '#f472b6' : '#94a3b8'}; border-radius: 4px; font-size: 10.5px; padding: 1px 5px; cursor: pointer;" title="${isOutfitLocked ? '服装已锁定：生图绝不回填顶替（点击解锁）' : '服装未锁定（点击锁定防篡改）'}">${isOutfitLocked ? '🔒衣服' : '🔓衣服'}</button>
                             ${wCount > 0 ? `<span style="font-size: 10.5px; color: #ffb86c;">(${wCount}套)</span>` : ''}
@@ -3779,7 +4171,11 @@ ${activeRegistrySection}`;
         const chatKey = getChatKey();
         const isJunk = isJunkCharacterName(name);
         const cleanName = isJunk ? '' : String(name || '').trim();
-        const profile = cleanName && store.characterMemoryEnabled ? getCharacterProfile(cleanName) : null;
+        // Current session first; a global character appearing in this parse is imported (locked) instead of re-created.
+        // Lookup by story name, then by the LLM's exact name_tag (series included), current chat before global.
+        const profileEntry = cleanName && store.characterMemoryEnabled ? resolveCharacterProfileEntry(cleanName, nameTag) : null;
+        const profile = profileEntry ? profileEntry[1] : null;
+        const profileKey = profileEntry ? profileEntry[0] : cleanName;
         // Backfill a full fan identity ("Name (Series)" / "(original)") regardless of locks; locks guard base/outfit only.
         let pendingNameTag = null;
         if (profile) {
@@ -3834,6 +4230,17 @@ ${activeRegistrySection}`;
                 }
             }
 
+            // Switching back to a locked outfit without a claim (LLM text ≈ that outfit): use its stored text verbatim.
+            if (!matchedPreset && llmOutfit && Array.isArray(profile.wardrobe)) {
+                const lockedSame = profile.wardrobe.filter(w => w && w.locked && w.id && w.id !== profile.currentOutfitId
+                    && (w.outfit || w.tags) && isSameOutfit(w.outfit || w.tags, llmOutfit));
+                if (lockedSame.length === 1) {
+                    matchedPreset = lockedSame[0];
+                    effectiveOutfit = matchedPreset.outfit || matchedPreset.tags;
+                    debugInfo(`👗 角色「${cleanName}」换回锁定服装【${matchedPreset.name}】，沿用其原文`);
+                }
+            }
+
             // Lock protects content, not switching: a claimed preset always switches. Without a claim, a locked
             // worn outfit keeps its stored text unless the LLM outfit is clearly different (a real change → new entry).
             const wornItem = Array.isArray(profile.wardrobe) ? profile.wardrobe.find(w => w && w.id && w.id === profile.currentOutfitId) : null;
@@ -3857,7 +4264,7 @@ ${activeRegistrySection}`;
 
             if (shouldUpdateOutfit || shouldCleanBase || shouldBackfillNameTag) {
                 updateCharacterProfile(
-                    cleanName,
+                    profileKey,
                     shouldCleanBase ? cleanedStored : null,
                     matchedPreset ? (matchedPreset.outfit || matchedPreset.tags) : (keepLockedText ? null : llmOutfit),
                     null,
@@ -3908,6 +4315,67 @@ ${activeRegistrySection}`;
     }
     function commitCharacterMemoryUpdates(characters) { /* no-op: parse already committed */ }
 
+    /** Cards that belong to the open chat: the group's member cards (by avatar) in a group chat, the open card in 1:1.
+     *  Never the whole card library and never characters[0] as a guess. */
+    function getActiveChatCharacters(ctx) {
+        const characters = Array.isArray(ctx?.characters) ? ctx.characters : [];
+        const activeChars = [];
+        const groupId = ctx?.groupId;
+        if (groupId != null && String(groupId).trim() !== '') {
+            const group = Array.isArray(ctx.groups) ? ctx.groups.find(g => String(g?.id) === String(groupId)) : null;
+            const members = (Array.isArray(group?.members) ? group.members : [])
+                .map(member => typeof member === 'string' ? member : member?.avatar).filter(Boolean);
+            // Keep the group's member order (not the card-library order).
+            for (const avatar of members) {
+                const char = characters.find(c => c?.name && c.avatar === avatar);
+                if (char && !activeChars.includes(char)) activeChars.push(char);
+            }
+            // Some hosts expose only the current speaker. Never substitute the entire card library.
+            if (!group && characters[ctx.characterId]?.name) activeChars.push(characters[ctx.characterId]);
+        } else if (ctx?.characterId != null && String(ctx.characterId).trim() !== '') {
+            const char = characters[ctx.characterId];
+            if (char && char.name) activeChars.push(char);
+        }
+        return activeChars;
+    }
+
+    /** 「从角色卡提取」 target: 1:1 → the open card; group → the member matching preferName, the only member, or ask. */
+    function resolveCardForExtraction(ctx, preferName = '') {
+        const candidates = getActiveChatCharacters(ctx);
+        const isGroup = ctx?.groupId != null && String(ctx.groupId).trim() !== '';
+        if (!isGroup || candidates.length <= 1) return { char: candidates[0] || null, candidates, isGroup };
+        const want = String(preferName || '').trim();
+        if (want) {
+            const key = n => (getCanonicalCharName(n) || String(n || '')).trim().toLowerCase();
+            const hit = candidates.find(c => key(c.name) === key(want));
+            if (hit) return { char: hit, candidates, isGroup };
+        }
+        return { char: null, candidates, isGroup, needsChoice: true };
+    }
+
+    function chooseGroupMemberCard(candidates) {
+        return new Promise((resolve) => {
+            document.getElementById('rbq-sdt-pick-card-modal')?.remove();
+            const modal = document.createElement('div');
+            modal.id = 'rbq-sdt-pick-card-modal';
+            modal.style.cssText = 'position:fixed;inset:0;z-index:2147483635;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+            modal.innerHTML = `
+                <div style="background:#1e1f24;border:1px solid rgba(255,255,255,0.18);border-radius:12px;width:360px;max-width:94vw;padding:16px;display:flex;flex-direction:column;gap:10px;color:#e4e4e7;">
+                    <div style="font-weight:bold;font-size:14px;">这是群聊：要从哪张角色卡提取外貌？</div>
+                    <div style="font-size:12px;opacity:0.75;">只列出本群聊的成员。</div>
+                    ${candidates.map((c, i) => `<button type="button" class="menu_button rbq-sdt-pick-card" data-idx="${i}" style="display:flex;align-items:center;gap:8px;justify-content:flex-start;">${c.avatar ? `<img src="/characters/${escapeHtml(c.avatar)}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;" />` : '<span>👤</span>'}<span>${escapeHtml(c.name)}</span></button>`).join('')}
+                    <button type="button" class="menu_button rbq-sdt-pick-card-cancel" style="opacity:0.8;">取消</button>
+                </div>`;
+            const done = (val) => { modal.remove(); resolve(val); };
+            modal.addEventListener('click', (e) => {
+                const btn = e.target.closest('.rbq-sdt-pick-card');
+                if (btn) return done(candidates[Number(btn.dataset.idx)] || null);
+                if (e.target === modal || e.target.closest('.rbq-sdt-pick-card-cancel')) done(null);
+            });
+            document.body.appendChild(modal);
+        });
+    }
+
     function collectCharacterCardInfo(currentMes = '', recentMessages = [], requestStore = null) {
         const store = requestStore || getStore();
         if (!store.injectCharacterCard) return [];
@@ -3920,26 +4388,7 @@ ${activeRegistrySection}`;
             if (!Array.isArray(characters)) return [];
 
             // 确定当前聊天的角色列表
-            const activeChars = [];
-            const groupId = ctx.groupId;
-
-            if (groupId != null && String(groupId).trim() !== '') {
-                const group = Array.isArray(ctx.groups) ? ctx.groups.find(g => String(g?.id) === String(groupId)) : null;
-                const members = new Set((Array.isArray(group?.members) ? group.members : [])
-                    .map(member => typeof member === 'string' ? member : member?.avatar).filter(Boolean));
-                for (const char of characters) {
-                    if (char?.name && members.has(char.avatar)) {
-                        activeChars.push(char);
-                    }
-                }
-                // Some hosts expose only the current speaker. Never substitute the entire card library.
-                if (!group && characters[ctx.characterId]?.name) activeChars.push(characters[ctx.characterId]);
-            } else {
-                const char = characters[ctx.characterId];
-                if (char && char.name) {
-                    activeChars.push(char);
-                }
-            }
+            const activeChars = getActiveChatCharacters(ctx);
 
             const allContextText = [...(recentMessages || []).map(m => m.content || ''), currentMes || ''].join('\n').toLowerCase();
             const infoList = [];
@@ -4013,7 +4462,7 @@ ${activeRegistrySection}`;
         return references;
     }
 
-    async function importCharacterFromCurrentCard() {
+    async function importCharacterFromCurrentCard(options = {}) {
         const btn = document.getElementById('rbq-sdt-import-char-profile-btn');
         const origHtml = btn ? btn.innerHTML : '';
         const requestContext = captureMangaRequestContext(null, -1);
@@ -4030,13 +4479,16 @@ ${activeRegistrySection}`;
                 return false;
             }
 
-            let char = null;
-            if (ctx.groupId != null && String(ctx.groupId).trim() !== '') {
-                char = characters.find(c => c && c.name) || characters[0];
-            } else if (ctx.characterId != null && characters[ctx.characterId]) {
-                char = characters[ctx.characterId];
-            } else {
-                char = characters[0];
+            // 6.5.48: group chats used to take the first card in the whole library; now only this chat's members.
+            const target = resolveCardForExtraction(ctx, options?.preferName);
+            let char = target.char;
+            if (target.needsChoice) {
+                char = await chooseGroupMemberCard(target.candidates);
+                if (!char) return false; // cancelled: nothing changes
+            }
+            if (target.isGroup && !target.candidates.length) {
+                toastr.warning('没找到这个群聊的成员角色卡，没有提取任何内容', PLUGIN_NAME);
+                return false;
             }
 
             if (!char || !char.name) {
@@ -4142,10 +4594,18 @@ ${getCharacterMemoryTagSpecification()}
             const nameTag = getCharacterNameTag('', parsed.name_tag) || getCharacterNameTag(parsed.name)
                 || getCharacterNameTag(name, getCharacterProfile(cleanCharName)?.nameTag);
             if (!nameTag) throw new Error('模型未返回英文/罗马字绘图姓名 name_tag，原有角色记忆未改动');
-            updateCharacterProfile(cleanCharName, stripCharacterIdentityFromBase(extractedBase, nameTag, cleanCharName), extractedOutfit, avatarUrl, true,
+            const extractedCleanBase = stripCharacterIdentityFromBase(extractedBase, nameTag, cleanCharName);
+            updateCharacterProfile(cleanCharName, extractedCleanBase, extractedOutfit, avatarUrl, true,
                 { replaceBase: true, preserveOutfit: true, nameTag, nameTagSource: 'user' });
-            toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
-            return getCharacterProfile(cleanCharName);
+            const savedProfile = getOrImportCharacterProfile(cleanCharName, nameTag);
+            const baseBlocked = !!(savedProfile && (savedProfile.baseLocked || savedProfile.isBaseLocked)
+                && String(savedProfile.baseTags || '').trim() !== String(extractedCleanBase || '').trim());
+            if (baseBlocked) {
+                toastr.warning(`「${cleanCharName}」的人设已锁定🔒，外貌没有被覆盖（只更新了头像与绘图姓名）。如需改用角色卡外貌，请先在角色工坊解锁人设再提取。`, PLUGIN_NAME);
+            } else {
+                toastr.success(`已提取「${cleanCharName}」的外貌；已有当前服装保持不变，可在角色工坊查看。`, PLUGIN_NAME);
+            }
+            return savedProfile || getCharacterProfile(cleanCharName);
         } catch (err) {
             console.error(`[${PLUGIN_NAME}] 导入角色卡失败:`, err);
             toastr.error(`导入角色卡失败: ${err.message || String(err)}`, PLUGIN_NAME);
@@ -7170,6 +7630,81 @@ ${getCharacterMemoryTagSpecification()}
         return value;
     }
 
+    /**
+     * 6.5.49: 请求了工具调用、模型却只在正文（或思维链）里返回了参数时，尝试从文本中取回工具参数。
+     * 兼容：纯 JSON、```json 代码块、前置说明文字/思考标签、中转模拟工具调用时留下的
+     * <<TOOL_CALL>>{"name":..,"arguments":{..}}、<tool_call>…</tool_call>、{"function":{..}} 等包装。
+     * 只有通过工具 schema 根校验（generate_draw_spec 还要求 shouldDraw/segments）才采用，否则返回 null。
+     */
+    function recoverToolArgumentsFromText(texts, tool = null) {
+        const toolName = tool?.function?.name || '';
+        const list = (Array.isArray(texts) ? texts : [texts]).filter(text => typeof text === 'string' && text.trim());
+        const unwrap = (value, depth = 0) => {
+            if (!value || typeof value !== 'object' || depth > 3) return null;
+            if (Array.isArray(value)) return value.length === 1 ? unwrap(value[0], depth + 1) : null;
+            if (Array.isArray(value.tool_calls)) return value.tool_calls.length ? unwrap(value.tool_calls[0], depth + 1) : null;
+            if (value.function && typeof value.function === 'object' && !Array.isArray(value.function)) return unwrap(value.function, depth + 1);
+            const wrapped = value.arguments ?? value.parameters ?? value.args ?? value.input;
+            const named = typeof value.name === 'string' || typeof value.type === 'string';
+            if (wrapped !== undefined && (named || Object.keys(value).length === 1)) {
+                if (toolName && typeof value.name === 'string' && value.name && value.name !== toolName) return null;
+                if (typeof wrapped === 'string') {
+                    try { return unwrap(JSON.parse(wrapped), depth + 1) || null; } catch (_) { return null; }
+                }
+                return wrapped && typeof wrapped === 'object' && !Array.isArray(wrapped) ? wrapped : null;
+            }
+            return value;
+        };
+        const accept = candidate => {
+            if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate) || !Object.keys(candidate).length) return null;
+            if (toolName === 'generate_draw_spec' && typeof candidate.shouldDraw !== 'boolean' && !Array.isArray(candidate.segments)) return null;
+            try { return validateCompletionToolArguments(candidate, tool); } catch (_) { return null; }
+        };
+        for (const text of list) {
+            const cleaned = text
+                .replace(/<<\/?\s*TOOL_CALLS?\s*>>/gi, '\n')
+                .replace(/<\|?\/?\s*(?:tool_calls?|function_calls?|tool_use|invoke)\s*\|?>/gi, '\n')
+                .replace(/\[\/?TOOL_CALLS?\]/gi, '\n')
+                .trim();
+            let parsed;
+            try { parsed = extractJson(cleaned); } catch (_) { parsed = null; }
+            const value = accept(unwrap(parsed));
+            if (value) return value;
+            // Fenced block after explanatory prose (extractJson only strips a fence spanning the whole text).
+            const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            if (fence) {
+                try { parsed = extractJson(fence[1]); } catch (_) { parsed = null; }
+                const fenced = accept(unwrap(parsed));
+                if (fenced) return fenced;
+            }
+        }
+        return null;
+    }
+
+    /** 6.5.49: some relays stream an upstream failure as ordinary text with finish_reason "stop" (seen live: "[proxy error] {...}"). */
+    function isRelayErrorText(text) {
+        const t = String(text || '').trim();
+        return /^\[?\s*(?:proxy\s*)?error\b/i.test(t) || /^\{\s*"(?:error|success)"\s*:/.test(t);
+    }
+
+    function makeRelayErrorTextError(text) {
+        const snippet = String(text || '').trim();
+        const err = new Error(`中转站/上游模型返回了错误，这次不是工具调用的问题：${snippet.slice(0, 200)}${snippet.length > 200 ? '…' : ''}。常见原因是上游超时或额度/渠道故障，稍后重试或换个渠道/模型。`);
+        err.code = 'SDT_RELAY_ERROR_TEXT';
+        err.rawOutput = `【错误】: 中转站把上游错误当成普通正文返回 (finish_reason: stop)。\n【服务端原始响应正文】:\n${snippet || '（空）'}`;
+        return err;
+    }
+
+    function makeToolFallbackError(finishReason, rawText, retried) {
+        const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
+        const err = new Error(retried
+            ? `大模型没有按工具调用返回分镜${finishReasonInfo}，自动改用普通 JSON 模式重试后仍未得到有效结果。这个模型/渠道可能不支持工具调用，或中转站没有正确转发，请换一个模型或渠道再试。`
+            : `大模型没有按工具调用返回分镜${finishReasonInfo}，正文里也没有可用的分镜 JSON。这个模型/渠道可能不支持工具调用，或中转站没有正确转发。`);
+        err.code = 'SDT_TOOL_RESPONSE_MISSING';
+        err.rawOutput = `【错误】: 请求了工具调用 (Tool Call)，但大模型 / 中转站没有返回 generate_draw_spec 工具参数，正文中也解析不出分镜 JSON${retried ? '；已自动去掉工具调用用普通 JSON 模式重试一次，仍然失败' : ''}。\n【服务端原始响应正文】:\n${rawText || '（空）'}\n\n【排查建议】: 换一个支持 Function Calling 的模型或渠道；或在设置中关闭「结构化工具调用 (Tool Call)」并点保存，直接走普通 JSON 模式。`;
+        return err;
+    }
+
     async function readSseCompletion(response, signal, onProgress = null, expectedToolName = '') {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -7654,7 +8189,8 @@ ${getCharacterMemoryTagSpecification()}
     function getMangaMemoryReferences(messageId, requestStore = null) {
         invalidateMangaStateHistory();
         const chronological = Number.isInteger(messageId) && messageId >= 0;
-        const references = Object.entries(getCharacterProfiles()).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
+        const chatProfiles = getCharacterProfiles();
+        const references = Object.entries(chatProfiles).filter(([name, p]) => p && !isJunkCharacterName(name)).map(([name, p]) => {
             const history = (Array.isArray(p.mangaStateHistory) ? p.mangaStateHistory : [])
                 .filter(e => Number.isInteger(e.messageId) && e.before && e.after).sort((a, b) => a.messageId - b.messageId);
             const latest = history.at(-1);
@@ -7670,9 +8206,17 @@ ${getCharacterMemoryTagSpecification()}
                 state.outfit = p.currentOutfit || '';
                 state.outfitSet = true;
             }
-            return { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
+            const ref = { name: p.displayName || name, name_tag: p.nameTag || '', base: p.baseTags || '',
                 outfit: typeof state.outfit === 'string' ? state.outfit : p.currentOutfit || '', state };
+            // Imported ⭐全局角色 copies keep their full wardrobe in manga paths too (same as before import).
+            if (p.importedFromGlobal) {
+                ref.wardrobe = getPromptWardrobeForProfile(p).filter(w => w && (w.name || w.outfit || w.tags))
+                    .map(w => ({ name: w.name || '', outfit: w.outfit || w.tags || '', locked: !!w.locked }));
+            }
+            return ref;
         });
+        // ⭐全局角色 not yet in this chat (all manga paths incl. layered/studio): marked global, imported on appearance.
+        references.push(...getMangaGlobalMemoryReferences(chatProfiles, requestStore));
         const rows = getMangaRenderCacheRows(undefined, requestStore);
         return rows.length && RBQ.api.mangaProtocol?.cachedReferenceViews
             ? RBQ.api.mangaProtocol.cachedReferenceViews(references, rows) : references;
@@ -7822,7 +8366,10 @@ ${getCharacterMemoryTagSpecification()}
             updates.set(key, update);
         }
         for (const row of updates.values()) {
-            const profile = getCharacterProfile(row.name);
+            // Story name first, then exact name_tag (series included); a ⭐全局角色 is imported (locked) on appearance.
+            const profileEntry = resolveCharacterProfileEntry(row.name, row.nameTag);
+            const profile = profileEntry ? profileEntry[1] : null;
+            const profileName = profileEntry ? profileEntry[0] : row.name;
             const previousHistory = Array.isArray(profile?.mangaStateHistory) ? profile.mangaStateHistory : [];
             const previousLatest = [...previousHistory].filter(entry => entry?.after).sort((a, b) => a.messageId - b.messageId).at(-1);
             const timelineOwnsOutfit = previousLatest && profile.currentOutfit === previousLatest.after.outfit;
@@ -7863,9 +8410,9 @@ ${getCharacterMemoryTagSpecification()}
             const shouldUpgradeNameTag = !!(nameTag && (!profile?.nameTag
                 || (hasCharIdentitySuffix(nameTag) && !hasCharIdentitySuffix(profile.nameTag))
                 || isUpgradeableOriginalNameTag(profile, nameTag)));
-            if (base || (outfit && outfit !== profile?.currentOutfit) || shouldUpgradeNameTag) updateCharacterProfile(row.name, base, outfit, null, true,
+            if (base || (outfit && outfit !== profile?.currentOutfit) || shouldUpgradeNameTag) updateCharacterProfile(profileName, base, outfit, null, true,
                 { replaceBase: !!profile?.baseTags && !!base, nameTag, backfillNameTag: shouldUpgradeNameTag && !!profile?.nameTag, outfitName: row.outfitName });
-            const saved = getCharacterProfile(row.name);
+            const saved = getCharacterProfile(profileName) || getCharacterProfile(row.name);
             if (!saved) continue;
             if (!Array.isArray(saved.wardrobe)) saved.wardrobe = [];
             if (!preserveCurrent && finalOutfit === '' && snapshot?.explicitOutfit) {
@@ -7925,7 +8472,14 @@ ${getCharacterMemoryTagSpecification()}
         };
     }
 
+    // Marks "inside a tagger parse" so global-import toasts wait for the caller that can offer 「撤销」.
     function normalizeTaggerResult(data, matchedLorebooks = [], mangaContext = null) {
+        normalizeTaggerResult.importSeqStart = getGlobalImportEventSeq();
+        normalizeTaggerResult.active = true;
+        try { return normalizeTaggerResultInner(data, matchedLorebooks, mangaContext); }
+        finally { normalizeTaggerResult.active = false; }
+    }
+    function normalizeTaggerResultInner(data, matchedLorebooks = [], mangaContext = null) {
         assertMangaRequestContext(mangaContext);
         // Tool arguments are an exact JSON contract, unlike ordinary text output.
         let toolRaw = null;
@@ -8105,7 +8659,18 @@ ${getCharacterMemoryTagSpecification()}
 
                     // Merge character memory with LLM output (writes profile on parse; wardrobe only on real change)
                     const wardrobeOutfit = String(char?.wardrobe_outfit || '').trim();
+                    const importSeq = getGlobalImportEventSeq();
                     const finalCaption = mergeCharacterCaption(name, llmBase, llmOutfit, llmAction, appearanceTags, char?.name_tag, wardrobeOutfit, char?.outfit_name);
+                    // Which import event (if any, in this whole parse) this character resolved to — for the mismatch notice/undo.
+                    let globalImport = null;
+                    if (name && getStore().characterMemoryEnabled) {
+                        const resolvedKey = resolveCharacterProfileEntry(name, char?.name_tag)?.[0];
+                        const ev = resolvedKey ? findGlobalImportEventSince(normalizeTaggerResult.importSeqStart ?? importSeq, resolvedKey) : null;
+                        if (ev && getCharacterProfiles()[resolvedKey]?.importedFromGlobal) {
+                            globalImport = { id: ev.id, global: ev.globalKey, key: ev.key, llmName: name,
+                                llmNameTag: String(char?.name_tag || ''), chatKey: ev.chatKey };
+                        }
+                    }
 
                     return {
                         index: charIndex + 1,
@@ -8122,7 +8687,8 @@ ${getCharacterMemoryTagSpecification()}
                         _rawBase: llmBase,
                         _rawOutfit: llmOutfit,
                         _rawWardrobeOutfit: wardrobeOutfit,
-                        _rawAction: llmAction
+                        _rawAction: llmAction,
+                        ...(globalImport ? { _globalImport: globalImport } : {})
                     };
                 }).filter((char) => char.caption || char._rawName);
 
@@ -11649,8 +12215,12 @@ SCHEMA:
                     outfit: p.currentOutfit || '',
                     wardrobeCount: Array.isArray(p.wardrobe) ? p.wardrobe.length : 0
                 }));
-            if (memoryList.length > 0) {
-                payload.characterMemory = isMangaRequest(store) ? getMangaMemoryReferences(messageId, layeredSnapshot?.storeSnapshot) : memoryList;
+            if (isMangaRequest(store)) {
+                // Manga references also carry ⭐全局角色 (global:true), even in a chat with no profile yet.
+                const mangaMemory = getMangaMemoryReferences(messageId, layeredSnapshot?.storeSnapshot);
+                if (memoryList.length > 0 || mangaMemory.some(r => r?.global === true)) payload.characterMemory = mangaMemory;
+            } else if (memoryList.length > 0) {
+                payload.characterMemory = memoryList;
             }
         }
 
@@ -11906,30 +12476,202 @@ SCHEMA:
         ].join('\n');
     }
 
+    const ST_CORS_PROXY_HINT = '如需让该类请求也能跨域，可在酒馆 config.yaml 中设置 enableCorsProxy: true 并重启酒馆。';
+    const ST_RELAY_HTTP_STATUS_BY_TEXT = {
+        'bad request': 400, 'unauthorized': 401, 'payment required': 402, 'forbidden': 403, 'not found': 404,
+        'method not allowed': 405, 'request timeout': 408, 'conflict': 409, 'payload too large': 413,
+        'unprocessable entity': 422, 'too many requests': 429, 'internal server error': 500,
+        'not implemented': 501, 'bad gateway': 502, 'service unavailable': 503, 'gateway timeout': 504,
+    };
+
+    function getStCsrfHeaders() {
+        try {
+            const headers = getSillyTavernHeaders();
+            const token = headers['X-CSRF-Token'] ?? headers['x-csrf-token'];
+            return token ? { 'X-CSRF-Token': String(token) } : {};
+        } catch (_e) {
+            return {};
+        }
+    }
+
+    function headersToPlainObject(headers) {
+        const out = {};
+        if (!headers) return out;
+        if (typeof headers.forEach === 'function' && typeof headers.get === 'function') {
+            headers.forEach((value, key) => { out[key] = value; });
+            return out;
+        }
+        if (Array.isArray(headers)) {
+            for (const [key, value] of headers) out[key] = value;
+            return out;
+        }
+        return { ...headers };
+    }
+
+    function buildStProxyOptions(options = {}) {
+        return { ...options, headers: { ...headersToPlainObject(options.headers), ...getStCsrfHeaders() } };
+    }
+
+    // 判断 /proxy/ 响应是否是"酒馆代理不可用"（未开启时：带 CSRF 令牌 → 404 禁用提示；不带令牌 → 403 Invalid CSRF token）
+    async function isStProxyUnavailableResponse(response) {
+        if (!response || (response.status !== 404 && response.status !== 403)) return false;
+        let text = '';
+        try { text = await response.clone().text(); } catch (_e) {}
+        if (response.status === 404) return /CORS proxy is disabled/i.test(text) || !text.trim() || /Cannot (GET|POST|PUT|PATCH|DELETE) \/proxy\//i.test(text);
+        return /csrf/i.test(text);
+    }
+
+    // 仅 OpenAI 兼容的 chat/completions（POST + messages）与 /models（GET）可由酒馆后端转发
+    function getStBackendRelayKind(url, options = {}) {
+        let parsed;
+        try { parsed = new URL(String(url)); } catch (_e) { return null; }
+        if (!/^https?:$/.test(parsed.protocol) || parsed.search || parsed.hash) return null;
+        const method = String(options.method || 'GET').toUpperCase();
+        const path = parsed.pathname.replace(/\/+$/, '');
+        if (method === 'POST' && /\/chat\/completions$/.test(path)) {
+            if (typeof options.body !== 'string') return null;
+            try {
+                const body = JSON.parse(options.body);
+                return body && typeof body === 'object' && Array.isArray(body.messages) ? 'chat' : null;
+            } catch (_e) { return null; }
+        }
+        if (method === 'GET' && /\/models$/.test(path)) return 'models';
+        return null;
+    }
+
+    function buildStRelayHeaderYaml(options = {}) {
+        const relayHeaders = {};
+        for (const [key, value] of Object.entries(headersToPlainObject(options.headers))) {
+            if (/^(content-type|content-length|accept|x-csrf-token|x-requested-with)$/i.test(key)) continue;
+            relayHeaders[key] = String(value);
+        }
+        // 未配置密钥时显式置空 Authorization，避免酒馆把自身保存的 Custom API 密钥发往插件配置的接口
+        if (!Object.keys(relayHeaders).some(key => key.toLowerCase() === 'authorization')) relayHeaders.Authorization = '';
+        return JSON.stringify(relayHeaders);
+    }
+
+    function buildStRelayChatRequest(url, options = {}) {
+        const body = JSON.parse(options.body);
+        const baseUrl = String(url).replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
+        const { messages, ...rest } = body;
+        // 除 messages 外所有字段原样经 custom_include_body 合并进上游请求体，避免酒馆改写 reasoning_effort / 丢弃 response_format、thinking 等字段
+        return {
+            chat_completion_source: 'custom',
+            custom_url: baseUrl,
+            model: body.model,
+            stream: !!body.stream,
+            messages,
+            custom_include_body: JSON.stringify(rest),
+            custom_include_headers: buildStRelayHeaderYaml(options),
+        };
+    }
+
+    function makeRelayJsonResponse(data, status = 200, statusText = '') {
+        return new Response(typeof data === 'string' ? data : JSON.stringify(data), {
+            status,
+            statusText,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    // 酒馆后端在上游非 2xx 时仍返回 HTTP 200 + { error: { message: statusText } }，此处还原为失败的 Response
+    function normalizeStRelayChatJson(data) {
+        const isError = data && typeof data === 'object' && data.error && !Array.isArray(data.choices);
+        if (!isError) return makeRelayJsonResponse(data, 200, 'OK');
+        const message = String(data.error?.message || (typeof data.error === 'string' ? data.error : '') || 'Unknown error occurred');
+        const status = data.quota_error ? 429 : (ST_RELAY_HTTP_STATUS_BY_TEXT[message.trim().toLowerCase()] || 502);
+        return makeRelayJsonResponse({ error: { ...(typeof data.error === 'object' ? data.error : {}), message: `${message} (经酒馆后端转发)` } }, status, message);
+    }
+
+    async function fetchViaStBackend(url, options = {}, kind) {
+        const stHeaders = { ...getSillyTavernHeaders(), 'Content-Type': 'application/json' };
+        const endpoint = kind === 'models' ? '/api/backends/chat-completions/status' : '/api/backends/chat-completions/generate';
+        const relayBody = kind === 'models'
+            ? {
+                chat_completion_source: 'custom',
+                custom_url: String(url).replace(/\/+$/, '').replace(/\/models$/, ''),
+                custom_include_headers: buildStRelayHeaderYaml(options),
+            }
+            : buildStRelayChatRequest(url, options);
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: stHeaders,
+            body: JSON.stringify(relayBody),
+            signal: options.signal,
+        });
+        if (response.status === 403 || response.status === 404) {
+            let text = '';
+            try { text = await response.clone().text(); } catch (_e) {}
+            if (response.status === 404 || /csrf/i.test(text)) {
+                throw new Error(`酒馆后端转发接口不可用 (HTTP ${response.status}${text ? `: ${text.slice(0, 160)}` : ''})`);
+            }
+        }
+        if (kind === 'chat' && relayBody.stream) return response;
+        if (!response.ok) {
+            let text = '';
+            try { text = await response.text(); } catch (_e) {}
+            return makeRelayJsonResponse(text || JSON.stringify({ error: { message: response.statusText || 'Unknown error occurred' } }), response.status, response.statusText);
+        }
+        let data;
+        try {
+            data = await response.json();
+        } catch (_e) {
+            return makeRelayJsonResponse({ error: { message: '酒馆后端转发返回了无法解析的响应' } }, 502, 'Bad Gateway');
+        }
+        if (kind === 'models') {
+            if (data?.error) return makeRelayJsonResponse({ error: { message: '模型列表获取失败（经酒馆后端转发）：密钥错误或接口不可用' } }, 502, 'Bad Gateway');
+            return makeRelayJsonResponse(data, 200, 'OK');
+        }
+        return normalizeStRelayChatJson(data);
+    }
+
+    // 代理不可用时的最后一道兜底：OpenAI 兼容请求改经酒馆后端转发；其余请求类型给出包含实际错误的提示
+    async function fallbackAfterProxyUnavailable(url, options, reason) {
+        const kind = getStBackendRelayKind(url, options);
+        if (!kind) {
+            throw new Error(`无法跨域连接 API 接口 (${url})：${reason}。该请求不是 OpenAI 兼容的 chat/completions 或 /models 调用，无法改经酒馆后端转发。${ST_CORS_PROXY_HINT}`);
+        }
+        console.warn(`[${PLUGIN_NAME}] 酒馆 /proxy/ 不可用 (${reason})，改经酒馆后端转发:`, url);
+        try {
+            return await fetchViaStBackend(url, options, kind);
+        } catch (relayErr) {
+            if (relayErr?.name === 'AbortError') throw relayErr;
+            console.error(`[${PLUGIN_NAME}] 酒馆后端转发失败:`, relayErr);
+            throw new Error(`无法跨域连接 API 接口 (${url})：${reason}；酒馆后端转发亦失败: ${relayErr?.message || relayErr}。${ST_CORS_PROXY_HINT}`);
+        }
+    }
+
+    async function fetchViaStProxyOrBackend(url, options, directReason) {
+        let proxyResponse;
+        try {
+            proxyResponse = await fetch(`/proxy/${url}`, buildStProxyOptions(options));
+        } catch (proxyErr) {
+            if (proxyErr?.name === 'AbortError') throw proxyErr;
+            console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
+            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆 /proxy/ 请求失败: ${proxyErr?.message || proxyErr}`);
+        }
+        if (await isStProxyUnavailableResponse(proxyResponse)) {
+            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆内置代理未开启 (HTTP ${proxyResponse.status})`);
+        }
+        if (proxyResponse.ok || proxyResponse.status < 500) return proxyResponse;
+        if (getStBackendRelayKind(url, options)) {
+            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆 /proxy/ 返回 HTTP ${proxyResponse.status}`);
+        }
+        return proxyResponse;
+    }
+
     async function smartFetch(url, options = {}) {
         const isMixedContent = typeof window !== 'undefined' && window.location?.protocol === 'https:' && String(url).startsWith('http://');
 
         // 若当前网页为 HTTPS，目标 API 为明文 HTTP，浏览器安全策略强制阻断 Mixed Content 直连
-        // 此时直接无缝转交酒馆后端内置代理 (/proxy/) 发起服务端请求
+        // 此时直接转交酒馆内置代理 (/proxy/)；代理未开启时再改经酒馆后端转发
         if (isMixedContent) {
             console.info(`[${PLUGIN_NAME}] 当前网页为 HTTPS，目标为 HTTP 接口 (${url})，自动切换至酒馆内置代理转发 (/proxy/)`);
-            try {
-                const proxyUrl = `/proxy/${url}`;
-                const proxyResponse = await fetch(proxyUrl, options);
-                if (proxyResponse.ok || (proxyResponse.status !== 404 && proxyResponse.status < 500)) {
-                    return proxyResponse;
-                }
-                if (proxyResponse.status === 404) {
-                    throw new Error(`酒馆内置代理未生效 (HTTP 404)。请确保酒馆 config.yaml 中已配置 enableCorsProxy: true 并已重启酒馆服务。`);
-                }
-            } catch (proxyErr) {
-                console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
-                throw new Error(`[Mixed Content] 当前网页为 HTTPS，无法直接连接 HTTP 接口 (${url})。通过酒馆代理 (/proxy/) 转发亦失败: ${proxyErr.message}。请确认已在 config.yaml 开启 enableCorsProxy: true 并重启酒馆。`);
-            }
+            return fetchViaStProxyOrBackend(url, options, '当前网页为 HTTPS，浏览器禁止直连 HTTP 接口 (Mixed Content)');
         }
 
         let response;
-        let isCorsError = false;
+        let directReason = '';
         try {
             response = await fetch(url, options);
             if (response.ok || (response.status !== 405 && response.status < 500)) {
@@ -11937,26 +12679,14 @@ SCHEMA:
             }
         } catch (err) {
             const errStr = String(err || '');
-            isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
+            const isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
             if (!isCorsError) throw err;
+            directReason = `浏览器直连被拦截 (${err.message || errStr})`;
         }
 
-        if (isCorsError || (response && response.status === 405)) {
+        if (directReason || (response && response.status === 405)) {
             console.warn(`[${PLUGIN_NAME}] 直连发包被 CORS / OPTIONS 405 拦截，自动尝试使用酒馆内置代理转发 (/proxy/):`, url);
-            try {
-                const proxyUrl = `/proxy/${url}`;
-                const proxyResponse = await fetch(proxyUrl, options);
-                if (proxyResponse.ok || (proxyResponse.status !== 404 && proxyResponse.status < 500)) {
-                    return proxyResponse;
-                }
-                if (proxyResponse.status === 404) {
-                    throw new Error(`酒馆内置代理未开启 (HTTP 404)。请在酒馆 config.yaml 中配置 enableCorsProxy: true 并重启酒馆。`);
-                }
-            } catch (proxyErr) {
-                console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
-                throw proxyErr;
-            }
-            throw new Error(`无法连接 API 接口 (${url})。目标服务器对 OPTIONS 预检请求返回了 405 限制或代理不可用。请确认酒馆 config.yaml 中已开启 enableCorsProxy: true 并已重启酒馆。`);
+            return fetchViaStProxyOrBackend(url, options, directReason || '目标服务器对 OPTIONS 预检请求返回 HTTP 405');
         }
 
         return response;
@@ -12316,7 +13046,9 @@ SCHEMA:
                 let errText = '';
                 try { errText = await autoRes.text(); } catch (_) {}
                 const err = new Error(`大模型接口不支持工具调用 (Tool Call / Function Calling)。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持 Tool Calling 的中转渠道。(HTTP ${autoRes.status})`);
+                err.code = 'SDT_TOOLS_UNSUPPORTED';
                 err.status = autoRes.status;
+                err.responseText = errText;
                 err.rawOutput = `【错误】: 当前 API 接口不支持工具调用 (Tool Call / Function Calling)\n【HTTP 状态码】: ${autoRes.status}\n【服务端返回报文】:\n${errText || '（无响应体）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」以改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
                 throw err;
             }
@@ -12343,7 +13075,7 @@ SCHEMA:
             delete cleanBody.reasoning_effort;
             delete cleanBody.thinking;
             delete cleanBody.thinking_budget;
-            response = await smartFetch(url, {
+            response = await customFetch(url, {
                 ...fetchOptions,
                 body: JSON.stringify(cleanBody),
             });
@@ -12434,11 +13166,16 @@ SCHEMA:
         }
     }
 
-    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, promptSnapshot = null } = {}) {
+    async function callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook = false, promptSnapshot = null, forceJsonMode = false } = {}) {
         const liveStore = getStore();
-        const layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
+        let layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
             ? captureLayeredMangaPromptSnapshot(liveStore) : null);
-        const store = layeredSnapshot?.storeSnapshot || liveStore;
+        // 6.5.49: forceJsonMode = 工具调用没拿到结果后的一次性普通 JSON 重试；只改本次请求，不动用户设置。
+        if (forceJsonMode && layeredSnapshot?.storeSnapshot) {
+            layeredSnapshot = { ...layeredSnapshot, storeSnapshot: { ...layeredSnapshot.storeSnapshot, toolCallMode: false } };
+        }
+        const baseStore = layeredSnapshot?.storeSnapshot || liveStore;
+        const store = forceJsonMode ? { ...baseStore, toolCallMode: false } : baseStore;
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
         const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
@@ -12523,14 +13260,56 @@ SCHEMA:
                 console.warn(`[${PLUGIN_NAME}] ⚠️ HTTP ${response.status} 命中 Google 前置输入审核，正在自动剥离世界书发起纯净正文自愈重试...`);
                 toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                 assertMangaRequestContext(requestContext);
-                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
             }
             throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
         }
 
         let json;
+        let toolFallbackResult = null;
         const ct = response.headers.get('content-type') || '';
         const isSseStream = (ct.includes('text/event-stream') || reqBody.stream === true) && response.body && typeof response.body.getReader === 'function';
+
+        // 6.5.49: 请求了 tools 却没拿到工具调用：先从正文/思维链里找分镜 JSON，找不到就去掉 tools 用普通 JSON 模式重试一次。
+        const recoverMissingToolCall = async (finishReason, texts, rawText) => {
+            const requestedTool = reqBody.tools[0];
+            const recovered = recoverToolArgumentsFromText(texts, requestedTool);
+            if (recovered) {
+                console.info(`[${PLUGIN_NAME}] 模型未返回 tool_calls，已从正文中解析出 ${requestedTool.function.name} 参数并采用`);
+                return { recovered };
+            }
+            const relayError = (texts || []).find(isRelayErrorText);
+            if (relayError) throw makeRelayErrorTextError(relayError);
+            assertMangaRequestContext(requestContext);
+            if (signal?.aborted) {
+                throw signal.reason && typeof signal.reason.message === 'string'
+                    ? signal.reason : Object.assign(new Error('大模型请求已取消'), { name: 'AbortError' });
+            }
+            console.warn(`[${PLUGIN_NAME}] ⚠️ 模型未返回工具调用参数${finishReason ? ` (finish_reason: ${finishReason})` : ''}，自动去掉 tools 改用普通 JSON 模式重试一次`);
+            if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') toastr.info('模型没按工具调用返回，已自动改用普通模式重试', PLUGIN_NAME);
+            try {
+                return { result: await callOpenAiCompatible(messageId, trigger, {
+                    signal, retryWithoutLorebook, promptSnapshot: promptSnapshot || layeredSnapshot, forceJsonMode: true }) };
+            } catch (retryErr) {
+                if (retryErr?.name === 'AbortError' || signal?.aborted
+                    || /^(?:SDT_TOOL_RESPONSE_BLOCKED|SDT_TOOL_RESPONSE_TRUNCATED|SDT_RELAY_ERROR_TEXT)$/.test(String(retryErr?.code || ''))
+                    || /^MANGA_/.test(String(retryErr?.code || ''))) throw retryErr;
+                const err = makeToolFallbackError(finishReason, rawText, true);
+                err.retryError = retryErr;
+                err.rawOutput += `\n\n【普通 JSON 模式重试的错误】: ${retryErr?.message || String(retryErr)}${retryErr?.rawOutput ? `\n${retryErr.rawOutput}` : ''}`;
+                throw err;
+            }
+        };
+        const synthesizeToolEnvelope = (args, finishReason, content, reasoning) => ({
+            choices: [{
+                finish_reason: finishReason || 'stop',
+                message: {
+                    tool_calls: [{ type: 'function', function: { name: reqBody.tools[0].function.name, arguments: JSON.stringify(args) } }],
+                    content: content || '',
+                    reasoning_content: reasoning || '',
+                },
+            }],
+        });
 
         if (isSseStream) {
             const { sseState, rawStreamText } = await readSseCompletion(response, signal, null, reqBody.tools?.[0]?.function?.name || '');
@@ -12575,7 +13354,7 @@ SCHEMA:
                             console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${safetyDetail})。判定为世界书/角色卡中存在受限词，正在自动剥离世界书发起纯净正文自愈重试...`);
                             toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                             assertMangaRequestContext(requestContext);
-                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                            return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
                         }
 
                         const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
@@ -12604,16 +13383,8 @@ SCHEMA:
                     }
 
                     if (reqBody.tools) {
-                        const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
-                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                        err.debugInfo = {
-                            reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
-                            model: modelName,
-                            llmOutput: '(空)',
-                            chunks: sseState.rawDebugChunks,
-                        };
-                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                        throw err;
+                        const outcome = await recoverMissingToolCall(sseState.lastFinishReason, [], rawStreamText);
+                        return outcome.result;
                     }
 
                     const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
@@ -12657,18 +13428,13 @@ SCHEMA:
                             throw err;
                         }
 
-                        const finishReasonInfo = sseState.lastFinishReason ? ` (finish_reason: ${sseState.lastFinishReason})` : '';
-                        const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                        err.debugInfo = {
-                            reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
-                            model: modelName,
-                            llmOutput: sseState.accumulatedContent || '(空)',
-                            chunks: sseState.rawDebugChunks,
-                        };
-                        err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                        throw err;
+                        const outcome = await recoverMissingToolCall(sseState.lastFinishReason,
+                            [sseState.accumulatedContent, sseState.accumulatedReasoning], sseState.accumulatedContent || rawStreamText);
+                        if (!outcome.recovered) return outcome.result;
+                        toolFallbackResult = synthesizeToolEnvelope(outcome.recovered, sseState.lastFinishReason,
+                            sseState.accumulatedContent, sseState.accumulatedReasoning);
                     }
-                    json = {
+                    json = toolFallbackResult || {
                         choices: [{
                             finish_reason: sseState.lastFinishReason || 'stop',
                             message: {
@@ -12710,7 +13476,7 @@ SCHEMA:
                     console.warn(`[${PLUGIN_NAME}] ⚠️ 非流式检测到触发内容审查拦截 (${safetyDetail})，正在自动剥离世界书发起自愈重试...`);
                     toastr.warning('世界书触发敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
                     assertMangaRequestContext(requestContext);
-                    return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot });
+                    return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
                 }
                 const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
                 err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
@@ -12737,15 +13503,14 @@ SCHEMA:
 
             const hasTool = getCompletionToolCalls(json).length > 0;
             if (!hasTool) {
-                const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
-                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                err.debugInfo = {
-                    reason: `大模型未透传 Tool Call 参数${finishReasonInfo}`,
-                    model: modelName,
-                    llmOutput: choice?.message?.content || '(空)',
-                };
-                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【服务端原始响应正文】:\n${choice?.message?.content || JSON.stringify(json, null, 2)}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                throw err;
+                const content = choice?.message?.content ?? choice?.text
+                    ?? (Array.isArray(candidate?.content?.parts)
+                        ? candidate.content.parts.filter(part => !part?.thought && typeof part?.text === 'string').map(part => part.text).join('') : '');
+                const reasoning = choice?.message?.reasoning_content || choice?.reasoning_content || '';
+                const outcome = await recoverMissingToolCall(finishReason, [content, reasoning],
+                    (typeof content === 'string' && content) || JSON.stringify(json, null, 2));
+                if (!outcome.recovered) return outcome.result;
+                json = synthesizeToolEnvelope(outcome.recovered, finishReason, typeof content === 'string' ? content : '', reasoning);
             }
         }
 
@@ -12755,6 +13520,21 @@ SCHEMA:
                 validateCompletionToolArguments(call?.arguments, reqBody.tools[0]);
             } catch (err) {
                 err.rawOutput = JSON.stringify(json, null, 2);
+                throw err;
+            }
+        }
+
+        if (forceJsonMode) {
+            // 6.5.49: 兜底重试必须真的拿到分镜 JSON；否则普通 JSON 解析会把垃圾当成「无需生图」静默吞掉。
+            const choice = json?.choices?.[0];
+            const parts = Array.isArray(json?.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts : [];
+            const text = choice?.message?.content ?? choice?.text ?? parts.filter(part => !part?.thought && typeof part?.text === 'string').map(part => part.text).join('');
+            const reasoning = choice?.message?.reasoning_content || choice?.reasoning_content || '';
+            if (isRelayErrorText(text)) throw makeRelayErrorTextError(text);
+            if (!recoverToolArgumentsFromText([text, reasoning], { type: 'function', function: { name: 'generate_draw_spec' } })) {
+                const err = new Error('普通 JSON 模式重试也没有返回有效的分镜 JSON');
+                err.code = 'SDT_JSON_RETRY_INVALID';
+                err.rawOutput = typeof text === 'string' && text ? text : JSON.stringify(json, null, 2);
                 throw err;
             }
         }
@@ -12798,6 +13578,119 @@ SCHEMA:
         return normalized;
     }
 
+    /* ── 6.5.49: 「🔍 检测工具调用」 ── */
+    const TOOL_PROBE_TOOL = {
+        type: 'function',
+        function: {
+            name: 'rbq_tool_probe',
+            description: 'Connectivity check. Call this tool with answer "ok".',
+            parameters: { type: 'object', properties: { answer: { type: 'string', description: 'Always "ok".' } }, required: ['answer'] },
+        },
+    };
+
+    /** Pure classification of one probe outcome. verdict: 'supported' | 'unsupported' | 'error'. */
+    function classifyToolProbe({ httpStatus = 200, httpText = '', toolCalls = [], content = '', thrown = null } = {}) {
+        if (thrown) {
+            if (thrown.name === 'AbortError') return { verdict: 'error', message: '检测超时或已取消，开关没有改动。' };
+            if (thrown.code === 'SDT_TOOLS_UNSUPPORTED') {
+                // callApiWithJsonFallback already retried tool_choice:'auto'. A 500 without a tools/function hint is a server fault.
+                if (thrown.status !== 500 || /tool|function/i.test(String(thrown.responseText || ''))) {
+                    return { verdict: 'unsupported', message: `接口拒绝了工具调用请求 (HTTP ${thrown.status || '?'})。${String(thrown.responseText || '').slice(0, 160)}` };
+                }
+                return { verdict: 'error', message: `接口出错 (HTTP 500)，无法判断是否支持工具调用，开关没有改动。\n${String(thrown.responseText || '').slice(0, 200)}` };
+            }
+            return { verdict: 'error', message: `请求失败：${thrown.message || String(thrown)}\n开关没有改动，请检查网络、地址和 Key。` };
+        }
+        if (httpStatus < 200 || httpStatus >= 300) {
+            const text = String(httpText || '');
+            if ((httpStatus === 400 || httpStatus === 422 || httpStatus === 501) && /tool|function/i.test(text)) {
+                return { verdict: 'unsupported', message: `接口不接受工具调用参数 (HTTP ${httpStatus})。` };
+            }
+            const hint = httpStatus === 401 || httpStatus === 403 ? 'Key 无效或没有权限'
+                : httpStatus === 404 ? '地址或模型名不对' : httpStatus === 429 ? '请求太频繁或额度不足' : '接口出错';
+            return { verdict: 'error', message: `HTTP ${httpStatus}：${hint}。开关没有改动。\n${text.slice(0, 200)}` };
+        }
+        const call = (toolCalls || []).find(c => !c?.name || c.name === TOOL_PROBE_TOOL.function.name);
+        if (call) {
+            let args = call.arguments;
+            try { args = typeof args === 'string' ? JSON.parse(args) : args; } catch (_) { args = null; }
+            if (args && typeof args === 'object' && !Array.isArray(args)) return { verdict: 'supported', message: '模型按要求返回了工具调用。' };
+            return { verdict: 'unsupported', message: '模型返回了工具调用，但参数不是合法 JSON。' };
+        }
+        const text = String(content || '').trim();
+        if (!text) return { verdict: 'error', message: '接口没有返回任何内容，开关没有改动，请稍后再试。' };
+        // Relays that swallow upstream failures into the text body (e.g. "[proxy error] {...}") are errors, not a verdict.
+        if (isRelayErrorText(text)) {
+            return { verdict: 'error', message: `中转站返回了错误：${text.slice(0, 200)}\n开关没有改动。` };
+        }
+        return { verdict: 'unsupported', message: `模型只回了普通文字，没有返回工具调用：「${text.slice(0, 80)}${text.length > 80 ? '…' : ''}」` };
+    }
+
+    async function probeToolCallSupport(store, { signal = null, fetchFn = null } = {}) {
+        const url = normalizeBaseUrl(store.openaiBaseUrl);
+        if (!url) return { verdict: 'error', message: '请先填写 OpenAI 兼容接口 Base URL。' };
+        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
+        if (!modelName) return { verdict: 'error', message: '请先选择或填写模型。' };
+        try { checkUrlSafety(url); } catch (err) { return { verdict: 'error', message: err.message || String(err) }; }
+        // Same shape SDT uses for real tool-mode requests: forced tool_choice, stream=true, thinking params.
+        const reqBody = {
+            model: modelName,
+            temperature: 0,
+            stream: true,
+            messages: [
+                { role: 'system', content: 'You are a connectivity test. Always answer by calling the rbq_tool_probe tool.' },
+                { role: 'user', content: '请调用 rbq_tool_probe 工具，answer 填 "ok"。' },
+            ],
+            ...buildThinkingParams(store),
+            tools: [TOOL_PROBE_TOOL],
+            tool_choice: { type: 'function', function: { name: TOOL_PROBE_TOOL.function.name } },
+        };
+        let response;
+        try {
+            response = await callApiWithJsonFallback(url, {
+                method: 'POST',
+                signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                },
+            }, reqBody, fetchFn || smartFetch);
+        } catch (err) {
+            return classifyToolProbe({ thrown: err });
+        }
+        if (!response.ok) {
+            let text = '';
+            try { text = await response.text(); } catch (_) {}
+            return classifyToolProbe({ httpStatus: response.status, httpText: text });
+        }
+        try {
+            const ct = response.headers?.get?.('content-type') || '';
+            let toolCalls = [], content = '';
+            const fromEnvelope = json => {
+                if (json?.error) throw Object.assign(new Error(`接口返回错误：${json.error.message || JSON.stringify(json.error)}`), { code: 'SDT_PROBE_API_ERROR' });
+                toolCalls = getCompletionToolCalls(json);
+                const choice = json?.choices?.[0];
+                const parts = Array.isArray(json?.candidates?.[0]?.content?.parts) ? json.candidates[0].content.parts : [];
+                content = choice?.message?.content ?? choice?.text ?? parts.filter(p => !p?.thought && typeof p?.text === 'string').map(p => p.text).join('');
+            };
+            if (response.body && typeof response.body.getReader === 'function' && (ct.includes('text/event-stream') || reqBody.stream)) {
+                const { sseState, rawStreamText } = await readSseCompletion(response, signal, null, TOOL_PROBE_TOOL.function.name);
+                if (!sseState.toolCalls?.length && !sseState.accumulatedArgs && !sseState.accumulatedContent && rawStreamText.trim().startsWith('{')) {
+                    fromEnvelope(JSON.parse(rawStreamText.trim()));
+                } else {
+                    toolCalls = sseState.toolCalls?.length ? sseState.toolCalls
+                        : (sseState.accumulatedArgs ? [{ name: TOOL_PROBE_TOOL.function.name, arguments: sseState.accumulatedArgs }] : []);
+                    content = sseState.accumulatedContent || '';
+                }
+            } else {
+                fromEnvelope(await safeReadJsonResponse(response));
+            }
+            return classifyToolProbe({ toolCalls, content });
+        } catch (err) {
+            return classifyToolProbe({ thrown: err });
+        }
+    }
+
     async function callStructuredCompletion({
         messages,
         tool = null,
@@ -12805,7 +13698,8 @@ SCHEMA:
         signal = null,
         customStore = null,
         fetchFn = null,
-        onProgress = null
+        onProgress = null,
+        _toolFallbackRetried = false
     }) {
         const store = customStore || getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
@@ -12979,10 +13873,53 @@ SCHEMA:
                 throw err;
             }
             if (!isToolCall || !rawReply) {
-                const finishReasonInfo = finishReason ? ` (finish_reason: ${finishReason})` : '';
-                const err = new Error(`大模型未返回工具调用参数${finishReasonInfo}（当前代理可能未透传 Tool Call）。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持工具调用的渠道/模型。`);
-                err.rawOutput = `【错误】: 大模型 API / 中转代理未透传工具调用 (Tool Call) 数据包。\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」开关改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。\n\n【服务端原始响应】:\n${rawReply || rawOutput || '（空）'}`;
-                throw err;
+                // 6.5.49: 正文里带了参数（含中转模拟的 <<TOOL_CALL>> 文本）就直接采用；否则去掉 tools 普通 JSON 重试一次。
+                const recovered = recoverToolArgumentsFromText([rawReply, reasoning, sseState?.accumulatedContent], tool);
+                if (recovered) {
+                    console.info(`[${PLUGIN_NAME}] 模型未返回 tool_calls，已从正文中解析出 ${toolName} 参数并采用`);
+                    isToolCall = true;
+                    rawReply = JSON.stringify(recovered);
+                } else {
+                    const relayError = [rawReply, sseState?.accumulatedContent].find(isRelayErrorText);
+                    if (relayError) throw makeRelayErrorTextError(relayError);
+                    if (signal?.aborted) {
+                        throw signal.reason && typeof signal.reason.message === 'string'
+                            ? signal.reason : Object.assign(new Error('大模型请求已取消'), { name: 'AbortError' });
+                    }
+                    if (_toolFallbackRetried) throw makeToolFallbackError(finishReason, rawReply || rawOutput, true);
+                    console.warn(`[${PLUGIN_NAME}] ⚠️ 模型未返回 ${toolName} 工具调用参数${finishReason ? ` (finish_reason: ${finishReason})` : ''}，自动去掉 tools 改用普通 JSON 模式重试一次`);
+                    if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') toastr.info('模型没按工具调用返回，已自动改用普通模式重试', PLUGIN_NAME);
+                    const schemaText = (() => { try { return JSON.stringify(tool?.function?.parameters || {}); } catch (_) { return '{}'; } })();
+                    const formatNote = `[输出格式] 不要调用任何工具/函数。直接只输出一个 JSON 对象（不要代码块、不要解释），它就是 ${toolName} 工具的参数，结构遵循此 JSON Schema：${schemaText}`;
+                    const retryMessages = (Array.isArray(messages) ? messages : []).map(m => ({ ...m }));
+                    const lastUser = [...retryMessages].reverse().find(m => m.role === 'user' && typeof m.content === 'string');
+                    if (lastUser) lastUser.content += `\n\n${formatNote}`;
+                    else retryMessages.push({ role: 'user', content: formatNote });
+                    let retry;
+                    try {
+                        retry = await callStructuredCompletion({
+                            messages: retryMessages, tool, temperature, signal, fetchFn, onProgress,
+                            customStore: { ...store, toolCallMode: false }, _toolFallbackRetried: true,
+                        });
+                    } catch (retryErr) {
+                        if (retryErr?.name === 'AbortError' || signal?.aborted) throw retryErr;
+                        const err = makeToolFallbackError(finishReason, rawReply || rawOutput, true);
+                        err.retryError = retryErr;
+                        err.rawOutput += `\n\n【普通 JSON 模式重试的错误】: ${retryErr?.message || String(retryErr)}`;
+                        throw err;
+                    }
+                    const retryArgs = recoverToolArgumentsFromText([retry.rawReply, retry.reasoning], tool);
+                    if (retryArgs) return { ...retry, rawReply: JSON.stringify(retryArgs), isToolCall: true, toolName };
+                    let parsedRetry = {};
+                    try { parsedRetry = extractJson(retry.rawReply); } catch (_) {}
+                    if (!parsedRetry || typeof parsedRetry !== 'object' || !Object.keys(parsedRetry).length) {
+                        const err = makeToolFallbackError(finishReason, rawReply || rawOutput, true);
+                        err.rawOutput += `\n\n【普通 JSON 模式重试的返回】:\n${retry.rawOutput || retry.rawReply || '（空）'}`;
+                        throw err;
+                    }
+                    // Let the caller's own parser report schema-level problems (more specific than ours).
+                    return { ...retry, toolName };
+                }
             }
         }
 
@@ -14051,6 +14988,8 @@ SCHEMA:
 
             // === Sync to message.extra.rbq_sdt (chat-level persistence, cross-device sync) ===
             saveMsgExtraSdt(messageId, cacheEntry);
+            // One toast per global import of this fresh parse, with 「撤销」 (never on reload / cache restore).
+            try { notifyGlobalImports(messageId, cacheKey, cacheEntry); } catch (e) { console.warn(`[${PLUGIN_NAME}] global import toast failed`, e); }
 
             const hasUsableSegments = Array.isArray(result?.segments) && result.segments.some((segment) => getFinalPrompt(segment) || segment.scene || (segment.characters && segment.characters.length > 0));
             const hasTopLevelPrompt = !!getFinalPrompt(result) || !!result?.scene;
@@ -15785,6 +16724,7 @@ SCHEMA:
                     </div>
                     <div class="st-scene-trigger-modal-grid">
                         <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="通过 generate_draw_spec 工具参数返回分镜结果，自动、手动、测试统一使用。需接口支持 Function Calling；不会关闭服务商的内容审核。"><span>结构化工具调用 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tool-probe-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="用当前填写的接口地址、Key 和模型发一个很小的测试请求，看它能不能正确返回工具调用，并自动打开或关闭左边的开关。"><button id="rbq-sdt-tool-probe" class="menu_button" type="button" style="width:auto;display:inline-flex;align-items:center;gap:6px;">🔍 检测工具调用</button><span id="rbq-sdt-tool-probe-result" style="display:block;margin-top:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;"></span></div>
                         <div id="rbq-sdt-tool-input-description-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" style="min-height:44px;"><span>剧情与资料写入工具说明</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-input-description" type="checkbox" aria-label="剧情与资料写入工具说明"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
@@ -16107,6 +17047,13 @@ SCHEMA:
             save();
             console.info(`[Smart Draw] 角色记忆开关已${e.target.checked ? '✅ 启用' : '❌ 禁用'}`);
         });
+        // 6.5.48: 「参考角色卡信息（未建档时）」 also saves on click, same as the memory switch above (bound at bindSwitch list).
+        document.getElementById('rbq-sdt-inject-char-card').addEventListener('change', (e) => {
+            const s = getStore();
+            s.injectCharacterCard = e.target.checked;
+            save();
+            console.info(`[Smart Draw] 参考角色卡信息已${e.target.checked ? '✅ 启用' : '❌ 禁用'}`);
+        });
 
         // API templates selection/change
         document.getElementById('rbq-sdt-api-template').addEventListener('change', (event) => {
@@ -16270,6 +17217,44 @@ SCHEMA:
             }
         });
         document.getElementById('rbq-sdt-refresh-models').onclick = refreshOpenAiModels;
+
+        // 6.5.49: 「🔍 检测工具调用」：用当前表单里的接口/Key/模型测一次，结果决定开关并立即保存。
+        const toolProbeBtn = document.getElementById('rbq-sdt-tool-probe');
+        if (toolProbeBtn) toolProbeBtn.onclick = async () => {
+            const resultEl = document.getElementById('rbq-sdt-tool-probe-result');
+            const toggle = document.getElementById('rbq-sdt-tool-call-mode');
+            const show = (text, color) => { if (resultEl) { resultEl.textContent = text; resultEl.style.color = color || ''; } };
+            const live = getStore();
+            const probeStore = {
+                ...live,
+                openaiBaseUrl: val('rbq-sdt-openai-base').trim(),
+                openaiApiKey: val('rbq-sdt-openai-key').trim(),
+                openaiModel: val('rbq-sdt-openai-model').trim(),
+                openaiModelCustom: val('rbq-sdt-openai-model-custom').trim(),
+                thinkingEffort: val('rbq-sdt-thinking-effort') || live.thinkingEffort || 'default',
+                thinkingBudget: Math.max(0, Number(val('rbq-sdt-thinking-budget')) || live.thinkingBudget || 2048),
+            };
+            toolProbeBtn.disabled = true;
+            show('⏳ 检测中…（发一个很小的测试请求，最多等 60 秒）', '');
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 60000);
+            let outcome;
+            try { outcome = await probeToolCallSupport(probeStore, { signal: controller.signal }); }
+            catch (err) { outcome = classifyToolProbe({ thrown: err }); }
+            finally { clearTimeout(timer); toolProbeBtn.disabled = false; }
+            if (outcome.verdict === 'supported' || outcome.verdict === 'unsupported') {
+                const on = outcome.verdict === 'supported';
+                const s = getStore();
+                s.toolCallMode = on;
+                if (toggle) toggle.checked = on;
+                save();
+                updateProviderVisibility();
+                show(on ? `✅ 支持工具调用（已自动打开并保存）\n${outcome.message}` : `❌ 不支持（已自动关闭并保存）\n${outcome.message}`,
+                    on ? '#4ade80' : '#f87171');
+            } else {
+                show(`⚠️ 检测没有完成\n${outcome.message}`, '#fbbf24');
+            }
+        };
 
         document.getElementById('rbq-sdt-save').onclick = () => {
             const s = getStore();
@@ -16658,7 +17643,7 @@ SCHEMA:
 
             const clearBtn = e.target.closest('#rbq-sdt-clear-char-profiles');
             if (clearBtn) {
-                if (confirm('确定清空当前聊天的所有角色记忆吗？')) {
+                if (confirm(buildClearCharacterProfilesConfirm(getStore(), getChatKey()))) {
                     clearAllCharacterProfiles();
                     refreshCharacterProfileListUi();
                     toastr.success('当前聊天的角色外貌记忆已清空', PLUGIN_NAME);
@@ -17103,6 +18088,7 @@ SCHEMA:
                 }
             }
             logTaggerPayload('manual draw tagger result', normalized);
+            flushPendingGlobalImportToasts();
 
             if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
                 toastr.warning('tagger \u672a\u751f\u6210\u6709\u6548\u5206\u955c', PLUGIN_NAME);
@@ -18686,6 +19672,7 @@ SCHEMA:
             }
         }
         logTaggerPayload('test draw tagger result', normalized);
+        flushPendingGlobalImportToasts();
 
         if (!normalized.shouldDraw || !Array.isArray(normalized.segments) || normalized.segments.length === 0) {
             throw new Error('Tagger 未能生成有效分镜描述');
@@ -18759,8 +19746,20 @@ SCHEMA:
         return openLorebookSearchModal(initialSourceId, onSelectEntry, initialMainCategory);
     };
 
-    RBQ.api.importCharacterFromCurrentCard = () => {
-        return importCharacterFromCurrentCard();
+    RBQ.api.importCharacterFromCurrentCard = (options = {}) => {
+        return importCharacterFromCurrentCard(options);
+    };
+
+    /** Shared by 角色工坊's 「一键打开」 banner: flips 「启用角色外貌记忆」, saves, and keeps this panel's checkbox in sync
+     *  (otherwise a later 「💾 保存智能触发器设置」 click would write the stale unchecked box back). */
+    RBQ.api.setCharacterMemoryEnabled = (enabled) => {
+        const store = getStore();
+        store.characterMemoryEnabled = !!enabled;
+        save();
+        const input = document.getElementById('rbq-sdt-char-memory');
+        if (input) input.checked = !!enabled;
+        document.getElementById('rbq-sdt-char-memory-field')?.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        return store.characterMemoryEnabled;
     };
 
     RBQ.api.collectMangaReferenceData = collectMangaReferenceData;

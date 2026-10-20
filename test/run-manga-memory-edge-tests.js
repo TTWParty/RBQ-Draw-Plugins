@@ -32,6 +32,8 @@ function workshopVm() {
         getChatKey: sdt.getChatKey, getAllGlobalProfiles: () => sdt.getCharacterProfiles(), isJunkCharacterName: () => false, getWs: () => null, wsSave() {},
         toastr: { success() {}, warning() {} }, mask: { querySelector: selector => selector === '#cw-ce-save'
             ? { addEventListener: (_event, fn) => { handler = fn; } } : null, remove() {} } });
+    // saveProfile depends on same-closure helpers (shouldSyncGlobalCopy, ⭐全局角色 helpers); load them too.
+    vm.runInContext(workshopSource.slice(workshopSource.indexOf('    /** Locked base/outfit'), workshopSource.indexOf('    function getAllGlobalProfiles() {')), context);
     vm.runInContext(workshopSource.slice(workshopSource.indexOf('    function saveProfile('), workshopSource.indexOf('    function getOutfitTagsForSlot(')), context);
     return { context, editorSave() {
         const start = workshopSource.indexOf('        const isEdit = !!editName;');

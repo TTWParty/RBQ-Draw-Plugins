@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.36';
+    const VERSION = '2.2.37';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -2641,7 +2641,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                             <button type="button" class="cw-btn sm" id="cw-batch-mode-btn" title="开启批量选择模式：支持批量删除、批量导出与批量导入当前"><i class="fa-solid fa-list-check"></i> 批量管理</button>
                             <button type="button" class="cw-btn sm" id="cw-export-dossier-btn" title="导出当前视图角色档案库为 JSON 备份"><i class="fa-solid fa-file-export"></i> 导出备份</button>
                             <button type="button" class="cw-btn sm" id="cw-import-dossier-btn" title="从 JSON 文件导入角色档案到当前会话"><i class="fa-solid fa-file-import"></i> 导入文件</button>
-                            <input type="file" id="cw-import-dossier-file" accept=".json" style="display:none" />
+                            <input type="file" id="cw-import-dossier-file" accept=".json,application/json,text/plain" style="display:none" />
                             <button type="button" class="cw-btn gn sm" id="cw-create-char"><i class="fa-solid fa-plus"></i> 新建角色档案</button>
                         ` : `
                             <div class="cw-batch-toolbar" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(56,189,248,0.12);padding:3px 8px;border-radius:6px;border:1px solid rgba(56,189,248,0.35)">

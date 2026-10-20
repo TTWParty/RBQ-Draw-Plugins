@@ -2642,7 +2642,7 @@
                             <button id="rbq-pm-test-import-btn" class="menu_button" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; font-size:11px; padding:4px 8px; border-radius:5px; cursor:pointer;" title="导入词库 JSON">
                                 <i class="fa-solid fa-file-import"></i> 导入
                             </button>
-                            <input id="rbq-pm-test-import-file" type="file" accept=".json" style="display:none;">
+                            <input id="rbq-pm-test-import-file" type="file" accept=".json,application/json,text/plain" style="display:none;">
                         </div>
                     </div>
 
@@ -4317,5 +4317,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.30 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.31 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

@@ -205,6 +205,37 @@
         RBQ.api.refreshNaiVibeUi?.();
     }
 
+    // 弹窗挂载：用 <dialog>.showModal() 进入浏览器顶层 (top layer)。
+    // 酒馆 1.19 的 Popup 也是 showModal 的 <dialog>，普通 position:fixed + z-index 再大也会被它盖住且被设为 inert，
+    // 所以这里同样走顶层，保证导入/导出/删除弹窗永远在最上面；不支持 <dialog> 时退回 body + fixed。
+    function mountRbqPpOverlay(overlay) {
+        const host = document.createElement('dialog');
+        if (typeof host.showModal !== 'function') {
+            document.body.appendChild(overlay);
+            return;
+        }
+        host.className = 'rbq-pp-top-layer';
+        host.addEventListener('cancel', (e) => e.preventDefault()); // Esc 交给各弹窗自己的 keydown 处理
+        host.appendChild(overlay);
+        document.body.appendChild(host);
+        try {
+            host.showModal();
+        } catch (_e) {
+            host.remove();
+            document.body.appendChild(overlay);
+        }
+    }
+
+    function unmountRbqPpOverlay(overlay) {
+        const host = overlay?.parentElement;
+        if (host instanceof HTMLDialogElement && host.classList.contains('rbq-pp-top-layer')) {
+            try { host.close(); } catch (_e) { /* noop */ }
+            host.remove();
+        } else {
+            overlay?.remove();
+        }
+    }
+
     function ensureDialogStyles() {
         let style = document.getElementById('rbq-pp-dialog-styles');
         if (!style) {
@@ -213,6 +244,23 @@
             document.head.appendChild(style);
         }
         style.textContent = `
+            dialog.rbq-pp-top-layer {
+                position: fixed !important;
+                inset: 0 !important;
+                width: 100vw !important;
+                height: 100dvh !important;
+                max-width: none !important;
+                max-height: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                background: transparent !important;
+                overflow: visible !important;
+                color: inherit;
+            }
+            dialog.rbq-pp-top-layer::backdrop {
+                background: transparent;
+            }
             .rbq-pp-dialog-overlay {
                 position: fixed !important;
                 inset: 0 !important;
@@ -465,7 +513,7 @@
 
         const closeDialog = () => {
             document.removeEventListener('keydown', onKeyDown);
-            overlay.remove();
+            unmountRbqPpOverlay(overlay);
         };
 
         const onKeyDown = (e) => {
@@ -513,7 +561,7 @@
         dialog.querySelector('#rbq-pp-save-compact')?.addEventListener('click', () => { closeDialog(); onSelect('compact'); });
         dialog.querySelector('#rbq-pp-save-full')?.addEventListener('click', () => { closeDialog(); onSelect('full'); });
 
-        document.body.appendChild(overlay);
+        mountRbqPpOverlay(overlay);
     }
 
     // ── Join Logic ──
@@ -766,7 +814,7 @@
 
         const closeDialog = () => {
             document.removeEventListener('keydown', onKeyDown);
-            overlay.remove();
+            unmountRbqPpOverlay(overlay);
         };
 
         const onKeyDown = (e) => {
@@ -939,7 +987,7 @@
         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
         overlay.addEventListener('touchmove', (e) => { if (e.target === overlay) e.preventDefault(); }, { passive: false });
 
-        document.body.appendChild(overlay);
+        mountRbqPpOverlay(overlay);
     }
 
     // ── UI Injection ──
@@ -1788,7 +1836,7 @@
                 <button id="rbq-pp-batch-delete" type="button" class="rbq-pp-btn rbq-pp-btn-danger-ghost">
                     <i class="fa-solid fa-trash-can"></i> 批量删除
                 </button>
-                <input id="rbq-pp-import-file" type="file" accept=".json" hidden>
+                <input id="rbq-pp-import-file" type="file" accept=".json,application/json,text/plain" hidden>
             </div>
 
             <!-- 动态合成实时预览卡片 (Terminal Inspector) -->
@@ -2521,8 +2569,19 @@
             if (!file) return;
             try {
                 const text = await file.text();
-                const imported = JSON.parse(text);
-                if (!Array.isArray(imported)) throw new Error('格式错误：文件内容应为数组');
+                const parsed = JSON.parse(text);
+                // 兼容三种格式：预设数组 / { presets: [...] } 包装 / 单个预设对象
+                let imported;
+                if (Array.isArray(parsed)) {
+                    imported = parsed;
+                } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.presets)) {
+                    imported = parsed.presets;
+                } else if (parsed && typeof parsed === 'object' && ['name', 'positive', 'positiveSuffix', 'negative', 'positivePrompt', 'positiveSuffixPrompt', 'negativePrompt', 'vibes'].some(k => k in parsed)) {
+                    imported = [parsed];
+                } else {
+                    throw new Error('格式错误：应为预设数组、{ "presets": [...] } 或单个预设对象（含 name / positive / negative 等字段）');
+                }
+                imported = imported.filter(item => item && typeof item === 'object');
                 const candidates = imported.filter(item => item.name || item.positive || item.positiveSuffix || item.negative || item.positivePrompt || item.positiveSuffixPrompt || (Array.isArray(item.vibes) && item.vibes.length));
                 if (!candidates.length) throw new Error('文件中没有有效的预设');
 

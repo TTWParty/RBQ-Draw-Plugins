@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.44';
+    const PLUGIN_VERSION = '6.5.45';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -6480,9 +6480,40 @@ ${getCharacterMemoryTagSpecification()}
             .filter(Boolean);
     }
 
+    // 酒馆内置系统/欢迎页消息类型（SillyTavern 1.19 system-messages.js / welcome-screen.js）
+    const ST_SKIP_MESSAGE_TYPES = new Set(['assistant_message', 'welcome_prompt', 'assistant_note']);
+
+    function isStSystemUiMessage(message) {
+        const extra = message?.extra;
+        if (extra && typeof extra === 'object') {
+            if (extra.uses_system_ui) return true;
+            if (ST_SKIP_MESSAGE_TYPES.has(extra.type)) return true;
+            // getSystemMessageByType() 生成的系统消息一定带 extra.type；
+            // 用户「隐藏」的普通楼层同样是 is_system=true 但没有 extra.type，仍需正常处理
+            if (message.is_system && extra.type) return true;
+        }
+        return false;
+    }
+
+    function isNoChatOpen() {
+        try {
+            const ctx = RBQ.api.getContext?.() || window.SillyTavern?.getContext?.();
+            if (!ctx) return false;
+            const chatId = typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId;
+            if (chatId !== undefined && chatId !== null && chatId !== '') return false;
+            // 欢迎页：没有角色/群聊且还没有任何用户发言；临时聊天发过消息后照常生图
+            const chat = Array.isArray(ctx.chat) ? ctx.chat : [];
+            return !chat.some(m => m?.is_user);
+        } catch (_e) {
+            return false;
+        }
+    }
+
     function shouldHandleMessage(message, messageId = null) {
         const store = getStore();
         if (!store.enabled || store.mode === 'off' || !message) return false;
+        if (isStSystemUiMessage(message)) return false;
+        if (isNoChatOpen()) return false;
         if (messageId != null && isMessageCurrentlyStreaming(messageId)) return false;
         const text = String(message.mes || '').trim();
         if (!text || text.length < 5) return false;
@@ -9515,11 +9546,11 @@ SCHEMA:
 
             return `
                 <div class="rbq-sdt-card-char-outfit-sec" data-char-idx="${idx}" data-char-name="${escapeHtml(charName)}" style="display: flex; flex-direction: column; gap: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                        <strong style="font-size: 14px; color: #ffb86c; display: flex; align-items: center; gap: 6px;">
-                            <i class="fa-solid fa-user"></i> ${escapeHtml(charName)}
+                    <div style="display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; min-width: 0;">
+                        <strong style="flex: 0 1 auto; max-width: 100%; min-width: 0; font-size: 14px; line-height: 1.35; color: #ffb86c; display: flex; align-items: baseline; gap: 6px; overflow-wrap: anywhere;">
+                            <i class="fa-solid fa-user" style="flex: none;"></i><span style="min-width: 0;">${escapeHtml(charName)}</span>
                         </strong>
-                        <span style="font-size: 11px; color: rgba(255,255,255,0.5);">当前穿着: ${escapeHtml(currentOutfitTags.slice(0, 35)) || '默认'}</span>
+                        <span title="${escapeHtml(currentOutfitTags)}" style="flex: 1 1 140px; min-width: 0; font-size: 11px; line-height: 1.35; color: rgba(255,255,255,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">当前穿着: ${escapeHtml(currentOutfitTags) || '默认'}</span>
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -9528,8 +9559,8 @@ SCHEMA:
                             ${wardrobe.length > 0 ? wardrobe.map(w => {
                                 const isCurrent = isSameOutfit(w.outfit, currentOutfitTags);
                                 return `
-                                    <button class="menu_button rbq-sdt-pick-outfit-btn" data-tags="${escapeHtml(w.outfit)}" data-name="${escapeHtml(w.name)}" type="button" style="padding: 4px 10px; font-size: 11px; margin: 0; background: ${isCurrent ? 'rgba(100,255,100,0.18)' : 'rgba(255,255,255,0.06)'} !important; border: 1px solid ${isCurrent ? 'rgba(100,255,100,0.4)' : 'rgba(255,255,255,0.12)'} !important; color: ${isCurrent ? '#a3ffa3' : '#fff'} !important; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 6px;">
-                                        👗 ${escapeHtml(w.name)} ${isCurrent ? '<i class="fa-solid fa-check" style="font-size: 10px;"></i>' : ''}
+                                    <button class="menu_button rbq-sdt-pick-outfit-btn" data-tags="${escapeHtml(w.outfit)}" data-name="${escapeHtml(w.name)}" type="button" style="width: auto !important; min-width: 0 !important; max-width: 100% !important; flex: 0 1 auto !important; flex-direction: row !important; flex-wrap: nowrap !important; justify-content: flex-start !important; text-align: left !important; white-space: normal !important; word-break: normal !important; overflow-wrap: anywhere !important; line-height: 1.35 !important; padding: 5px 10px; font-size: 11px; margin: 0; background: ${isCurrent ? 'rgba(100,255,100,0.18)' : 'rgba(255,255,255,0.06)'} !important; border: 1px solid ${isCurrent ? 'rgba(100,255,100,0.4)' : 'rgba(255,255,255,0.12)'} !important; color: ${isCurrent ? '#a3ffa3' : '#fff'} !important; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 6px;">
+                                        <span style="flex: none;">👗</span><span style="min-width: 0;">${escapeHtml(w.name)}</span>${isCurrent ? '<i class="fa-solid fa-check" style="flex: none; font-size: 10px;"></i>' : ''}
                                     </button>
                                 `;
                             }).join('') : '<span style="font-size: 11px; opacity: 0.5;">该角色衣柜暂无预设，可在下方直接输入自定义服装 Tag</span>'}
@@ -9580,8 +9611,8 @@ SCHEMA:
                     ${charsHtml}
 
                     <div style="display: flex !important; justify-content: flex-end !important; gap: 8px !important; margin-top: 6px !important;">
-                        <button class="menu_button" id="rbq-sdt-card-outfit-cancel" type="button" style="padding: 6px 14px !important; font-size: 12px !important;">取消</button>
-                        <button class="menu_button" id="rbq-sdt-card-outfit-apply" type="button" style="padding: 6px 18px !important; font-size: 12px !important; background: rgba(255,184,108,0.22) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 立即换装并重绘</button>
+                        <button class="menu_button" id="rbq-sdt-card-outfit-cancel" type="button" style="width: auto !important; flex-direction: row !important; white-space: nowrap !important; margin: 0 !important; padding: 6px 14px !important; font-size: 12px !important;">取消</button>
+                        <button class="menu_button" id="rbq-sdt-card-outfit-apply" type="button" style="width: auto !important; flex-direction: row !important; white-space: nowrap !important; margin: 0 !important; padding: 6px 18px !important; font-size: 12px !important; background: rgba(255,184,108,0.22) !important; color: #ffb86c !important; border: 1px solid rgba(255,184,108,0.45) !important; display: inline-flex !important; align-items: center !important; gap: 6px !important; font-weight: bold !important; cursor: pointer !important;"><i class="fa-solid fa-wand-magic-sparkles"></i> 立即换装并重绘</button>
                     </div>
                 </div>
             </div>
@@ -9602,6 +9633,7 @@ SCHEMA:
                     b.style.background = 'rgba(255,255,255,0.06)';
                     b.style.color = '#fff';
                     b.style.borderColor = 'rgba(255,255,255,0.12)';
+                    b.querySelector('.fa-check')?.remove();
                 });
             });
             sec.querySelectorAll('.rbq-sdt-pick-outfit-btn').forEach(btn => {
@@ -9614,10 +9646,12 @@ SCHEMA:
                         b.style.background = 'rgba(255,255,255,0.06)';
                         b.style.color = '#fff';
                         b.style.borderColor = 'rgba(255,255,255,0.12)';
+                        b.querySelector('.fa-check')?.remove();
                     });
                     btn.style.background = 'rgba(100,255,100,0.18)';
                     btn.style.color = '#a3ffa3';
                     btn.style.borderColor = 'rgba(100,255,100,0.4)';
+                    btn.insertAdjacentHTML('beforeend', '<i class="fa-solid fa-check" style="flex: none; font-size: 10px;"></i>');
                 });
             });
         });

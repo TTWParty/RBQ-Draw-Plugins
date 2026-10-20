@@ -98,8 +98,8 @@ test('chat save of an ordinary character never syncs other chats; 角色库 save
 test('save toast: 当前会话 says only this chat changed; 角色库 keeps the sync wording; version 2.2.39', () => {
     assert.match(saveHandler, /targetScope === 'chat'\s*\? \('「' \+ name \+ '」已保存到当前对话（其他对话和⭐全局角色不受影响）'\)/);
     assert.match(saveHandler, /已保存，并已同步至角色库中同一档案的各会话副本！/);
-    assert.match(cwSrc, /const VERSION = '2\.2\.39'/);
-    assert.match(fs.readFileSync(path.join(__dirname, '../plugins.json'), 'utf8'), /character-workshop\.js\?v=2\.2\.39/);
+    assert.match(cwSrc, /const VERSION = '2\.2\.40'/);
+    assert.match(fs.readFileSync(path.join(__dirname, '../plugins.json'), 'utf8'), /character-workshop\.js\?v=2\.2\.40/);
 });
 
 console.log(`\n${passed} CW chat-only save tests passed.`);

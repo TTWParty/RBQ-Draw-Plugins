@@ -81,7 +81,7 @@ test('D: CW 「导入当前」 toast + SDT toast/panel carry the lock hint', () 
     assert.ok(cwSrc.includes(`导入到当前会话（人设与服装已锁定）<br><small style="opacity:.8">${HINT}</small>\`, PLUGIN_NAME, { escapeHtml: false })`));
     assert.ok(sdtSrc.includes(`function getGlobalImportLockHint() { return '${HINT}'; }`));
     assert.ok(sdtSrc.includes(`title="从全局角色导入（导入时人设与服装默认锁定）。${HINT}">⭐来自全局</span>`));
-    assert.match(cwSrc, /const VERSION = '2\.2\.39'/);
+    assert.match(cwSrc, /const VERSION = '2\.2\.40'/);
     assert.match(sdtSrc, /DEFAULT_SYSTEM_PROMPT_VERSION = 46\b/);
 });
 console.log(`\n${passed} CW library status / lock hint tests passed.`);

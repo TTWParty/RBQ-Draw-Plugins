@@ -385,7 +385,7 @@ function requestHost(toolCallMode, responses) {
         assert.doesNotMatch(getStoreSrc, /toolCallMode\s*=\s*true/);
         assert.match(source, /DEFAULT_SYSTEM_PROMPT_VERSION = 46\b/);
         const version = source.match(/const PLUGIN_VERSION = '([\d.]+)'/)[1];
-        assert.equal(version, '6.5.49');
+        assert.equal(version, '6.5.50');
         assert.ok(fs.readFileSync(path.join(__dirname, '../plugins.json'), 'utf8').includes(`smart-draw-trigger.js?v=${version}`));
         assert.doesNotMatch(source, /请在设置中关闭「结构化工具调用 \(Tool Call\)」开关，或更换支持工具调用的渠道\/模型/);
     });

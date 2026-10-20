@@ -4467,5 +4467,5 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.32 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.33 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

@@ -307,7 +307,7 @@ test('CW editor wiring: ask before rename/delete, pass syncImported, warn alias 
     assert.ok(body.indexOf('askSyncImportedGlobalCopies(name)') < body.indexOf('deleteProfile(editName, targetScope)'));
     assert.match(body, /\{ makeGlobal: keepGlobalOnRename, syncImported \}/);
     assert.match(body, /warnGlobalAliasConflicts\(name\)/);
-    assert.match(cwSrc, /const VERSION = '2\.2\.39'/);
+    assert.match(cwSrc, /const VERSION = '2\.2\.40'/);
 });
 
 console.log(`\n${passed} global character fix tests passed.`);

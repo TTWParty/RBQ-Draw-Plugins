@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const src = fs.readFileSync(path.join(__dirname, '../plugins/character-workshop.js'), 'utf8');
-assert.match(src, /const VERSION = '2\.2\.39'/);
+assert.match(src, /const VERSION = '2\.2\.40'/);
 assert.match(src, /用全局版本覆盖当前/);
 assert.match(src, /cw-overwrite-from-global/);
 assert.doesNotMatch(src, /本会话已存在/);

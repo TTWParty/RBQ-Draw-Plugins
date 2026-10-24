@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.44';
+        const VERSION = '1.9.45';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -3288,6 +3288,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             if (store.enabled) {
                 mcCheck.checked = true;
                 mcCheck.disabled = true;
+                mcField.dataset.mangaLocked = '1';
                 mcField.setAttribute('aria-checked', 'true');
                 mcField.classList.add('rbq-sdt-preset-locked', 'rbq-sdt-locked-on');
                 mcField.classList.remove('rbq-sdt-locked-off');
@@ -3309,8 +3310,11 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                     }
                 }
             } else {
-                const sdtStore = getSdtStore();
-                mcCheck.checked = !!sdtStore.multiCharOutput;
+                // 仅在从漫画锁定态解除时回写 store 值，避免覆盖用户尚未保存的点击（v1.9.45）
+                if (mcField.dataset.mangaLocked === '1') {
+                    mcCheck.checked = !!getSdtStore().multiCharOutput;
+                    delete mcField.dataset.mangaLocked;
+                }
                 mcCheck.disabled = false;
                 mcField.setAttribute('aria-checked', mcCheck.checked ? 'true' : 'false');
                 mcField.classList.remove('rbq-sdt-preset-locked', 'rbq-sdt-locked-on', 'rbq-sdt-locked-off');
@@ -3327,6 +3331,7 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
             if (store.enabled) {
                 coordsCheck.checked = false;
                 coordsCheck.disabled = true;
+                coordsField.dataset.mangaLocked = '1';
                 coordsField.setAttribute('aria-checked', 'false');
                 coordsField.classList.add('rbq-sdt-preset-locked', 'rbq-sdt-locked-off');
                 coordsField.classList.remove('rbq-sdt-locked-on');
@@ -3348,8 +3353,10 @@ ${store.style === 'monochrome' ? '黑白：参考原预设的整页脱色规则�
                     }
                 }
             } else {
-                const sdtStore = getSdtStore();
-                coordsCheck.checked = !!sdtStore.multiCharUseCoords;
+                if (coordsField.dataset.mangaLocked === '1') {
+                    coordsCheck.checked = !!getSdtStore().multiCharUseCoords;
+                    delete coordsField.dataset.mangaLocked;
+                }
                 coordsCheck.disabled = false;
                 coordsField.setAttribute('aria-checked', coordsCheck.checked ? 'true' : 'false');
                 coordsField.classList.remove('rbq-sdt-preset-locked', 'rbq-sdt-locked-on', 'rbq-sdt-locked-off');

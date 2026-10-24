@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.50';
+    const PLUGIN_VERSION = '6.5.51';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -16419,7 +16419,11 @@ SCHEMA:
         sync();
         field.setAttribute('role', 'switch');
         field.addEventListener('click', (event) => {
-            if (input.disabled) return;
+            if (input.disabled) {
+                const reason = field.querySelector('.rbq-sdt-switch-lock-desc')?.textContent?.trim();
+                toastr.info(reason ? `该选项已被锁定：${reason}` : '该选项当前被其他设置或插件锁定，暂不能修改', PLUGIN_NAME);
+                return;
+            }
             // Skip if clicking the checkbox directly — it already toggles itself
             if (event.target === input) return;
             event.preventDefault();

@@ -4686,17 +4686,19 @@ ${isToolMode
             try {
                 response = await fetch(endpoint, {
                     method: 'POST',
+                    redirect: 'error',
                     signal,
                     headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
                     body: JSON.stringify(reqBody)
                 });
                 if (!response.ok && response.status === 400 && typeof response.clone === 'function') {
                     const errCloned = await response.clone().text().catch(() => '');
-                    if (errCloned.toLowerCase().includes('response_format')) {
+                    if (/response_format/i.test(errCloned) && /unsupported|not supported|not support|unknown|unrecognized|unexpected|invalid|not allowed|不支持|无效|不允许/i.test(errCloned)) {
                         assertStudioRequestActive(signal);
                         delete reqBody.response_format;
                         response = await fetch(endpoint, {
                             method: 'POST',
+                            redirect: 'error',
                             signal,
                             headers: { 'Content-Type': 'application/json', ...(config.openaiApiKey ? { Authorization: `Bearer ${config.openaiApiKey}` } : {}) },
                             body: JSON.stringify(reqBody)

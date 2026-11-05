@@ -112,13 +112,19 @@
         if (!connection.apiKey) {
             throw new Error('请先填入 Grok API Key');
         }
+        if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('Grok 提示词不能为空');
 
         // Determine target endpoint
         let baseUrl = connection.url || 'https://gcpa.rbq.my:8443/v1';
-        baseUrl = baseUrl.replace(/\/$/, '');
+        baseUrl = String(baseUrl).trim();
+        if (!baseUrl.includes('?')) baseUrl = baseUrl.replace(/\/$/, '');
         let targetUrl = baseUrl;
-        if (!targetUrl.endsWith('/images/edits') && !targetUrl.endsWith('/images/generations')) {
-            targetUrl = targetUrl + '/images/edits';
+        let parsedUrl;
+        try { parsedUrl = new URL(targetUrl); } catch (_) { throw new Error('Grok 接口地址无效'); }
+        const endpointPath = parsedUrl.pathname.replace(/\/+$/, '');
+        if (!endpointPath.endsWith('/images/edits') && !endpointPath.endsWith('/images/generations')) {
+            parsedUrl.pathname = endpointPath + '/images/edits';
+            targetUrl = parsedUrl.href;
         }
 
         const isOfficial = targetUrl.includes('api.x.ai');
@@ -160,6 +166,7 @@
 
             response = await fetch(targetUrl, {
                 method: 'POST',
+                redirect: 'error',
                 headers: {
                     'Authorization': `Bearer ${connection.apiKey}`,
                     'Content-Type': 'application/json'
@@ -179,6 +186,7 @@
 
             response = await fetch(targetUrl, {
                 method: 'POST',
+                redirect: 'error',
                 headers: {
                     'Authorization': `Bearer ${connection.apiKey}`
                 },

@@ -36,12 +36,25 @@ http.createServer(async (req, res) => {
         const chunks = [];
         for await (const c of req) chunks.push(c);
         const body = Buffer.concat(chunks);
+        if (req.method === 'POST' && new URL(req.url, UPSTREAM).pathname === '/v1/tts') {
+            let payload;
+            try { payload = JSON.parse(body.toString('utf8')); } catch (_) {}
+            if (typeof payload?.text !== 'string' || !payload.text.trim()) {
+                res.writeHead(400, Object.assign({ 'Content-Type': 'application/json' }, CORS));
+                return res.end(JSON.stringify({ message: '合成文本不能为空' }));
+            }
+        }
         const headers = {};
         ['authorization', 'content-type', 'model'].forEach(h => {
             if (req.headers[h]) headers[h] = req.headers[h];
         });
+        if (req.method === 'POST' && !String(headers.authorization || '').replace(/^Bearer\s*/i, '').trim()) {
+            res.writeHead(400, Object.assign({ 'Content-Type': 'application/json' }, CORS));
+            return res.end(JSON.stringify({ message: 'Fish API Key 不能为空' }));
+        }
         const up = await fetch(UPSTREAM + req.url, {
             method: req.method,
+            redirect: req.method === 'POST' ? 'error' : 'follow',
             headers,
             body: ['GET', 'HEAD'].includes(req.method) ? undefined : body,
         });

@@ -19,6 +19,9 @@ const info = {
 
 async function relay(req, res, path) {
     try {
+        if (req.method === 'POST' && (typeof req.body?.text !== 'string' || !req.body.text.trim())) {
+            return res.status(400).json({ message: '合成文本不能为空' });
+        }
         const headers = {};
         ['content-type', 'model'].forEach(h => {
             if (req.headers[h]) headers[h] = req.headers[h];
@@ -30,11 +33,15 @@ async function relay(req, res, path) {
         else if (req.headers.authorization && !/^basic /i.test(req.headers.authorization)) {
             headers.authorization = req.headers.authorization;
         }
+        if (req.method === 'POST' && !String(headers.authorization || '').replace(/^Bearer\s*/i, '').trim()) {
+            return res.status(400).json({ message: 'Fish API Key 不能为空' });
+        }
         let body;
         if (req.method !== 'GET' && req.method !== 'HEAD') body = JSON.stringify(req.body || {});
         if (body && !headers['content-type']) headers['content-type'] = 'application/json';
         const up = await fetch(UPSTREAM + path, {
             method: req.method,
+            redirect: req.method === 'POST' ? 'error' : 'follow',
             headers,
             body,
         });

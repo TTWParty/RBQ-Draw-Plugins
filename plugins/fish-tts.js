@@ -340,6 +340,7 @@
     }
 
     async function callLlm(systemPrompt, userText) {
+        if (typeof userText !== 'string' || !userText.trim()) throw new Error('LLM 输入不能为空');
         if (S.llm.mode === 'tavern') {
             const ctx = (typeof RBQ.api.getContext === 'function') ? RBQ.api.getContext() : null;
             if (ctx && typeof ctx.generateQuietPrompt === 'function') {
@@ -357,6 +358,7 @@
         try {
             resp = await fetch(url, {
                 method: 'POST', headers,
+                redirect: 'error',
                 body: JSON.stringify({
                     model: S.llm.model || 'gpt-4o-mini',
                     temperature: typeof S.llm.temperature === 'number' ? S.llm.temperature : 0.3,
@@ -489,7 +491,7 @@
         if (route === 'direct') {
             return {
                 url: COMPAT_TTS,
-                init: { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(compatTtsBody(text, voiceId, preset)) },
+                init: { method: 'POST', redirect: 'error', credentials: 'omit', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(compatTtsBody(text, voiceId, preset)) },
             };
         }
         const headers = { 'Content-Type': 'application/json', model: preset.model || S.model };
@@ -502,11 +504,11 @@
                 const gh = RBQ.api.getStRequestHeaders || RBQ.api.getRequestHeaders;
                 if (typeof gh === 'function') Object.assign(headers, gh());
             } catch (e) { /* CSRF头可选 */ }
-            return { url: SERVER_TTS, init: { method: 'POST', headers, body: JSON.stringify(nativeTtsBody(text, voiceId, preset)) } };
+            return { url: SERVER_TTS, init: { method: 'POST', redirect: 'error', headers, body: JSON.stringify(nativeTtsBody(text, voiceId, preset)) } };
         }
         const base = String(S.apiBase || '').trim().replace(/\/+$/, '');
         headers.Authorization = `Bearer ${key}`;
-        return { url: `${base}/v1/tts`, init: { method: 'POST', headers, body: JSON.stringify(nativeTtsBody(text, voiceId, preset)) } };
+        return { url: `${base}/v1/tts`, init: { method: 'POST', redirect: 'error', headers, body: JSON.stringify(nativeTtsBody(text, voiceId, preset)) } };
     }
     // 兼容接口的 WAV 头是占位值(RIFF/data 大小 = 0xFFFFFF..), 按实际字节数修正, 否则时长解析错误。
     function fixWavHeader(buf) {
@@ -599,6 +601,7 @@
     }
 
     async function synthWithFailover(text, voiceId, preset) {
+        if (typeof text !== 'string' || !text.trim()) throw new Error('合成文本不能为空');
         const keys = parseKeys(S.apiKey);
         if (!keys.length) { const e = new Error('还没填 Fish API Key（「🔌 连接」页第 1 步）'); e.kind = 'nokey'; throw e; }
         if (S.synthRoute === 'external' && !String(S.apiBase || '').trim()) {

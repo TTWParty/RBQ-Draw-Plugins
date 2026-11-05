@@ -12517,7 +12517,7 @@ SCHEMA:
         if (!response || (response.status !== 404 && response.status !== 403)) return false;
         let text = '';
         try { text = await response.clone().text(); } catch (_e) {}
-        if (response.status === 404) return /CORS proxy is disabled/i.test(text) || !text.trim() || /Cannot (GET|POST|PUT|PATCH|DELETE) \/proxy\//i.test(text);
+        if (response.status === 404) return /CORS proxy is disabled/i.test(text) || /Cannot (GET|POST|PUT|PATCH|DELETE) \/proxy\//i.test(text);
         return /csrf/i.test(text);
     }
 
@@ -12602,8 +12602,8 @@ SCHEMA:
         if (response.status === 403 || response.status === 404) {
             let text = '';
             try { text = await response.clone().text(); } catch (_e) {}
-            if (response.status === 404 || /csrf/i.test(text)) {
-                throw new Error(`酒馆后端转发接口不可用 (HTTP ${response.status}${text ? `: ${text.slice(0, 160)}` : ''})`);
+            if ((response.status === 404 && /Cannot (GET|POST) \/api\/backends\/chat-completions\//i.test(text)) || (response.status === 403 && /csrf/i.test(text))) {
+                throw Object.assign(new Error(`酒馆后端转发不可用 (HTTP ${response.status})`), { code: 'SDT_LOCAL_RELAY_UNAVAILABLE' });
             }
         }
         if (kind === 'chat' && relayBody.stream) return response;
@@ -12625,71 +12625,50 @@ SCHEMA:
         return normalizeStRelayChatJson(data);
     }
 
-    // 代理不可用时的最后一道兜底：OpenAI 兼容请求改经酒馆后端转发；其余请求类型给出包含实际错误的提示
-    async function fallbackAfterProxyUnavailable(url, options, reason) {
-        const kind = getStBackendRelayKind(url, options);
-        if (!kind) {
-            throw new Error(`无法跨域连接 API 接口 (${url})：${reason}。该请求不是 OpenAI 兼容的 chat/completions 或 /models 调用，无法改经酒馆后端转发。${ST_CORS_PROXY_HINT}`);
-        }
-        console.warn(`[${PLUGIN_NAME}] 酒馆 /proxy/ 不可用 (${reason})，改经酒馆后端转发:`, url);
-        try {
-            return await fetchViaStBackend(url, options, kind);
-        } catch (relayErr) {
-            if (relayErr?.name === 'AbortError') throw relayErr;
-            console.error(`[${PLUGIN_NAME}] 酒馆后端转发失败:`, relayErr);
-            throw new Error(`无法跨域连接 API 接口 (${url})：${reason}；酒馆后端转发亦失败: ${relayErr?.message || relayErr}。${ST_CORS_PROXY_HINT}`);
-        }
-    }
-
-    async function fetchViaStProxyOrBackend(url, options, directReason) {
-        let proxyResponse;
-        try {
-            proxyResponse = await fetch(`/proxy/${url}`, buildStProxyOptions(options));
-        } catch (proxyErr) {
-            if (proxyErr?.name === 'AbortError') throw proxyErr;
-            console.error(`[${PLUGIN_NAME}] 酒馆内置代理转发失败:`, proxyErr);
-            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆 /proxy/ 请求失败: ${proxyErr?.message || proxyErr}`);
-        }
-        if (await isStProxyUnavailableResponse(proxyResponse)) {
-            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆内置代理未开启 (HTTP ${proxyResponse.status})`);
-        }
-        if (proxyResponse.ok || proxyResponse.status < 500) return proxyResponse;
-        if (getStBackendRelayKind(url, options)) {
-            return fallbackAfterProxyUnavailable(url, options, `${directReason}；酒馆 /proxy/ 返回 HTTP ${proxyResponse.status}`);
-        }
-        return proxyResponse;
+    // Choose a transport before contacting the API. Only an explicit local
+    // route/CSRF rejection proves that it is safe to try another transport.
+    async function fetchViaStProxyOrBackend(url, options) {
+        const response = await fetch(`/proxy/${url}`, buildStProxyOptions(options));
+        if (!(await isStProxyUnavailableResponse(response))) return response;
+        const isMixedContent = typeof window !== 'undefined'
+            && window.location?.protocol === 'https:' && String(url).startsWith('http://');
+        if (isMixedContent) throw new Error('HTTPS 页面无法直连 HTTP 接口，请启用酒馆代理');
+        return fetch(url, String(options.method || 'GET').toUpperCase() === 'POST' ? { ...options, redirect: 'error' } : options);
     }
 
     async function smartFetch(url, options = {}) {
-        const isMixedContent = typeof window !== 'undefined' && window.location?.protocol === 'https:' && String(url).startsWith('http://');
-
-        // 若当前网页为 HTTPS，目标 API 为明文 HTTP，浏览器安全策略强制阻断 Mixed Content 直连
-        // 此时直接转交酒馆内置代理 (/proxy/)；代理未开启时再改经酒馆后端转发
-        if (isMixedContent) {
-            console.info(`[${PLUGIN_NAME}] 当前网页为 HTTPS，目标为 HTTP 接口 (${url})，自动切换至酒馆内置代理转发 (/proxy/)`);
-            return fetchViaStProxyOrBackend(url, options, '当前网页为 HTTPS，浏览器禁止直连 HTTP 接口 (Mixed Content)');
-        }
-
-        let response;
-        let directReason = '';
-        try {
-            response = await fetch(url, options);
-            if (response.ok || (response.status !== 405 && response.status < 500)) {
-                return response;
+        const method = String(options.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'PATCH'].includes(method)) {
+            if (typeof options.body !== 'string' || !options.body.trim()) throw new Error('API 请求正文不能为空');
+            const headers = headersToPlainObject(options.headers);
+            const contentType = Object.entries(headers).find(([key]) => key.toLowerCase() === 'content-type')?.[1] || '';
+            if (String(contentType).includes('application/json')) {
+                let body;
+                try { body = JSON.parse(options.body); } catch (_) { throw new Error('API 请求参数不是有效的 JSON'); }
+                if (!body || typeof body !== 'object' || !Object.keys(body).length) throw new Error('API 请求参数不能为空');
             }
-        } catch (err) {
-            const errStr = String(err || '');
-            const isCorsError = err.name === 'TypeError' || errStr.includes('Failed to fetch') || errStr.includes('Load failed') || errStr.includes('access control');
-            if (!isCorsError) throw err;
-            directReason = `浏览器直连被拦截 (${err.message || errStr})`;
         }
-
-        if (directReason || (response && response.status === 405)) {
-            console.warn(`[${PLUGIN_NAME}] 直连发包被 CORS / OPTIONS 405 拦截，自动尝试使用酒馆内置代理转发 (/proxy/):`, url);
-            return fetchViaStProxyOrBackend(url, options, directReason || '目标服务器对 OPTIONS 预检请求返回 HTTP 405');
+        if (method === 'POST' && /\/chat\/completions\/?$/.test(new URL(String(url)).pathname)) {
+            let body;
+            try { body = JSON.parse(options.body); } catch (_) { throw new Error('LLM 请求参数不是有效的 JSON'); }
+            if (typeof body?.model !== 'string' || !body.model.trim()) throw new Error('LLM 模型不能为空');
+            if (!Array.isArray(body.messages) || !body.messages.length) throw new Error('LLM 消息不能为空');
+            if (!body.messages.some(message => message && (
+                (typeof message.content === 'string' && message.content.trim())
+                || (Array.isArray(message.content) && message.content.some(part => part && (
+                    (typeof part.text === 'string' && part.text.trim()) || part.image_url || part.input_audio)))
+                || (Array.isArray(message.tool_calls) && message.tool_calls.length)
+            ))) throw new Error('LLM 消息内容不能为空');
         }
-
-        return response;
+        const kind = getStBackendRelayKind(url, options);
+        if (kind) {
+            try {
+                return await fetchViaStBackend(url, options, kind);
+            } catch (error) {
+                if (error.code !== 'SDT_LOCAL_RELAY_UNAVAILABLE') throw error;
+            }
+        }
+        return fetchViaStProxyOrBackend(url, options);
     }
 
     const DRAW_SPEC_TOOL = {
@@ -12973,114 +12952,50 @@ SCHEMA:
         return params;
     }
 
-    async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj, customFetch = smartFetch) {
+    async function callApiWithJsonFallback(url, fetchOptions, reqBodyObj, customFetch = smartFetch, { allowCompatibilityRetry = true } = {}) {
         let currentBody = { ...reqBodyObj };
-        let response = await customFetch(url, {
-            ...fetchOptions,
-            body: JSON.stringify(currentBody),
-        });
-
-        const getErrText = async (res) => {
-            try {
-                return await res.clone().text();
-            } catch (_e) {
-                return '';
+        const sentBodies = new Set();
+        let response;
+        // A real provider error can identify an unsupported optional parameter.
+        // Each retry must remove/change that parameter; never replay the same body.
+        for (let attempt = 0; attempt < 4; attempt++) {
+            let body, parsed;
+            try { body = JSON.stringify(currentBody); parsed = JSON.parse(body); }
+            catch (_) { throw new Error('LLM 请求参数不是有效的 JSON'); }
+            if (!parsed || typeof parsed !== 'object' || !String(parsed.model || '').trim()) throw new Error('LLM 模型不能为空');
+            if (!Array.isArray(parsed.messages) || !parsed.messages.length) throw new Error('LLM 消息不能为空');
+            const hasContent = parsed.messages.some(message => message && (
+                (typeof message.content === 'string' && message.content.trim())
+                || (Array.isArray(message.content) && message.content.some(part => part && (
+                    (typeof part.text === 'string' && part.text.trim()) || part.image_url || part.input_audio)))
+                || (Array.isArray(message.tool_calls) && message.tool_calls.length)
+            ));
+            if (!hasContent) throw new Error('LLM 消息内容不能为空');
+            if (sentBodies.has(body)) return response;
+            sentBodies.add(body);
+            response = await customFetch(url, { ...fetchOptions, body });
+            if (response.ok || response.status !== 400 || !allowCompatibilityRetry) return response;
+            let errorText = '';
+            try { errorText = await response.clone().text(); } catch (_) {}
+            const text = errorText.toLowerCase();
+            if (!/unsupported|not supported|not support|unknown|unrecognized|unexpected|invalid|not allowed|extra (?:field|input|parameter)|不支持|无法识别|无效|不允许/.test(text)) return response;
+            const nextBody = { ...currentBody };
+            if (/reasoning(?:_effort)?/.test(text)) delete nextBody.reasoning_effort;
+            if (/thinking|thinking_budget|budget_tokens/.test(text)) {
+                delete nextBody.thinking;
+                delete nextBody.thinking_budget;
             }
-        };
-
-        // 1. 如果报错 400 且含有思维链参数，尝试思维链降级（避免思维链参数阻碍后续 tools/response_format 协商）
-        if (!response.ok && response.status === 400 && (currentBody.thinking || currentBody.thinking_budget !== undefined || currentBody.reasoning_effort)) {
-            const errText = (await getErrText(response)).toLowerCase();
-            const mentionsReasoning = errText.includes('reasoning');
-            const mentionsThinking = errText.includes('thinking') || errText.includes('budget');
-
-            if (mentionsReasoning && !mentionsThinking) {
-                console.warn(`[${PLUGIN_NAME}] API 报错包含 reasoning 关键字，怀疑端点不支持 reasoning_effort，正在剥离重试...`);
-                const retryBody = { ...currentBody };
-                delete retryBody.reasoning_effort;
-                const r = await customFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
-                if (r.ok || r.status !== 400) {
-                    response = r;
-                    currentBody = retryBody;
-                }
+            if (/response_format|json_object/.test(text)) delete nextBody.response_format;
+            if (/tool_choice/.test(text) && nextBody.tools && nextBody.tool_choice !== 'auto') nextBody.tool_choice = 'auto';
+            else if (/\btools?\b|function.call/.test(text) && nextBody.tools && !/tool_choice/.test(text)) {
+                throw Object.assign(new Error('接口不支持工具调用'), {
+                    code: 'SDT_TOOLS_UNSUPPORTED', status: response.status,
+                    responseText: errorText, rawOutput: errorText,
+                });
             }
-
-            if (!response.ok && response.status === 400 && (currentBody.thinking || currentBody.thinking_budget !== undefined)) {
-                console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑端点不支持非标准 thinking/thinking_budget，正在剥离重试...`);
-                const retryBody = { ...currentBody };
-                delete retryBody.thinking;
-                delete retryBody.thinking_budget;
-                const r = await customFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
-                if (r.ok || r.status !== 400) {
-                    response = r;
-                    currentBody = retryBody;
-                }
-            }
-
-            if (!response.ok && response.status === 400 && currentBody.reasoning_effort) {
-                console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，端点可能完全不支持思维链参数，正在剥离所有思考参数重试...`);
-                const retryBody = { ...currentBody };
-                delete retryBody.reasoning_effort;
-                delete retryBody.thinking;
-                delete retryBody.thinking_budget;
-                const r = await customFetch(url, { ...fetchOptions, body: JSON.stringify(retryBody) });
-                if (r.ok || r.status !== 400) {
-                    response = r;
-                    currentBody = retryBody;
-                }
-            }
+            if (JSON.stringify(nextBody) === body) return response;
+            currentBody = nextBody;
         }
-
-        // 2. 如果请求带有 tools 且报错 400/500，尝试 auto 协商；若仍失败直接报错提示 API 不支持 tools
-        if (!response.ok && (response.status === 400 || response.status === 500) && currentBody.tools) {
-            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP ${response.status}，怀疑接口不支持指定 tool_choice，尝试转为 auto 重试...`);
-            const retryBody = { ...currentBody, tool_choice: 'auto' };
-            const autoRes = await customFetch(url, {
-                ...fetchOptions,
-                body: JSON.stringify(retryBody),
-            });
-            if (autoRes.ok) {
-                response = autoRes;
-                currentBody = retryBody;
-            } else {
-                let errText = '';
-                try { errText = await autoRes.text(); } catch (_) {}
-                const err = new Error(`大模型接口不支持工具调用 (Tool Call / Function Calling)。请在设置中关闭「结构化工具调用 (Tool Call)」开关，或更换支持 Tool Calling 的中转渠道。(HTTP ${autoRes.status})`);
-                err.code = 'SDT_TOOLS_UNSUPPORTED';
-                err.status = autoRes.status;
-                err.responseText = errText;
-                err.rawOutput = `【错误】: 当前 API 接口不支持工具调用 (Tool Call / Function Calling)\n【HTTP 状态码】: ${autoRes.status}\n【服务端返回报文】:\n${errText || '（无响应体）'}\n\n【排查建议】: 请在设置中关闭「结构化工具调用 (Tool Call)」以改用标准 JSON 模式，或联系中转站开启该模型渠道的 Function Calling 权限。`;
-                throw err;
-            }
-        }
-
-        // 3. 如果当前仍报错 400 且带有 response_format，尝试剥离 response_format
-        if (!response.ok && response.status === 400 && currentBody.response_format) {
-            console.warn(`[${PLUGIN_NAME}] API 返回 HTTP 400，怀疑模型不支持 response_format，正在剥离该参数重试...`);
-            const retryBody = { ...currentBody };
-            delete retryBody.response_format;
-            response = await customFetch(url, {
-                ...fetchOptions,
-                body: JSON.stringify(retryBody),
-            });
-            if (response.ok) {
-                currentBody = retryBody;
-            }
-        }
-
-        // 4. 终极兜底：如果前面 tool 降级或 response_format 降级后依然 400，且请求中残留思维链参数，再次尝试剥离所有思维链参数
-        if (!response.ok && response.status === 400 && (currentBody.thinking || currentBody.thinking_budget !== undefined || currentBody.reasoning_effort)) {
-            console.warn(`[${PLUGIN_NAME}] 降级后依然返回 HTTP 400，正在彻底剥离所有思维链相关参数发起最后重试...`);
-            const cleanBody = { ...currentBody };
-            delete cleanBody.reasoning_effort;
-            delete cleanBody.thinking;
-            delete cleanBody.thinking_budget;
-            response = await customFetch(url, {
-                ...fetchOptions,
-                body: JSON.stringify(cleanBody),
-            });
-        }
-
         return response;
     }
 
@@ -13593,7 +13508,7 @@ SCHEMA:
         if (thrown) {
             if (thrown.name === 'AbortError') return { verdict: 'error', message: '检测超时或已取消，开关没有改动。' };
             if (thrown.code === 'SDT_TOOLS_UNSUPPORTED') {
-                // callApiWithJsonFallback already retried tool_choice:'auto'. A 500 without a tools/function hint is a server fault.
+                // A 500 without a tools/function hint is a server fault, not a capability verdict.
                 if (thrown.status !== 500 || /tool|function/i.test(String(thrown.responseText || ''))) {
                     return { verdict: 'unsupported', message: `接口拒绝了工具调用请求 (HTTP ${thrown.status || '?'})。${String(thrown.responseText || '').slice(0, 160)}` };
                 }
@@ -13654,7 +13569,7 @@ SCHEMA:
                     'Content-Type': 'application/json',
                     ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
                 },
-            }, reqBody, fetchFn || smartFetch);
+            }, reqBody, fetchFn || smartFetch, { allowCompatibilityRetry: false });
         } catch (err) {
             return classifyToolProbe({ thrown: err });
         }
@@ -14686,6 +14601,7 @@ SCHEMA:
 
     async function runImageGenerationForWrapper(wrapper, messageId, baseKey, segmentKey = '') {
         if (onSdtNaiPayload.disposed) return;
+        if (wrapper?.dataset?.rbqSdtStage === 'generating-image') return;
         const finalPrompt = String(wrapper?.dataset?.rbqSdtFinalPrompt || wrapper?.dataset?.prompt || '').trim();
         if (!finalPrompt || finalPrompt === '[Smart Draw]') {
             toastr.warning('当前还没有可用 prompt，请先解析 tag', PLUGIN_NAME);
@@ -14900,6 +14816,7 @@ SCHEMA:
         if (wrapper instanceof HTMLElement) {
             const hasExistingImg = !!wrapper.querySelector('.st-scene-trigger-inline-result img, .st-scene-trigger-inline-result video') ||
                                    wrapper.dataset.rbqSdtStage === 'generated' ||
+                                   wrapper.dataset.rbqSdtStage === 'generating-image' ||
                                    !!wrapper.dataset.latestImageUrl;
             if (hasExistingImg) return;
         }

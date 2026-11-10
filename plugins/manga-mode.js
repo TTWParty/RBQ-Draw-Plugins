@@ -6,7 +6,7 @@
         const PLUGIN_NAME = '漫画模式 (Manga Mode)';
         const STORAGE_KEY = '_mangaMode';
         const SDT_KEY = '_smartDrawTrigger';
-        const VERSION = '1.9.45';
+        const VERSION = '1.9.46';
         // Dispose a previous instance before mounting its replacement. Preserve
         // the user's mode choice during a reload; explicit uninstall restores SDT.
         RBQ.api.mangaProtocol?.cleanup?.({ preserveEnabled: true });
@@ -4421,6 +4421,19 @@ ${isToolMode
             }
             return out;
         };
+
+        if (/^"[A-Za-z_]/.test(str)) {
+            const braced = '{' + str;
+            try {
+                const parsed = JSON.parse(braced);
+                if (parsed && typeof parsed === 'object') return parsed;
+            } catch (_e) {
+                try {
+                    const parsed = JSON.parse(removeTrailingCommas(cleanControlChars(braced)));
+                    if (parsed && typeof parsed === 'object') return parsed;
+                } catch (_e2) {}
+            }
+        }
 
         // 5. Find balanced { ... }
         const start = str.indexOf('{');

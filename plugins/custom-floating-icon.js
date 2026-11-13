@@ -1,6 +1,6 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 摸鱼悬浮球 (Slack-off Floating Ball)
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: TTWP-09
  * Description: 自定义生图触发器的悬浮球样式，支持超可爱的摸鱼猫咪与小孩（愣住）表情，可在通用设置中自由切换。
  */
@@ -171,17 +171,38 @@
     applyIconStyle(initialChoice);
 
     // Initial setting injection
+    let injectPollTimer = null;
+    let injectStopTimer = null;
     if (!injectSettingUi()) {
-        const timer = setInterval(function() {
-            if (injectSettingUi()) clearInterval(timer);
+        injectPollTimer = setInterval(function() {
+            if (injectSettingUi()) {
+                clearInterval(injectPollTimer);
+                injectPollTimer = null;
+            }
         }, 500);
-        setTimeout(function() { clearInterval(timer); }, 30000);
+        injectStopTimer = setTimeout(function() {
+            if (injectPollTimer) {
+                clearInterval(injectPollTimer);
+                injectPollTimer = null;
+            }
+        }, 30000);
     }
 
     // Ensure injection when user interacts or opens modal
-    document.addEventListener('click', function() {
+    const onDocClick = function() {
         setTimeout(injectSettingUi, 50);
-    });
+    };
+    document.addEventListener('click', onDocClick);
 
-    console.info('[RBQ Plugin] Slack-off Floating Ball (摸鱼悬浮球) v1.1.2 loaded.');
+    if (typeof RBQ?.registerCleanup === 'function') {
+        RBQ.registerCleanup('rbq-custom-floating-icon', function() {
+            if (injectPollTimer) clearInterval(injectPollTimer);
+            if (injectStopTimer) clearTimeout(injectStopTimer);
+            document.removeEventListener('click', onDocClick);
+            document.getElementById('rbq-cfi-style')?.remove();
+            document.getElementById('rbq-cfi-field')?.remove();
+        });
+    }
+
+    console.info('[RBQ Plugin] Slack-off Floating Ball (摸鱼悬浮球) v1.1.3 loaded.');
 })(window.RBQ, typeof jQuery !== 'undefined' ? jQuery : window.$, typeof toastr !== 'undefined' ? toastr : window.toastr);

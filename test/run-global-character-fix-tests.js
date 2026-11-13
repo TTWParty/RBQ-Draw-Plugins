@@ -307,7 +307,8 @@ test('CW editor wiring: ask before rename/delete, pass syncImported, warn alias 
     assert.ok(body.indexOf('askSyncImportedGlobalCopies(name)') < body.indexOf('deleteProfile(editName, targetScope)'));
     assert.match(body, /\{ makeGlobal: keepGlobalOnRename, syncImported \}/);
     assert.match(body, /warnGlobalAliasConflicts\(name\)/);
-    assert.match(cwSrc, /const VERSION = '2\.2\.40'/);
+    const cwManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../plugins.json'), 'utf8')).find(p => p.id === 'rbq-character-workshop');
+    assert.ok(cwManifest?.version && cwSrc.includes(`const VERSION = '${cwManifest.version}'`));
 });
 
 console.log(`\n${passed} global character fix tests passed.`);

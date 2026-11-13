@@ -107,18 +107,15 @@
             }
         };
     }
-    if (typeof RBQ?.on === 'function') {
-        RBQ.on('presets:updated', () => {
-            if (typeof renderPresetUi === 'function') {
-                renderPresetUi();
-            }
-        });
-    }
-    window.addEventListener('rbq-presets-updated', () => {
+    const onPresetsUpdated = () => {
         if (typeof renderPresetUi === 'function') {
             renderPresetUi();
         }
-    });
+    };
+    if (typeof RBQ?.on === 'function') {
+        RBQ.on('presets:updated', onPresetsUpdated);
+    }
+    window.addEventListener('rbq-presets-updated', onPresetsUpdated);
 
     let isSaving = false;
     let isSyncing = false;
@@ -639,7 +636,7 @@
     }
 
     // ── Payload Hooks ──
-    RBQ.on('buildNaiV4Payload', (payload, context) => {
+    const onBuildNaiV4Payload = (payload, context) => {
         if (isIsolatedRequest(context)) {
             console.info('[Prompt Presets] 🧪 检测到工坊/基准独立测试环境 (Isolated Mode)，纯净跳过本地提示词预设与全局提示词注入');
             return payload;
@@ -677,9 +674,10 @@
         }
         console.info('[Prompt Presets] NAI payload modified with presets/global prompts');
         return payload;
-    });
+    };
+    RBQ.on('buildNaiV4Payload', onBuildNaiV4Payload);
 
-    RBQ.on('buildGeneratePayload', (payload, context) => {
+    const onBuildGeneratePayload = (payload, context) => {
         if (isIsolatedRequest(context)) {
             console.info('[Prompt Presets] 🧪 检测到工坊/基准独立测试环境 (Isolated Mode)，纯净跳过本地提示词预设与全局提示词注入');
             return payload;
@@ -703,9 +701,10 @@
         }
         console.info('[Prompt Presets] Free payload modified with presets/global prompts');
         return payload;
-    });
+    };
+    RBQ.on('buildGeneratePayload', onBuildGeneratePayload);
 
-    RBQ.on('buildComfyUiWorkflow', (payload, context) => {
+    const onBuildComfyUiWorkflow = (payload, context) => {
         if (isIsolatedRequest(context)) {
             console.info('[Prompt Presets] 🧪 检测到工坊/基准独立测试环境 (Isolated Mode)，纯净跳过本地提示词预设与全局提示词注入');
             return payload;
@@ -766,10 +765,11 @@
         }
         console.info('[Prompt Presets] ComfyUI workflow modified with presets/global prompts');
         return payload;
-    });
+    };
+    RBQ.on('buildComfyUiWorkflow', onBuildComfyUiWorkflow);
 
     // ── Global Profile Switch Listener ──
-    RBQ.on('profile:switched', (event) => {
+    const onProfileSwitched = (event) => {
         const store = getStore();
         if (event?.profile?.data?.promptPresetsConfig) {
             const cfg = event.profile.data.promptPresetsConfig;
@@ -798,7 +798,8 @@
                 RBQ.api.refreshNaiVibeUi?.();
             }
         } catch (_e) {}
-    });
+    };
+    RBQ.on('profile:switched', onProfileSwitched);
 
     // ── Checkbox Dialog ──
     function showCheckboxDialog(title, items, onConfirm) {
@@ -2692,7 +2693,7 @@
 
     // Run on load and re-run periodically (in case modal reopens and syncUi refills hidden inputs)
     neutralizeBuiltinFields();
-    setInterval(() => {
+    const neutralizeTimer = setInterval(() => {
         const el = document.getElementById('st-scene-trigger-modal-prefix');
         const oldPreviewBox = document.querySelector('.st-scene-trigger-preview-box');
         if (!el && !oldPreviewBox) return;
@@ -2701,6 +2702,22 @@
             neutralizeBuiltinFields();
         }
     }, 2000);
+
+    if (typeof RBQ?.registerCleanup === 'function') {
+        RBQ.registerCleanup('rbq-prompt-presets', () => {
+            clearInterval(neutralizeTimer);
+            window.removeEventListener('rbq-presets-updated', onPresetsUpdated);
+            RBQ.off?.('presets:updated', onPresetsUpdated);
+            RBQ.off?.('buildNaiV4Payload', onBuildNaiV4Payload);
+            RBQ.off?.('buildGeneratePayload', onBuildGeneratePayload);
+            RBQ.off?.('buildComfyUiWorkflow', onBuildComfyUiWorkflow);
+            RBQ.off?.('profile:switched', onProfileSwitched);
+            document.getElementById('rbq-pp-container')?.remove();
+            document.getElementById('rbq-pp-floating-row')?.remove();
+            document.getElementById('rbq-pp-dialog-styles')?.remove();
+            document.getElementById('rbq-pp-top-layer-host')?.remove();
+        });
+    }
 
     console.info('📋 Prompt Presets plugin loaded');
 })(RBQ, jQuery, toastr);

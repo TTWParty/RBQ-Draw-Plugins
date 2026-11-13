@@ -23,7 +23,7 @@
     if (!RBQ) return console.error('安卓保存修复: RBQ Core API 缺失!');
 
     const TAG = '[RBQ SaveFix]';
-    const PLUGIN_VERSION = '1.0.0';
+    const PLUGIN_VERSION = '1.0.1';
     const BRIDGE_NAME = 'TauriTavernAndroidPublicDownloadBridge';
     const STAGING_ROOT_NAME = 'tauritavern-export-staging';
     const PICKER_RECEIVER = '__TAURITAVERN_PUBLIC_DOWNLOAD_PICKER__';
@@ -463,32 +463,41 @@
     // 2a. 合成 click() 路径:主插件普遍用「建 <a> → a.click()」保存,
     //     包住原型上的 click(主程序已打过补丁,这里再包一层,只处理未挂载的临时 <a>)。
     const anchorProto = window.HTMLAnchorElement && window.HTMLAnchorElement.prototype;
+    let prevClick = null;
+    let patchedAnchorClick = null;
     if (anchorProto && typeof anchorProto.click === 'function') {
-        const prevClick = anchorProto.click;
-        anchorProto.click = function (...args) {
+        prevClick = anchorProto.click;
+        patchedAnchorClick = function (...args) {
             if (!this.isConnected && takeOverAnchor(this)) {
                 return undefined;
             }
             return prevClick.apply(this, args);
         };
+        anchorProto.click = patchedAnchorClick;
     }
 
     // 2b. 真实点击路径:window 捕获阶段先于主程序 document 上的监听器,
     //     能解析出下载载荷才拦截,否则放行原逻辑。
-    window.addEventListener(
-        'click',
-        function (event) {
-            if (!supported()) return;
-            const target = event.target;
-            if (!target || !(target instanceof window.Element)) return;
-            const anchor = target.closest && target.closest('a');
-            if (!anchor || (anchor.hasAttribute && !anchor.hasAttribute('download'))) return;
-            if (!takeOverAnchor(anchor)) return;
-            event.preventDefault();
-            event.stopImmediatePropagation();
-        },
-        true,
-    );
+    const onWindowCaptureClick = function (event) {
+        if (!supported()) return;
+        const target = event.target;
+        if (!target || !(target instanceof window.Element)) return;
+        const anchor = target.closest && target.closest('a');
+        if (!anchor || (anchor.hasAttribute && !anchor.hasAttribute('download'))) return;
+        if (!takeOverAnchor(anchor)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    };
+    window.addEventListener('click', onWindowCaptureClick, true);
+
+    if (typeof RBQ?.registerCleanup === 'function') {
+        RBQ.registerCleanup('rbq-save-downloads-fix', function () {
+            if (anchorProto && patchedAnchorClick && anchorProto.click === patchedAnchorClick && prevClick) {
+                anchorProto.click = prevClick;
+            }
+            window.removeEventListener('click', onWindowCaptureClick, true);
+        });
+    }
 
     console.info(`${TAG} 安卓保存修复 v${PLUGIN_VERSION} 已就绪(原生桥包装 + <a download> 接管 + SAF 兜底)。`);
 })(RBQ, jQuery, toastr);

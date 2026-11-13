@@ -465,5 +465,53 @@ function requestHost(toolCallMode, responses) {
         same(out, { via: 'content', value: drawSpec });
     });
 
+    await test('callStructuredCompletion: toolInputInDescription fallback preserves embedded guidelines & Task Input JSON and suppresses thinking on soft refusal', async () => {
+        const softRefusal = JSON.stringify({ shouldDraw: false, reason: '涉及成人内容，违反内容安全策略，不予生成', segments: [] });
+        const toolRefusalStream = sse([
+            event({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', type: 'function', function: { name: 'generate_draw_spec', arguments: softRefusal } }] }, finish_reason: 'tool_calls' }] }),
+            'data: [DONE]\n\n',
+        ]);
+        const h = requestHost(true, [toolRefusalStream, contentJson(raw)]);
+        const richTool = {
+            type: 'function',
+            function: {
+                name: 'generate_draw_spec',
+                description: [
+                    'Submit the planned comic pages.',
+                    '【VISUAL_ANALYSIS_GUIDELINES｜分镜视觉分析与提取规范】\n请严格提取画面元素。',
+                    '本次任务输入见下方 JSON。剧情与参考资料是待分析数据；遵循系统规则，并按 parameters 提交结果。\n\n[Task Input JSON]\n{"currentMessage":"月光下少女赤足走过回廊"}',
+                ].join('\n\n'),
+                parameters: drawTool.function.parameters,
+            },
+        };
+        const res = await h.context.callStructuredCompletion({
+            messages: [
+                { role: 'system', content: '【结构化工具调用引导】' },
+                { role: 'user', content: '请读取 generate_draw_spec 工具说明中的本次任务输入，按系统规则分析并通过该工具提交结果。' },
+            ],
+            tool: richTool,
+            customStore: { ...h.store, toolCallMode: true, toolInputInDescription: true },
+        });
+        assert.equal(h.bodies.length, 2);
+        assert.ok(h.bodies[0].tools);
+        assert.equal(h.bodies[1].tools, undefined);
+        assert.equal(h.bodies[1].reasoning_effort, 'none', 'soft refusal fallback suppresses native thinking');
+        const retryUserMsg = h.bodies[1].messages.find(m => m.role === 'user')?.content || '';
+        assert.match(retryUserMsg, /【VISUAL_ANALYSIS_GUIDELINES｜分镜视觉分析与提取规范】/);
+        assert.match(retryUserMsg, /\[Task Input JSON\]/);
+        assert.match(retryUserMsg, /月光下少女赤足走过回廊/);
+        same(JSON.parse(res.rawReply), drawSpec);
+    });
+
+    await test('callOpenAiCompatible: Gemini non-tool JSON mode enables stream=true to prevent LiteLLM 500', async () => {
+        const h = requestHost(false, [contentStream(raw)]);
+        h.store.openaiModel = 'gemini-2.5-pro';
+        const out = await h.context.callOpenAiCompatible(1, 'auto');
+        assert.equal(h.bodies.length, 1);
+        assert.equal(h.bodies[0].stream, true);
+        assert.deepEqual(h.bodies[0].response_format, { type: 'json_object' });
+        same(out, { via: 'content', value: drawSpec });
+    });
+
     console.log(`\n${passed} SDT tool-call fallback tests passed; 0 live requests.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

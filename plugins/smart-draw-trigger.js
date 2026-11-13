@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.52';
+    const PLUGIN_VERSION = '6.5.53';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -4571,9 +4571,9 @@ ${getCharacterMemoryTagSpecification()}
                     model: modelName,
                     temperature: 0.2,
                     response_format: { type: 'json_object' },
-                    stream: false,
+                    stream: String(modelName || '').toLowerCase().includes('gemini'),
                     messages: promptMessages,
-                    ...buildThinkingParams(store),
+                    ...buildThinkingParams(store, promptMessages),
                 });
                 if (!res.ok) throw new Error(`角色外貌提取失败: HTTP ${res.status}`);
                 jsonRes = await safeReadJsonResponse(res);
@@ -9156,7 +9156,7 @@ SCHEMA:
                 model: modelName,
                 temperature: 0.3,
                 response_format: { type: 'json_object' },
-                stream: false,
+                stream: String(modelName || '').toLowerCase().includes('gemini'),
                 messages,
                 ...buildThinkingParams(store, messages),
             });
@@ -13252,6 +13252,9 @@ SCHEMA:
             reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
             reqBody.response_format = { type: 'json_object' };
+            if (String(modelName || '').toLowerCase().includes('gemini')) {
+                reqBody.stream = true;
+            }
         }
 
         let response;
@@ -13747,7 +13750,8 @@ SCHEMA:
         customStore = null,
         fetchFn = null,
         onProgress = null,
-        _toolFallbackRetried = false
+        _toolFallbackRetried = false,
+        _softRefusalReason = ''
     }) {
         const store = customStore || getStore();
         const url = normalizeBaseUrl(store.openaiBaseUrl);
@@ -13764,6 +13768,43 @@ SCHEMA:
             stream: false,
             messages: Array.isArray(messages) ? messages.map(m => ({ ...m })) : [],
             ...buildThinkingParams(store, messages),
+        };
+        if (_softRefusalReason && reqBody.reasoning_effort === undefined && reqBody.thinking === undefined && reqBody.thinking_budget === undefined) {
+            reqBody.reasoning_effort = 'none';
+        }
+
+        const buildToolFallbackRetryMessages = (fallbackToolName) => {
+            const schemaText = (() => { try { return JSON.stringify(tool?.function?.parameters || {}); } catch (_) { return '{}'; } })();
+            const formatNote = `[输出格式] 不要调用任何工具/函数。直接只输出一个 JSON 对象（不要代码块、不要解释），它就是 ${fallbackToolName} 工具的参数，结构遵循此 JSON Schema：${schemaText}`;
+            let retryMessages = (Array.isArray(messages) ? messages : []).map(m => ({ ...m }));
+            const desc = String(tool?.function?.description || '');
+            const markerPositions = [
+                desc.indexOf('【VISUAL_ANALYSIS_GUIDELINES｜'),
+                desc.indexOf('本次任务输入见下方 JSON。'),
+                desc.indexOf('[Task Input JSON]'),
+            ].filter(idx => idx >= 0);
+            const embeddedIdx = markerPositions.length > 0 ? Math.min(...markerPositions) : -1;
+            const embeddedContext = embeddedIdx >= 0 ? desc.slice(embeddedIdx).trim() : '';
+
+            const lastUser = [...retryMessages].reverse().find(m => m.role === 'user' && typeof m.content === 'string');
+            if (embeddedContext) {
+                if (lastUser) {
+                    lastUser.content = `${lastUser.content}\n\n${embeddedContext}\n\n${formatNote}`;
+                } else {
+                    retryMessages.push({ role: 'user', content: `${embeddedContext}\n\n${formatNote}` });
+                }
+                if (store?.postProcessEnabled && typeof applyPostProcessPrompt === 'function') {
+                    applyPostProcessPrompt(retryMessages, { ...store, toolCallMode: false });
+                    if (store?.squashMessages !== false && typeof squashConsecutiveMessages === 'function') {
+                        retryMessages = squashConsecutiveMessages(retryMessages);
+                    }
+                }
+            } else if (lastUser) {
+                lastUser.content += `\n\n${formatNote}`;
+            } else {
+                retryMessages.push({ role: 'user', content: formatNote });
+            }
+            return retryMessages;
         };
 
         const useToolCall = !!(store.toolCallMode && tool);
@@ -13794,12 +13835,7 @@ SCHEMA:
                 const toolName = tool?.function?.name || 'generate_draw_spec';
                 console.warn(`[${PLUGIN_NAME}] ⚠️ 当前接口不支持 tools 参数 (HTTP ${apiErr.status || '?'})，自动去掉 tools 改用普通 JSON 模式重试一次`);
                 if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') toastr.info('当前接口不支持工具调用，已自动切换为普通 JSON 模式重试', PLUGIN_NAME);
-                const schemaText = (() => { try { return JSON.stringify(tool?.function?.parameters || {}); } catch (_) { return '{}'; } })();
-                const formatNote = `[输出格式] 不要调用任何工具/函数。直接只输出一个 JSON 对象（不要代码块、不要解释），它就是 ${toolName} 工具的参数，结构遵循此 JSON Schema：${schemaText}`;
-                const retryMessages = (Array.isArray(messages) ? messages : []).map(m => ({ ...m }));
-                const lastUser = [...retryMessages].reverse().find(m => m.role === 'user' && typeof m.content === 'string');
-                if (lastUser) lastUser.content += `\n\n${formatNote}`;
-                else retryMessages.push({ role: 'user', content: formatNote });
+                const retryMessages = buildToolFallbackRetryMessages(toolName);
                 const retry = await callStructuredCompletion({
                     messages: retryMessages, tool, temperature, signal, fetchFn, onProgress,
                     customStore: { ...store, toolCallMode: false }, _toolFallbackRetried: true,
@@ -13970,17 +14006,13 @@ SCHEMA:
                     if (_toolFallbackRetried) throw makeToolFallbackError(finishReason, rawReply || rawOutput, true);
                     console.warn(`[${PLUGIN_NAME}] ⚠️ 模型未返回 ${toolName} 工具调用参数${finishReason ? ` (finish_reason: ${finishReason})` : ''}，自动去掉 tools 改用普通 JSON 模式重试一次`);
                     if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') toastr.info('模型没按工具调用返回，已自动改用普通模式重试', PLUGIN_NAME);
-                    const schemaText = (() => { try { return JSON.stringify(tool?.function?.parameters || {}); } catch (_) { return '{}'; } })();
-                    const formatNote = `[输出格式] 不要调用任何工具/函数。直接只输出一个 JSON 对象（不要代码块、不要解释），它就是 ${toolName} 工具的参数，结构遵循此 JSON Schema：${schemaText}`;
-                    const retryMessages = (Array.isArray(messages) ? messages : []).map(m => ({ ...m }));
-                    const lastUser = [...retryMessages].reverse().find(m => m.role === 'user' && typeof m.content === 'string');
-                    if (lastUser) lastUser.content += `\n\n${formatNote}`;
-                    else retryMessages.push({ role: 'user', content: formatNote });
+                    const retryMessages = buildToolFallbackRetryMessages(toolName);
                     let retry;
                     try {
                         retry = await callStructuredCompletion({
                             messages: retryMessages, tool, temperature, signal, fetchFn, onProgress,
                             customStore: { ...store, toolCallMode: false }, _toolFallbackRetried: true,
+                            _softRefusalReason: softRefusedReason,
                         });
                     } catch (retryErr) {
                         if (retryErr?.name === 'AbortError' || signal?.aborted) throw retryErr;
@@ -17708,7 +17740,10 @@ SCHEMA:
         document.getElementById('rbq-sdt-scan').onclick = () => scanAllVisible(true);
 
         // Character profile toolbar events (delegated on document to survive dynamic innerHTML updates)
-        document.addEventListener('click', (e) => {
+        if (cleanupInstance.settingsDocClickHandler) {
+            document.removeEventListener?.('click', cleanupInstance.settingsDocClickHandler);
+        }
+        cleanupInstance.settingsDocClickHandler = (e) => {
             const importBtn = e.target.closest('#rbq-sdt-import-char-profile-btn');
             if (importBtn) {
                 importCharacterFromCurrentCard();
@@ -17765,7 +17800,8 @@ SCHEMA:
                 }
                 return;
             }
-        });
+        };
+        document.addEventListener('click', cleanupInstance.settingsDocClickHandler);
     }
 
     function waitForPanel() {
@@ -18147,7 +18183,7 @@ SCHEMA:
                 const response = await callApiWithJsonFallback(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages, ...buildThinkingParams(store, messages) });
+                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: String(modelName || '').toLowerCase().includes('gemini'), messages, ...buildThinkingParams(store, messages) });
                 if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
                 json = await safeReadJsonResponse(response);
             }
@@ -19731,7 +19767,7 @@ SCHEMA:
             const response = await callApiWithJsonFallback(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: false, messages, ...buildThinkingParams(store, messages) });
+            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: String(modelName || '').toLowerCase().includes('gemini'), messages, ...buildThinkingParams(store, messages) });
             if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
             json = await safeReadJsonResponse(response);
         }
@@ -19874,6 +19910,10 @@ SCHEMA:
         RBQ.off?.('buildComfyUiWorkflow', onSdtComfyWorkflow);
         window.removeEventListener('st-scene-trigger:viewer-rendered', onSdtViewerRendered);
         window.removeEventListener('st-scene-trigger:viewer-closed', onSdtViewerClosed);
+        if (cleanupInstance.settingsDocClickHandler) {
+            document.removeEventListener?.('click', cleanupInstance.settingsDocClickHandler);
+            cleanupInstance.settingsDocClickHandler = null;
+        }
         if (autoRunTimer) clearTimeout(autoRunTimer);
         autoRunTimer = null;
         autoRunPendingId = null;

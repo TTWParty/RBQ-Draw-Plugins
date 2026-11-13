@@ -11,65 +11,65 @@
     "id": "rbq-prompt-presets",
     "name": "提示词预设 (Prompt Presets)",
     "description": "保存常用的正面/负面提示词组合为预设，生图时自动拼接到主提示词。支持预设前置词与后置词双向Tab切换并可同时生效，通栏预设选择器与多行文本框一键展开，支持全局前缀/后缀与负面词、选择性导入导出与保存 Vibe 状态。",
-    "version": "1.3.24",
+    "version": "1.3.25",
     "author": "TTWP-09",
-    "main": "plugins/prompt-presets.js?v=1.3.24"
+    "main": "plugins/prompt-presets.js?v=1.3.25"
   },
   {
     "id": "rbq-prompt-market",
     "name": "提示词预设工坊 (Prompt Market)",
     "description": "社区画师串与提示词预设共享中心。3:4 竖版立绘纯净展厅，双图展示系统（官方基准测试封面与作者自制效果参考图自由切换），集成专属创作者个人码与我的上传集中管理、在线修改预设与标签、下架删除鉴权、点赞收藏、测串底模词库与现场出图实测对比。",
-    "version": "1.1.33",
+    "version": "1.1.34",
     "author": "TTWP-09",
-    "main": "plugins/prompt-market.js?v=1.1.33"
+    "main": "plugins/prompt-market.js?v=1.1.34"
   },
   {
     "id": "rbq-png-metadata",
     "name": "NAI 图片信息提取器",
     "description": "在画廊直接提取 NovelAI/SD/ComfyUI 图像的隐藏数据。并在“生成测试”面板中提供拖拽解析 (Prompt Reader) 与一键导入测试功能。支持 Alpha/RGB 通道最低有效位 (LSB) 隐写数据流 (Stealth PNGInfo) 与 zTXt 压缩块深度解码。",
-    "version": "1.1.11",
+    "version": "1.1.12",
     "author": "TTWP-09",
-    "main": "plugins/png-metadata-extractor.js?v=1.1.11"
+    "main": "plugins/png-metadata-extractor.js?v=1.1.12"
   },
   {
     "id": "rbq-smart-draw-trigger",
     "name": "智能生图触发器 (Smart Draw Trigger)",
     "description": "基于 LLM 深度分镜理解的多角色自动绘图触发器，支持 2D 连续坐标触控调节、分镜 Tag 可视化调整、NAI V4.5/V5 连续坐标生成与多角色精确构图控制。",
-    "version": "6.5.52",
+    "version": "6.5.53",
     "author": "TTWP-09",
-    "main": "plugins/smart-draw-trigger.js?v=6.5.52"
+    "main": "plugins/smart-draw-trigger.js?v=6.5.53"
   },
   {
     "id": "rbq-multi-char",
     "name": "NAI 多角色模式 (Multi-Char)",
     "description": "适配多种多角色文生图格式。支持 Char1:|centers:C3 或无级浮点坐标 |centers:0.65,0.41，自动映射到 NAI V4.5/V5 原生多角色 API。",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "author": "TTWP-09",
-    "main": "plugins/multi-char-composer.js?v=1.0.9"
+    "main": "plugins/multi-char-composer.js?v=1.0.10"
   },
   {
     "id": "rbq-custom-floating-icon",
     "name": "摸鱼悬浮球",
     "description": "自定义生图触发器的悬浮球样式，支持超可爱的摸鱼猫咪与小孩（愣住）表情，可在通用设置中自由切换。",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "author": "TTWP-09",
-    "main": "plugins/custom-floating-icon.js?v=1.1.2"
+    "main": "plugins/custom-floating-icon.js?v=1.1.3"
   },
   {
     "id": "rbq-grok-draw",
     "name": "Grok 生图插件 (Grok Draw)",
     "description": "支持 Grok 生图模式，在当前模式增加 Grok 选项，调用 Grok Image Edits API 进行高质量生图。",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "author": "TTWP-09",
-    "main": "plugins/grok-draw.js?v=1.1.1"
+    "main": "plugins/grok-draw.js?v=1.1.2"
   },
   {
     "id": "rbq-character-workshop",
     "name": "角色工坊 (Character Workshop)",
     "description": "集角色7维外貌档案、差分衣柜、世界书动作智能适配与多角色同框演练于一体的智能工作台。支持 V5 连续坐标无级拖拽平移与 5×5 网格吸附、单双人自适应模板合成与一键头像立绘演练。",
-    "version": "2.2.40",
+    "version": "2.2.41",
     "author": "TTWP-09",
-    "main": "plugins/character-workshop.js?v=2.2.40"
+    "main": "plugins/character-workshop.js?v=2.2.41"
   },
   {
     "id": "rbq-image-privacy",
@@ -83,17 +83,17 @@
     "id": "rbq-save-downloads-fix",
     "name": "安卓保存修复 (Save Downloads Fix)",
     "description": "修复安卓版 TauriTavern 保存图片时报「saveFileToDownloads Java exception was raised during method invocation」导致无法保存到下载目录的问题。自动修正非法文件名、失败自动改用 ASCII 文件名重试、再降级到系统「另存为」选择器兜底，并输出每一步诊断日志。桌面端与网页端完全静默。",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "TTWP-09",
-    "main": "plugins/save-downloads-fix.js?v=1.0.0"
+    "main": "plugins/save-downloads-fix.js?v=1.0.1"
   },
   {
     "id": "rbq-gallery-sync",
     "name": "图库云同步与存储管理 (Gallery Sync & Storage)",
     "description": "双轨省流云同步与存储状态感知：后台自动压缩上传 50KB WebP 预览图至酒馆服务端；收藏时自动提取并持久化高清原画；大图查看器微型状态圆点指示（本地/服务端/ComfyUI/省流预览），手机端自适应详情浮窗与一键补传。",
-    "version": "1.1.20",
+    "version": "1.1.21",
     "author": "TTWP-09",
-    "main": "plugins/server-storage-sync.js?v=1.1.20"
+    "main": "plugins/server-storage-sync.js?v=1.1.21"
   },
   {
     "id": "rbq-manga-mode",

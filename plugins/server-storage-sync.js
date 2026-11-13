@@ -13,7 +13,7 @@
 
     const PLUGIN_ID = 'rbq-gallery-sync';
     const PLUGIN_NAME = '服务端图库同步与存储管理';
-    const PLUGIN_VERSION = '1.1.20';
+    const PLUGIN_VERSION = '1.1.21';
     const STORAGE_KEY = '_gallerySyncSettings';
 
     const copyToClipboard = async (text) => {
@@ -872,12 +872,14 @@
     }
 
     // 监听生图事件 (即时生图 / 异步缓存完成)
-    window.addEventListener('st-scene-trigger:image-generated', (event) => {
+    const onImageGenerated = (event) => {
         triggerAutoSync(event?.detail?.item);
-    });
-    window.addEventListener('st-scene-trigger:image-cached', (event) => {
+    };
+    const onImageCached = (event) => {
         triggerAutoSync(event?.detail?.item);
-    });
+    };
+    window.addEventListener('st-scene-trigger:image-generated', onImageGenerated);
+    window.addEventListener('st-scene-trigger:image-cached', onImageCached);
 
     // ── 7. Favorite Auto-Upload Original Handler ──
     async function syncFavoriteOriginal(item) {
@@ -1111,26 +1113,31 @@
     }
 
     // 监听收藏事件 (st-scene-trigger 主扩展分发)
-    window.addEventListener('st-scene-trigger:favorite-toggled', (event) => {
+    const onFavoriteToggled = (event) => {
         const item = event.detail?.item;
         const isFav = Boolean(event.detail?.favorite ?? event.detail?.isFavorite ?? item?.favorite);
         if (item && isFav) {
             syncFavoriteOriginal(item);
         }
-    });
+    };
+    window.addEventListener('st-scene-trigger:favorite-toggled', onFavoriteToggled);
 
     // 跨端切回感知：窗口焦点/可见性/会话切换自动检测待补传的原图
-    window.addEventListener('focus', () => setTimeout(syncPendingOriginalUploads, 350));
-    document.addEventListener('visibilitychange', () => {
+    const onWindowFocus = () => setTimeout(syncPendingOriginalUploads, 350);
+    const onVisibilityChange = () => {
         if (!document.hidden) setTimeout(syncPendingOriginalUploads, 350);
-    });
+    };
+    const onChatChanged = () => setTimeout(syncPendingOriginalUploads, 600);
+    const onHistoryRendered = () => setTimeout(syncPendingOriginalUploads, 400);
+    window.addEventListener('focus', onWindowFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     if (RBQ?.api?.eventSource && RBQ?.api?.event_types) {
         const es = RBQ.api.eventSource;
         const et = RBQ.api.event_types;
-        if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => setTimeout(syncPendingOriginalUploads, 600));
+        if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, onChatChanged);
     }
-    window.addEventListener('st-scene-trigger:history-rendered', () => setTimeout(syncPendingOriginalUploads, 400));
-    setTimeout(syncPendingOriginalUploads, 2500);
+    window.addEventListener('st-scene-trigger:history-rendered', onHistoryRendered);
+    const initialPendingSyncTimer = setTimeout(syncPendingOriginalUploads, 2500);
 
     // ── 7. Storage Badge & Popover in Image Viewer ──
     let currentViewerItem = null;
@@ -1969,21 +1976,22 @@
         return String(str || '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
     }
 
-    window.addEventListener('st-scene-trigger:viewer-rendered', (event) => {
+    const onViewerRendered = (event) => {
         updateViewerBadge(event?.detail);
-    });
-
-    window.addEventListener('rbq-sdt:bottom-bar-rendered', (event) => {
+    };
+    const onSdtBottomBarRendered = (event) => {
         const modal = event?.detail?.modal || document.getElementById('st-scene-trigger-image-viewer');
         updateViewerBadge({ modal, bottomBar: event?.detail?.bottomBar, current: currentViewerItem });
-    });
-
-    window.addEventListener('st-scene-trigger:viewer-closed', () => {
+    };
+    const onViewerClosed = () => {
         document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => {
             if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
         });
         document.getElementById('rbq-storage-popover')?.remove();
-    });
+    };
+    window.addEventListener('st-scene-trigger:viewer-rendered', onViewerRendered);
+    window.addEventListener('rbq-sdt:bottom-bar-rendered', onSdtBottomBarRendered);
+    window.addEventListener('st-scene-trigger:viewer-closed', onViewerClosed);
 
     async function batchSyncAllFavorites() {
         const history = RBQ?.api?.getSettings?.()?.history;
@@ -2296,14 +2304,37 @@
     }
 
     // 清理钩子
-    if (typeof RBQ?.registerPluginCleanup === 'function') {
-        RBQ.registerPluginCleanup(PLUGIN_ID, () => {
+    const registerCleanupFn = typeof RBQ?.registerCleanup === 'function'
+        ? RBQ.registerCleanup.bind(RBQ)
+        : (typeof RBQ?.registerPluginCleanup === 'function' ? RBQ.registerPluginCleanup.bind(RBQ) : null);
+    if (registerCleanupFn) {
+        registerCleanupFn(PLUGIN_ID, () => {
+            clearTimeout(initialPendingSyncTimer);
+            window.removeEventListener('st-scene-trigger:image-generated', onImageGenerated);
+            window.removeEventListener('st-scene-trigger:image-cached', onImageCached);
+            window.removeEventListener('st-scene-trigger:favorite-toggled', onFavoriteToggled);
+            window.removeEventListener('focus', onWindowFocus);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            window.removeEventListener('st-scene-trigger:history-rendered', onHistoryRendered);
+            window.removeEventListener('st-scene-trigger:viewer-rendered', onViewerRendered);
+            window.removeEventListener('rbq-sdt:bottom-bar-rendered', onSdtBottomBarRendered);
+            window.removeEventListener('st-scene-trigger:viewer-closed', onViewerClosed);
+            if (RBQ?.api?.eventSource && RBQ?.api?.event_types?.CHAT_CHANGED) {
+                const es = RBQ.api.eventSource;
+                const ev = RBQ.api.event_types.CHAT_CHANGED;
+                try {
+                    if (typeof es.removeListener === 'function') es.removeListener(ev, onChatChanged);
+                    else if (typeof es.off === 'function') es.off(ev, onChatChanged);
+                } catch (_e) {}
+            }
             document.getElementById('rbq-gallery-sync-style')?.remove();
             document.getElementById('rbq-storage-badge-btn')?.remove();
             document.getElementById('rbq-storage-badge-wrap')?.remove();
-            document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => el.remove());
+            document.querySelectorAll('.rbq-storage-modal-overlay').forEach(el => {
+                if (typeof el.__rbqCleanup === 'function') el.__rbqCleanup(); else el.remove();
+            });
             document.getElementById('rbq-storage-popover')?.remove();
-            RBQ.ui.removeSettingPanel('rbq-gallery-sync');
+            RBQ?.ui?.removeSettingPanel?.('rbq-gallery-sync');
         });
     }
 

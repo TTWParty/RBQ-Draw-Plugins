@@ -2,7 +2,7 @@
     if (!RBQ) return console.error('[Character Workshop] RBQ Core API missing');
 
     const PLUGIN_NAME = '角色工坊';
-    const VERSION = '2.2.40';
+    const VERSION = '2.2.41';
     const CW_KEY = '_characterWorkshop';
     const SDT_KEY = '_smartDrawTrigger';
     const MCC_KEY = '_multiCharComposer';
@@ -4585,6 +4585,10 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             }
 
             // 监听面板可见性：每次进入面板时自动根据当前最新会话刷新角色列表
+            if (mount._visibilityObserver) {
+                try { mount._visibilityObserver.disconnect(); } catch (_e) {}
+                mount._visibilityObserver = null;
+            }
             if (typeof IntersectionObserver !== 'undefined') {
                 let isFirst = true;
                 const observer = new IntersectionObserver((entries) => {
@@ -4598,6 +4602,7 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
                     }
                 }, { threshold: 0.05 });
                 observer.observe(w);
+                mount._visibilityObserver = observer;
             }
 
             return w;
@@ -4610,18 +4615,34 @@ body.cw-lorebook-picker-open #cw-test-mode-modal{opacity:0.15!important;filter:b
             }
         };
 
-        document.addEventListener('click', (e) => {
+        const onWorkshopDocClick = (e) => {
             const t = e.target;
             if (t && t.closest && t.closest('[data-kite-tab="character-workshop"], #rbq-sdt-goto-workshop-btn')) {
                 triggerRefresh();
             }
-        });
-
-        document.addEventListener('rbq-tab-switched', (e) => {
+        };
+        const onWorkshopTabSwitched = (e) => {
             if (e.detail?.tab === 'character-workshop') {
                 triggerRefresh();
             }
-        });
+        };
+
+        document.addEventListener('click', onWorkshopDocClick);
+        document.addEventListener('rbq-tab-switched', onWorkshopTabSwitched);
+
+        if (typeof RBQ?.registerCleanup === 'function') {
+            RBQ.registerCleanup('rbq-character-workshop', () => {
+                if (mount._visibilityObserver) {
+                    try { mount._visibilityObserver.disconnect(); } catch (_e) {}
+                    mount._visibilityObserver = null;
+                }
+                document.removeEventListener('click', onWorkshopDocClick);
+                document.removeEventListener('rbq-tab-switched', onWorkshopTabSwitched);
+                document.getElementById('rbq-cw-styles')?.remove();
+                document.querySelectorAll('.cw-mask').forEach(el => el.remove());
+                RBQ?.ui?.removeSettingPanel?.('character-workshop');
+            });
+        }
     }
 
     mount();

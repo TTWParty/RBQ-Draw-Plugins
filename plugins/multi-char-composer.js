@@ -4,7 +4,7 @@
     const PLUGIN_NAME = 'Multi-Char Composer';
     const STORAGE_KEY = '_multiCharComposer';
 
-    const VERSION = '1.0.9';
+    const VERSION = '1.0.10';
 
     // ── Storage ──────────────────────────────────────────────
     function getStore() {
@@ -107,7 +107,7 @@
     }
 
     // ── Payload Hook ─────────────────────────────────────────
-    RBQ.on('buildNaiV4Payload', (payload) => {
+    const onBuildNaiV4Payload = (payload) => {
         const store = getStore();
         if (!store.enabled) return payload;
 
@@ -171,7 +171,8 @@
         toastr.info('多角色：' + charIndices.length + ' 个角色已映射', PLUGIN_NAME);
 
         return payload;
-    });
+    };
+    RBQ.on('buildNaiV4Payload', onBuildNaiV4Payload);
 
     // ── UI: Toggle Switch ────────────────────────────────────
     function injectToggle() {
@@ -211,11 +212,20 @@
         checkboxGrid.appendChild(labelCoords);
     }
 
-    setInterval(() => {
+    const injectTimer = setInterval(() => {
         if (document.getElementById('rbq-multi-char-enabled')) return;
         const grid = document.querySelector('.st-scene-trigger-nai-checkbox-grid');
         if (grid && grid.offsetParent !== null) injectToggle();
     }, 800);
+
+    if (typeof RBQ?.registerCleanup === 'function') {
+        RBQ.registerCleanup('rbq-multi-char', () => {
+            clearInterval(injectTimer);
+            RBQ.off?.('buildNaiV4Payload', onBuildNaiV4Payload);
+            document.getElementById('rbq-multi-char-enabled')?.closest('label')?.remove();
+            document.getElementById('rbq-multi-char-coords')?.closest('label')?.remove();
+        });
+    }
 
     console.info('[' + PLUGIN_NAME + '] Plugin loaded.');
 

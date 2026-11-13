@@ -4347,6 +4347,7 @@
     }
 
     // ── 注入入口按钮至提示词预设面板 ──
+    let marketCheckTimer = null;
     function injectMarketEntry() {
         const check = () => {
             // 彻底清理悬浮球入口 (避免视觉污染与冗余)
@@ -4429,12 +4430,13 @@
             }
         };
 
-        setInterval(check, 1000);
+        if (marketCheckTimer) clearInterval(marketCheckTimer);
+        marketCheckTimer = setInterval(check, 1000);
         check();
     }
 
     // ── 全局 ESC 键关闭任意活动弹窗 (依照反向层级递进退出) ──
-    document.addEventListener('keydown', (e) => {
+    const onMarketKeyDown = (e) => {
         if (e.key === 'Escape' || e.keyCode === 27) {
             // 先尝试关闭最顶层子弹窗或 Lightbox
             const subOverlays = [
@@ -4459,7 +4461,8 @@
                 closeMarketModal();
             }
         }
-    });
+    };
+    document.addEventListener('keydown', onMarketKeyDown);
 
     if (RBQ && RBQ.api) {
         RBQ.api.openMarketModal = openMarketModal;
@@ -4467,5 +4470,24 @@
     }
 
     injectMarketEntry();
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.33 插件已加载');
+
+    if (typeof RBQ?.registerCleanup === 'function') {
+        RBQ.registerCleanup('rbq-prompt-market', () => {
+            if (marketCheckTimer) {
+                clearInterval(marketCheckTimer);
+                marketCheckTimer = null;
+            }
+            document.removeEventListener('keydown', onMarketKeyDown);
+            try { closeMarketModal(); } catch (_e) {}
+            document.getElementById('rbq-pm-modal')?.remove();
+            document.getElementById('rbq-pm-header-entry-btn')?.remove();
+            document.getElementById('rbq-pm-toolbar-entry-btn')?.remove();
+            document.getElementById('rbq-pm-fallback-entry-btn')?.remove();
+            document.getElementById('rbq-pm-styles')?.remove();
+            if (RBQ?.api?.openMarketModal === openMarketModal) delete RBQ.api.openMarketModal;
+            if (RBQ?.api?.closeMarketModal === closeMarketModal) delete RBQ.api.closeMarketModal;
+        });
+    }
+
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.34 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

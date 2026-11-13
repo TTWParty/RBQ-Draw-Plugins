@@ -1890,8 +1890,19 @@
     }
 
     initInspectorPanel();
-    setInterval(scanAndInject, 500);
-    setTimeout(scanAndInject, 100);
+    const scanTimer = setInterval(scanAndInject, 500);
+    const initialScanTimer = setTimeout(scanAndInject, 100);
+
+    if (typeof RBQ?.registerCleanup === 'function') {
+        RBQ.registerCleanup('rbq-png-metadata', () => {
+            clearInterval(scanTimer);
+            clearTimeout(initialScanTimer);
+            RBQ?.ui?.removeSettingPanel?.('inspector');
+            document.querySelectorAll('.rbq-nai-extract-btn').forEach(el => el.remove());
+            document.getElementById('rbq-png-meta-dropzone')?.remove();
+            document.getElementById('rbq-png-meta-modal')?.remove();
+        });
+    }
 
     console.info(`📋 ${PLUGIN_NAME} plugin loaded via Toolbar & Dropzone Poller.`);
 

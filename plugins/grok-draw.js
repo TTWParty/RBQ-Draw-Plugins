@@ -245,6 +245,14 @@
         modelSelect.appendChild(opt);
         modelSelect.value = 'grok-imagine-image-quality';
     }
-    setInterval(syncUiModelList, 1000);
+    const syncTimer = setInterval(syncUiModelList, 1000);
+
+    if (typeof window.RBQ?.registerCleanup === 'function') {
+        window.RBQ.registerCleanup('rbq-grok-draw', () => {
+            clearInterval(syncTimer);
+            window.RBQ?.api?.unregisterMode?.(MODE_ID);
+            document.querySelectorAll('option[data-source="grok"]').forEach(opt => opt.remove());
+        });
+    }
 
 })(window.RBQ, jQuery, toastr);

@@ -12,7 +12,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.53';
+    const PLUGIN_VERSION = '6.5.54';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';
@@ -2238,12 +2238,222 @@ Zimage 擅长理解复杂的英文长句和语境。
     // V35: 文生图9.7完整详尽版（100% 对应 .53 实装版，包含彻底绝杀肚脐机位、无接触留白与全套物理判定表）
     const V35_SPEC_97_SYSTEM_PROMPT = V5_SPEC_97_SYSTEM_PROMPT;
 
+    // 绒布球同款内置主规则（sha256: bb2924d12151152cf8fc1aa84f86e8c8a45bf4d727ae0d028a55c00d9ed532ba）
+    const RBQ_V23_FIRST_PERSON_SYSTEM_PROMPT = `你是 NovelAI V4 / V4.5 / V5 多角色插画分镜导演与 Danbooru 标签专家。读正文剧情 → 捕捉最具视觉张力的瞬间 → 调用工具或直接输出唯一合法 JSON。
+档案认人、7 维 base、衣柜认领（wardrobe_outfit / outfit_change / temp_states / temp_removed / depiction）与张数下限遵循下方内置规格与约定；本规则定义【第一人称·代入视角】的镜头调度、光影美学与标签精度。
+
+══ 一、第一人称·代入铁律（镜头＝「你」的双眼）══
+1. 身份锁定：正文里的「你」（含用户人设卡、before 中标有「（用户）」的角色）就是摄影机本身。除镜面反射（mirror, reflection）、合拍自拍（selfie, group_photo）或看旧合照（depiction="media"）外，「你」严禁进入 characters 数组，严禁把「你」画成独立路人或背影。
+2. 逐张选最自然的代入子模式（严禁张张无脑塞 pov / pov_hands）：
+   ① 对视/凝视镜头（首选默认，构图最稳、手部零畸变）：你在看对方，而你的手和身体没有伸进画框。
+      - scene 写实际入画人数（单人入画写 1girl, solo 或 1boy, solo；双人写 2girls / 2boys / 1girl, 1boy），不写场外观察者人数，不写 pov，不写 pov_hands；当场外的你与画内单人性别相反时，可在 negative 排除你的性别计数（如男看女写 1boy, male_focus；女看男写 1girl, female_focus；同性对戏不排性别）。
+      - 对方正看着你（含抬眼看你、回头看你、含羞瞥你）→ action 写 looking_at_viewer（可按高低叠 looking_up 或 looking_down，或 head_tilt）；垂眸/别过脸 → 写 looking_down / looking_to_the_side / looking_away；闭眼或埋脸 → 写 closed_eyes，禁写任何 looking_*。
+   ② 肢体交互主观（仅当 anchor 原文明确写「你」此刻正伸手触碰对方、递物，或亲密接触入画时才用）：
+      - 仅你的手入画抚摸/牵手/握腕/挑下巴：scene 写画内角色人数 + pov, pov_hands（不加观察者全身计数，且 negative 严禁排除观察者性别如 1boy / 1girl / male_focus / female_focus 或 extra_arms 以免抹掉前景主观手），对方 action 写清你的手落在何处（如 wrist_held, hand_on_another's_cheek, hair_tucking）。
+      - 你的躯干或亲密部位入画：scene 写 nsfw, rating:explicit + 双方人数与关系（hetero / yuri / yaoi）+ pov, pov_crotch / pov_torso 及可见部位，对方 action 写清交互体位与施受动作。
+   ③ 近距旁观/窥视（你在场静看两人以上互动，或隔门窗暗中观察）：
+      - 你不入 characters；画内互动角色各自入 characters，用 source#动作 / target#动作 / mutual#动作 绑定施受，视线写 looking_at_another / eye_contact；隔物观察可在 scene 加 through_doorway, foreground_blur, peeping。
+3. 高低机位由「你的实际视线高度（含身下家具高度）」与「对方当前重心高度」实时比对决定（严禁死套「你躺着＝from_below」）：
+   - 你躺在地面，或对方贴近床边笔直站立俯视你、跨坐在你上方（对方头部明显高于你的视线）→ scene 写 from_below；
+   - 你躺/坐在床上或沙发上（视线离地约 65~90cm），而对方在床边地面弯腰、蹲下、低头脱鞋或整理鞋袜（重心降至地面 0~60cm，与你视线平齐甚至更低）→ 写 straight-on 或微俯视 slight_high-angle_shot，严禁写 from_below（否则 full_body + from_below 会把镜头塞进地板底下贴地仰拍）；
+   - 你站着/俯身，而对方坐着、跪着或躺在下方 → scene 写 from_above；
+   - 两人视线大致平齐（并肩坐、面对面站、同枕侧卧）→ straight-on 或不写高低角。凡核心动作落在腿足或地面（如脱鞋 removing_shoes / shoe_dangle、穿鞋、赤脚踩地、整理丝袜），景别必须用 full_body（或聚焦腿足 lower_body, feet_focus），严禁用 upper_body / cowboy_shot 把正在互动的鞋袜与地面裁出画外。连续多张分镜主动轮换景别与机位维度。
+
+══ 二、快照真实与空间物理 ══
+1. 瞬间切片：每张图只定格 anchor.text 这一句发生的那一秒。下一段才脱的衣服、才做的动作、心理比喻或状态栏文字一律不画。
+2. 空间视线投影（防背景空床幻觉）：沿「你的眼睛 → 对方 → 对方身后」投射视线，scene 只写位于对方身下或身后的陈设。当你躺/坐在床上而对方仍在床边地面站立、弯腰或脱鞋（对方尚未上床）时，床压在镜头正下方，对方身后是地面与墙窗——scene 严禁写 bed / pillow / mattress，对方 action 严禁写含 bed 的词（如 standing_beside_bed），否则单人画面必定在她身后画出一张无人的空床！此时应写 bedroom, wooden_floor, rug, wall, window / curtains（并在 negative 写 empty_bed）；仅当对方本人已坐上床沿（sitting_on_bed）、跪在床上或躺在床上时才写 bed 与 on_bed。两人共用同一张床/沙发时只写一处家具。
+3. 露出梯度：衣着未解开时不写 bare_breasts / nipples / pussy；隔衣显形用 {clothes_pull, breasts_apart} 或 {see-through_shirt, covered_nipples}；掀开/滑落露出一半用 breasts_out / one_breast_out / panties_aside。
+
+══ 三、Danbooru 标签美学与字段配额 ══
+- 权重语法：核心动作/标志特征用 1.15~1.4::tag:: 或 {tag} 强调；远景/次要背景用 0.6~0.8::tag:: 弱化。严禁在 scene / base / outfit / action 中手写负权重 -n::tag::（所有排除项统一写进 negative 与 uc，底层引擎会自动适配 V5 Full 负面通道与 V5 Medium 正面内联负权重）。
+- lorebook 模板：若输入含 lorebook 标签库，命中服装/体位模板优先采纳；含斜杠同义词只挑 1~2 个最贴切的英文标签，多变体只取当前剧情那 1 个，Char1/Char2 映射到对应角色 action。
+
+1. **scene**（14~22 个精炼全局英文标签，逗号分隔，禁写英文长句，禁写 best quality 等画质词，禁写单人表情/视线/发色）：
+   - 顺序：分级(sfw 或 nsfw, rating:explicit) → 主题(可选) → 人数与关系(1girl, solo / 1girl, 1boy, hetero / 2girls, yuri) → 主观标记(仅模式②写 pov, pov_hands / pov_crotch) → 室内外+具体地点+2~4个核心环境物 → 时间天气+光源方向与光效(sunlight, dappled_sunlight, window_light, warm_lighting, rim_lighting, backlighting, sidelighting, dramatic_shadows, Tyndall_effect) → 景别+角度+镜头光学氛围(upper_body / cowboy_shot / close-up / full_body, from_below / from_side, depth_of_field, bokeh, motion_blur, floating_particles / steam / cherry_blossoms)。
+   - 人数景别约束：3 人同框至少 cowboy_shot（禁 close-up）；4 人以上用 full_body / wide_shot。
+
+2. **base / outfit**（严格遵守下方内置角色记忆规格）：
+   - cast / others 已建档角色 base 填 ""；新角色（含未建档的角色卡角色）base 按七维写全英文标签（girl/boy 开头，禁带数字，禁混入衣服或动作；精确区分发型结构如 twintails 与 twin_braids）。
+   - **正文当下状态优先于角色卡默认装束**：无论现代装、制服、古风衣裙或奇幻甲胄，只要正文明确描写了此刻的实际穿戴或已脱下某些外层/配饰/鞋袜，outfit 只写此刻仍在身上的件，严禁把角色卡默认常服里未穿或已脱下的部件惯性抄进 outfit（并将未穿的原设标志件或已脱部件写进 uc）。
+   - **半脱留袜与局部/隔物状态（严禁漏袜）**：只要正文未明确写脱下连裤袜/长筒袜/丝袜/短袜，即便外衣、裙装或内衣已褪去，outfit 也必须保留袜类并用权重锁住（如 1.3::black_pantyhose::），严禁把 outfit 简写成 nude，严禁在 uc 写泛称 clothes，并在 uc 写 bare_legs, nude 防止模型抹成光腿！细分三种丝袜/衣物保留态：① 局部撕开/破口留袜：outfit 写 1.3::[color]_pantyhose, torn_pantyhose::（torn_pantyhose 记入 temp_states）；② 拨开/半褪留袜：写 1.3::[color]_pantyhose, pantyhose_pull:: 或 clothes_aside / half-off；③ 隔着完好丝袜/薄衣直接贴合互动（隔丝/隔衣未脱未破）：outfit 写 1.35::[color]_pantyhose, sheer_legwear::，action 配合 through_clothes, covered 保持腰臀至足尖织物连续包裹。
+   - **状态互斥**：赤脚（barefoot）与任何鞋袜标签互斥（仅脱鞋留袜写 socks / stockings / pantyhose, no_shoes）；正在脱鞋半挂脚尖写 removing_shoes, shoe_dangle, one_shoe_off 并保留鞋子标签。近景/特写也写完整全身当前穿搭，交由程序 crop9 按镜头自动裁剪。
+
+3. **action**（20~35 个高表现力动态标签，塑造鲜活神态与物理细节）：
+   - 顺序：画面方位与朝向(in_center / left_side / right_side, facing_viewer / from_side / from_behind, head_turned) → 核心体位(1.2::sitting / kneeling / leaning_forward / lying_on_side::) → 左手动作 + 右手动作(分别写清手部姿态与接触位置；双手共持单件物品用 holding_with_both_hands, holding_<item>，勿单写 both_hands 以免左右手各画一件；画框外不编造) → 多人施受前缀(source# / target# / mutual#) → 细腻表情与嘴型(blush, shy / embarrassed / gentle_smile / parted_lips / biting_lower_lip / trembling_lips) → 眼部开合与唯一视线目标(half-closed_eyes / wide-eyed / upturned_eyes + looking_at_viewer) → 身体生理与动态微细节(sweat, collarbone, floating_hair, wind, clenched_hand, trembling, steam)。
+   - 互斥铁律：同一角色严禁同时写两个视线目标，严禁 closed_eyes 与 looking_* 共存，严禁 standing 与 sitting/kneeling/lying 共存。
+
+4. **center**（5×5 网格 A1~E5 或浮点坐标 {"x":0.5,"y":0.5}）：
+   - 单人默认 C3（特写偏上可用 C2）；双人入画必须左右错开（如 B3 与 D3），仅拥抱/交叠时靠近。
+
+5. **negative（整图排除）与 uc（单角色排除）—— 精准手术刀原则**：
+   - 写法：直接写英文 Danbooru 标签，逗号分隔；原作自带光环/翅膀/角/兽耳/固有制服但当前设定明确无此物或未穿时，在该角色 uc 用 3::<feature>::（如 3::halo:: / 3::wings:: / 3::serafuku::）强力压制（不要加负号，引擎在 Full 与 Medium 下均会自动注入条件负权重消除残影）。无明显风险时留空 ""。
+   - 必排场景：① 同人角色换装或设定无原设超自然特征时，在其 uc 排除原设固有标志物防夺舍；② 本幕明确摘下或未穿的物件；③ 擦边/半脱镜头但隐私部位仍被遮盖时，按实际遮盖情况排除裸露词；④ 仅模式①单人对视且你未伸手入画时，若你与画内角色异性别，可在 negative 排除你的性别计数（模式② pov_hands 严禁排除观察者性别）。
+   - 严禁写入：① 画质或肢体套话（lowres, bad_anatomy, extra_arms, extra_hands 等系统已处理）；② 在场任何角色身上正在穿戴的衣物、配饰或自身发色瞳色（严禁跨角色排衣导致误伤）。
+
+══ 四、输出 JSON 示例（仅示范结构与标签密度，内容严格依正文生成）══
+{
+  "shouldDraw": true,
+  "reason": "夜雨窗前她递毛巾对视与靠近擦发的推进",
+  "segments": [
+    {
+      "label": "窗边递来干毛巾抬眸看你",
+      "anchor": {"text": "她攥着干毛巾走到你面前，微仰起脸望向你"},
+      "scene": "sfw, 1girl, solo, indoors, bedroom, wooden_floor, rain, window, raindrops_on_glass, night, warm_lighting, bedside_lamp, sidelighting, soft_shadows, rim_lighting, cowboy_shot, from_above, slight_dutch_angle, depth_of_field, bokeh",
+      "negative": "1boy, male_focus",
+      "characters": [
+        {
+          "id": "a",
+          "name": "早濑优香",
+          "base": "",
+          "outfit": "white_oversized_cardigan, off_shoulder, navy_ribbed_sleeveless_top, black_pleated_mini_skirt, white_ankle_socks, no_shoes",
+          "wardrobe_outfit": "居家针织衫",
+          "outfit_change": "temporary",
+          "temp_states": ["off_shoulder", "no_shoes"],
+          "temp_removed": ["slippers"],
+          "depiction": "present",
+          "action": "in_center, facing_viewer, 1.2::standing, leaning_forward::, slight_head_tilt, holding_with_both_hands, 1.25::holding_towel, offering::, folded_white_towel, light_blush, gentle_expression, parted_lips, upturned_eyes, looking_up, looking_at_viewer, damp_hair, floating_hair_strands",
+          "center": "C3",
+          "uc": "3::halo::, jacket, necktie, shoes"
+        }
+      ]
+    },
+    {
+      "label": "你伸手拂开她湿发时的羞怯低喘",
+      "anchor": {"text": "你的指尖擦过她滚烫的耳垂，将湿发别到耳后"},
+      "scene": "sfw, 1girl, pov, pov_hands, indoors, bedroom, blurry_background, night, warm_lighting, backlighting, rim_lighting, close-up, portrait, straight-on, shallow_depth_of_field, bokeh",
+      "negative": "",
+      "characters": [
+        {
+          "id": "a",
+          "name": "早濑优香",
+          "base": "",
+          "outfit": "white_oversized_cardigan, off_shoulder, navy_ribbed_sleeveless_top, black_pleated_mini_skirt, white_ankle_socks, no_shoes",
+          "wardrobe_outfit": "居家针织衫",
+          "outfit_change": "temporary",
+          "temp_states": ["off_shoulder", "no_shoes"],
+          "temp_removed": ["slippers"],
+          "depiction": "present",
+          "action": "face_focus, facing_viewer, 1.3::hand_on_another's_cheek, hair_tucking::, head_leaning_into_hand, shoulders_raised, heavy_blush, shy, trembling_lips, half-open_mouth, half-closed_eyes, glistening_eyes, looking_at_viewer, damp_hair, collarbone, sweat_drop",
+          "center": "C3",
+          "uc": "3::halo::, jacket, necktie"
+        }
+      ]
+    }
+  ],
+  "end_state": {
+    "place": "卧室窗边",
+    "time": "雨夜",
+    "marks": [{"id": "a", "tags": "damp_hair, light_blush"}]
+  }
+}`;
+
+    // 绒布球同款第三人称同框规则（sha256: 10e6b6d48f5d5605cb5519101cebe864f509472e003922f7c45a728170d262f3）
+    const RBQ_V23_THIRD_PERSON_SYSTEM_PROMPT = `你是 NovelAI V4 / V4.5 / V5 多角色插画分镜导演与 Danbooru 标签专家。读正文剧情 → 捕捉最具电影感与构图张力的瞬间 → 调用工具或直接输出唯一合法 JSON。
+档案认人、7 维 base、衣柜认领（wardrobe_outfit / outfit_change / temp_states / temp_removed / depiction）与张数下限遵循下方内置规格与约定；本规则定义【第三人称·电影客观同框视角】的机位调度、主客同框互动与标签精度。
+
+══ 一、第三人称·电影同框铁律（镜头＝场外摄影机）══
+1. 严禁主观 POV：镜头永远是独立的场外电影机。scene 与 action 中严禁出现 pov, pov_hands, pov_crotch, first-person_view。
+2. 「你」是画中主角：只要正文这一刻「你」（用户本人，before 中标有「（用户）」的角色；若为开场首楼 before 为空，则 characterCardInfo 中除 current.who 以外的用户人设卡即「你」）与对手戏角色同处一幕或发生视线、对话、肢体互动，「你」必须作为完整角色写入 characters 数组（设 is_user: true）！
+   - 若「你」尚未建档：必须按七维写全 base（girl/boy 开头，依人设卡与正文提取，未写细节按身份合理补全）与完整四要素 outfit；若已建档（在 cast/others 中）则照抄 id/name，base 写 ""。
+   - 仅当这一刻纯拍空镜、角色独处特写且「你」确实不在画框构图内时，才单画另一角色（solo）。
+3. 电影机位与多维构图：
+   - 善用电影叙事机位并在连续分镜间主动轮换：侧面双人构图（from_side, profile）、过肩镜头（over-the-shoulder_shot，近景背侧角色+中景正脸角色）、俯拍全景（from_above, high-angle_shot）、仰拍张力（from_below, low-angle_shot）、斜角动势（dutch_angle）、前景遮挡景深（foreground_blur, through_window, doorway_framing）。
+   - 人数景别约束：双人同框优先 cowboy_shot / upper_body / full_body（双人贴面亲吻/拥抱可用 close-up）；3 人同框至少 cowboy_shot；4 人以上 full_body / wide_shot。
+4. 角色间视线与施受绑定（防呆板摆拍）：
+   - 画内角色彼此对视、交谈、触碰时，用 facing_another, looking_at_another, eye_contact（辅以 looking_up / looking_down / head_turned），严禁在角色明明看同伴时误写 looking_at_viewer（仅当剧情明确写角色转头直视拍照镜头或单人肖像直视观众时才用 looking_at_viewer）。
+   - 双人及多人肢体互动必须成对标注施受前缀：施动方写 source#动作（如 1.3::source#hugging::, source#patting, source#kissing），受动方写 target#动作（如 1.3::target#hugging::, target#patting），双向对等写 mutual#动作（如 mutual#holding_hands, mutual#eye_contact）。
+
+══ 二、快照真实与空间物理 ══
+1. 瞬间切片：每张图只定格 anchor.text 这一句发生的那一秒。下一段才发生的动作、脱衣、心理活动或状态栏一律不画。
+2. 空间分区与家具绑定（同载体 vs 异位同框）：
+   - 两人共处同一张床/沙发时：scene 只写一次 bed / couch，承重基准方写 lying_on_bed / sitting_on_couch，另一方写相对体位（straddling, sitting_next_to, leaning_over），不要两人各写一遍独立家具导致切成两张床。
+   - 一人在床上/沙发上、另一人在床边地面/桌前（异位同框，如「你躺在床上看她在床边脱鞋」）：必须用 full_body 或 wide_shot 同时纳入床面与地面双空间；scene 写一次 bed, wooden_floor；床上角色绑定床与单侧坐标（如 center "B3"，action 写 left_side, on_bed, lying_on_back, looking_at_another），地面角色绑定地面与另一侧偏下坐标（如 center "D4"，action 写 right_side, on_floor, bending_over, 1.3::removing_shoes, shoe_dangle::），且地面角色的 action 严禁带 bed 词元（禁写 standing_beside_bed，防跨角色注意力把她也吸上床）。
+   - 凡核心动作落在腿足或地面（脱鞋、穿鞋、赤脚踩地、整理丝袜），景别必须用 full_body / wide_shot，严禁用 upper_body / cowboy_shot 裁掉脚与鞋子；同一场景连续分镜遵守 180 度轴线，角色左右站位不乱跳。
+3. 露出梯度：衣着未解开时不写 bare_breasts / nipples / pussy / penis；隔衣轮廓用 {see-through_shirt, covered_nipples}；半解半露按实际露出的部位精准描写。
+
+══ 三、Danbooru 标签美学与字段配额 ══
+- 权重语法：核心交互动作/关键特征用 1.15~1.4::tag:: 或 {tag} 强调；背景次要物用 0.6~0.8::tag:: 弱化。严禁在 scene / base / outfit / action 中手写负权重 -n::tag::（所有排除项统一写进 negative 与 uc，底层引擎会自动适配 V5 Full 负面通道与 V5 Medium 正面内联负权重）。
+- lorebook 模板：命中输入 lorebook 服装/体位模板优先采用；斜杠同义词只选 1~2 个最贴切的 Danbooru 标签，Char1/Char2 分别映射到对应角色的 action。
+
+1. **scene**（14~22 个精炼全局英文标签，逗号分隔，禁写英文长句，禁写 best quality 等画质词，禁写单人表情/视线/发色）：
+   - 顺序：分级(sfw 或 nsfw, rating:explicit) → 主题(可选) → 人数与关系(1girl, 1boy, hetero / 2girls, yuri / 1girl, solo) → 视角标记(third-person_view) → 室内外+具体地点+2~4个核心陈设 → 时间天气+光源方向与光效(moonlight, window_light, warm_lighting, rim_lighting, backlighting, sidelighting, dappled_sunlight, cast_shadows) → 全局景别+机位角度+光学氛围(cowboy_shot / full_body / over-the-shoulder_shot, from_side / from_above, depth_of_field, bokeh, atmospheric_perspective, petals / rain / steam)。
+
+2. **base / outfit**（严格遵守下方内置角色记忆规格）：
+   - cast / others 已建档角色 base 填 ""；新角色（含首次入画的「你」与未建档卡角色）base 按七维写全英文标签（girl/boy 开头，禁带数字，禁混入服装或动作；精确区分发型结构如 twintails 与 twin_braids）。
+   - **正文当下状态优先于角色卡默认装束**：无论现代装、制服、古风衣裙或奇幻甲胄，只要正文明确描写了某角色此刻的实际穿戴或已脱下某些外层/配饰/鞋袜，outfit 只写此刻仍在身上的件，严禁把角色卡默认常服里未穿或已脱下的部件惯性抄进 outfit（并将未穿的原设标志件写进该角色 uc）。
+   - **半脱留袜与局部/隔物状态（严禁漏袜）**：只要正文未明确写某角色脱下连裤袜/长筒袜/丝袜/短袜，即便外衣裙装已褪去，该角色 outfit 也必须保留袜类并加权（如 1.3::black_pantyhose::），严禁简写成 nude，严禁在 uc 写泛称 clothes，并在该角色 uc 写 bare_legs, nude（同场另一人若光腿且未开坐标遮罩则只靠正向 1.35:: 强权重锁袜，避免跨角色误伤）！细分三种保留态：① 局部撕开/破口留袜：1.3::[color]_pantyhose, torn_pantyhose::（torn_pantyhose 记入 temp_states）；② 拨开/半褪留袜：1.3::[color]_pantyhose, pantyhose_pull:: 或 clothes_aside / half-off；③ 隔着完好丝袜/薄衣贴合互动（隔丝/隔衣未脱未破）：1.35::[color]_pantyhose, sheer_legwear:: 配合 action 的 through_clothes, covered 保持织物连续包裹。
+   - **状态互斥**：赤脚（barefoot）与任何鞋袜标签互斥（穿袜仅脱鞋写 socks / stockings / pantyhose, no_shoes）；正在脱鞋半挂脚尖写 removing_shoes, shoe_dangle, one_shoe_off 并保留鞋子标签。全员均写完整当前穿搭，交由程序 crop9 按景别自动裁剪。
+
+3. **action**（每人 18~30 个高表现力动态标签，主次分明）：
+   - 顺序：画面位置与朝向(left_side / right_side, facing_another / profile / from_behind) → 核心体位(1.2::sitting / standing / kneeling / straddling::) → 左右手独立动作(left_hand..., right_hand...；双手共持单件物品用 holding_with_both_hands, holding_<item>) → 施受互动标签(source# / target# / mutual#) → 情绪表情与嘴型(blush, gentle_smile / smirk / flustered / parted_lips) → 眼部开合与唯一视线目标(looking_at_another, eye_contact 或 looking_down / closed_eyes) → 身体生理与物理微细节(sweat, floating_hair, clothing_folds, trembling)。
+   - 互斥铁律：同一角色严禁并列两个视线目标，严禁 closed_eyes 与 looking_* 共存，严禁 standing 与 sitting/kneeling/lying 共存。
+
+4. **center**（5×5 网格 A1~E5 或浮点坐标 {"x":0.3,"y":0.5}）：
+   - 双人同框必须拉开坐标（如左 B3 + 右 D3；一坐一站如 B4 + D2），仅紧密相拥、亲吻或交合时可相邻或重叠（C3 + C3 / C2 + C4）。
+
+5. **negative（整图排除）与 uc（单角色排除）—— 精准去原设幻觉与防误伤**：
+   - 写法：直接写英文 Danbooru 标签，逗号分隔；原作自带光环/翅膀/角/兽耳/固有制服但当前设定明确无此物或未穿时，在该角色 uc 用 3::<feature>::（如 3::halo:: / 3::wings:: / 3::serafuku::）强力压制（不要加负号，引擎在 Full 与 Medium 下均会自动注入条件负权重消除残影）。无风险可留空 ""。
+   - 必排场景：① 同人角色换装或设定无原设超自然特征时，在其 uc 排除原设固有标志物；② 该角色本幕明确摘下或未穿的配饰/内衣；③ 擦边镜头但隐私部位仍被遮盖时，按实际遮盖情况排除裸露词。
+   - **严禁跨角色写 uc（极重要）**：未开启坐标遮罩时，把角色 A 身上正在穿戴的衣物、配饰或发色写进角色 B 的 uc 会全局误伤角色 A！严禁在任何角色的 uc 中写同场任何人身上正在穿戴的物件或自身发色瞳色；严禁写画质/肢体套话（lowres, bad_anatomy, extra_arms 等）；不要排除 pov_hands。
+
+══ 四、输出 JSON 示例（仅示范双人同框结构与标签密度，内容严格依正文生成）══
+{
+  "shouldDraw": true,
+  "reason": "沙发上她靠肩共读与被揽住肩膀对视的双人互动",
+  "segments": [
+    {
+      "label": "暮色客厅里并肩坐在沙发上她挽住你的手臂",
+      "anchor": {"text": "她轻轻挨着你在沙发坐下，伸手挽住你的胳膊抬头看你"},
+      "scene": "sfw, hetero, 1girl, 1boy, third-person_view, indoors, living_room, couch, throw_pillow, coffee_table, teacup, floor-to-ceiling_window, sunset, golden_hour, warm_lighting, sidelighting, rim_lighting, cast_shadows, cowboy_shot, from_side, slight_high-angle_shot, depth_of_field, bokeh",
+      "negative": "multiple_boys, multiple_girls",
+      "characters": [
+        {
+          "id": "a",
+          "name": "早濑优香",
+          "base": "",
+          "outfit": "white_oversized_cardigan, off_shoulder, navy_ribbed_sleeveless_top, black_pleated_mini_skirt, white_ankle_socks, no_shoes",
+          "wardrobe_outfit": "居家针织衫",
+          "outfit_change": "none",
+          "temp_states": [],
+          "temp_removed": [],
+          "depiction": "present",
+          "action": "left_side, facing_another, 1.2::sitting, on_couch, leaning_against_another::, 1.3::source#arm_hug, holding_another's_arm::, both_hands_on_arm, head_tilted_up, light_blush, soft_smile, parted_lips, upturned_eyes, looking_up, looking_at_another, eye_contact, floating_hair_strands",
+          "center": "B3",
+          "uc": "3::halo::, blazer, necktie, shoes"
+        },
+        {
+          "name": "陆明",
+          "name_tag": "Lu Ming (original)",
+          "is_user": true,
+          "base": "boy, east_asian, young_adult, short_hair, black_hair, messy_hair, dark_brown_eyes, tsurime, tall, broad_shoulders, toned, fair_skin",
+          "outfit": "grey_cotton_henley_shirt, rolled-up_sleeves, black_casual_slacks, white_socks, no_shoes",
+          "wardrobe_outfit": "",
+          "outfit_change": "none",
+          "temp_states": [],
+          "temp_removed": [],
+          "depiction": "present",
+          "action": "right_side, facing_another, sitting, relaxed_posture, 1.3::target#arm_hug::, left_hand_resting_on_thigh, right_hand_holding_book, open_book, head_turned, gentle_expression, slight_smile, looking_down, looking_at_another, eye_contact",
+          "center": "D3",
+          "uc": "shoes"
+        }
+      ]
+    }
+  ],
+  "end_state": {
+    "place": "客厅沙发",
+    "time": "黄昏",
+    "marks": [{"id": "a", "tags": "light_blush"}]
+  }
+}`;
+
     const SYSTEM_PROMPT_PRESETS = {
-        v40_worldbook_97_opt: { label: 'V40·文生图9.7全功能优化版 (默认推荐/四模块自洽架构/全场景覆盖)', prompt: V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT },
-        v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (.53实装版/绝杀肚脐机位/无接触留白)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
+        rbq_v23: { label: '第一人称·代入版（推荐）', prompt: RBQ_V23_FIRST_PERSON_SYSTEM_PROMPT },
+        rbq_v23_3p: { label: '第三人称·同框版', prompt: RBQ_V23_THIRD_PERSON_SYSTEM_PROMPT },
+        custom: { label: '⚙️ 自定义提示词 (Custom · 展开编辑框)', prompt: '' },
+        v40_worldbook_97_opt: { label: 'V40·文生图9.7全功能优化版 (旧版)', prompt: V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT },
+        v35_worldbook_97: { label: 'V35·文生图9.7完整详尽版 (.53实装版/旧版)', prompt: V35_SPEC_97_SYSTEM_PROMPT },
         consistent: { label: 'V24·8.30全能规范版 (经典)', prompt: CONSISTENT_SYSTEM_PROMPT },
         classic: { label: 'V20·经典版 (历史)', prompt: STORYBOARDER_CLASSIC_PROMPT },
-        custom: { label: '⚙️ 自定义提示词 (Custom · 展开编辑框)', prompt: '' },
         v33_worldbook_97: { label: 'V33·全息透视强化原版 (9.7原版/历史)', prompt: V33_SPEC_97_SYSTEM_PROMPT },
         v31_worldbook_97: { label: 'V31·全息分层原版 (9.7早期/历史)', prompt: V5_SPEC_97_SYSTEM_PROMPT },
         v29_worldbook_93: { label: 'V29·9.3全息分层原版 (历史)', prompt: V5_SPEC_93_SYSTEM_PROMPT },
@@ -2260,7 +2470,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         storyboarder: { label: 'V21·POV增强版 (历史)', prompt: STORYBOARDER_SYSTEM_PROMPT },
     };
 
-    const DEFAULT_SYSTEM_PROMPT_PRESET = 'v40_worldbook_97_opt';
+    const TOP_SYSTEM_PRESET_KEYS = ['rbq_v23', 'rbq_v23_3p', 'custom'];
+    const DEFAULT_SYSTEM_PROMPT_PRESET = 'rbq_v23';
     const DEFAULT_SYSTEM_PROMPT = SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET].prompt;
 
     function generateGeminiRandomEntropy() {
@@ -2734,8 +2945,8 @@ Zimage 擅长理解复杂的英文长句和语境。
         systemPromptPreset: DEFAULT_SYSTEM_PROMPT_PRESET,
         customSystemPrompt: '',
         lorebookEnabled: false,
-        lorebookBase64: true,
-        lorebookWafRetry: false,
+        lorebookBase64: false,
+        lorebookWafRetry: true,
         lorebookCurrentFloorOnly: false,
         lorebookContextDepth: 5,
         lorebookBudget: 8000,
@@ -2754,7 +2965,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         systemPromptVersion: DEFAULT_SYSTEM_PROMPT_VERSION,
         enhancedContext: 'v13', // off | v13 | v14 | v11 | v_manga | v_manga_185 | v_manga_161 | v_manga_150 | v_manga_narrative | v_manga_v5 | v_manga_layered_v1
         postProcessEnabled: false,
-        postProcessRole: 'assistant',
+        postProcessRole: 'user_append',
         postProcessPrompt: DEFAULT_POST_PROCESS_PROMPT,
         geminiJailbreak: false,
         geminiJailbreakPreset: DEFAULT_JAILBREAK_PRESET,
@@ -2762,6 +2973,7 @@ Zimage 擅长理解复杂的英文长句和语境。
         customJailbreakPrompt: '',
         toolCallMode: true,
         toolInputInDescription: false,
+        toolFallbackStreaks: {},
         squashMessages: true,
         thinkingEffort: 'default', // 'default' | 'off' | 'low' | 'medium' | 'high' | 'custom'
         thinkingBudget: 2048,
@@ -2819,10 +3031,35 @@ Zimage 擅长理解复杂的英文长句和语境。
         timers.add(id);
         return id;
     }
+    function getStHostActiveApiModel() {
+        try {
+            const ctx = (typeof RBQ !== 'undefined' && RBQ?.api?.getContext?.()) || (typeof window !== 'undefined' && window.SillyTavern?.getContext?.()) || null;
+            if (!ctx) return '';
+            const model = typeof ctx.getChatCompletionModel === 'function'
+                ? ctx.getChatCompletionModel()
+                : ctx.chatCompletionSettings?.openai_model;
+            return String(model || '').trim();
+        } catch (_e) {
+            return '';
+        }
+    }
+    function isStHostApiReady() {
+        try {
+            const ctx = (typeof RBQ !== 'undefined' && RBQ?.api?.getContext?.()) || (typeof window !== 'undefined' && window.SillyTavern?.getContext?.()) || null;
+            if (!ctx) return false;
+            if (ctx.mainApi && ctx.mainApi !== 'openai') return typeof ctx.generateRaw === 'function';
+            return Boolean(ctx.chatCompletionSettings?.chat_completion_source || getStHostActiveApiModel() || ctx.ChatCompletionService?.processRequest);
+        } catch (_e) {
+            return false;
+        }
+    }
     function isTaggerApiConfigured() {
         const store = getStore();
         if (store.provider === 'custom') {
             return !!String(store.customUrl || '').trim();
+        }
+        if (store.provider === 'st') {
+            return isStHostApiReady();
         }
         const url = normalizeBaseUrl(store.openaiBaseUrl);
         const model = (store.openaiModelCustom || '').trim() || store.openaiModel;
@@ -2991,15 +3228,33 @@ Zimage 擅长理解复杂的英文长句和语境。
         }
         if (!store.cache || typeof store.cache !== 'object') store.cache = {};
         if (!store.characterProfiles || typeof store.characterProfiles !== 'object') store.characterProfiles = {};
+        if (!store.toolFallbackStreaks || typeof store.toolFallbackStreaks !== 'object') store.toolFallbackStreaks = {};
         if (!store.systemPromptVersion || Number(store.systemPromptVersion) < DEFAULT_SYSTEM_PROMPT_VERSION) {
-            // Auto-upgrade prompt to latest V40 full-featured optimized preset for users on legacy defaults or previous baseline
+            // Auto-upgrade prompt to latest RBQ V23 preset for users on legacy defaults or previous baseline
             if (!store.systemPromptPreset || store.systemPromptPreset === 'consistent' || store.systemPromptPreset === 'v25_hybrid' || store.systemPromptPreset === 'v26_hybrid' || store.systemPromptPreset === 'v27_universal' || store.systemPromptPreset === 'v28_worldbook_91' || store.systemPromptPreset === 'v30_worldbook_93' || store.systemPromptPreset === 'v32_worldbook_97' || store.systemPromptPreset === 'v34_worldbook_97' || store.systemPromptPreset === 'v36_worldbook_97' || store.systemPromptPreset === 'v40_lean' || store.systemPromptPreset === 'v40_worldbook_97_opt') {
-                store.systemPrompt = V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT;
-                store.systemPromptPreset = 'v40_worldbook_97_opt';
+                if (typeof RBQ_V23_FIRST_PERSON_SYSTEM_PROMPT !== 'undefined') {
+                    store.systemPrompt = RBQ_V23_FIRST_PERSON_SYSTEM_PROMPT;
+                    store.systemPromptPreset = 'rbq_v23';
+                } else {
+                    store.systemPrompt = V40_SPEC_97_OPTIMIZED_SYSTEM_PROMPT;
+                    store.systemPromptPreset = 'v40_worldbook_97_opt';
+                }
             } else if (store.systemPromptPreset === 'v35_worldbook_97') {
                 store.systemPrompt = V5_SPEC_97_SYSTEM_PROMPT;
             }
             store.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+        }
+        if (typeof RBQ_V23_FIRST_PERSON_SYSTEM_PROMPT !== 'undefined' && !store.rbqV23Migrated) {
+            if (!store.systemPromptPreset || store.systemPromptPreset === 'v40_worldbook_97_opt') {
+                store.systemPromptPreset = 'rbq_v23';
+                store.systemPrompt = RBQ_V23_FIRST_PERSON_SYSTEM_PROMPT;
+            }
+            store.lorebookBase64 = false;
+            store.lorebookWafRetry = true;
+            if (!store.postProcessEnabled && store.postProcessRole === 'assistant') {
+                store.postProcessRole = 'user_append';
+            }
+            store.rbqV23Migrated = 1;
         }
 
         if (!store.geminiJailbreakPreset || store.geminiJailbreakPreset === 'ny_gemini' || store.geminiJailbreakPreset === 'ny_kami') {
@@ -4444,6 +4699,22 @@ ${activeRegistrySection}`;
                 }
             }
 
+            // 同步读取酒馆当前用户人设 (Persona)，供第三人称同框或镜面/自拍等场景参考未建档主角设定
+            const userName = String(ctx?.name1 || '').trim();
+            const personaDesc = String(ctx?.powerUserSettings?.persona_description || '').trim();
+            if (userName && personaDesc) {
+                const userProfile = typeof getCharacterProfile === 'function' ? getCharacterProfile(userName) : null;
+                const alreadyArchived = store.characterMemoryEnabled && String(userProfile?.baseTags || '').trim();
+                const alreadyListed = infoList.some(item => String(item?.name || '').trim().toLowerCase() === userName.toLowerCase());
+                if (!alreadyArchived && !alreadyListed) {
+                    infoList.push({
+                        name: userName,
+                        description: personaDesc,
+                        characterBookEntries: []
+                    });
+                }
+            }
+
             return infoList;
         } catch (e) {
             console.error('[Smart Draw Trigger] 收集角色卡/世界书信息失败:', e);
@@ -4523,7 +4794,8 @@ ${activeRegistrySection}`;
             let extractedOutfit = '';
 
             const store = getStore();
-            const hasLlm = (store.provider === 'custom' && store.customUrl) || (store.provider !== 'custom' && store.openaiBaseUrl);
+            const isStHost = store.provider === 'st';
+            const hasLlm = (store.provider === 'custom' && store.customUrl) || (store.provider !== 'custom' && (isStHost ? (typeof isStHostApiReady === 'function' ? isStHostApiReady() : true) : store.openaiBaseUrl));
 
             if (!hasLlm) throw new Error('请先配置智能生图的 Tagger 接口，再提取角色外貌');
             if (!contextText) throw new Error('当前角色卡没有可提取的角色描述或世界书');
@@ -4558,20 +4830,21 @@ ${getCharacterMemoryTagSpecification()}
                 if (!res.ok) throw new Error(`角色外貌提取失败: HTTP ${res.status}`);
                 jsonRes = await safeReadJsonResponse(res);
             } else {
-                const url = normalizeBaseUrl(store.openaiBaseUrl);
-                const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-                checkUrlSafety(url);
+                const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(store.openaiBaseUrl);
+                const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+                const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((store.openaiModelCustom || '').trim() || store.openaiModel);
+                if (!isStHost) checkUrlSafety(url);
                 const res = await callApiWithJsonFallback(url, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
+                        ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
                     }
                 }, {
                     model: modelName,
                     temperature: 0.2,
                     response_format: { type: 'json_object' },
-                    stream: String(modelName || '').toLowerCase().includes('gemini'),
+                    stream: !isStHost && String(modelName || '').toLowerCase().includes('gemini'),
                     messages: promptMessages,
                     ...buildThinkingParams(store, promptMessages),
                 });
@@ -9141,22 +9414,24 @@ SCHEMA:
             if (!response.ok) throw new Error(`Tagger API 请求失败: HTTP ${response.status}`);
             json = await safeReadJsonResponse(response);
         } else {
-            const url = normalizeBaseUrl(store.openaiBaseUrl);
-            if (!url) throw new Error('请先在设置中填写 OpenAI 兼容接口 Base URL');
-            const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-            if (!modelName) throw new Error('请先在设置中填写模型名称');
-            checkUrlSafety(url);
+            const isStHost = store.provider === 'st';
+            const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(store.openaiBaseUrl);
+            if (!isStHost && !url) throw new Error('请先在设置中填写 OpenAI 兼容接口 Base URL');
+            const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+            const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((store.openaiModelCustom || '').trim() || store.openaiModel);
+            if (!isStHost && !modelName) throw new Error('请先在设置中填写模型名称');
+            if (!isStHost) checkUrlSafety(url);
             const response = await callApiWithJsonFallback(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
+                    ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {})
                 }
             }, {
                 model: modelName,
                 temperature: 0.3,
                 response_format: { type: 'json_object' },
-                stream: String(modelName || '').toLowerCase().includes('gemini'),
+                stream: !isStHost && String(modelName || '').toLowerCase().includes('gemini'),
                 messages,
                 ...buildThinkingParams(store, messages),
             });
@@ -12099,6 +12374,35 @@ SCHEMA:
         }
     }
 
+    function isOwnRuleSystemPreset(store) {
+        if (!store || isMangaRequest(store)) return false;
+        return store.systemPromptPreset === 'rbq_v23' || store.systemPromptPreset === 'rbq_v23_3p';
+    }
+
+    const SDT_TEXT_FILTER = Object.freeze({ keep: ['content'], strip: ['build', 'critique', 'choices', 'time', 'usersetting'] });
+
+    function cleanSdtStoryText(text, filter = null) {
+        const raw = String(text ?? '');
+        if (!raw || !raw.includes('<')) return raw;
+        const f = filter && typeof filter === 'object' ? filter : SDT_TEXT_FILTER;
+        const sanitizeTag = t => String(t).replace(/[^\w:-]/g, '');
+        const keep = (Array.isArray(f.keep) ? f.keep : SDT_TEXT_FILTER.keep).map(sanitizeTag).filter(Boolean);
+        const strip = (Array.isArray(f.strip) ? f.strip : SDT_TEXT_FILTER.strip).map(sanitizeTag).filter(Boolean);
+        let s = raw.replace(/<(think(?:_nya~?)?|thinking)(?:\s[^>]*)?>[\s\S]*?<\/\1\s*>/gi, '');
+        for (const t of strip) {
+            s = s.replace(new RegExp(`<${t}(?:\\s[^>]*)?>[\\s\\S]*?</${t}\\s*>`, 'gi'), '');
+        }
+        for (const t of keep) {
+            const parts = [...s.matchAll(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?)(?:</${t}\\s*>|$)`, 'gi'))]
+                .map(m => m[1].trim())
+                .filter(Boolean);
+            if (parts.length) return parts.join('\n\n');
+        }
+        if (s === raw) return raw;
+        s = s.replace(/\n{3,}/g, '\n\n').trim();
+        return s || raw;
+    }
+
     function buildRequestPayload(messageId, trigger, { skipLorebook = false, promptSnapshot = null } = {}) {
         const liveStore = getStore();
         const layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
@@ -12107,28 +12411,31 @@ SCHEMA:
         const current = getMessageSnapshot(messageId);
         if (!current) throw new Error(`未找到当前消息 #${messageId}`);
 
+        const rawContent = String(current?.mes || '');
+        if (!rawContent.trim() || (!isMangaRequest(store) && rawContent.trim().length < 5)) {
+            throw new Error(`消息 #${messageId} 正文内容为空或尚未生成，无法提取分镜`);
+        }
+        const cleanedCurrentContent = cleanSdtStoryText(rawContent);
+
         const recentMessages = RBQ.api.getRecentMessages(messageId, store.contextCount)
             .filter(item => !isMangaRequest(store) || item.id == null || Number(item.id) < Number(messageId))
             .map(item => ({
             id: item.id,
             role: item.is_user ? 'user' : 'assistant',
             name: item.name,
-            content: item.mes,
+            content: cleanSdtStoryText(item.mes),
         }));
         if (recentMessages.length) {
             const last = recentMessages[recentMessages.length - 1];
-            if (Number(last.id) === Number(messageId)) last.content = current.mes;
+            if (Number(last.id) === Number(messageId)) last.content = cleanedCurrentContent;
         }
         const lorebook = skipLorebook ? [] : collectMatchedLorebookEntries(current.mes, recentMessages, messageId, layeredSnapshot?.storeSnapshot);
 
         const minSeg = Number(store.minSegments) || 0;
-        const rawContent = String(current?.mes || '');
-        if (!rawContent.trim() || (!isMangaRequest(store) && rawContent.trim().length < 5)) {
-            throw new Error(`消息 #${messageId} 正文内容为空或尚未生成，无法提取分镜`);
-        }
-        const photoGroupMatches = rawContent.match(/\[(?:图组|插画|照片|分镜|连拍)\s*\d*[^\]]*\]/g) || [];
+        const photoGroupMatches = cleanedCurrentContent.match(/\[(?:图组|插画|照片|分镜|连拍)\s*\d*[^\]]*\]/g) || [];
         const detectedPhotoCount = photoGroupMatches.length;
         const effectiveMinSeg = Math.max(minSeg, detectedPhotoCount);
+        const effectiveEc = isOwnRuleSystemPreset(store) ? 'off' : getRequestEnhancedContext(store);
 
         const payload = {
             mode: trigger.type,
@@ -12137,7 +12444,7 @@ SCHEMA:
             currentMessage: {
                 role: current?.is_user ? 'user' : 'assistant',
                 name: current?.name || '',
-                content: rawContent,
+                content: cleanedCurrentContent,
             },
             recentMessages,
             contextCount: Number(store.contextCount) || 5,
@@ -12151,17 +12458,17 @@ SCHEMA:
             } : minSeg > 0 ? {
                 minSegments: minSeg,
                 segmentInstruction: `本次请求要求从当前消息正文中提取至少 ${minSeg} 个 segment 分镜。请根据情节推进、体位转变或动作节拍拆分为至少 ${minSeg} 个独立分镜全部填入 segments 数组。注意：所有分镜画面与 anchor.text 必须 100% 取自当前消息（currentMessage），绝对禁止提取历史消息（recentMessages）中的画面！若当前消息无适合画面，请直接输出 {"shouldDraw": false}。`
-            } : (store.enhancedContext && store.enhancedContext !== 'off') ? {
-                segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${store.enhancedContext}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
+            } : (effectiveEc && effectiveEc !== 'off') ? {
+                segmentInstruction: `【前情增强视觉节点全覆盖与精准布点铁律】：当前已开启前情增强分析（${effectiveEc}）。你的核心使命是通读当前消息（currentMessage），地毯式定位正文中每一个【该生图的地方】！\n小说/RP是由连续的动态画面组成的，绝不仅有最后的大动作才算画面！顺着正文时间线自上而下扫描，凡是出现以下任何一个具备独立画面表现力与叙事价值的节点，每一个节点都必须作为一个独立分镜全部填入 segments 数组：\n① 角色造型与服装高光：角色登场/外貌展现、换装、解衣、脱衣暴露、湿身透视、发型散乱等造型亮点；\n② 动作演进与互动转变：肢体触碰、牵手拥抱、推倒抚摸、动作升级、体位转变、攻守互换；\n③ 情绪张力与神态特写：动情红晕、咬唇隐忍、落泪、四目相对、眼神拉丝等特写神态；\n④ 空间机位与氛围转换：场景地点转移、机位景别切换（特写/中景/大俯视/大仰视等）；\n⑤ 显式媒介内容：正文明确提到的 [图组XX]、[插画]、照片、自拍、手机屏幕等（必须 1:1 提取）。\n【核心原则】：生图数量是由正文中发现的视觉节点数量自然决定的。只要正文中有该生图的画面节点，就必须在该节点所在段落设立独立分镜，各分镜一字不差摘录 10~40 字逐字正文原文填入 anchor.text，绝对严禁偷懒只挑最后一段大高潮而把前文所有精彩画面全部漏掉！保证正文中每一个该生图的地方都有卡片！（若正文确实仅为单一瞬间动作则提取 1 个分镜；纯抽象理论探讨/毫无画面的纯闲聊才输出 {"shouldDraw": false}）。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），绝对严禁提取历史楼层（recentMessages）！`
             } : {
                 segmentInstruction: `【自适应分镜提取准则与楼层隔离铁律】：根据剧情推演结论，从当前消息（currentMessage）中自适应提取需要生图的独立分镜填入 segments 数组（若正文仅包含单一瞬间动作则提取 1 个分镜；若正文包含丰富情节推进、体位转变或多阶段动作演变，可顺应节奏自然拆分为多个独立分镜；若无新画面变化则输出 {"shouldDraw": false}）。不人为限制分镜数量，亦不为凑数而强行拆分。【最高警告】：所有分镜画面与 anchor.text 必须 100% 摘自当前消息（currentMessage），严禁从 recentMessages 中提取分镜或图组！`
             }),
-            ...(!layeredSnapshot ? getEnhancedContextPayload(getRequestEnhancedContext(store)) : {}),
+            ...(!layeredSnapshot ? getEnhancedContextPayload(effectiveEc) : {}),
             ...(!layeredSnapshot && isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store, false, messageId) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
             outputSchema: layeredSnapshot ? undefined : isMangaRequest(store) ? getMangaOutputSchema(store) : {
                 shouldDraw: 'boolean',
                 reason: 'string (中文推演：正文场景选取、生图位置与分镜数量分析)',
-                segments: ((store.enhancedContext && store.enhancedContext !== 'off') || effectiveMinSeg > 1) ? [
+                segments: ((effectiveEc && effectiveEc !== 'off') || effectiveMinSeg > 1) ? [
                     {
                         label: 'string (5~15字中文分镜名，如 分镜01·登场/前奏/特定视觉节点)',
                         anchor: { text: 'string exact copy from currentMessage (该画面所在段落10~40字逐字原文)' },
@@ -12295,6 +12602,8 @@ SCHEMA:
         }
         if (store.characterMemoryEnabled) {
             systemPrompt += '\n\n' + buildCharacterMemoryPromptModule(store, messageId);
+        } else if (isOwnRuleSystemPreset(store)) {
+            systemPrompt += '\n\n【角色外貌记忆关闭时】\n当前未启用角色外貌记忆档案，程序不会从档案补全空字符串的 base 或沿用上一张服装：每张分镜中的每个出镜角色都必须完整填写 name、name_tag、base（完整固定外貌）、outfit（当前完整服装）与 action；同一条消息有多张分镜时，后面的分镜也必须把 base 与 outfit 完整重写或照抄，严禁留空或省略。';
         }
         if (isMangaRequest(store)) {
             systemPrompt += '\n衣柜提供服装参考；按剧情匹配后，将完整当前衣着写入格内人物 outfit，保留各层衣物与配饰，不按镜头裁剪。';
@@ -12691,7 +13000,104 @@ SCHEMA:
         return proxyResponse;
     }
 
+    const ST_HOST_CHAT_URL = 'st://host-chat-completions';
+
+    async function fetchViaStHostActiveApi(options = {}) {
+        const ctx = (typeof RBQ !== 'undefined' && RBQ?.api?.getContext?.())
+            || (typeof window !== 'undefined' && window.SillyTavern?.getContext?.())
+            || null;
+        if (!ctx) {
+            return makeRelayJsonResponse({ error: { message: '无法获取酒馆当前聊天上下文，请刷新页面后重试' } }, 502, 'Bad Gateway');
+        }
+        let body = {};
+        try {
+            body = typeof options.body === 'string' ? JSON.parse(options.body) : (options.body && typeof options.body === 'object' ? { ...options.body } : {});
+        } catch (_e) {
+            body = {};
+        }
+
+        // Non-OpenAI mainApi (Text Completion / Kobold / etc.): use generateRaw
+        if (ctx.mainApi && ctx.mainApi !== 'openai' && typeof ctx.generateRaw === 'function') {
+            const msgs = Array.isArray(body.messages) ? body.messages : [];
+            const systemParts = msgs.filter(m => m && m.role === 'system').map(m => String(m.content || '').trim()).filter(Boolean);
+            const promptParts = msgs.filter(m => m && m.role !== 'system').map(m => String(m.content || '').trim()).filter(Boolean);
+            try {
+                const rawText = await ctx.generateRaw({
+                    systemPrompt: systemParts.join('\n\n'),
+                    prompt: promptParts.join('\n\n'),
+                    quietToLoud: false,
+                });
+                return makeRelayJsonResponse({
+                    choices: [{ finish_reason: 'stop', message: { content: String(rawText ?? '') } }]
+                }, 200, 'OK');
+            } catch (err) {
+                if (err?.name === 'AbortError') throw err;
+                return makeRelayJsonResponse({ error: { message: `沿用酒馆当前接口失败: ${err?.message || String(err)}` } }, 502, 'Bad Gateway');
+            }
+        }
+
+        const s = ctx.chatCompletionSettings || {};
+        const resolvedModel = (typeof ctx.getChatCompletionModel === 'function' ? ctx.getChatCompletionModel() : s.openai_model) || body.model || undefined;
+        const mt = Number(s.openai_max_tokens);
+        const data = {
+            ...body,
+            model: resolvedModel,
+            chat_completion_source: s.chat_completion_source,
+            max_tokens: mt > 0 ? Math.max(mt, 4096) : undefined,
+            custom_url: s.custom_url || undefined,
+            reverse_proxy: s.reverse_proxy || undefined,
+            proxy_password: s.proxy_password || undefined,
+            use_sysprompt: true,
+            temperature: body.temperature ?? 0.2,
+        };
+        for (const k of Object.keys(data)) {
+            if (data[k] === undefined) delete data[k];
+        }
+
+        const stHeaders = { ...getSillyTavernHeaders(), 'Content-Type': 'application/json' };
+        let r;
+        try {
+            r = await fetch('/api/backends/chat-completions/generate', {
+                method: 'POST',
+                headers: stHeaders,
+                cache: 'no-cache',
+                body: JSON.stringify(data),
+                signal: options.signal,
+            });
+        } catch (err) {
+            if (err?.name === 'AbortError') throw err;
+            r = null;
+        }
+
+        if (r && r.ok && !data.stream) {
+            let txt = '';
+            try { txt = await r.clone().text(); } catch (_e) {}
+            try {
+                const parsed = JSON.parse(txt);
+                if (parsed && parsed.error && !Array.isArray(parsed.choices)) {
+                    return normalizeStRelayChatJson(parsed);
+                }
+            } catch (_e) {}
+        }
+        if (r && r.status !== 404 && r.status !== 405) return r;
+
+        const svc = ctx.ChatCompletionService;
+        if (!svc || typeof svc.processRequest !== 'function') {
+            return r || makeRelayJsonResponse({ error: { message: '酒馆后端生成接口不可用，且未找到 ChatCompletionService' } }, 502, 'Bad Gateway');
+        }
+        try {
+            const json = await svc.processRequest({ ...data, stream: false }, {}, false, options.signal);
+            return makeRelayJsonResponse(json, 200, 'OK');
+        } catch (err) {
+            if (err?.name === 'AbortError') throw err;
+            return makeRelayJsonResponse({ error: { message: String(err?.message || err) } }, 502, 'Bad Gateway');
+        }
+    }
+
     async function smartFetch(url, options = {}) {
+        if (url === ST_HOST_CHAT_URL) {
+            return fetchViaStHostActiveApi(options);
+        }
         const isMixedContent = typeof window !== 'undefined' && window.location?.protocol === 'https:' && String(url).startsWith('http://');
 
         // 若当前网页为 HTTPS，目标 API 为明文 HTTP，浏览器安全策略强制阻断 Mixed Content 直连
@@ -13143,14 +13549,14 @@ SCHEMA:
             return;
         }
 
-        // 没有多轮标签时：默认作为 assistant 回合注入（若历史配置保留了 user_append/system 则兼顾）
+        // 没有多轮标签时：默认作为 assistant 回合注入（若配置了 user_append 则直接追加入末尾 user，兼容 system）
         const role = store.postProcessRole || 'assistant';
         if (role === 'user_append') {
             const lastUser = messages.slice().reverse().find(m => m.role === 'user');
             if (lastUser) {
-                lastUser.content += `\n\n[输出引导]\n${raw}`;
+                lastUser.content = `${lastUser.content || ''}\n\n${raw}`.trim();
             } else {
-                messages.push({ role: 'user', content: `[输出引导]\n${raw}` });
+                messages.push({ role: 'user', content: raw });
             }
         } else if (role === 'system') {
             const firstSystem = messages.find(m => m.role === 'system');
@@ -13173,17 +13579,30 @@ SCHEMA:
         const liveStore = getStore();
         let layeredSnapshot = promptSnapshot || (liveStore.enhancedContext === 'v_manga_layered_v1'
             ? captureLayeredMangaPromptSnapshot(liveStore) : null);
+        const rawBaseStore = layeredSnapshot?.storeSnapshot || liveStore;
+        const isStHost = rawBaseStore.provider === 'st';
+        const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(rawBaseStore.openaiBaseUrl);
+        if (!isStHost && !url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
+        const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+        const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((rawBaseStore.openaiModelCustom || '').trim() || rawBaseStore.openaiModel);
+        if (!isStHost && !modelName) throw new Error('请先填写模型名称');
+        if (!isStHost) checkUrlSafety(url);
+
+        const streakKey = `${rawBaseStore.provider || 'openai'}|${url}|${modelName}`;
+        const streaks = liveStore && typeof liveStore.toolFallbackStreaks === 'object' ? liveStore.toolFallbackStreaks : null;
+        const autoSkippedToolsByStreak = !forceJsonMode && !!rawBaseStore.toolCallMode && !!(streaks && Number(streaks[streakKey]) >= 3);
+        const disableToolsThisReq = forceJsonMode || autoSkippedToolsByStreak;
+
         // 6.5.49: forceJsonMode = 工具调用没拿到结果后的一次性普通 JSON 重试；只改本次请求，不动用户设置。
-        if (forceJsonMode && layeredSnapshot?.storeSnapshot) {
+        if (disableToolsThisReq && layeredSnapshot?.storeSnapshot) {
             layeredSnapshot = { ...layeredSnapshot, storeSnapshot: { ...layeredSnapshot.storeSnapshot, toolCallMode: false } };
         }
         const baseStore = layeredSnapshot?.storeSnapshot || liveStore;
-        const store = forceJsonMode ? { ...baseStore, toolCallMode: false } : baseStore;
-        const url = normalizeBaseUrl(store.openaiBaseUrl);
-        if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
-        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-        if (!modelName) throw new Error('请先填写模型名称');
-        checkUrlSafety(url);
+        const store = disableToolsThisReq ? { ...baseStore, toolCallMode: false } : baseStore;
+        if (autoSkippedToolsByStreak) {
+            console.info(`[${PLUGIN_NAME}] 模型「${modelName}」近期连续 ${streaks[streakKey]} 次通过普通 JSON 兜底，本次直接跳过 tools 以免白等（检测到工具恢复或重设开关后重置）`);
+        }
+
         const prepared = (!layeredSnapshot && _preparedRequest)
             ? _preparedRequest
             : buildRequestPayload(messageId, trigger, { skipLorebook: retryWithoutLorebook, promptSnapshot: layeredSnapshot });
@@ -13192,7 +13611,10 @@ SCHEMA:
         const reusablePrepared = !layeredSnapshot ? { payload, rawLorebooks, requestContext, promptBundle } : null;
 
         const systemPrompt = promptBundle ? promptBundle.instructionText : getSystemPromptWithPresets(store, !!(payload.characterCardInfo || payload.characterCardInfo_base64), messageId);
-        const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
+        const isOwnPreset = typeof isOwnRuleSystemPreset === 'function'
+            ? isOwnRuleSystemPreset(store)
+            : ((typeof isMangaRequest !== 'function' || !isMangaRequest(store)) && (store.systemPromptPreset === 'rbq_v23' || store.systemPromptPreset === 'rbq_v23_3p'));
+        const ecSysPrompt = promptBundle || isOwnPreset ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
         const toolRule = !promptBundle && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
 
         // Keep system directives together at the start of the request.
@@ -13252,10 +13674,38 @@ SCHEMA:
             reqBody.stream = true; // 必须开启流式，以兼容各类中转代理对 Gemini 工具调用的特殊要求
         } else {
             reqBody.response_format = { type: 'json_object' };
-            if (String(modelName || '').toLowerCase().includes('gemini')) {
+            if (!isStHost && String(modelName || '').toLowerCase().includes('gemini')) {
                 reqBody.stream = true;
             }
         }
+
+        const tryToolsSafetyJsonFallback = async (detail, origErr) => {
+            if (!reqBody.tools || !store.lorebookWafRetry || forceJsonMode) throw origErr;
+            if (signal?.aborted) throw origErr;
+            console.warn(`[${PLUGIN_NAME}] ⚠️ 工具调用模式触发内容审查拦截 (${detail})，自动去掉 tools 改用普通 JSON 模式重试一次`);
+            if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') {
+                toastr.info('工具调用触发内容审查拦截，已自动切换普通模式重试...', PLUGIN_NAME);
+            }
+            try {
+                return await callOpenAiCompatible(messageId, trigger, {
+                    signal,
+                    retryWithoutLorebook,
+                    promptSnapshot: promptSnapshot || layeredSnapshot,
+                    forceJsonMode: true,
+                    _preparedRequest: reusablePrepared,
+                    _softRefusalReason: detail,
+                });
+            } catch (retryErr) {
+                if (retryErr?.name === 'AbortError' || signal?.aborted) throw retryErr;
+                if (origErr && typeof origErr === 'object') {
+                    origErr.retryError = retryErr;
+                    if (origErr.rawOutput) {
+                        origErr.rawOutput += `\n\n【普通 JSON 模式重试失败】: ${retryErr?.message || String(retryErr)}`;
+                    }
+                }
+                throw origErr;
+            }
+        };
 
         let response;
         try {
@@ -13264,7 +13714,7 @@ SCHEMA:
                 signal,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                    ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
                 },
             }, reqBody);
         } catch (apiErr) {
@@ -13288,7 +13738,11 @@ SCHEMA:
                 assertMangaRequestContext(requestContext);
                 return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
             }
-            throw new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
+            const httpErr = new Error(`tagger API 请求失败: HTTP ${response.status} ${errText}`);
+            if (store.lorebookWafRetry && isInputWafHttpError && reqBody.tools && !forceJsonMode) {
+                return await tryToolsSafetyJsonFallback(`HTTP ${response.status}`, httpErr);
+            }
+            throw httpErr;
         }
 
         let json;
@@ -13393,7 +13847,7 @@ SCHEMA:
                             chunks: sseState.rawDebugChunks,
                         };
                         err.rawOutput = `【错误】: 大模型触发内容审查拦截 (${safetyDetail})。\n【排查建议】: 本次请求被模型官方安全过滤（NSFW/敏感词/违规内容）阻断，大模型拒绝作答并中断了工具调用。建议尝试开启「开启破限」选项、对世界书/角色卡/提示词脱敏、精简敏感剧情，或在代理/中转端关闭安全过滤。`;
-                        throw err;
+                        return await tryToolsSafetyJsonFallback(safetyDetail, err);
                     }
 
                     if (/^(?:length|max_tokens)$/i.test(String(sseState.lastFinishReason || ''))) {
@@ -13430,6 +13884,14 @@ SCHEMA:
 
                         if (isSafetyReason) {
                             const safetyDetail = sseState.safetyReason || `finish_reason: ${sseState.lastFinishReason}`;
+                            const isInputWafBlock = /sensitive words|the prompt could not be submitted|prohibited use policy|content_filter|safety|prohibited/i.test(safetyDetail);
+                            const hasLorebookAttached = !!(payload.lorebook?.length || payload.lorebook_base64 || payload.characterCardInfo || payload.characterCardInfo_base64);
+                            if (store.lorebookWafRetry && isInputWafBlock && !retryWithoutLorebook && hasLorebookAttached) {
+                                console.warn(`[${PLUGIN_NAME}] ⚠️ 检测到触发 Google 官方前置输入审核熔断 (${safetyDetail})。正在自动剥离世界书发起纯净正文自愈重试...`);
+                                toastr.warning('世界书触发 Google 敏感词审核，正在自动剥离世界书保底重试...', PLUGIN_NAME);
+                                assertMangaRequestContext(requestContext);
+                                return await callOpenAiCompatible(messageId, trigger, { signal, retryWithoutLorebook: true, promptSnapshot: layeredSnapshot, forceJsonMode });
+                            }
                             const err = new Error(`大模型/中转代理触发了官方前置内容安全审查拦截 (${safetyDetail})。大模型拒绝生成内容并终止了工具调用。`);
                             err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
                             err.debugInfo = {
@@ -13439,7 +13901,7 @@ SCHEMA:
                                 chunks: sseState.rawDebugChunks,
                             };
                             err.rawOutput = `【错误】: 大模型触发内容审查拦截 (${safetyDetail})。\n【服务端原始响应正文】:\n${sseState.accumulatedContent || '（空）'}\n\n【排查建议】: 本次请求被模型官方安全过滤（NSFW/敏感词）阻断。建议尝试开启「开启破限」选项、对提示词脱敏或在代理端关闭安全过滤。`;
-                            throw err;
+                            return await tryToolsSafetyJsonFallback(safetyDetail, err);
                         }
 
                         if (/^(?:length|max_tokens)$/i.test(String(sseState.lastFinishReason || ''))) {
@@ -13513,7 +13975,7 @@ SCHEMA:
                     llmOutput: choice?.message?.content || '(空 - 服务端由于安全策略中断，未生成任何正文)',
                 };
                 err.rawOutput = `【错误】: 大模型触发内容审查拦截 (${safetyDetail})。\n【排查建议】: 本次请求被模型官方安全过滤（NSFW/敏感词/违规内容）阻断，未生成任何分镜内容或工具调用数据。建议精简敏感剧情、对世界书/提示词脱敏，或在代理端关闭安全过滤。`;
-                throw err;
+                return await tryToolsSafetyJsonFallback(safetyDetail, err);
             }
 
             if (/^(?:length|max_tokens)$/i.test(String(finishReason || ''))) {
@@ -13593,6 +14055,15 @@ SCHEMA:
         logTaggerPayload('tagger raw response', json);
         const normalized = validateStructuredResult(normalizeTaggerResult(json, rawLorebooks, requestContext.manga ? requestContext : null));
         logTaggerPayload('tagger normalized result', normalized);
+        if (streaks) {
+            if (forceJsonMode) {
+                streaks[streakKey] = (Number(streaks[streakKey]) || 0) + 1;
+                if (typeof save === 'function') save();
+            } else if (reqBody.tools && !toolFallbackResult && streaks[streakKey]) {
+                streaks[streakKey] = 0;
+                if (typeof save === 'function') save();
+            }
+        }
         if (retryWithoutLorebook) {
             toastr.warning('由于世界书含受限敏感词，本次已自动剥离世界书保底完成生图分镜', PLUGIN_NAME);
         }
@@ -13678,11 +14149,15 @@ SCHEMA:
     }
 
     async function probeToolCallSupport(store, { signal = null, fetchFn = null } = {}) {
-        const url = normalizeBaseUrl(store.openaiBaseUrl);
-        if (!url) return { verdict: 'error', message: '请先填写 OpenAI 兼容接口 Base URL。' };
-        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-        if (!modelName) return { verdict: 'error', message: '请先选择或填写模型。' };
-        try { checkUrlSafety(url); } catch (err) { return { verdict: 'error', message: err.message || String(err) }; }
+        const isStHost = store.provider === 'st';
+        const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(store.openaiBaseUrl);
+        if (!isStHost && !url) return { verdict: 'error', message: '请先填写 OpenAI 兼容接口 Base URL。' };
+        const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+        const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((store.openaiModelCustom || '').trim() || store.openaiModel);
+        if (!isStHost && !modelName) return { verdict: 'error', message: '请先选择或填写模型。' };
+        if (!isStHost) {
+            try { checkUrlSafety(url); } catch (err) { return { verdict: 'error', message: err.message || String(err) }; }
+        }
         // Same shape SDT uses for real tool-mode requests: forced tool_choice, stream=true, thinking params.
         const reqBody = {
             model: modelName,
@@ -13703,7 +14178,7 @@ SCHEMA:
                 signal,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                    ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
                 },
             }, reqBody, fetchFn || smartFetch);
         } catch (err) {
@@ -13753,25 +14228,24 @@ SCHEMA:
         _toolFallbackRetried = false,
         _softRefusalReason = ''
     }) {
-        const store = customStore || getStore();
-        const url = normalizeBaseUrl(store.openaiBaseUrl);
-        if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
-        const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-        if (!modelName) throw new Error('请先填写模型名称');
-        checkUrlSafety(url);
+        const rawStore = customStore || getStore();
+        const isStHost = rawStore.provider === 'st';
+        const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(rawStore.openaiBaseUrl);
+        if (!isStHost && !url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
+        const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+        const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((rawStore.openaiModelCustom || '').trim() || rawStore.openaiModel);
+        if (!isStHost && !modelName) throw new Error('请先填写模型名称');
+        if (!isStHost) checkUrlSafety(url);
+
+        const liveStoreRef = typeof getStore === 'function' ? getStore() : rawStore;
+        const streakKey = `${rawStore.provider || 'openai'}|${url}|${modelName}`;
+        const streaks = (rawStore && typeof rawStore.toolFallbackStreaks === 'object')
+            ? rawStore.toolFallbackStreaks
+            : ((liveStoreRef && typeof liveStoreRef.toolFallbackStreaks === 'object') ? liveStoreRef.toolFallbackStreaks : null);
+        const autoSkippedToolsByStreak = !_toolFallbackRetried && !!rawStore.toolCallMode && !!tool && !!(streaks && Number(streaks[streakKey]) >= 3);
+        const store = autoSkippedToolsByStreak ? { ...rawStore, toolCallMode: false } : rawStore;
 
         const myFetch = fetchFn || smartFetch;
-
-        const reqBody = {
-            model: modelName,
-            temperature,
-            stream: false,
-            messages: Array.isArray(messages) ? messages.map(m => ({ ...m })) : [],
-            ...buildThinkingParams(store, messages),
-        };
-        if (_softRefusalReason && reqBody.reasoning_effort === undefined && reqBody.thinking === undefined && reqBody.thinking_budget === undefined) {
-            reqBody.reasoning_effort = 'none';
-        }
 
         const buildToolFallbackRetryMessages = (fallbackToolName) => {
             const schemaText = (() => { try { return JSON.stringify(tool?.function?.parameters || {}); } catch (_) { return '{}'; } })();
@@ -13807,6 +14281,21 @@ SCHEMA:
             return retryMessages;
         };
 
+        const initialMessages = autoSkippedToolsByStreak
+            ? buildToolFallbackRetryMessages(tool?.function?.name || 'generate_draw_spec')
+            : (Array.isArray(messages) ? messages.map(m => ({ ...m })) : []);
+
+        const reqBody = {
+            model: modelName,
+            temperature,
+            stream: false,
+            messages: initialMessages,
+            ...buildThinkingParams(store, initialMessages),
+        };
+        if (_softRefusalReason && reqBody.reasoning_effort === undefined && reqBody.thinking === undefined && reqBody.thinking_budget === undefined) {
+            reqBody.reasoning_effort = 'none';
+        }
+
         const useToolCall = !!(store.toolCallMode && tool);
         if (useToolCall) {
             reqBody.tools = [tool];
@@ -13815,10 +14304,33 @@ SCHEMA:
         } else {
             reqBody.response_format = { type: 'json_object' };
             // 对 Gemini 模型，强制开启流式以避免 LiteLLM 500 Invalid non-streaming Gemini response 崩溃
-            if (modelName.toLowerCase().includes('gemini')) {
+            if (!isStHost && modelName.toLowerCase().includes('gemini')) {
                 reqBody.stream = true;
             }
         }
+
+        const tryStructuredSafetyFallback = async (detail, origErr) => {
+            if (!useToolCall || _toolFallbackRetried || !store.lorebookWafRetry || signal?.aborted) throw origErr;
+            const targetToolName = tool?.function?.name || 'generate_draw_spec';
+            console.warn(`[${PLUGIN_NAME}] ⚠️ 工具调用触发内容安全审查 (${detail})，自动去掉 tools 改用普通 JSON 模式重试一次`);
+            if (typeof toastr !== 'undefined' && typeof toastr.info === 'function') {
+                toastr.info('工具调用触发内容审查拦截，已自动切换普通模式重试...', PLUGIN_NAME);
+            }
+            try {
+                const retryMessages = buildToolFallbackRetryMessages(targetToolName);
+                const retry = await callStructuredCompletion({
+                    messages: retryMessages, tool, temperature, signal, fetchFn, onProgress,
+                    customStore: { ...store, toolCallMode: false }, _toolFallbackRetried: true,
+                    _softRefusalReason: detail,
+                });
+                const retryArgs = recoverToolArgumentsFromText([retry.rawReply, retry.reasoning], tool);
+                if (retryArgs) return { ...retry, rawReply: JSON.stringify(retryArgs), isToolCall: true, toolName: targetToolName };
+                return { ...retry, toolName: targetToolName };
+            } catch (retryErr) {
+                if (retryErr?.name === 'AbortError' || signal?.aborted) throw retryErr;
+                throw origErr;
+            }
+        };
 
         let response;
         try {
@@ -13827,7 +14339,7 @@ SCHEMA:
                 signal,
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
+                    ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}),
                 },
             }, reqBody, myFetch);
         } catch (apiErr) {
@@ -13924,8 +14436,9 @@ SCHEMA:
                 if (!rawReply && isSafetyReason) {
                     const safetyDetail = sseState.safetyReason || `finish_reason: ${sseState.lastFinishReason}`;
                     const err = new Error(`大模型触发了官方前置内容安全审查 (${safetyDetail})`);
+                    err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
                     err.rawOutput = `【前置安全审查熔断】: ${safetyDetail}\n\n【请求地址与模型】:\n- Endpoint: ${url}\n- Model: ${modelName}\n\n【调试信息】:\n${JSON.stringify(sseState.rawDebugChunks, null, 2)}\n\n【发送的消息列表】:\n${JSON.stringify(messages, null, 2)}`;
-                    throw err;
+                    return await tryStructuredSafetyFallback(safetyDetail, err);
                 }
             }
         } else {
@@ -13948,6 +14461,7 @@ SCHEMA:
             throw err;
         }
 
+        let recoveredViaText = false;
         if (useToolCall) {
             // A partial tool payload is not a successful completion when the
             // provider reports a blocked or truncated response.
@@ -13960,7 +14474,7 @@ SCHEMA:
                 const err = new Error(`大模型返回内容安全拦截 (${detail})，未采用工具参数`);
                 err.code = 'SDT_TOOL_RESPONSE_BLOCKED';
                 err.rawOutput = rawOutput;
-                throw err;
+                return await tryStructuredSafetyFallback(detail, err);
             }
             if (/^(?:length|max_tokens)$/i.test(String(finishReason || ''))) {
                 const err = new Error('大模型工具参数因达到输出 Token 上限而被截断，请减少上下文或增加输出额度');
@@ -13995,6 +14509,7 @@ SCHEMA:
                 if (recovered) {
                     console.info(`[${PLUGIN_NAME}] 模型未返回 tool_calls，已从正文中解析出 ${toolName} 参数并采用`);
                     isToolCall = true;
+                    recoveredViaText = true;
                     rawReply = JSON.stringify(recovered);
                 } else {
                     const relayError = [rawReply, sseState?.accumulatedContent].find(isRelayErrorText);
@@ -14033,6 +14548,30 @@ SCHEMA:
                     // Let the caller's own parser report schema-level problems (more specific than ours).
                     return { ...retry, toolName };
                 }
+            }
+        }
+
+        if (streaks) {
+            if (_toolFallbackRetried && String(rawReply || '').trim()) {
+                streaks[streakKey] = (Number(streaks[streakKey]) || 0) + 1;
+                if (typeof save === 'function') save();
+            } else if (useToolCall && isToolCall && !recoveredViaText && streaks[streakKey]) {
+                streaks[streakKey] = 0;
+                if (typeof save === 'function') save();
+            }
+        }
+        if (autoSkippedToolsByStreak && tool) {
+            const preSkippedArgs = recoverToolArgumentsFromText([rawReply, reasoning], tool);
+            if (preSkippedArgs) {
+                return {
+                    rawReply: JSON.stringify(preSkippedArgs),
+                    rawOutput,
+                    reasoning,
+                    isToolCall: true,
+                    toolName,
+                    model: modelName,
+                    endpoint: url
+                };
             }
         }
 
@@ -16579,15 +17118,17 @@ SCHEMA:
 
     function updateProviderVisibility() {
         const provider = val('rbq-sdt-provider') || 'openai';
+        const isChatProvider = provider === 'openai' || provider === 'st';
         document.querySelectorAll('[data-rbq-sdt-provider]').forEach((element) => {
             if (!(element instanceof HTMLElement)) return;
             const group = element.dataset.rbqSdtProvider;
-            element.style.display = group === provider ? '' : 'none';
+            const match = group === provider || (group === 'chat' && isChatProvider);
+            element.style.display = match ? '' : 'none';
         });
 
         const toolInput = document.getElementById('rbq-sdt-tool-input-description');
         const toolInputField = document.getElementById('rbq-sdt-tool-input-description-field');
-        const canUseToolInput = provider === 'openai' && checked('rbq-sdt-tool-call-mode');
+        const canUseToolInput = isChatProvider && checked('rbq-sdt-tool-call-mode');
         if (toolInput) toolInput.disabled = !canUseToolInput;
         if (toolInputField) {
             toolInputField.setAttribute('aria-disabled', canUseToolInput ? 'false' : 'true');
@@ -16605,12 +17146,12 @@ SCHEMA:
         const jbPreset = val('rbq-sdt-gemini-jailbreak-preset') || DEFAULT_JAILBREAK_PRESET;
         const isJbCustom = jbPreset === 'custom';
 
-        if (jbPresetField) jbPresetField.style.display = (provider === 'openai' && isJbOn) ? '' : 'none';
-        if (jbPromptField) jbPromptField.style.display = (provider === 'openai' && isJbOn && isJbCustom) ? '' : 'none';
+        if (jbPresetField) jbPresetField.style.display = (isChatProvider && isJbOn) ? '' : 'none';
+        if (jbPromptField) jbPromptField.style.display = (isChatProvider && isJbOn && isJbCustom) ? '' : 'none';
 
         const isPpOn = Boolean(document.getElementById('rbq-sdt-post-process-enabled')?.checked);
         const ppPromptField = document.getElementById('rbq-sdt-post-process-prompt-field');
-        if (ppPromptField) ppPromptField.style.display = (provider === 'openai' && isPpOn && isJbCustom) ? '' : 'none';
+        if (ppPromptField) ppPromptField.style.display = (isChatProvider && isPpOn && isJbCustom) ? '' : 'none';
 
         // 提示词预设与隐私显示控制
         const sysPreset = val('rbq-sdt-system-preset') || DEFAULT_SYSTEM_PROMPT_PRESET;
@@ -16619,10 +17160,21 @@ SCHEMA:
 
         if (sysPromptField) sysPromptField.style.display = isSysCustom ? '' : 'none';
 
+        const ecSelect = document.getElementById('rbq-sdt-enhanced-context');
+        if (ecSelect) {
+            const isOwnRule = sysPreset === 'rbq_v23' || sysPreset === 'rbq_v23_3p';
+            const ecVal = val('rbq-sdt-enhanced-context');
+            const suppressed = isOwnRule && !(typeof isMangaContextPreset === 'function' && isMangaContextPreset(ecVal));
+            if (ecSelect.style) ecSelect.style.opacity = suppressed ? '0.6' : '';
+            ecSelect.title = suppressed
+                ? '当前使用绒布球同款预设（已自带剧情场景选取推演，非漫画模式下自动不叠加 V13/V14/V11；如需漫画模式可下拉切换至漫画预设）。'
+                : '';
+        }
+
         const thinkingBudgetField = document.getElementById('rbq-sdt-thinking-budget-field');
         if (thinkingBudgetField) {
             const effort = val('rbq-sdt-thinking-effort');
-            thinkingBudgetField.style.display = (provider === 'openai' && effort === 'custom') ? '' : 'none';
+            thinkingBudgetField.style.display = (isChatProvider && effort === 'custom') ? '' : 'none';
         }
 
         const mode = val('rbq-sdt-mode');
@@ -16761,7 +17313,10 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-network-wired" style="color:#38bdf8;"></i> 大模型 API 接口配置</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="openai">OpenAI 兼容</option><option value="custom">自定义 HTTP</option></select></label>
+                        <label class="st-scene-trigger-field"><span>API 类型</span><select id="rbq-sdt-provider"><option value="st">🏠 沿用酒馆当前聊天 API (推荐 · 免填地址与Key)</option><option value="openai">🔌 独立 OpenAI 兼容接口</option><option value="custom">🛠️ 自定义 HTTP</option></select></label>
+                        <div class="st-scene-trigger-field wide" data-rbq-sdt-provider="st" style="padding:8px 10px;border-radius:8px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.22);font-size:12px;line-height:1.5;opacity:0.9;">
+                            💡 自动复用 SillyTavern 主界面当前选用的聊天模型、反代地址、密钥与请求通道，无需重复填写或维护独立接口配置；下方的思维链深度、破限与工具调用设置依然生效。
+                        </div>
                         <label class="st-scene-trigger-field wide" data-rbq-sdt-provider="openai"><span>OpenAI Base URL</span><input id="rbq-sdt-openai-base" type="text" placeholder="https://api.openai.com/v1"></label>
                         <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI API Key</span><input id="rbq-sdt-openai-key" type="password" placeholder="sk-..."></label>
                         <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai"><span>OpenAI Model</span><select id="rbq-sdt-openai-model"></select><button id="rbq-sdt-refresh-models" class="menu_button" type="button" style="margin-top:8px;width:100%;">刷新模型</button></label>
@@ -16774,12 +17329,12 @@ SCHEMA:
                 </div>
 
                 <!-- 思维链推演强度 (Thinking) -->
-                <div class="rbq-sdt-card-group" data-rbq-sdt-provider="openai">
+                <div class="rbq-sdt-card-group" data-rbq-sdt-provider="chat">
                     <div class="rbq-sdt-card-header">
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-brain" style="color:#ec4899;"></i> 思维链与推演深度 (Thinking)</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="设置大模型的思考链/推演深度。兼容 OpenAI o-series/o3-mini (reasoning_effort)、Gemini 2.5/3.7 (thinking_budget)、Claude 3.7 (thinking) 等思考模型。如遇不兼容端点将自动降级重试。"><span>思维链强度 (Thinking)</span><select id="rbq-sdt-thinking-effort">
+                        <label class="st-scene-trigger-field" data-rbq-sdt-provider="chat" title="设置大模型的思考链/推演深度。兼容 OpenAI o-series/o3-mini (reasoning_effort)、Gemini 2.5/3.7 (thinking_budget)、Claude 3.7 (thinking) 等思考模型。如遇不兼容端点将自动降级重试。"><span>思维链强度 (Thinking)</span><select id="rbq-sdt-thinking-effort">
                             <option value="default">默认 (不限制 / 由服务端决定)</option>
                             <option value="off">关闭思考 (0 Token / 极速模式)</option>
                             <option value="low">低强度 (Low / 1024 Token 快速推演)</option>
@@ -16787,7 +17342,7 @@ SCHEMA:
                             <option value="high">高强度 (High / 8192 Token 深度推演)</option>
                             <option value="custom">自定义预算 Token 数...</option>
                         </select></label>
-                        <label id="rbq-sdt-thinking-budget-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" style="display:none;" title="自定义思维链 Token 预算上限 (thinking_budget)。设为 0 即为关闭思考。"><span>思维链 Token 预算</span><input id="rbq-sdt-thinking-budget" type="number" min="0" max="65536" step="256" placeholder="例如: 2048"></label>
+                        <label id="rbq-sdt-thinking-budget-field" class="st-scene-trigger-field" data-rbq-sdt-provider="chat" style="display:none;" title="自定义思维链 Token 预算上限 (thinking_budget)。设为 0 即为关闭思考。"><span>思维链 Token 预算</span><input id="rbq-sdt-thinking-budget" type="number" min="0" max="65536" step="256" placeholder="例如: 2048"></label>
                     </div>
                 </div>
             </div>
@@ -16800,14 +17355,17 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-scroll" style="color:#eab308;"></i> 提示词风格预设 (Prompt Presets)</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <label class="st-scene-trigger-field wide"><span>提示词预设档位</span><select id="rbq-sdt-system-preset">
-                            <option value="v40_worldbook_97_opt">${SYSTEM_PROMPT_PRESETS['v40_worldbook_97_opt']?.label || 'V40·文生图9.7全功能优化版'}</option>
-                            <option value="v35_worldbook_97">${SYSTEM_PROMPT_PRESETS['v35_worldbook_97']?.label || 'V35·文生图9.7完整详尽版'}</option>
-                            <option value="custom">⚙️ 自定义提示词 (Custom · 展开编辑框)</option>
-                            <optgroup label="历史版本归档 (Legacy)">
-                                ${Object.entries(SYSTEM_PROMPT_PRESETS).filter(([key]) => key !== 'v40_worldbook_97_opt' && key !== 'v35_worldbook_97' && key !== 'custom').map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
-                            </optgroup>
-                        </select></label>
+                        <div class="st-scene-trigger-field wide">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;">
+                                <span>提示词预设档位</span>
+                                <button id="rbq-sdt-toggle-legacy-presets" class="menu_button" type="button" style="width:auto;min-width:0;padding:2px 10px;margin:0;font-size:12px;">📂 显示旧版本</button>
+                            </div>
+                            <select id="rbq-sdt-system-preset">
+                                <option value="rbq_v23">${SYSTEM_PROMPT_PRESETS['rbq_v23']?.label || '第一人称·代入版（推荐）'}</option>
+                                <option value="rbq_v23_3p">${SYSTEM_PROMPT_PRESETS['rbq_v23_3p']?.label || '第三人称·同框版'}</option>
+                                <option value="custom">${SYSTEM_PROMPT_PRESETS['custom']?.label || '⚙️ 自定义提示词 (Custom · 展开编辑框)'}</option>
+                            </select>
+                        </div>
                         <label id="rbq-sdt-system-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
                             <span>自定义 System Prompt <small id="rbq-sdt-system-prompt-version" style="opacity:.6;font-weight:normal;margin-left:6px;"></small></span>
                             <textarea id="rbq-sdt-system-prompt" rows="8" placeholder="在此输入自定义生图提示词（留空则继承内置规范）..."></textarea>
@@ -16821,7 +17379,7 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-lock-open" style="color:#f43f5e;"></i> 破限与越狱配置 (Jailbreak)</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-gemini-jailbreak-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="chat"><span>开启破限</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-gemini-jailbreak" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <label id="rbq-sdt-gemini-jailbreak-preset-field" class="st-scene-trigger-field" style="display:none;" title="选择破限预设风格"><span>破限预设档位</span><select id="rbq-sdt-gemini-jailbreak-preset">
                             ${Object.entries(JAILBREAK_PRESETS).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join('')}
                         </select></label>
@@ -16840,10 +17398,10 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-virus" style="color:#06b6d4;"></i> 通信与结构化输出</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="通过 generate_draw_spec 工具参数返回分镜结果，自动、手动、测试统一使用。需接口支持 Function Calling；不会关闭服务商的内容审核。"><span>结构化工具调用 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <div id="rbq-sdt-tool-probe-field" class="st-scene-trigger-field" data-rbq-sdt-provider="openai" title="用当前填写的接口地址、Key 和模型发一个很小的测试请求，看它能不能正确返回工具调用，并自动打开或关闭左边的开关。"><button id="rbq-sdt-tool-probe" class="menu_button" type="button" style="width:auto;display:inline-flex;align-items:center;gap:6px;">🔍 检测工具调用</button><span id="rbq-sdt-tool-probe-result" style="display:block;margin-top:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;"></span></div>
-                        <div id="rbq-sdt-tool-input-description-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" style="min-height:44px;"><span>剧情与资料写入工具说明</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-input-description" type="checkbox" aria-label="剧情与资料写入工具说明"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tool-call-mode-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="chat" title="通过 generate_draw_spec 工具参数返回分镜结果，自动、手动、测试统一使用。需接口支持 Function Calling；不会关闭服务商的内容审核。"><span>结构化工具调用 (Tool Call)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-call-mode" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-tool-probe-field" class="st-scene-trigger-field" data-rbq-sdt-provider="chat" title="用当前选用的接口、Key 和模型发一个很小的测试请求，看它能不能正确返回工具调用，并自动打开或关闭左边的开关。"><button id="rbq-sdt-tool-probe" class="menu_button" type="button" style="width:auto;display:inline-flex;align-items:center;gap:6px;">🔍 检测工具调用</button><span id="rbq-sdt-tool-probe-result" style="display:block;margin-top:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;"></span></div>
+                        <div id="rbq-sdt-tool-input-description-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="chat" style="min-height:44px;"><span>剧情与资料写入工具说明</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-tool-input-description" type="checkbox" aria-label="剧情与资料写入工具说明"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-squash-messages-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="chat" title="启用后，发给 LLM 的请求中若存在相邻相同角色（如连续的 System、连续的 User 等），将自动合并为一条发言。推荐搭配 Gemini / Claude 使用，避免 API 报错角色未交替 (400 Invalid Argument)。"><span>合并相同角色连续的发言</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-squash-messages" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
 
@@ -16852,7 +17410,7 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-arrow-right-to-bracket" style="color:#a855f7;"></i> 尾部输出引导 (卡思维链)</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="openai"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-post-process-field" class="st-scene-trigger-field switch" data-rbq-sdt-provider="chat"><span>启用尾部输出引导 (卡思维链)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-post-process-enabled" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                         <label id="rbq-sdt-post-process-prompt-field" class="st-scene-trigger-field wide" style="display:none;">
                             <span>自定义尾部引导内容</span>
                             <textarea id="rbq-sdt-post-process-prompt" rows="5" placeholder="在此输入自定义尾部输出引导... &#10;默认作为 Assistant 预填充，亦可使用 &lt;|assistant|&gt;, &lt;|user|&gt; 或 User:, Assistant: 构造多回合闭环。"></textarea>
@@ -16960,8 +17518,8 @@ SCHEMA:
                         <span class="rbq-sdt-card-title"><i class="fa-solid fa-shield-halved" style="color:#06b6d4;"></i> 🛡️ 世界书防审查加固</span>
                     </div>
                     <div class="st-scene-trigger-modal-grid">
-                        <div id="rbq-sdt-lorebook-base64-field" class="st-scene-trigger-field switch" title="将注入给大模型的世界书与角色卡设定通过 Base64 进行混淆封装，防止 Google 网关层前置输入审核机制误杀。"><span>🛡️ 世界书防输入审核混淆 (Base64)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-base64" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
-                        <div id="rbq-sdt-lorebook-waf-retry-field" class="st-scene-trigger-field switch" title="当触发 Google 或大模型前置敏感词审核熔断时，自动剥离世界书发起纯净正文自愈重试保底（默认关闭，方便检验 Base64 混淆是否奏效）。"><span>🛡️ 审核熔断自愈重试 (剥离世界书保底)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-waf-retry" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-lorebook-base64-field" class="st-scene-trigger-field switch" title="将注入给大模型的世界书与角色卡设定通过 Base64 进行混淆封装。注意：高强度敏感词下 Base64 反而容易触发网关误杀，默认建议关闭。"><span>🛡️ 世界书防输入审核混淆 (Base64)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-base64" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
+                        <div id="rbq-sdt-lorebook-waf-retry-field" class="st-scene-trigger-field switch" title="当触发 Google 或大模型内容审查熔断时，自动剥离世界书或去掉 Tool Call 改用普通 JSON 发起自愈重试保底（推荐保持开启）。"><span>🛡️ 审核熔断自愈重试 (自动降级保底)</span><span class="st-scene-trigger-toggle"><input id="rbq-sdt-lorebook-waf-retry" type="checkbox"><span class="st-scene-trigger-toggle-ui"></span></span></div>
                     </div>
                 </div>
             </div>
@@ -17023,6 +17581,34 @@ SCHEMA:
         `;
         panel.append(container);
 
+        let legacyPresetsVisible = false;
+        const syncLegacySystemPresetsMount = (show) => {
+            legacyPresetsVisible = !!show;
+            const select = document.getElementById('rbq-sdt-system-preset');
+            const toggleBtn = document.getElementById('rbq-sdt-toggle-legacy-presets');
+            if (!select) return;
+            const existingGroup = document.getElementById('rbq-sdt-legacy-preset-group');
+            if (legacyPresetsVisible) {
+                if (!existingGroup) {
+                    const group = document.createElement('optgroup');
+                    group.id = 'rbq-sdt-legacy-preset-group';
+                    group.label = '历史版本归档 (Legacy)';
+                    Object.entries(SYSTEM_PROMPT_PRESETS).forEach(([key, item]) => {
+                        if (TOP_SYSTEM_PRESET_KEYS.includes(key)) return;
+                        const opt = document.createElement('option');
+                        opt.value = key;
+                        opt.textContent = item.label;
+                        group.append(opt);
+                    });
+                    select.append(group);
+                }
+                if (toggleBtn) toggleBtn.textContent = '📁 隐藏旧版本';
+            } else {
+                if (existingGroup) existingGroup.remove();
+                if (toggleBtn) toggleBtn.textContent = '📂 显示旧版本';
+            }
+        };
+
         document.getElementById('rbq-sdt-enabled').checked = !!store.enabled;
         document.getElementById('rbq-sdt-mode').value = store.mode;
         document.getElementById('rbq-sdt-target-role').value = store.targetRole;
@@ -17044,12 +17630,30 @@ SCHEMA:
         document.getElementById('rbq-sdt-comic-drawer-floating').checked = store.comicDrawerFloatingEnabled !== false;
         const validPresetKeys = Object.keys(SYSTEM_PROMPT_PRESETS);
         const presetVal = validPresetKeys.includes(store.systemPromptPreset) ? store.systemPromptPreset : DEFAULT_SYSTEM_PROMPT_PRESET;
+        syncLegacySystemPresetsMount(!TOP_SYSTEM_PRESET_KEYS.includes(presetVal));
         document.getElementById('rbq-sdt-system-preset').value = presetVal;
+        document.getElementById('rbq-sdt-toggle-legacy-presets')?.addEventListener('click', () => {
+            if (legacyPresetsVisible) {
+                const sysSelect = document.getElementById('rbq-sdt-system-preset');
+                if (sysSelect && !TOP_SYSTEM_PRESET_KEYS.includes(sysSelect.value)) {
+                    sysSelect.value = DEFAULT_SYSTEM_PROMPT_PRESET;
+                    const s = getStore();
+                    s.systemPromptPreset = DEFAULT_SYSTEM_PROMPT_PRESET;
+                    s.systemPromptVersion = DEFAULT_SYSTEM_PROMPT_VERSION;
+                    save();
+                    updateProviderVisibility();
+                    toastr.info(`已切换为：${SYSTEM_PROMPT_PRESETS[DEFAULT_SYSTEM_PROMPT_PRESET]?.label || '第一人称·代入版（推荐）'}`, PLUGIN_NAME);
+                }
+                syncLegacySystemPresetsMount(false);
+            } else {
+                syncLegacySystemPresetsMount(true);
+            }
+        });
         document.getElementById('rbq-sdt-markers').value = store.markers;
         document.getElementById('rbq-sdt-lorebook-enabled').checked = !!store.lorebookEnabled;
         document.getElementById('rbq-sdt-lorebook-current-floor').checked = !!store.lorebookCurrentFloorOnly;
         document.getElementById('rbq-sdt-lorebook-badge').checked = !!store.showLorebookHitBadge;
-        document.getElementById('rbq-sdt-lorebook-base64').checked = store.lorebookBase64 !== false;
+        document.getElementById('rbq-sdt-lorebook-base64').checked = !!store.lorebookBase64;
         document.getElementById('rbq-sdt-lorebook-waf-retry').checked = !!store.lorebookWafRetry;
         document.getElementById('rbq-sdt-char-coord-badge').checked = store.showCharCoordBadge !== false;
         document.getElementById('rbq-sdt-lorebook-depth').value = store.lorebookContextDepth;
@@ -17070,7 +17674,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-gemini-jailbreak-prompt').value = getCustomJailbreakValue(store);
         document.getElementById('rbq-sdt-post-process-enabled').checked = !!store.postProcessEnabled;
         const ppRoleEl = document.getElementById('rbq-sdt-post-process-role');
-        if (ppRoleEl) ppRoleEl.value = store.postProcessRole || 'assistant';
+        if (ppRoleEl) ppRoleEl.value = store.postProcessRole || 'user_append';
         document.getElementById('rbq-sdt-post-process-prompt').value = store.postProcessPrompt || '';
         document.getElementById('rbq-sdt-custom-url').value = store.customUrl;
         document.getElementById('rbq-sdt-custom-key-header').value = store.customApiKeyHeader;
@@ -17120,6 +17724,7 @@ SCHEMA:
         document.getElementById('rbq-sdt-post-process-enabled').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-thinking-effort').addEventListener('change', updateProviderVisibility);
         document.getElementById('rbq-sdt-tool-call-mode').addEventListener('change', updateProviderVisibility);
+        document.getElementById('rbq-sdt-tool-call-mode').addEventListener('change', () => { const s = getStore(); s.toolFallbackStreaks = {}; });
 
         // 子选项卡导航切换
         container.querySelectorAll('.rbq-sdt-nav-tab').forEach(btn => {
@@ -17344,6 +17949,7 @@ SCHEMA:
             const live = getStore();
             const probeStore = {
                 ...live,
+                provider: val('rbq-sdt-provider') || live.provider || 'openai',
                 openaiBaseUrl: val('rbq-sdt-openai-base').trim(),
                 openaiApiKey: val('rbq-sdt-openai-key').trim(),
                 openaiModel: val('rbq-sdt-openai-model').trim(),
@@ -17363,6 +17969,7 @@ SCHEMA:
                 const on = outcome.verdict === 'supported';
                 const s = getStore();
                 s.toolCallMode = on;
+                s.toolFallbackStreaks = {};
                 if (toggle) toggle.checked = on;
                 save();
                 updateProviderVisibility();
@@ -17419,6 +18026,7 @@ SCHEMA:
                 s.geminiJailbreakPrompt = s.customJailbreakPrompt;
             }
             s.toolCallMode = checked('rbq-sdt-tool-call-mode');
+            s.toolFallbackStreaks = {};
             s.toolInputInDescription = checked('rbq-sdt-tool-input-description');
             s.squashMessages = checked('rbq-sdt-squash-messages');
             s.injectCharacterCard = checked('rbq-sdt-inject-char-card');
@@ -18060,7 +18668,7 @@ SCHEMA:
                 manualInstruction: useContext
                     ? '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\u3002\u8bf7\u7ed3\u5408 recentMessages \u4e2d\u7684\u89d2\u8272\u72b6\u6001\u3001\u573a\u666f\u3001\u670d\u88c5\u7b49\u4e0a\u4e0b\u6587\u4fe1\u606f\uff0c\u5c06\u7528\u6237\u7684\u63cf\u8ff0\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002'
                     : '\u7528\u6237\u624b\u52a8\u8f93\u5165\u4e86\u4e00\u6bb5\u60f3\u8981\u751f\u6210\u7684\u56fe\u7247\u63cf\u8ff0\uff0c\u8bf7\u5c06\u5176\u8f6c\u5316\u4e3a\u7ed3\u6784\u5316\u7684\u5206\u955c JSON\u3002shouldDraw \u5fc5\u987b\u4e3a true\u3002\u81f3\u5c11\u8f93\u51fa 1 \u4e2a segment\u3002',
-                ...(!layeredSnapshot ? getEnhancedContextPayload(getRequestEnhancedContext(store)) : {}),
+                ...(!layeredSnapshot ? getEnhancedContextPayload((typeof isOwnRuleSystemPreset === 'function' && isOwnRuleSystemPreset(store)) ? 'off' : getRequestEnhancedContext(store)) : {}),
                 ...(!layeredSnapshot && isMangaRequest(store) && store.provider === 'custom' ? { mangaInstruction: getSystemPromptWithPresets(store) + '\n\n' + getMangaProtocol().planningPrompt(getRequestEnhancedContext(store)) } : {}),
                 outputSchema: layeredSnapshot ? undefined : isMangaRequest(store) ? getMangaOutputSchema(store) : {
                     shouldDraw: 'boolean', reason: 'string',
@@ -18120,7 +18728,7 @@ SCHEMA:
 
             // Build messages exactly like callOpenAiCompatible / callCustomHttp
             const systemPrompt = promptBundle ? promptBundle.instructionText : getSystemPromptWithPresets(store, !!manualPayload.characterCardInfo);
-            const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt(getRequestEnhancedContext(store));
+            const ecSysPrompt = promptBundle ? '' : getEnhancedContextSystemPrompt((typeof isOwnRuleSystemPreset === 'function' && isOwnRuleSystemPreset(store)) ? 'off' : getRequestEnhancedContext(store));
             const toolRule = !promptBundle && store.provider !== 'custom' && store.toolCallMode ? DRAW_SPEC_TOOL_RULE.trim() : '';
             const fullSystemPrompt = [systemPrompt, ecSysPrompt, toolRule].filter(Boolean).join('\n\n');
             const standardRequest = buildStandardDrawRequest(fullSystemPrompt, manualPayload, store, promptBundle);
@@ -18175,15 +18783,17 @@ SCHEMA:
             } else if (store.toolCallMode) {
                 json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, requestTool);
             } else {
-                const url = normalizeBaseUrl(store.openaiBaseUrl);
-                if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
-                const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-                if (!modelName) throw new Error('请先填写模型名称');
-                checkUrlSafety(url);
+                const isStHost = store.provider === 'st';
+                const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(store.openaiBaseUrl);
+                if (!isStHost && !url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
+                const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+                const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((store.openaiModelCustom || '').trim() || store.openaiModel);
+                if (!isStHost && !modelName) throw new Error('请先填写模型名称');
+                if (!isStHost) checkUrlSafety(url);
                 const response = await callApiWithJsonFallback(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: String(modelName || '').toLowerCase().includes('gemini'), messages, ...buildThinkingParams(store, messages) });
+                    headers: { 'Content-Type': 'application/json', ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
+                }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: !isStHost && String(modelName || '').toLowerCase().includes('gemini'), messages, ...buildThinkingParams(store, messages) });
                 if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
                 json = await safeReadJsonResponse(response);
             }
@@ -19759,15 +20369,17 @@ SCHEMA:
         } else if (store.toolCallMode) {
             json = await callDrawSpecCompletion(messages, store, promptBundle, manualPayload, requestTool);
         } else {
-            const url = normalizeBaseUrl(store.openaiBaseUrl);
-            if (!url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
-            const modelName = (store.openaiModelCustom || '').trim() || store.openaiModel;
-            if (!modelName) throw new Error('请先填写模型名称');
-            checkUrlSafety(url);
+            const isStHost = store.provider === 'st';
+            const url = isStHost ? 'st://host-chat-completions' : normalizeBaseUrl(store.openaiBaseUrl);
+            if (!isStHost && !url) throw new Error('请先填写 OpenAI 兼容接口 Base URL');
+            const hostModel = isStHost && typeof getStHostActiveApiModel === 'function' ? getStHostActiveApiModel() : '';
+            const modelName = isStHost ? (hostModel || 'sillytavern-host') : ((store.openaiModelCustom || '').trim() || store.openaiModel);
+            if (!isStHost && !modelName) throw new Error('请先填写模型名称');
+            if (!isStHost) checkUrlSafety(url);
             const response = await callApiWithJsonFallback(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...(store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
-            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: String(modelName || '').toLowerCase().includes('gemini'), messages, ...buildThinkingParams(store, messages) });
+                headers: { 'Content-Type': 'application/json', ...(!isStHost && store.openaiApiKey ? { Authorization: `Bearer ${store.openaiApiKey}` } : {}) },
+            }, { model: modelName, temperature: 0.2, response_format: { type: 'json_object' }, stream: !isStHost && String(modelName || '').toLowerCase().includes('gemini'), messages, ...buildThinkingParams(store, messages) });
             if (!response.ok) throw new Error(`tagger API 请求失败: HTTP ${response.status}`);
             json = await safeReadJsonResponse(response);
         }

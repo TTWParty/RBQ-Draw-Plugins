@@ -2,11 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>RBQ 提示词工坊 | Prompt Market</title>
   <link rel="icon" href="/favicon.ico">
-  <!-- Font Awesome 6 Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Font Awesome 6 Icons (with CDN fallback) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" onerror="this.onerror=null;this.href='https://unpkg.com/@fortawesome/fontawesome-free@6.5.1/css/all.min.css'">
   <style>
     :root {
       --bg-base: #07090e;
@@ -403,6 +403,7 @@
 
     .media-badge-top-left.v5 { color: #f0abfc; border-color: rgba(217, 70, 239, 0.35); }
     .media-badge-top-left.v4, .media-badge-top-left.v4-5, .media-badge-top-left.v4_5 { color: #7dd3fc; border-color: rgba(56, 189, 248, 0.35); }
+    .media-badge-top-left.general { color: #34d399; border-color: rgba(16, 185, 129, 0.35); }
     .media-badge-top-left.comfyui { color: #fb923c; border-color: rgba(251, 146, 60, 0.3); }
 
     .media-badge-top-right {
@@ -439,6 +440,13 @@
     .preset-card:hover .card-hover-actions {
       opacity: 1;
       transform: translateY(0);
+    }
+
+    @media (hover: none), (max-width: 640px) {
+      .card-hover-actions {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .action-icon-btn {
@@ -762,6 +770,44 @@
 
     footer a { color: var(--primary); text-decoration: none; }
     footer a:hover { text-decoration: underline; }
+
+    #modal-img { cursor: zoom-in; }
+    .edit-params-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+    #img-lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(3, 5, 10, 0.92);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    #img-lightbox.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #img-lightbox img {
+      max-width: 94vw;
+      max-height: 92dvh;
+      object-fit: contain;
+      border-radius: 10px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+      cursor: zoom-out;
+    }
+    #lightbox-close-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 2001;
+      width: 44px;
+      height: 44px;
+    }
   </style>
 </head>
 <body>
@@ -811,6 +857,7 @@
         <div class="tab-item active" data-model="all">🌌 全部预设</div>
         <div class="tab-item" data-model="v5">✨ NAI V5</div>
         <div class="tab-item" data-model="v4.5">🎨 NAI V4/4.5</div>
+        <div class="tab-item" data-model="general">🌐 通用</div>
         <div class="tab-item mine-tab" data-model="mine">👑 我的上传</div>
         <div class="tab-item liked-tab" data-model="liked">❤️ 已点赞</div>
       </div>
@@ -890,6 +937,12 @@
 
         <!-- 标签列表 -->
         <div id="modal-tags" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+
+        <!-- 画师说明 -->
+        <div id="modal-desc-box" style="display: none; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;"><i class="fa-solid fa-note-sticky"></i> 画师说明 / 备注</div>
+          <div id="modal-desc" style="font-size: 12px; color: #e2e8f0; line-height: 1.55; white-space: pre-wrap; word-break: break-word;"></div>
+        </div>
 
         <!-- 正面词 -->
         <div class="prompt-box">
@@ -972,10 +1025,13 @@
 
       <div style="margin-bottom: 16px;">
         <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px;">我的专属身份码</label>
-        <input type="text" id="creator-input" placeholder="例如: RBQ-U-xxxxxxxx" style="width: 100%; height: 38px; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0 12px; color: #fff; font-family: monospace; font-size: 13px; outline: none;">
+        <input type="text" id="creator-input" placeholder="例如: RBQ-U-xxxxxxxxxxxxxxxx" style="width: 100%; height: 38px; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0 12px; color: #fff; font-family: monospace; font-size: 13px; outline: none;">
       </div>
 
-      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+      <div style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+        <button id="creator-rotate-btn" class="btn" style="font-size: 12px; background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.4); color: #fcd34d;" title="将当前旧码名下的所有作品迁移到新生成的 16 位安全身份码">
+          <i class="fa-solid fa-key"></i> 一键换码迁移
+        </button>
         <button id="creator-gen-btn" class="btn" style="font-size: 12px;">
           <i class="fa-solid fa-wand-magic"></i> 随机生成新码
         </button>
@@ -1003,13 +1059,29 @@
           <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">预设标题</label>
           <input type="text" id="edit-title" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
         </div>
-        <div>
-          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">作者署名</label>
-          <input type="text" id="edit-author" placeholder="匿名" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">作者署名</label>
+            <input type="text" id="edit-author" placeholder="匿名" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">适用模型</label>
+            <select id="edit-model" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+              <option value="v5">✨ NAI V5</option>
+              <option value="v4.5">🎨 NAI V4/4.5</option>
+              <option value="general">🌐 通用</option>
+              <option value="sdxl">🖼️ SDXL</option>
+              <option value="v3">📦 NAI V3</option>
+            </select>
+          </div>
         </div>
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">分类标签 (逗号分隔)</label>
           <input type="text" id="edit-tags" placeholder="例如: Q版, 厚涂, 水彩" style="width: 100%; height: 36px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 13px;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">画师说明 / 备注 (可选)</label>
+          <textarea id="edit-desc" rows="2" maxlength="200" placeholder="简介画风特点或使用建议..." style="width: 100%; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; resize: vertical;"></textarea>
         </div>
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">正面提示词 (Positive)</label>
@@ -1018,6 +1090,35 @@
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px;">负面提示词 (Negative)</label>
           <textarea id="edit-neg" rows="3" style="width: 100%; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; font-family: monospace; resize: vertical;"></textarea>
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px;">推荐 NAI 生图参数</label>
+          <div class="edit-params-grid">
+            <div>
+              <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 3px;">CFG Scale</label>
+              <input type="number" step="0.1" id="edit-p-scale" placeholder="如: 6.0" style="width: 100%; height: 34px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 3px;">Sampler</label>
+              <select id="edit-p-sampler" style="width: 100%; height: 34px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 8px; color: #fff; font-size: 12px;">
+                <option value="">(未指定)</option>
+                <option value="k_euler_ancestral">Euler Ancestral</option>
+                <option value="k_euler">Euler</option>
+                <option value="k_dpmpp_2s_ancestral">DPM++ 2S Ancestral</option>
+                <option value="k_dpmpp_2m_sde">DPM++ 2M SDE</option>
+                <option value="k_dpmpp_sde">DPM++ SDE</option>
+                <option value="k_dpmpp_2m">DPM++ 2M</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 3px;">Steps</label>
+              <input type="number" min="1" max="50" id="edit-p-steps" placeholder="如: 28" style="width: 100%; height: 34px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 12px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 3px;">CFG Rescale</label>
+              <input type="number" step="0.05" id="edit-p-rescale" placeholder="如: 0.35" style="width: 100%; height: 34px; background: #1e293b; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0 10px; color: #fff; font-size: 12px;">
+            </div>
+          </div>
         </div>
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: #7dd3fc; margin-bottom: 4px;">
@@ -1050,6 +1151,14 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <!-- 大图查看灯箱 -->
+  <div id="img-lightbox">
+    <button class="modal-close-btn" id="lightbox-close-btn" aria-label="关闭大图">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <img id="lightbox-img" src="" alt="放大预览">
   </div>
 
   <!-- Toast 容器 -->
@@ -1212,29 +1321,39 @@
         }
       }
 
+      function parseDateMs(s) {
+        if (!s) return 0;
+        const t = Date.parse(String(s).trim().replace(' ', 'T'));
+        return Number.isFinite(t) ? t : 0;
+      }
+
+      function matchesModelFilter(p, likedIds) {
+        if (currentFilterModel === 'mine') return isMyPreset(p);
+        if (currentFilterModel === 'liked') return likedIds.includes(p.id);
+        const m = String(p.model || '').toLowerCase();
+        const tags = Array.isArray(p.tags) ? p.tags : [];
+        if (currentFilterModel === 'v5') {
+          return m === 'v5' || tags.some(t => /v5/i.test(t));
+        }
+        if (currentFilterModel === 'v4' || currentFilterModel === 'v4.5') {
+          return m === 'v4' || m === 'v4.5' || m.includes('v4') || tags.some(t => /v4/i.test(t));
+        }
+        if (currentFilterModel === 'general') {
+          return m === 'general';
+        }
+        if (currentFilterModel !== 'all') {
+          return m === currentFilterModel;
+        }
+        return true;
+      }
+
       // 提取全部可用标签生成过滤胶囊（联动当前选中的模型分类）
       function renderTagPills() {
         const container = document.getElementById('tag-pills-container');
         const tagMap = new Map();
-        const myKey = getCreatorKey();
         const likedIds = getLikedIds();
 
-        const modelFiltered = allPresets.filter(p => {
-          if (currentFilterModel === 'mine') {
-            if (!isMyPreset(p)) return false;
-          } else if (currentFilterModel === 'liked') {
-            if (!likedIds.includes(p.id)) return false;
-          } else if (currentFilterModel === 'v5') {
-            const m = String(p.model || '').toLowerCase();
-            const tags = Array.isArray(p.tags) ? p.tags : [];
-            if (m !== 'v5' && !tags.some(t => /v5/i.test(t))) return false;
-          } else if (currentFilterModel === 'v4' || currentFilterModel === 'v4.5') {
-            const m = String(p.model || '').toLowerCase();
-            const tags = Array.isArray(p.tags) ? p.tags : [];
-            if (m !== 'v4' && m !== 'v4.5' && !m.includes('v4') && !tags.some(t => /v4/i.test(t))) return false;
-          }
-          return true;
-        });
+        const modelFiltered = allPresets.filter(p => matchesModelFilter(p, likedIds));
 
         modelFiltered.forEach(p => {
           if (Array.isArray(p.tags)) {
@@ -1274,27 +1393,11 @@
       function renderCards() {
         const container = document.getElementById('cards-container');
         const emptyState = document.getElementById('empty-state');
-        const myKey = getCreatorKey();
         const likedIds = getLikedIds();
 
         // 过滤
         let filtered = allPresets.filter(p => {
-          // 模型维度
-          if (currentFilterModel === 'mine') {
-            if (!isMyPreset(p)) return false;
-          } else if (currentFilterModel === 'liked') {
-            if (!likedIds.includes(p.id)) return false;
-          } else if (currentFilterModel === 'v5') {
-            const m = String(p.model || '').toLowerCase();
-            const tags = Array.isArray(p.tags) ? p.tags : [];
-            if (m !== 'v5' && !tags.some(t => /v5/i.test(t))) return false;
-          } else if (currentFilterModel === 'v4' || currentFilterModel === 'v4.5') {
-            const m = String(p.model || '').toLowerCase();
-            const tags = Array.isArray(p.tags) ? p.tags : [];
-            if (m !== 'v4' && m !== 'v4.5' && !m.includes('v4') && !tags.some(t => /v4/i.test(t))) return false;
-          } else if (currentFilterModel !== 'all') {
-            if (String(p.model || '').toLowerCase() !== currentFilterModel) return false;
-          }
+          if (!matchesModelFilter(p, likedIds)) return false;
 
           // 标签维度
           if (currentFilterTag !== 'all') {
@@ -1320,7 +1423,7 @@
         filtered.sort((a, b) => {
           if (currentSort === 'likes') return (b.likes || 0) - (a.likes || 0);
           if (currentSort === 'downloads') return (b.downloads || 0) - (a.downloads || 0);
-          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+          return parseDateMs(b.createdAt) - parseDateMs(a.createdAt);
         });
 
         document.getElementById('stats-badge').textContent = `共 ${filtered.length} 个预设`;
@@ -1332,7 +1435,7 @@
             emptyState.innerHTML = `
               <i class="fa-solid fa-heart" style="color: #f43f5e; font-size: 36px; margin-bottom: 12px;"></i>
               <p style="font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 6px;">暂无已点赞预设</p>
-              <p style="font-size: 12px; color: #64748b;">去展厅点击卡片右上角 ❤️ 即可收藏喜欢的预设作品！</p>
+              <p style="font-size: 12px; color: #64748b;">去展厅点击卡片右下角 ❤️ 即可收藏喜欢的预设作品！</p>
             `;
           } else if (currentFilterModel === 'mine') {
             emptyState.innerHTML = `
@@ -1387,11 +1490,11 @@
                     <span>${escapeHtml(p.author || '匿名')}</span>
                   </div>
                   <div class="card-stats">
-                    <div class="card-stat-item ${isLiked ? 'liked' : ''}">
+                    <div class="card-stat-item card-stat-like ${isLiked ? 'liked' : ''}">
                       <i class="fa-solid fa-heart"></i>
                       <span>${safeCount(p.likes)}</span>
                     </div>
-                    <div class="card-stat-item">
+                    <div class="card-stat-item card-stat-dl">
                       <i class="fa-solid fa-download"></i>
                       <span>${safeCount(p.downloads)}</span>
                     </div>
@@ -1456,6 +1559,27 @@
         }
       }
 
+      function updateCardInPlace(p, opts) {
+        const cards = document.querySelectorAll('#cards-container .preset-card');
+        for (const card of cards) {
+          if (card.dataset.id !== p.id) continue;
+          if (opts && 'isLiked' in opts) {
+            const likeQuick = card.querySelector('.like-quick');
+            const likeIcon = likeQuick?.querySelector('i');
+            const likeStat = card.querySelector('.card-stat-like');
+            const likeSpan = likeStat?.querySelector('span');
+            if (likeQuick) likeQuick.classList.toggle('liked', opts.isLiked);
+            if (likeIcon) likeIcon.style.color = opts.isLiked ? '#f43f5e' : '';
+            if (likeStat) likeStat.classList.toggle('liked', opts.isLiked);
+            if (likeSpan) likeSpan.textContent = safeCount(p.likes);
+          }
+          if (opts && opts.downloads) {
+            const dlSpan = card.querySelector('.card-stat-dl span');
+            if (dlSpan) dlSpan.textContent = safeCount(p.downloads);
+          }
+        }
+      }
+
       // 点赞处理 (支持 Toggle 收藏 / 取消收藏，并彻底防御 null 异常)
       let isLiking = false;
       async function handleLike(p) {
@@ -1478,7 +1602,11 @@
               removeLikedId(p.id);
               toast(`已取消「${p.title}」的点赞 🤍`, 'info');
             }
-            renderCards();
+            if (currentFilterModel === 'liked' || currentSort === 'likes') {
+              renderCards();
+            } else {
+              updateCardInPlace(p, { isLiked: isNowLiked });
+            }
             if (activePreset && activePreset.id === p.id) {
               updateModalLikeButton(p, isNowLiked);
             }
@@ -1502,7 +1630,11 @@
           }).then(r => r.json()).then(d => {
             if (d.success) {
               p.downloads = d.downloads;
-              renderCards();
+              if (currentSort === 'downloads') {
+                renderCards();
+              } else {
+                updateCardInPlace(p, { downloads: true });
+              }
               if (activePreset && activePreset.id === p.id) {
                 document.getElementById('modal-downloads').textContent = p.downloads;
               }
@@ -1534,12 +1666,14 @@
         }
       }
 
+      let detailViewToken = 0;
+
       // 打开详情弹窗
       function openDetailModal(p) {
         try {
+          ++detailViewToken;
           activePreset = p;
           const modal = document.getElementById('detail-modal');
-          const myKey = getCreatorKey();
           const isMine = isMyPreset(p);
 
           document.getElementById('modal-title').textContent = p.title || '';
@@ -1552,7 +1686,11 @@
           if (badge) {
             const m = (p.model || 'V5').toUpperCase();
             badge.textContent = m;
-            if (m.includes('V4')) {
+            if (m === 'GENERAL') {
+              badge.style.color = '#34d399';
+              badge.style.background = 'rgba(16, 185, 129, 0.18)';
+              badge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+            } else if (m.includes('V4')) {
               badge.style.color = '#7dd3fc';
               badge.style.background = 'rgba(56, 189, 248, 0.18)';
               badge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
@@ -1564,6 +1702,7 @@
           }
 
           const modalImg = document.getElementById('modal-img');
+          const imgLoading = document.getElementById('modal-img-loading');
           const viewTabs = document.getElementById('modal-view-tabs');
           const imgBadge = document.getElementById('modal-img-badge');
           const tabBm = document.getElementById('modal-tab-bm');
@@ -1571,7 +1710,19 @@
 
           const bmSrc = safeImageUrl(p.previewUrl, '/previews/kami-greenhouse-girl.webp');
           const refSrc = safeImageUrl(p.referenceUrl);
+          modalImg.style.opacity = '1';
+          modalImg.removeAttribute('data-loaded-src');
+          if (imgLoading) imgLoading.style.display = 'none';
           modalImg.src = bmSrc;
+          modalImg.onclick = (e) => {
+            e.stopPropagation();
+            const lb = document.getElementById('img-lightbox');
+            const lbImg = document.getElementById('lightbox-img');
+            if (lb && lbImg && modalImg.src) {
+              lbImg.src = modalImg.src;
+              lb.classList.add('open');
+            }
+          };
 
           if (refSrc) {
             if (viewTabs) viewTabs.style.display = 'flex';
@@ -1589,9 +1740,9 @@
               const preImg = new Image();
               preImg.src = refSrc;
 
-              const imgLoading = document.getElementById('modal-img-loading');
               function switchWebDetailView(targetSrc, isRef) {
                 if (!targetSrc) return;
+                const reqToken = ++detailViewToken;
                 if (isRef) {
                   tabRef.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
                   tabRef.style.color = '#fff';
@@ -1614,6 +1765,8 @@
 
                 if (modalImg.getAttribute('data-loaded-src') === targetSrc) {
                   modalImg.src = targetSrc;
+                  modalImg.style.opacity = '1';
+                  if (imgLoading) imgLoading.style.display = 'none';
                   return;
                 }
 
@@ -1628,10 +1781,12 @@
 
                 const temp = new Image();
                 temp.onload = () => {
+                  if (reqToken !== detailViewToken) return;
                   modalImg.src = targetSrc;
                   onLoaded();
                 };
                 temp.onerror = () => {
+                  if (reqToken !== detailViewToken) return;
                   if (imgLoading) imgLoading.style.display = 'none';
                   modalImg.style.opacity = '1';
                 };
@@ -1652,6 +1807,20 @@
             if (viewTabs) viewTabs.style.display = 'none';
             if (imgBadge) imgBadge.style.display = 'none';
           }
+
+          const descBox = document.getElementById('modal-desc-box');
+          const descEl = document.getElementById('modal-desc');
+          const descText = String(p.description || '').trim();
+          if (descBox && descEl) {
+            if (descText) {
+              descEl.textContent = descText;
+              descBox.style.display = 'block';
+            } else {
+              descEl.textContent = '';
+              descBox.style.display = 'none';
+            }
+          }
+
           document.getElementById('modal-pos').textContent = p.positive || '(无)';
           
           const negEl = document.getElementById('modal-neg');
@@ -1765,14 +1934,61 @@
       document.getElementById('creator-close-btn').onclick = () => creatorModal.classList.remove('open');
       creatorModal.onclick = (e) => { if (e.target.id === 'creator-modal') creatorModal.classList.remove('open'); };
 
-      document.getElementById('creator-gen-btn').onclick = () => {
-        const chars = '0123456789abcdef';
-        let rand = '';
+      function generateNewCreatorKey() {
         const bytes = new Uint8Array(8);
         crypto.getRandomValues(bytes);
-        rand = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-        document.getElementById('creator-input').value = 'RBQ-U-' + rand;
+        return 'RBQ-U-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      }
+
+      document.getElementById('creator-gen-btn').onclick = () => {
+        document.getElementById('creator-input').value = generateNewCreatorKey();
       };
+
+      const creatorRotateBtn = document.getElementById('creator-rotate-btn');
+      if (creatorRotateBtn) {
+        creatorRotateBtn.onclick = async () => {
+          const oldKey = document.getElementById('creator-input').value.trim();
+          if (!oldKey) {
+            toast('请先在输入框中填入当前需要迁移的旧个人码', 'error');
+            return;
+          }
+          if (!confirm('确认将当前旧个人码名下的所有作品迁移至新生成的 16 位安全身份码吗？迁移后旧码立即失效，其他设备需改填新码。')) return;
+
+          const newKey = generateNewCreatorKey();
+          creatorRotateBtn.disabled = true;
+          try {
+            const res = await fetch('/api/rotate-key', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ oldKey, newKey })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 404) {
+              toast('服务器暂不支持换码接口，请联系管理员升级', 'error');
+              return;
+            }
+            if (!res.ok || !data.success) {
+              toast(`换码失败: ${data.error || '未知错误'}`, 'error');
+              return;
+            }
+            const moved = Number(data.moved || 0);
+            if (moved === 0 && !confirm('未在服务器上找到该旧码名下的作品（可能输错或已迁移）。是否仍将本机身份码切换为新生成的 16 位安全码？')) {
+              return;
+            }
+            document.getElementById('creator-input').value = newKey;
+            setCreatorKey(newKey);
+            creatorModal.classList.remove('open');
+            toast(moved > 0 ? `换码成功！已迁移 ${moved} 个作品至新码（请妥善保存）` : '已切换为新生成的 16 位安全身份码', 'success');
+            await refreshMyPresetIds();
+            renderTagPills();
+            renderCards();
+          } catch (err) {
+            toast(`换码请求异常: ${err.message}`, 'error');
+          } finally {
+            creatorRotateBtn.disabled = false;
+          }
+        };
+      }
 
       document.getElementById('creator-save-btn').onclick = () => {
         const val = document.getElementById('creator-input').value.trim();
@@ -1796,9 +2012,27 @@
         if (!activePreset) return;
         document.getElementById('edit-title').value = activePreset.title || '';
         document.getElementById('edit-author').value = activePreset.author || '';
+        const editModelEl = document.getElementById('edit-model');
+        if (editModelEl) {
+          const rawModel = String(activePreset.model || 'v5').toLowerCase();
+          const normModel = rawModel === 'v4' ? 'v4.5' : rawModel;
+          editModelEl.value = editModelEl.querySelector(`option[value="${CSS.escape(normModel)}"]`) ? normModel : 'v5';
+        }
         document.getElementById('edit-tags').value = (activePreset.tags || []).join(', ');
+        const editDescEl = document.getElementById('edit-desc');
+        if (editDescEl) editDescEl.value = activePreset.description || '';
         document.getElementById('edit-pos').value = activePreset.positive || '';
         document.getElementById('edit-neg').value = activePreset.negative || '';
+
+        const ep = activePreset.params || {};
+        const pScaleEl = document.getElementById('edit-p-scale');
+        const pSamplerEl = document.getElementById('edit-p-sampler');
+        const pStepsEl = document.getElementById('edit-p-steps');
+        const pRescaleEl = document.getElementById('edit-p-rescale');
+        if (pScaleEl) pScaleEl.value = ep.scale ?? '';
+        if (pSamplerEl) pSamplerEl.value = ep.sampler || '';
+        if (pStepsEl) pStepsEl.value = ep.steps ?? '';
+        if (pRescaleEl) pRescaleEl.value = ep.cfgRescale ?? '';
 
         editWebRefBase64 = null;
         if (safeImageUrl(activePreset.referenceUrl)) {
@@ -1831,14 +2065,18 @@
               const canvas = document.createElement('canvas');
               let width = img.width;
               let height = img.height;
-              if (width > 720) {
-                height = Math.round((height * 720) / width);
-                width = 720;
+              if (Math.max(width, height) > 720) {
+                const scale = 720 / Math.max(width, height);
+                width = Math.round(width * scale);
+                height = Math.round(height * scale);
               }
               canvas.width = width;
               canvas.height = height;
               canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-              const b64 = canvas.toDataURL('image/webp', 0.82);
+              let b64 = canvas.toDataURL('image/webp', 0.82);
+              if (!b64.startsWith('data:image/webp')) {
+                b64 = canvas.toDataURL('image/jpeg', 0.85);
+              }
 
               editWebRefBase64 = b64;
               editRefImg.src = b64;
@@ -1870,14 +2108,27 @@
       document.getElementById('edit-close-btn').onclick = () => editModal.classList.remove('open');
       editModal.onclick = (e) => { if (e.target.id === 'edit-modal') editModal.classList.remove('open'); };
 
-      document.getElementById('edit-save-btn').onclick = async () => {
-        if (!activePreset) return;
+      const editSaveBtn = document.getElementById('edit-save-btn');
+      editSaveBtn.onclick = async () => {
+        if (!activePreset || editSaveBtn.disabled) return;
         const myKey = getCreatorKey();
         const newTitle = document.getElementById('edit-title').value.trim();
         const newAuthor = document.getElementById('edit-author').value.trim();
+        const newModel = (document.getElementById('edit-model')?.value || activePreset.model || 'v5').trim();
         const rawTags = document.getElementById('edit-tags').value;
+        const newDesc = (document.getElementById('edit-desc')?.value || '').trim();
         const newPos = document.getElementById('edit-pos').value.trim();
         const newNeg = document.getElementById('edit-neg').value.trim();
+
+        const paramsObj = {};
+        const pScale = parseFloat(document.getElementById('edit-p-scale')?.value ?? '');
+        const pSampler = String(document.getElementById('edit-p-sampler')?.value || '').trim();
+        const pSteps = parseInt(document.getElementById('edit-p-steps')?.value ?? '', 10);
+        const pRescale = parseFloat(document.getElementById('edit-p-rescale')?.value ?? '');
+        if (Number.isFinite(pScale)) paramsObj.scale = pScale;
+        if (pSampler) paramsObj.sampler = pSampler;
+        if (Number.isFinite(pSteps)) paramsObj.steps = pSteps;
+        if (Number.isFinite(pRescale)) paramsObj.cfgRescale = pRescale;
 
         const tagsArr = rawTags.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
 
@@ -1886,14 +2137,20 @@
           creatorKey: myKey,
           title: newTitle || activePreset.title,
           author: newAuthor || '匿名',
+          model: newModel,
           tags: tagsArr,
+          description: newDesc,
           positive: newPos,
-          negative: newNeg
+          negative: newNeg,
+          params: paramsObj
         };
         if (editWebRefBase64 !== null) {
           payload.referenceBase64 = editWebRefBase64;
         }
 
+        editSaveBtn.disabled = true;
+        const origHtml = editSaveBtn.innerHTML;
+        editSaveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 保存中...';
         try {
           const res = await fetch('/api/update', {
             method: 'POST',
@@ -1913,6 +2170,9 @@
           }
         } catch (err) {
           toast(`网络错误: ${err.message}`, 'error');
+        } finally {
+          editSaveBtn.disabled = false;
+          editSaveBtn.innerHTML = origHtml;
         }
       };
 
@@ -1943,6 +2203,38 @@
           toast(`删除失败: ${err.message}`, 'error');
         }
       };
+
+      // 大图灯箱与全局 Esc 关闭栈
+      const imgLightbox = document.getElementById('img-lightbox');
+      const lightboxCloseBtn = document.getElementById('lightbox-close-btn');
+      if (imgLightbox) {
+        imgLightbox.onclick = () => imgLightbox.classList.remove('open');
+      }
+      if (lightboxCloseBtn) {
+        lightboxCloseBtn.onclick = (e) => {
+          e.stopPropagation();
+          imgLightbox?.classList.remove('open');
+        };
+      }
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (imgLightbox && imgLightbox.classList.contains('open')) {
+          imgLightbox.classList.remove('open');
+          return;
+        }
+        if (editModal.classList.contains('open')) {
+          editModal.classList.remove('open');
+          return;
+        }
+        if (creatorModal.classList.contains('open')) {
+          creatorModal.classList.remove('open');
+          return;
+        }
+        const detailModal = document.getElementById('detail-modal');
+        if (detailModal && detailModal.classList.contains('open')) {
+          closeDetailModal();
+        }
+      });
 
       // 初始化
       updateCreatorButtonState();

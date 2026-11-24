@@ -39,6 +39,7 @@ const XSS = {
     positive: '<script>alert(1)</script>, <artist>wlop</artist>',
     negative: '</div><svg onload=alert(1)>',
     tags: ['<b onmouseover=alert(1)>tag</b>', 'NAI V5'],
+    description: '<img src=x onerror=alert(1)>画师描述',
     model: '<script>v5</script>',
     likes: '<script>',
     downloads: '"><img onerror=1>',
@@ -209,10 +210,10 @@ test('换码 UI: generates a new 16-hex key, calls /api/rotate-key with the old 
     };
     const ok = moved => ({ ok: true, status: 200, json: async () => ({ success: true, moved }) });
 
-    let r = await run({ inputVal: 'RBQ-U-d31879f4', response: ok(3) });
+    let r = await run({ inputVal: 'RBQ-U-11223344', response: ok(3) });
     assert.equal(r.log.fetches.length, 1);
     assert.equal(r.log.fetches[0].url, 'https://srv.test/api/rotate-key');
-    assert.deepEqual(JSON.parse(r.log.fetches[0].opts.body), { oldKey: 'RBQ-U-d31879f4', newKey: 'RBQ-U-00aa11bb22cc33dd' });
+    assert.deepEqual(JSON.parse(r.log.fetches[0].opts.body), { oldKey: 'RBQ-U-11223344', newKey: 'RBQ-U-00aa11bb22cc33dd' });
     assert.equal(r.cfg.creatorKey, 'RBQ-U-00aa11bb22cc33dd');
     assert.equal(r.input.value, 'RBQ-U-00aa11bb22cc33dd');
     assert.equal(r.log.saved, 1);
@@ -220,9 +221,9 @@ test('换码 UI: generates a new 16-hex key, calls /api/rotate-key with the old 
     assert.ok(r.log.toasts.some(([k, m]) => k === 'success' && m.includes('3 个作品')));
 
     // user cancels the confirm → no request, nothing changes
-    r = await run({ inputVal: 'RBQ-U-d31879f4', response: ok(3), confirms: [false] });
+    r = await run({ inputVal: 'RBQ-U-11223344', response: ok(3), confirms: [false] });
     assert.equal(r.log.fetches.length, 0);
-    assert.equal(r.cfg.creatorKey, 'RBQ-U-d31879f4');
+    assert.equal(r.cfg.creatorKey, 'RBQ-U-11223344');
 
     // empty input → warning, no request
     r = await run({ inputVal: '  ', response: ok(0) });
@@ -230,20 +231,39 @@ test('换码 UI: generates a new 16-hex key, calls /api/rotate-key with the old 
     assert.ok(r.log.toasts.some(([k]) => k === 'warning'));
 
     // server error → key kept
-    r = await run({ inputVal: 'RBQ-U-d31879f4', response: { ok: false, status: 429, json: async () => ({ success: false, error: '过于频繁' }) } });
-    assert.equal(r.cfg.creatorKey, 'RBQ-U-d31879f4');
+    r = await run({ inputVal: 'RBQ-U-11223344', response: { ok: false, status: 429, json: async () => ({ success: false, error: '过于频繁' }) } });
+    assert.equal(r.cfg.creatorKey, 'RBQ-U-11223344');
     assert.equal(r.log.saved, 0);
     assert.ok(r.log.toasts.some(([k, m]) => k === 'error' && m.includes('过于频繁')));
 
     // old server without the endpoint
-    r = await run({ inputVal: 'RBQ-U-d31879f4', response: { ok: false, status: 404, json: async () => ({ error: 'Not Found' }) } });
-    assert.equal(r.cfg.creatorKey, 'RBQ-U-d31879f4');
+    r = await run({ inputVal: 'RBQ-U-11223344', response: { ok: false, status: 404, json: async () => ({ error: 'Not Found' }) } });
+    assert.equal(r.cfg.creatorKey, 'RBQ-U-11223344');
     assert.ok(r.log.toasts.some(([k, m]) => k === 'error' && m.includes('不支持换码')));
 
     // moved 0 → second confirm; declining keeps the old key
     r = await run({ inputVal: 'RBQ-U-typo0000', response: ok(0), confirms: [true, false] });
     assert.equal(r.cfg.creatorKey, 'RBQ-U-typo0000');
     assert.equal(r.log.confirms, 2);
+});
+
+test('hygiene: no hardcoded RBQ-U-d31879f4 or shared u-tavern clientId', () => {
+    assert.doesNotMatch(src, /RBQ-U-d31879f4/);
+    assert.doesNotMatch(src, /clientId\s*:\s*['"]u-tavern['"]/);
+    assert.match(src, /function getLikeClientId\b/);
+    assert.match(src, /rbq-prompt-market-overlay/);
+    assert.match(src, /rbq-prompt-market-styles/);
+    assert.match(src, /rbq-pm-detail-dialog/);
+});
+
+test('buildDetailHtml safely renders and escapes description', () => {
+    const html = ctx.buildDetailHtml(XSS, {});
+    assertNoRawMarkup(html, 'detail-desc');
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;画师描述'));
+    const plain = ctx.buildDetailHtml({ id: 'ok', title: 't', description: 'Line1\n<b>bold</b>', positive: 'p', previewUrl: 'https://a.com/p.webp' }, {});
+    assert.ok(plain.includes('Line1\n&lt;b&gt;bold&lt;/b&gt;'));
+    const noDesc = ctx.buildDetailHtml({ id: 'ok', title: 't', positive: 'p', previewUrl: 'https://a.com/p.webp' }, {});
+    assert.ok(!noDesc.includes('画师说明 / 备注'));
 });
 
 (async () => {

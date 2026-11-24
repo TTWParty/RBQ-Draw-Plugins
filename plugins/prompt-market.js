@@ -408,14 +408,41 @@
         toastr.success(`预设「${preset.title}」已成功装入你的本地预设库！`);
     }
 
+    function generateClientId() {
+        const bytes = new Uint8Array(8);
+        const c = (typeof globalThis !== 'undefined' && globalThis.crypto) || null;
+        if (c && typeof c.getRandomValues === 'function') {
+            c.getRandomValues(bytes);
+        } else {
+            for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+        }
+        return 't-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function getLikeClientId(cfg) {
+        const ck = String(cfg.creatorKey || '').trim();
+        if (ck) return ck;
+        const cid = String(cfg.clientId || '').trim();
+        if (!cid || cid === 'u-tavern') {
+            cfg.clientId = generateClientId();
+            saveConfig();
+        }
+        return cfg.clientId;
+    }
+
+    const likingPresetIds = new Set();
+
     // 点赞预设 (支持 Toggle 收藏 / 取消收藏)
     async function likePreset(item, likeBtn, countSpan) {
+        if (!item?.id || likingPresetIds.has(item.id)) return;
         const cfg = getConfig();
         const endpoint = (cfg.serverUrl || cfg.workerUrl || '').replace(/\/+$/, '');
-        const clientId = cfg.creatorKey || cfg.clientId || 'u-tavern';
+        const clientId = getLikeClientId(cfg);
 
         if (!endpoint) return;
 
+        likingPresetIds.add(item.id);
+        if (likeBtn) likeBtn.disabled = true;
         try {
             const res = await fetch(`${endpoint}/api/like`, {
                 method: 'POST',
@@ -444,6 +471,9 @@
             }
         } catch (err) {
             console.warn('[Prompt Market] 点赞网络上报异常:', err);
+        } finally {
+            likingPresetIds.delete(item.id);
+            if (likeBtn) likeBtn.disabled = false;
         }
     }
 
@@ -457,6 +487,8 @@
             #rbq-pm-container .menu_button,
             #rbq-pm-upload-dialog .menu_button,
             #rbq-pm-detail-dialog .menu_button,
+            #rbq-pm-edit-dialog .menu_button,
+            #rbq-pm-manage-dialog .menu_button,
             #rbq-pm-benchmark-dialog .menu_button,
             #rbq-pm-test-dialog .menu_button,
             #rbq-pm-test-edit-dialog .menu_button,
@@ -622,6 +654,8 @@
             /* 子弹窗容器高度防御 */
             #rbq-pm-upload-dialog > div,
             #rbq-pm-detail-dialog > div,
+            #rbq-pm-edit-dialog > div,
+            #rbq-pm-manage-dialog > div,
             #rbq-pm-benchmark-dialog > div,
             #rbq-pm-test-dialog > div,
             #rbq-pm-test-edit-dialog > div,
@@ -896,6 +930,8 @@
                 #rbq-prompt-market-overlay:not(.rbq-pm-hidden),
                 #rbq-pm-upload-dialog,
                 #rbq-pm-detail-dialog,
+                #rbq-pm-edit-dialog,
+                #rbq-pm-manage-dialog,
                 #rbq-pm-benchmark-dialog,
                 #rbq-pm-test-dialog,
                 #rbq-pm-test-edit-dialog,
@@ -913,6 +949,8 @@
 
                 #rbq-pm-detail-dialog > div,
                 #rbq-pm-upload-dialog > div,
+                #rbq-pm-edit-dialog > div,
+                #rbq-pm-manage-dialog > div,
                 #rbq-pm-live-test-dialog > div,
                 #rbq-pm-test-dialog > div,
                 #rbq-pm-test-edit-dialog > div,
@@ -1689,7 +1727,7 @@
                         <div style="font-size:38px; margin-bottom:12px; color:#fbbf24;"><i class="fa-solid fa-crown"></i></div>
                         <div style="font-size:15px; font-weight:700; color:#f1f5f9; margin-bottom:6px;">暂未找到你发布的作品</div>
                         <div style="font-size:12px; color:#64748b; max-width:440px; line-height:1.6; margin-bottom:16px;">
-                            ${cfg.creatorKey ? `当前创作者身份码为 <code>${escapeHtml(cfg.creatorKey)}</code>，该身份码下暂无作品。` : `如果你曾在本设备或其他设备上绑定过个人码（例如：<code>RBQ-U-d31879f4</code>），点击下方填入即可瞬间认领并管理属于你的全部云端作品！`}
+                            ${cfg.creatorKey ? `当前创作者身份码为 <code>${escapeHtml(cfg.creatorKey)}</code>，该身份码下暂无作品。` : `如果你曾在本设备或其他设备上绑定过个人码（例如：<code>RBQ-U-xxxxxxxxxxxxxxxx</code>），点击下方填入即可瞬间认领并管理属于你的全部云端作品！`}
                         </div>
                         <button id="rbq-pm-empty-claim-btn" class="menu_button" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#fff; font-size:12px; font-weight:700; padding:6px 18px; border-radius:6px; cursor:pointer;">
                             <i class="fa-solid fa-key"></i> 填入个人码 / 管理作品
@@ -2336,6 +2374,11 @@
 
                     <!-- Right Column: Prompts Inspector & NAI Telemetry -->
                     <div class="rbq-pm-detail-right" style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:12px;">
+                        ${String(item.description || '').trim() ? `
+                        <div style="background:rgba(15,23,42,0.65); border:1px solid rgba(148,163,184,0.2); border-radius:8px; padding:8px 10px;">
+                            <div style="font-size:11px; color:#94a3b8; font-weight:700; margin-bottom:4px;">📝 画师说明 / 备注</div>
+                            <div style="font-size:12px; color:#e2e8f0; line-height:1.5; white-space:pre-wrap; word-break:break-word;">${escapeHtml(String(item.description).trim())}</div>
+                        </div>` : ''}
                         <div>
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                                 <span style="font-size:12px; color:#38bdf8; font-weight:600;"><i class="fa-solid fa-paintbrush"></i> 画师/风格预设串 (Positive)</span>
@@ -3414,6 +3457,7 @@
 
         // ── 🎨 核心装置：现场立即出图实测 ──
         drawBtn.onclick = async () => {
+            const curBm = testPrompts.find(tp => tp.id === selectedBenchmarkId) || testPrompts[0] || DEFAULT_TEST_PROMPTS[0];
             const finalPrompt = mergedPos ? mergedPos.textContent.trim() : [preset.positive, curBm?.positive].filter(Boolean).join(', ');
             const finalNegative = mergedNeg ? mergedNeg.value.trim() : [preset.negative, curBm?.negative].filter(Boolean).join(', ');
 
@@ -4184,7 +4228,7 @@
                             <span style="font-size:10px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3); padding:1px 5px; border-radius:4px;">可选 · 需发布/删除时使用</span>
                         </div>
                         <div style="display:flex; gap:6px; align-items:center;">
-                            <input id="rbq-pm-cfg-creator-key" type="text" value="${escapeHtml(cfg.creatorKey || '')}" placeholder="未设置 (例如: RBQ-U-d31879f4，或点击随机生成)" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:12px; font-weight:700; outline:none; box-sizing:border-box;">
+                            <input id="rbq-pm-cfg-creator-key" type="text" value="${escapeHtml(cfg.creatorKey || '')}" placeholder="未设置 (例如: RBQ-U-xxxxxxxxxxxxxxxx，或点击随机生成)" style="flex:1; background:#070b13; border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:6px 10px; color:#f0abfc; font-family:monospace; font-size:12px; font-weight:700; outline:none; box-sizing:border-box;">
                             <button id="rbq-pm-cfg-regen-key" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#cbd5e1; font-size:11px; padding:6px 10px; border-radius:6px; cursor:pointer;" title="随机生成专属个人身份码">
                                 <i class="fa-solid fa-dice"></i> 随机生成
                             </button>
@@ -4199,7 +4243,7 @@
                             <span style="font-size:10.5px; color:#a3a3a3; line-height:1.4;">旧码可能已泄露？在上方填入（或粘贴）旧码后点这里，作品会转到新码，旧码立即失效。</span>
                         </div>
                         <div style="font-size:11px; color:#94a3b8; margin-top:6px; line-height:1.45;">
-                            ✨ 用于发布预设时的作品归属与<strong>随时下架删除/在线编辑</strong>。输入你的专属身份码（例如：<code>RBQ-U-d31879f4</code>）即可同步认领并管理历史作品；也可点击「随机生成」；复制到其他设备即可漫游！
+                            ✨ 用于发布预设时的作品归属与<strong>随时下架删除/在线编辑</strong>。输入你的专属身份码（例如：<code>RBQ-U-xxxxxxxxxxxxxxxx</code>）即可同步认领并管理历史作品；也可点击「随机生成」；复制到其他设备即可漫游！
                         </div>
                     </div>
 
@@ -4479,15 +4523,25 @@
             }
             document.removeEventListener('keydown', onMarketKeyDown);
             try { closeMarketModal(); } catch (_e) {}
-            document.getElementById('rbq-pm-modal')?.remove();
-            document.getElementById('rbq-pm-header-entry-btn')?.remove();
-            document.getElementById('rbq-pm-toolbar-entry-btn')?.remove();
-            document.getElementById('rbq-pm-fallback-entry-btn')?.remove();
-            document.getElementById('rbq-pm-styles')?.remove();
+            const cleanupIds = [
+                'rbq-prompt-market-overlay', 'rbq-prompt-market-styles',
+                'rbq-pm-detail-dialog', 'rbq-pm-upload-dialog',
+                'rbq-pm-benchmark-dialog', 'rbq-pm-test-dialog',
+                'rbq-pm-test-edit-dialog', 'rbq-pm-live-dialog',
+                'rbq-pm-live-test-dialog', 'rbq-pm-settings-dialog',
+                'rbq-pm-edit-dialog', 'rbq-pm-manage-dialog',
+                'rbq-pm-lightbox', 'rbq-pm-zoom-overlay',
+                'rbq-pm-modal', 'rbq-pm-header-entry-btn',
+                'rbq-pm-toolbar-entry-btn', 'rbq-pm-fallback-entry-btn', 'rbq-pm-styles'
+            ];
+            for (const id of cleanupIds) {
+                document.getElementById(id)?.remove();
+            }
+            marketModal = null;
             if (RBQ?.api?.openMarketModal === openMarketModal) delete RBQ.api.openMarketModal;
             if (RBQ?.api?.closeMarketModal === closeMarketModal) delete RBQ.api.closeMarketModal;
         });
     }
 
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.34 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.35 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

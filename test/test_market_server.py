@@ -6,6 +6,7 @@ Uses a temporary data directory and an ephemeral local port; never touches marke
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -53,7 +54,7 @@ class MarketServerSecurityTests(unittest.TestCase):
     def setUp(self):
         os.environ.pop('MARKET_ADMIN_KEY', None)
         server.save_presets([])
-        server._ROTATE_HITS.clear()
+        server.reset_rate_limits()
 
     # ── helpers ──
     def request(self, method, path, body=None, headers=None):
@@ -284,7 +285,7 @@ class MarketServerSecurityTests(unittest.TestCase):
             self.assertFalse(data['success'])
         self.assertEqual(len(self.my_ids(OWNER_KEY)), 1)
         # legacy 8-hex keys are still accepted as a target for compat
-        status, data = self.request('POST', '/api/rotate-key', {'oldKey': OWNER_KEY, 'newKey': 'RBQ-U-d31879f4'})
+        status, data = self.request('POST', '/api/rotate-key', {'oldKey': OWNER_KEY, 'newKey': 'RBQ-U-12345678'})
         self.assertEqual((status, data['moved']), (200, 1))
 
     def test_rotate_migrates_likes_made_with_old_key(self):
@@ -343,6 +344,7 @@ class MarketServerSecurityTests(unittest.TestCase):
     def test_upload_rejects_dangerous_html_in_every_text_field(self):
         for payload in self.PAYLOADS:
             for field in ('title', 'author', 'description', 'positive', 'negative'):
+                server.reset_rate_limits()
                 body = {field: payload + ' x'}
                 if field == 'title':
                     body['title'] = payload[:40]
@@ -350,8 +352,10 @@ class MarketServerSecurityTests(unittest.TestCase):
                     {'title': '正常标题', 'positive': '1girl', 'creatorKey': OWNER_KEY}, **body))
                 self.assertEqual(status, 400, (field, payload, data))
                 self.assertIn('不安全的 HTML', data['error'])
+            server.reset_rate_limits()
             status, data = self.request('POST', '/api/upload', {'title': 't', 'positive': '1girl', 'tags': ['ok', payload]})
             self.assertEqual(status, 400, ('tags', payload))
+            server.reset_rate_limits()
             status, data = self.request('POST', '/api/upload', {'title': 't', 'positive': '1girl', 'params': {'sampler': payload}})
             self.assertEqual(status, 400, ('params', payload))
         self.assertEqual(server.load_presets(), [])
@@ -359,6 +363,7 @@ class MarketServerSecurityTests(unittest.TestCase):
     def test_update_rejects_dangerous_html(self):
         item = self.upload()
         for payload in self.PAYLOADS:
+            server.reset_rate_limits()
             status, data = self.request('POST', '/api/update', {'id': item['id'], 'creatorKey': OWNER_KEY, 'positive': payload})
             self.assertEqual(status, 400, (payload, data))
         self.assertEqual(server.load_presets()[0]['positive'], item['positive'])
@@ -390,6 +395,118 @@ class MarketServerSecurityTests(unittest.TestCase):
         self.assertIn('<svg/onload', server.load_presets()[0]['positive'])
         self.assert_no_secrets(data)
 
+    # ── 新增安全与健壮性回归测试 ──
+    def test_like_rejects_bad_client_id_and_rate_limits(self):
+        item = self.upload()
+        for bad_cid in ['A' * 100, "' OR 1=1--", "{'a': 1}", '<script>', 'x y', 123]:
+            status, data = self.request('POST', '/api/like', {'id': item['id'], 'clientId': bad_cid})
+            self.assertEqual(status, 400, (bad_cid, data))
+        self.assertEqual(server.load_presets()[0]['likes'], 0)
+
+        server.reset_rate_limits()
+        for i in range(60):
+            status, _ = self.request('POST', '/api/like', {'id': item['id'], 'clientId': f'c-{i:04d}'})
+            self.assertEqual(status, 200)
+        status, data = self.request('POST', '/api/like', {'id': item['id'], 'clientId': 'c-over'})
+        self.assertEqual(status, 429, data)
+
+    def test_upload_rate_limit_and_image_magic_validation(self):
+        import base64
+        # Reject invalid base64 / non-image bytes masquerading as webp
+        fake_b64 = 'data:image/webp;base64,' + base64.b64encode(b'<html>not really webp image bytes</html>').decode('ascii')
+        status, data = self.request('POST', '/api/upload', {
+            'title': '伪图', 'positive': '1girl', 'creatorKey': OWNER_KEY, 'previewBase64': fake_b64,
+        })
+        self.assertEqual(status, 400, data)
+        self.assertEqual(server.load_presets(), [])
+
+        status, _ = self.request('POST', '/api/upload', {
+            'title': '坏参考图', 'positive': '1girl', 'creatorKey': OWNER_KEY, 'referenceBase64': 'not-base64!!!',
+        })
+        self.assertEqual(status, 400)
+
+        # Rate limit 15/10min
+        server.reset_rate_limits()
+        for i in range(15):
+            status, _ = self.request('POST', '/api/upload', {'title': f'u{i}', 'positive': '1girl', 'creatorKey': OWNER_KEY})
+            self.assertEqual(status, 200)
+        status, _ = self.request('POST', '/api/upload', {'title': 'over', 'positive': '1girl', 'creatorKey': OWNER_KEY})
+        self.assertEqual(status, 429)
+
+    def test_upload_and_update_images_cache_buster_and_cleanup(self):
+        import base64
+        webp_raw = b'RIFF\x18\x00\x00\x00WEBPVP8 \x0c\x00\x00\x00000000000000'
+        png_raw = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01'
+        jpg_raw = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9'
+        # Claim wrong header MIME; magic bytes should dictate saved extension!
+        webp_b64 = 'data:image/png;base64,' + base64.b64encode(webp_raw).decode('ascii')
+        jpg_b64 = 'data:image/jpeg;base64,' + base64.b64encode(jpg_raw).decode('ascii')
+        item = self.upload(previewBase64=webp_b64, referenceBase64=jpg_b64)
+        pid = item['id']
+        self.assertEqual(item['previewUrl'], f'{server.PUBLIC_ORIGIN}/previews/{pid}.webp')
+        self.assertEqual(item['referenceUrl'], f'{server.PUBLIC_ORIGIN}/previews/{pid}_ref.jpg')
+        self.assertTrue(os.path.exists(os.path.join(server.UPLOADS_DIR, f'{pid}.webp')))
+        self.assertTrue(os.path.exists(os.path.join(server.UPLOADS_DIR, f'{pid}_ref.jpg')))
+
+        # Replace preview with PNG -> gets ?v= cache buster, removes old .webp file
+        png_b64 = 'data:image/png;base64,' + base64.b64encode(png_raw).decode('ascii')
+        status, data = self.request('POST', '/api/update', {
+            'id': pid, 'creatorKey': OWNER_KEY, 'previewBase64': png_b64, 'referenceBase64': '',
+        })
+        self.assertEqual(status, 200, data)
+        self.assertRegex(data['item']['previewUrl'], rf'^{re.escape(server.PUBLIC_ORIGIN)}/previews/{pid}\.png\?v=\d+$')
+        self.assertEqual(data['item']['referenceUrl'], '')
+        self.assertFalse(os.path.exists(os.path.join(server.UPLOADS_DIR, f'{pid}.webp')))
+        self.assertTrue(os.path.exists(os.path.join(server.UPLOADS_DIR, f'{pid}.png')))
+        self.assertFalse(os.path.exists(os.path.join(server.UPLOADS_DIR, f'{pid}_ref.jpg')))
+
+        # GET /previews/<name>?v=... serves with correct MIME
+        req = urllib.request.urlopen(self.base + f'/previews/{pid}.png?v=12345')
+        self.assertEqual(req.status, 200)
+        self.assertEqual(req.headers.get('Content-Type'), 'image/png')
+        self.assertEqual(req.read(), png_raw)
+
+    def test_unowned_preset_blocks_anonymous_claim_update_delete(self):
+        server.save_presets([{'id': 'pm-unowned', 'title': '老预设', 'positive': '1girl', 'author': '公开作者名', 'creatorKey': ''}])
+        status, _ = self.request('POST', '/api/claim', {'id': 'pm-unowned', 'creatorKey': OTHER_KEY})
+        self.assertEqual(status, 403)
+        status, _ = self.request('POST', '/api/update', {
+            'id': 'pm-unowned', 'creatorKey': '', 'originalAuthor': '公开作者名', 'author': '公开作者名', 'title': '篡改',
+        })
+        self.assertEqual(status, 403)
+        status, _ = self.request('POST', '/api/delete', {'id': 'pm-unowned', 'creatorKey': '', 'author': '公开作者名'})
+        self.assertEqual(status, 403)
+        # Admin can still claim / update / delete
+        os.environ['MARKET_ADMIN_KEY'] = 'adm-secret-test'
+        status, data = self.request('POST', '/api/claim', {'id': 'pm-unowned', 'creatorKey': OWNER_KEY, 'adminKey': 'adm-secret-test'})
+        self.assertEqual(status, 200, data)
+        self.assertEqual(server.load_presets()[0]['creatorKey'], OWNER_KEY)
+
+    def test_protocol_and_corrupt_storage_guards(self):
+        import re as _re  # noqa: F401
+        # Non-dict JSON rejected cleanly
+        req = urllib.request.Request(self.base + '/api/upload', data=b'[1, 2, 3]', method='POST',
+                                     headers={'Content-Type': 'application/json'})
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(ctx.exception.code, 400)
+
+        # HEAD returns 200 with empty body and GET /robots.txt works
+        req_head = urllib.request.Request(self.base + '/api/health', method='HEAD')
+        with urllib.request.urlopen(req_head, timeout=5) as res:
+            self.assertEqual(res.status, 200)
+            self.assertEqual(res.read(), b'')
+        with urllib.request.urlopen(self.base + '/robots.txt', timeout=5) as res:
+            self.assertEqual(res.status, 200)
+            self.assertIn('User-agent:', res.read().decode('utf-8'))
+
+        # Corrupted presets.json raises instead of wiping storage to []
+        with open(server.PRESETS_FILE, 'w', encoding='utf-8') as f:
+            f.write('{corrupt json')
+        with self.assertRaises(Exception):
+            server.load_presets()
+
 
 if __name__ == '__main__':
+    import re
     unittest.main(verbosity=2)

@@ -2596,6 +2596,7 @@
                     positiveSuffix: item.positiveSuffix || item.positiveSuffixPrompt || '',
                     negative: item.negative || item.negativePrompt || '',
                     vibes: Array.isArray(item.vibes) ? item.vibes.map(compactVibeEntry).filter(Boolean).slice(0, 6) : [],
+                    ...(item.params && typeof item.params === 'object' ? { params: { ...item.params } } : {}),
                 }));
 
                 showCheckboxDialog('选择要导入的预设 (' + file.name + ')', displayItems, (selectedIds) => {

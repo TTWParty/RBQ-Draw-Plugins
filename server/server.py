@@ -2,6 +2,7 @@ import os
 import re
 import json
 import base64
+import binascii
 import hmac
 import time
 import shutil
@@ -10,6 +11,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 PORT = int(os.environ.get('PORT', 3000))
+BIND_HOST = os.environ.get('MARKET_BIND_HOST', '127.0.0.1')
+PUBLIC_ORIGIN = (os.environ.get('MARKET_PUBLIC_ORIGIN') or 'https://market.rbq.my').rstrip('/')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get('MARKET_DATA_DIR') or os.path.join(BASE_DIR, 'data')
 UPLOADS_DIR = os.environ.get('MARKET_UPLOADS_DIR') or os.path.join(BASE_DIR, 'uploads')
@@ -30,10 +33,13 @@ MAX_PROMPT = 8000
 MAX_TAGS = 15
 MAX_TAG_LEN = 30
 MAX_KEY = 64
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+MIN_FREE_DISK_BYTES = 80 * 1024 * 1024
 ALLOWED_MODELS = ('v5', 'v4.5', 'v3', 'sdxl', 'general')
 PARAM_NUMBER_KEYS = ('scale', 'steps', 'cfgRescale')
 PARAM_STRING_KEYS = ('sampler', 'noiseSchedule')
 DEFAULT_PREVIEW_URL = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp'
+VALID_CLIENT_ID_RE = re.compile(r'^[A-Za-z0-9_.:-]{1,64}$')
 
 
 def get_admin_key():
@@ -221,12 +227,14 @@ def safe_http_url(value, fallback=''):
     return fallback
 
 
-# ── 换码 (rotate-key) 轻量限流：每个 IP 每 10 分钟最多 10 次 ──
+# ── 限流器：换码限流 + 通用接口滑窗限流 ──
 ROTATE_WINDOW_SEC = 600
 ROTATE_MAX_PER_WINDOW = 10
 MIN_NEW_KEY_LEN = 8
 _ROTATE_HITS = {}
 _ROTATE_LOCK = threading.Lock()
+_RATE_HITS = {}
+_RATE_LOCK = threading.Lock()
 
 
 def rotate_rate_limited(client_ip, now=None):
@@ -244,6 +252,29 @@ def rotate_rate_limited(client_ip, now=None):
         return False
 
 
+def is_rate_limited(bucket, client_ip, limit, window_sec, now=None):
+    now = time.time() if now is None else now
+    key = (bucket, str(client_ip or 'unknown')[:64])
+    with _RATE_LOCK:
+        hits = [t for t in _RATE_HITS.get(key, []) if now - t < window_sec]
+        if len(hits) >= limit:
+            _RATE_HITS[key] = hits
+            return True
+        hits.append(now)
+        _RATE_HITS[key] = hits
+        if len(_RATE_HITS) > 10000:
+            for k in [k2 for k2, v2 in _RATE_HITS.items() if not v2 or now - v2[-1] >= window_sec]:
+                _RATE_HITS.pop(k, None)
+        return False
+
+
+def reset_rate_limits():
+    with _ROTATE_LOCK:
+        _ROTATE_HITS.clear()
+    with _RATE_LOCK:
+        _RATE_HITS.clear()
+
+
 def valid_new_key(key):
     """新码：8~64 位，只允许字母数字与 - _ (推荐 RBQ-U- + 16 位 hex)。"""
     if not isinstance(key, str):
@@ -253,8 +284,86 @@ def valid_new_key(key):
     return all(c.isascii() and (c.isalnum() or c in '-_') for c in key)
 
 
+def decode_image_base64(b64_str):
+    """解码并按魔数严格校验 Base64 图片，返回 (ext, raw_bytes)；非法输入抛出 ValueError。"""
+    if not isinstance(b64_str, str):
+        raise ValueError('图片数据格式错误')
+    text = b64_str.strip()
+    if ',' in text:
+        header, b64_data = text.split(',', 1)
+        header_low = header.strip().lower()
+        if header_low.startswith('data:') and not header_low.startswith('data:image/'):
+            raise ValueError('仅支持图片格式 (PNG / JPEG / WebP / GIF)')
+    else:
+        b64_data = text
+    b64_data = re.sub(r'\s+', '', b64_data)
+    if not b64_data or len(b64_data) > (MAX_IMAGE_BYTES * 4 // 3) + 64:
+        raise ValueError(f'图片体积超出限制（最大 {MAX_IMAGE_BYTES // (1024 * 1024)} MB）')
+    try:
+        raw = base64.b64decode(b64_data, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError('图片 Base64 编码无效')
+    if len(raw) < 16 or len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError(f'图片字节大小不合法（需 16B ~ {MAX_IMAGE_BYTES // (1024 * 1024)} MB）')
+    if raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+        return 'webp', raw
+    if raw[:3] == b'\xff\xd8\xff':
+        return 'jpg', raw
+    if raw[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'png', raw
+    if raw[:6] in (b'GIF87a', b'GIF89a'):
+        return 'gif', raw
+    raise ValueError('仅支持合法的 PNG / JPEG / WebP / GIF 图片')
+
+
+def ensure_disk_space(min_free=MIN_FREE_DISK_BYTES):
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    _, _, free_bytes = shutil.disk_usage(UPLOADS_DIR)
+    return free_bytes >= min_free
+
+
+def save_image_file(filename, raw_bytes):
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    target_path = os.path.join(UPLOADS_DIR, filename)
+    tmp_path = f'{target_path}.tmp.{os.getpid()}.{threading.get_ident()}'
+    try:
+        with open(tmp_path, 'wb') as f:
+            f.write(raw_bytes)
+        os.replace(tmp_path, target_path)
+    except Exception:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def remove_preset_images(target_id, kind='both', keep_filename=None):
+    """清理指定预设的旧封面或参考图，避免更换后缀或删除后残留孤儿文件。"""
+    if not target_id:
+        return
+    prefixes = []
+    if kind in ('preview', 'both'):
+        prefixes.append(f'{target_id}.')
+    if kind in ('ref', 'both'):
+        prefixes.append(f'{target_id}_ref.')
+    try:
+        for f in os.listdir(UPLOADS_DIR):
+            if keep_filename and f == keep_filename:
+                continue
+            if any(f.startswith(pfx) for pfx in prefixes):
+                try:
+                    os.remove(os.path.join(UPLOADS_DIR, f))
+                except OSError:
+                    pass
+    except Exception as e:
+        print('Error cleaning image files:', e)
+
+
 def find_presets_by_creator(presets, creator_key):
     return [p for p in presets if keys_equal(p.get('creatorKey', ''), creator_key)]
+
 
 def load_presets():
     if not os.path.exists(PRESETS_FILE):
@@ -263,24 +372,62 @@ def load_presets():
     try:
         with open(PRESETS_FILE, 'r', encoding='utf-8') as f:
             presets = json.load(f)
-            if not isinstance(presets, list):
-                presets = []
-            return presets
-    except Exception:
-        return []
+    except Exception as e:
+        print(f'[Error] Failed to read {PRESETS_FILE}: {e}')
+        raise
+    if not isinstance(presets, list):
+        raise ValueError(f'Corrupted {PRESETS_FILE}: expected JSON array')
+    return presets
+
 
 def save_presets(data):
-    with open(PRESETS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    parent = os.path.dirname(os.path.abspath(PRESETS_FILE))
+    os.makedirs(parent, exist_ok=True)
+    tmp_path = f'{PRESETS_FILE}.tmp.{os.getpid()}.{threading.get_ident()}'
+    try:
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, PRESETS_FILE)
+    except Exception:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
 
 class MarketHandler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup()
+        try:
+            self.request.settimeout(30)
+        except Exception:
+            pass
+        self._head_only = False
+
+    def version_string(self):
+        return 'RBQ-Market'
+
     def do_HEAD(self):
-        self.do_GET()
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
+
+    def _write_body(self, body_bytes):
+        if not getattr(self, '_head_only', False):
+            self.wfile.write(body_bytes)
 
     def send_cors(self):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Creator-Key')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
 
     def finish_json(self, status, payload):
         try:
@@ -290,7 +437,7 @@ class MarketHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(resp)))
             self.send_cors()
             self.end_headers()
-            self.wfile.write(resp)
+            self._write_body(resp)
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:
@@ -298,7 +445,7 @@ class MarketHandler(BaseHTTPRequestHandler):
 
     def client_ip(self):
         raw_ip = self.headers.get('CF-Connecting-IP') or self.headers.get('X-Forwarded-For', '').split(',')[0] or self.client_address[0]
-        return str(raw_ip).strip()
+        return str(raw_ip).strip()[:64]
 
     def read_creator_key_header(self):
         auth = str(self.headers.get('Authorization', '') or '').strip()
@@ -307,10 +454,18 @@ class MarketHandler(BaseHTTPRequestHandler):
         return str(self.headers.get('X-Creator-Key', '') or '').strip()[:MAX_KEY]
 
     def respond_my_presets(self, creator_key):
+        if is_rate_limited('my_presets', self.client_ip(), 60, 60):
+            self.finish_json(429, {'success': False, 'error': '请求过于频繁，请稍后再试'})
+            return
         if not creator_key:
             self.finish_json(401, {'success': False, 'error': '缺少创作者个人码'})
             return
-        presets = load_presets()
+        try:
+            with DATA_LOCK:
+                presets = load_presets()
+        except Exception:
+            self.finish_json(500, {'success': False, 'error': '预设数据读取异常'})
+            return
         mine = find_presets_by_creator(presets, creator_key)
         self.finish_json(200, {'success': True, 'ids': [p.get('id') for p in mine]})
 
@@ -327,6 +482,20 @@ class MarketHandler(BaseHTTPRequestHandler):
             self.finish_json(200, {'status': 'ok', 'service': 'RBQ Prompt Market Node'})
             return
 
+        if path == '/robots.txt':
+            robots_bytes = b'User-agent: *\nDisallow: /api/\n'
+            try:
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.send_header('Content-Length', str(len(robots_bytes)))
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.send_cors()
+                self.end_headers()
+                self._write_body(robots_bytes)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
         if path in ('/', '/index.html'):
             index_path = os.path.join(BASE_DIR, 'index.html')
             if os.path.exists(index_path):
@@ -338,7 +507,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.send_header('Content-Length', str(len(content)))
                     self.send_cors()
                     self.end_headers()
-                    self.wfile.write(content)
+                    self._write_body(content)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return
@@ -351,16 +520,22 @@ class MarketHandler(BaseHTTPRequestHandler):
             try:
                 self.send_response(200)
                 self.send_header('Content-Type', 'image/svg+xml')
+                self.send_header('Content-Length', str(len(svg_fav)))
                 self.send_header('Cache-Control', 'public, max-age=86400')
                 self.send_cors()
                 self.end_headers()
-                self.wfile.write(svg_fav)
+                self._write_body(svg_fav)
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
 
         if path == '/api/presets':
-            presets = load_presets()
+            try:
+                with DATA_LOCK:
+                    presets = load_presets()
+            except Exception:
+                self.finish_json(500, {'error': '预设数据读取异常'})
+                return
             self.finish_json(200, [public_preset(p) for p in presets])
             return
 
@@ -372,9 +547,9 @@ class MarketHandler(BaseHTTPRequestHandler):
         if path.startswith('/previews/'):
             filename = os.path.basename(path)
             file_path = os.path.join(UPLOADS_DIR, filename)
-            if os.path.exists(file_path):
+            if filename and os.path.isfile(file_path):
                 ext = os.path.splitext(filename)[1].lower()
-                mime = 'image/webp' if ext == '.webp' else ('image/png' if ext == '.png' else 'image/jpeg')
+                mime = {'.webp': 'image/webp', '.png': 'image/png', '.gif': 'image/gif'}.get(ext, 'image/jpeg')
                 try:
                     with open(file_path, 'rb') as f:
                         content = f.read()
@@ -384,7 +559,7 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.send_header('Cache-Control', 'public, max-age=604800, immutable')
                     self.send_cors()
                     self.end_headers()
-                    self.wfile.write(content)
+                    self._write_body(content)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return
@@ -396,7 +571,15 @@ class MarketHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        content_length = int(self.headers.get('Content-Length', 0))
+        raw_cl = self.headers.get('Content-Length', '0')
+        try:
+            content_length = int(raw_cl)
+        except (TypeError, ValueError):
+            self.finish_json(400, {'error': '无效的 Content-Length'})
+            return
+        if content_length < 0:
+            self.finish_json(400, {'error': '无效的 Content-Length'})
+            return
         if content_length > 15 * 1024 * 1024:
             self.finish_json(413, {'error': 'Payload Too Large'})
             return
@@ -422,6 +605,10 @@ class MarketHandler(BaseHTTPRequestHandler):
             data = json.loads(raw_body.decode('utf-8'))
         except Exception as e:
             self.finish_json(400, {'error': f'JSON 解析失败: {e}'})
+            return
+
+        if not isinstance(data, dict):
+            self.finish_json(400, {'error': '请求体必须为 JSON 对象'})
             return
 
         if parsed.path == '/api/my-presets':
@@ -469,15 +656,31 @@ class MarketHandler(BaseHTTPRequestHandler):
 
         # ── 点赞 / 取消点赞 API (Toggle 收藏防刷) ──
         if parsed.path == '/api/like':
+            ip = self.client_ip()
+            if is_rate_limited('like', ip, 60, 60):
+                self.finish_json(429, {'success': False, 'error': '请求过于频繁，请稍后再试'})
+                return
+
             target_id = str(data.get('id', '')).strip()
             if not target_id:
                 self.finish_json(400, {'error': '缺少预设 ID'})
                 return
 
-            client_id = str(data.get('clientId', '')).strip()
-            raw_ip = self.headers.get('CF-Connecting-IP') or self.headers.get('X-Forwarded-For', '').split(',')[0] or self.client_address[0]
-            client_ip = str(raw_ip).strip()
-            voter_id = client_id if client_id else f"ip:{client_ip}"
+            raw_cid = data.get('clientId', '')
+            if raw_cid is None or raw_cid == '':
+                voter_id = f"ip:{ip}"
+            elif not isinstance(raw_cid, str):
+                self.finish_json(400, {'success': False, 'error': '无效的客户端标识 (clientId)'})
+                return
+            else:
+                client_id = raw_cid.strip()
+                if not client_id:
+                    voter_id = f"ip:{ip}"
+                elif not VALID_CLIENT_ID_RE.match(client_id):
+                    self.finish_json(400, {'success': False, 'error': '无效的客户端标识 (clientId)'})
+                    return
+                else:
+                    voter_id = client_id
 
             with DATA_LOCK:
                 presets = load_presets()
@@ -524,6 +727,9 @@ class MarketHandler(BaseHTTPRequestHandler):
 
         # ── 下载/安装计数 API ──
         if parsed.path == '/api/download':
+            if is_rate_limited('download', self.client_ip(), 60, 60):
+                self.finish_json(429, {'success': False, 'error': '请求过于频繁，请稍后再试'})
+                return
             target_id = str(data.get('id', '')).strip()
             if not target_id:
                 self.finish_json(400, {'error': '缺少预设 ID'})
@@ -545,8 +751,11 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.finish_json(404, {'error': '预设不存在'})
                     return
 
-        # ── 历史预设无感自动认领/补绑 API ──
+        # ── 历史预设认领/补绑 API (禁止匿名抢注无主预设，仅原作者回绑本人码或管理员可操作) ──
         if parsed.path == '/api/claim':
+            if is_rate_limited('claim', self.client_ip(), 20, 600):
+                self.finish_json(429, {'success': False, 'error': '请求过于频繁，请稍后再试'})
+                return
             target_id = str(data.get('id', '')).strip()
             req_creator_key = str(data.get('creatorKey', '')).strip()
             req_author = str(data.get('author', '')).strip()
@@ -572,10 +781,13 @@ class MarketHandler(BaseHTTPRequestHandler):
                     else:
                         self.finish_json(403, {'success': False, 'error': '该预设已被其他创作者绑定', 'id': target_id})
                     return
+                if not existing_key and not is_admin:
+                    self.finish_json(403, {'success': False, 'error': '历史无主预设认领需联系服主处理', 'id': target_id})
+                    return
 
                 target_preset['creatorKey'] = req_creator_key[:MAX_KEY]
                 if req_author and target_preset.get('author') in ('匿名', '匿名社友', ''):
-                    target_preset['author'] = req_author[:30]
+                    target_preset['author'] = req_author[:MAX_AUTHOR]
 
                 save_presets(presets)
 
@@ -584,6 +796,9 @@ class MarketHandler(BaseHTTPRequestHandler):
 
         # ── 编辑/更新预设 API (修改标签、标题、署名、提示词等) ──
         if parsed.path == '/api/update':
+            if is_rate_limited('update', self.client_ip(), 30, 600):
+                self.finish_json(429, {'success': False, 'error': '请求过于频繁，请稍后再试'})
+                return
             target_id = str(data.get('id', '')).strip()
             req_creator_key = str(data.get('creatorKey', '')).strip()
             req_admin_key = str(data.get('adminKey', '')).strip()
@@ -601,18 +816,13 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.finish_json(404, {'error': '预设不存在'})
                     return
 
-                # 鉴权：管理员、创作者码匹配、或历史未绑定者作者名匹配
-                item_creator_key = target_preset.get('creatorKey', '')
+                # 鉴权：仅管理员或创作者个人码精确匹配（无主预设仅管理员可编辑）
+                item_creator_key = str(target_preset.get('creatorKey', '') or '').strip()
                 authorized = False
                 if is_admin:
                     authorized = True
                 elif item_creator_key and keys_equal(req_creator_key, item_creator_key):
                     authorized = True
-                elif not item_creator_key:
-                    req_author = str(data.get('author', '')).strip()
-                    orig_author = str(data.get('originalAuthor', '')).strip() or req_author
-                    if orig_author and orig_author == target_preset.get('author'):
-                        authorized = True
 
                 if not authorized:
                     self.finish_json(403, {'error': '鉴权失败：无权修改他人作品。请检查创作者个人码。'})
@@ -622,6 +832,53 @@ class MarketHandler(BaseHTTPRequestHandler):
                 if hit:
                     self.finish_json(400, {'success': False, 'error': dangerous_payload_error(hit)})
                     return
+
+                # 先校验图片，失败直接 400 不落盘也不改字段
+                new_ref_img = None
+                clear_ref_img = False
+                if 'referenceBase64' in data:
+                    ref_b64 = data.get('referenceBase64')
+                    if ref_b64 is None or ref_b64 == '':
+                        clear_ref_img = True
+                    else:
+                        try:
+                            new_ref_img = decode_image_base64(ref_b64)
+                        except ValueError as e:
+                            self.finish_json(400, {'success': False, 'error': f'参考图无效: {e}'})
+                            return
+
+                new_prev_img = None
+                if 'previewBase64' in data:
+                    prev_b64 = data.get('previewBase64')
+                    if prev_b64 not in (None, ''):
+                        try:
+                            new_prev_img = decode_image_base64(prev_b64)
+                        except ValueError as e:
+                            self.finish_json(400, {'success': False, 'error': f'基准封面图无效: {e}'})
+                            return
+
+                if (new_ref_img or new_prev_img) and not ensure_disk_space():
+                    self.finish_json(507, {'success': False, 'error': '服务器磁盘空间不足，无法保存图片'})
+                    return
+
+                # 落盘新图片（用毫秒时间戳 ?v= 打破 7 天 immutable 缓存，并清理旧后缀残留）
+                ver = int(time.time() * 1000)
+                if new_ref_img:
+                    ref_ext, ref_bytes = new_ref_img
+                    ref_name = f'{target_id}_ref.{ref_ext}'
+                    save_image_file(ref_name, ref_bytes)
+                    remove_preset_images(target_id, kind='ref', keep_filename=ref_name)
+                    target_preset['referenceUrl'] = f'{PUBLIC_ORIGIN}/previews/{ref_name}?v={ver}'
+                elif clear_ref_img:
+                    remove_preset_images(target_id, kind='ref')
+                    target_preset['referenceUrl'] = ''
+
+                if new_prev_img:
+                    prev_ext, prev_bytes = new_prev_img
+                    prev_name = f'{target_id}.{prev_ext}'
+                    save_image_file(prev_name, prev_bytes)
+                    remove_preset_images(target_id, kind='preview', keep_filename=prev_name)
+                    target_preset['previewUrl'] = f'{PUBLIC_ORIGIN}/previews/{prev_name}?v={ver}'
 
                 # 更新允许修改的字段
                 if 'title' in data and clean_text(data['title'], MAX_TITLE):
@@ -643,56 +900,6 @@ class MarketHandler(BaseHTTPRequestHandler):
                 if 'params' in data and isinstance(data['params'], dict):
                     target_preset['params'] = clean_params(data['params'])
 
-                # 更新自制参考图 (可选伴生图)
-                if 'referenceBase64' in data:
-                    ref_b64 = data.get('referenceBase64')
-                    if ref_b64 and isinstance(ref_b64, str) and len(ref_b64) > 100:
-                        ref_ext = 'webp'
-                        if ',' in ref_b64:
-                            ref_header, ref_b64_data = ref_b64.split(',', 1)
-                            if 'jpeg' in ref_header or 'jpg' in ref_header:
-                                ref_ext = 'jpg'
-                            elif 'png' in ref_header:
-                                ref_ext = 'png'
-                        else:
-                            ref_b64_data = ref_b64
-                        try:
-                            ref_bytes = base64.b64decode(ref_b64_data)
-                            ref_name = f'{target_id}_ref.{ref_ext}'
-                            with open(os.path.join(UPLOADS_DIR, ref_name), 'wb') as f:
-                                f.write(ref_bytes)
-                            host = self.headers.get('Host', 'market.rbq.my')
-                            proto = self.headers.get('X-Forwarded-Proto', 'https')
-                            target_preset['referenceUrl'] = f'{proto}://{host}/previews/{ref_name}'
-                        except Exception as e:
-                            print('Error saving updated reference image:', e)
-                    elif ref_b64 == '' or ref_b64 is None:
-                        target_preset['referenceUrl'] = ''
-
-                # 更新基准测试图 (封面)
-                if 'previewBase64' in data:
-                    prev_b64 = data.get('previewBase64')
-                    if prev_b64 and isinstance(prev_b64, str) and len(prev_b64) > 100:
-                        prev_ext = 'webp'
-                        if ',' in prev_b64:
-                            prev_header, prev_b64_data = prev_b64.split(',', 1)
-                            if 'jpeg' in prev_header or 'jpg' in prev_header:
-                                prev_ext = 'jpg'
-                            elif 'png' in prev_header:
-                                prev_ext = 'png'
-                        else:
-                            prev_b64_data = prev_b64
-                        try:
-                            prev_bytes = base64.b64decode(prev_b64_data)
-                            prev_name = f'{target_id}.{prev_ext}'
-                            with open(os.path.join(UPLOADS_DIR, prev_name), 'wb') as f:
-                                f.write(prev_bytes)
-                            host = self.headers.get('Host', 'market.rbq.my')
-                            proto = self.headers.get('X-Forwarded-Proto', 'https')
-                            target_preset['previewUrl'] = f'{proto}://{host}/previews/{prev_name}'
-                        except Exception as e:
-                            print('Error saving updated preview image:', e)
-
                 save_presets(presets)
 
             self.finish_json(200, {'success': True, 'item': public_preset(target_preset)})
@@ -700,6 +907,9 @@ class MarketHandler(BaseHTTPRequestHandler):
 
         # ── 删除预设 API (支持创作者身份码与管理员密钥严格鉴权) ──
         if parsed.path == '/api/delete':
+            if is_rate_limited('delete', self.client_ip(), 30, 600):
+                self.finish_json(429, {'success': False, 'error': '请求过于频繁，请稍后再试'})
+                return
             target_id = str(data.get('id', '')).strip()
             req_creator_key = str(data.get('creatorKey', '')).strip()
             req_admin_key = str(data.get('adminKey', '')).strip()
@@ -718,6 +928,15 @@ class MarketHandler(BaseHTTPRequestHandler):
                         return
                     presets = []
                     save_presets(presets)
+                    try:
+                        for f in os.listdir(UPLOADS_DIR):
+                            if f.startswith('pm-'):
+                                try:
+                                    os.remove(os.path.join(UPLOADS_DIR, f))
+                                except OSError:
+                                    pass
+                    except Exception as e:
+                        print('Error cleaning image files on delete __ALL__:', e)
                     self.finish_json(200, {'success': True, 'remaining': 0})
                     return
 
@@ -726,22 +945,13 @@ class MarketHandler(BaseHTTPRequestHandler):
                     self.finish_json(404, {'error': '预设不存在或已被删除'})
                     return
 
-                # 权限鉴权逻辑：
-                # 1. 管理员密钥正确 -> 允许
-                # 2. 预设绑定了 creatorKey，且请求匹配 -> 允许
-                # 3. 历史无 creatorKey 的早期测试预设：若作者声明一致或为管理员 -> 允许
-                item_creator_key = target_preset.get('creatorKey', '')
+                # 权限鉴权逻辑：仅管理员或绑定的 creatorKey 匹配允许删除（无主预设仅管理员可删）
+                item_creator_key = str(target_preset.get('creatorKey', '') or '').strip()
                 authorized = False
                 if is_admin:
                     authorized = True
                 elif item_creator_key and keys_equal(req_creator_key, item_creator_key):
                     authorized = True
-                elif not item_creator_key:
-                    req_author = str(data.get('author', '')).strip()
-                    if req_author and req_author == target_preset.get('author'):
-                        authorized = True
-                    elif is_admin:
-                        authorized = True
 
                 if not authorized:
                     self.finish_json(403, {'error': '鉴权失败：无权删除他人作品。请在设置中检查创作者个人码或管理员密钥。'})
@@ -749,23 +959,16 @@ class MarketHandler(BaseHTTPRequestHandler):
 
                 presets = [p for p in presets if p.get('id') != target_id]
                 save_presets(presets)
-
-                # 同步清理服务器磁盘上的图片文件，杜绝孤儿占盘
-                try:
-                    for f in os.listdir(UPLOADS_DIR):
-                        if f.startswith(f"{target_id}.") or f.startswith(f"{target_id}_ref."):
-                            try:
-                                os.remove(os.path.join(UPLOADS_DIR, f))
-                            except Exception:
-                                pass
-                except Exception as e:
-                    print('Error cleaning image files on delete:', e)
+                remove_preset_images(target_id, kind='both')
 
             self.finish_json(200, {'success': True, 'remaining': len(presets), 'deletedId': target_id})
             return
 
         # ── 上传发布 API ──
         if parsed.path == '/api/upload':
+            if is_rate_limited('upload', self.client_ip(), 15, 600):
+                self.finish_json(429, {'success': False, 'error': '发布过于频繁，请稍后再试'})
+                return
             title = clean_text(data.get('title', ''), MAX_TITLE)
             positive = clean_text(data.get('positive', ''), MAX_PROMPT)
             creator_key = clean_text(data.get('creatorKey', ''), MAX_KEY)
@@ -778,6 +981,29 @@ class MarketHandler(BaseHTTPRequestHandler):
                 self.finish_json(400, {'success': False, 'error': dangerous_payload_error(hit)})
                 return
 
+            # 校验上传图片魔数与大小
+            up_prev_img = None
+            preview_b64 = data.get('previewBase64')
+            if preview_b64 not in (None, ''):
+                try:
+                    up_prev_img = decode_image_base64(preview_b64)
+                except ValueError as e:
+                    self.finish_json(400, {'success': False, 'error': f'基准封面图无效: {e}'})
+                    return
+
+            up_ref_img = None
+            ref_b64 = data.get('referenceBase64')
+            if ref_b64 not in (None, ''):
+                try:
+                    up_ref_img = decode_image_base64(ref_b64)
+                except ValueError as e:
+                    self.finish_json(400, {'success': False, 'error': f'参考图无效: {e}'})
+                    return
+
+            if (up_prev_img or up_ref_img) and not ensure_disk_space():
+                self.finish_json(507, {'success': False, 'error': '服务器磁盘空间不足，请稍后再试'})
+                return
+
             model = str(data.get('model', 'v5')).strip().lower()
             if model not in ALLOWED_MODELS:
                 model = 'v5'
@@ -786,60 +1012,19 @@ class MarketHandler(BaseHTTPRequestHandler):
 
             # 1. 官方基准测试图 (封面 · 必填)
             preview_url = safe_http_url(data.get('previewUrl', ''), DEFAULT_PREVIEW_URL)
-            preview_b64 = data.get('previewBase64')
-            if preview_b64 and isinstance(preview_b64, str) and len(preview_b64) > 100:
-                ext = 'webp'
-                if ',' in preview_b64:
-                    header, b64_data = preview_b64.split(',', 1)
-                    if 'jpeg' in header or 'jpg' in header:
-                        ext = 'jpg'
-                    elif 'png' in header:
-                        ext = 'png'
-                else:
-                    b64_data = preview_b64
-
-                try:
-                    # 磁盘安全熔断防御：剩余空间低于 80MB 时拒绝落盘，防止打崩服务器
-                    _, _, free_bytes = shutil.disk_usage(BASE_DIR)
-                    if free_bytes < 80 * 1024 * 1024:
-                        print('[Warning] Disk space below 80MB safe threshold. Skipped preview persistence.')
-                    else:
-                        img_bytes = base64.b64decode(b64_data)
-                        img_name = f'{preset_id}.{ext}'
-                        with open(os.path.join(UPLOADS_DIR, img_name), 'wb') as f:
-                            f.write(img_bytes)
-                        host = self.headers.get('Host', 'market.rbq.my')
-                        proto = self.headers.get('X-Forwarded-Proto', 'https')
-                        preview_url = f'{proto}://{host}/previews/{img_name}'
-                except Exception as e:
-                    print('Error saving benchmark image:', e)
+            if up_prev_img:
+                ext, img_bytes = up_prev_img
+                img_name = f'{preset_id}.{ext}'
+                save_image_file(img_name, img_bytes)
+                preview_url = f'{PUBLIC_ORIGIN}/previews/{img_name}'
 
             # 2. 作者自制参考图 (可选伴生图)
             reference_url = safe_http_url(data.get('referenceUrl', ''), '')
-            ref_b64 = data.get('referenceBase64')
-            if ref_b64 and isinstance(ref_b64, str) and len(ref_b64) > 100:
-                ref_ext = 'webp'
-                if ',' in ref_b64:
-                    ref_header, ref_b64_data = ref_b64.split(',', 1)
-                    if 'jpeg' in ref_header or 'jpg' in ref_header:
-                        ref_ext = 'jpg'
-                    elif 'png' in ref_header:
-                        ref_ext = 'png'
-                else:
-                    ref_b64_data = ref_b64
-
-                try:
-                    _, _, free_bytes = shutil.disk_usage(BASE_DIR)
-                    if free_bytes >= 80 * 1024 * 1024:
-                        ref_bytes = base64.b64decode(ref_b64_data)
-                        ref_name = f'{preset_id}_ref.{ref_ext}'
-                        with open(os.path.join(UPLOADS_DIR, ref_name), 'wb') as f:
-                            f.write(ref_bytes)
-                        host = self.headers.get('Host', 'market.rbq.my')
-                        proto = self.headers.get('X-Forwarded-Proto', 'https')
-                        reference_url = f'{proto}://{host}/previews/{ref_name}'
-                except Exception as e:
-                    print('Error saving reference image:', e)
+            if up_ref_img:
+                ref_ext, ref_bytes = up_ref_img
+                ref_name = f'{preset_id}_ref.{ref_ext}'
+                save_image_file(ref_name, ref_bytes)
+                reference_url = f'{PUBLIC_ORIGIN}/previews/{ref_name}'
 
             item = {
                 'id': preset_id,
@@ -869,9 +1054,12 @@ class MarketHandler(BaseHTTPRequestHandler):
 
         self.finish_json(404, {'error': 'Not Found'})
 
+
 if __name__ == '__main__':
-    server = ThreadingHTTPServer(('0.0.0.0', PORT), MarketHandler)
-    print(f'RBQ Prompt Market Server running on port {PORT}...')
+    ThreadingHTTPServer.allow_reuse_address = True
+    server = ThreadingHTTPServer((BIND_HOST, PORT), MarketHandler)
+    server.daemon_threads = True
+    print(f'RBQ Prompt Market Server running on {BIND_HOST}:{PORT}...')
     if not get_admin_key():
         print('[Info] MARKET_ADMIN_KEY 未设置：管理员功能（强制下架/编辑他人作品/清空工坊）已关闭。')
     server.serve_forever()

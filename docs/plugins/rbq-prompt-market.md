@@ -5,49 +5,57 @@
 
 ---
 
-## 🏗️ 架构与数据流
+## 🏗️ 架构与数据流（当前自建节点方案）
 
-1. **展示与浏览 (全球 CDN 加速)**：
-   * 插件直接从 GitHub 仓库（通过 jsDelivr CDN）读取 `index.json`，秒级打开，免维护服务器。
-2. **免登录上传 (安全网关)**：
-   * 用户在酒馆中点击“发布”，数据发送给你的免费 **Cloudflare Worker**。
-   * Worker 内部安全保存你的 GitHub Personal Access Token (PAT)，代为向 GitHub 仓库提交预设文件与 WebP 缩略图。
+工坊默认采用 `server/server.py` + `server/index.html` 自建节点方案（例如 `https://market.rbq.my`），同时兼容酒馆插件端与网页门户端：
+
+1. **后端服务 (`server/server.py`)**：
+   * 基于 Python `ThreadingHTTPServer`，建议仅监听 `127.0.0.1:3000`（环境变量 `MARKET_BIND_HOST` / `PORT`）并通过 Caddy 等反向代理对外提供 HTTPS 服务。
+   * 预设元数据持久化在 `MARKET_DATA_DIR/presets.json`（原子临时文件 + `fsync` + `os.replace` 写入），封面图与伴生参考图按 WebP/JPEG/PNG 魔数校验后保存在 `MARKET_UPLOADS_DIR/`。
+   * 管理员密钥通过环境变量 `MARKET_ADMIN_KEY` 配置（建议放在仅 root 可读的 `/etc/rbq-market.env` 中），服务进程建议以非特权系统用户（如 `rbqmarket`）运行。
+2. **网页门户 (`server/index.html`)**：
+   * 独立 Web 展厅，支持模型与标签筛选、作品详情（双图切换与大图灯箱）、创作者个人码绑定与一键换码迁移、在线编辑/下架与 JSON 导出。
+3. **酒馆插件 (`plugins/prompt-market.js`)**：
+   * 在 SillyTavern 内提供画廊浏览、一键导入至「提示词预设」(`rbq-prompt-presets`)、现场出图对比与直接上传/编辑能力。
 
 ---
 
-## 🚀 极简部署步骤（仅需 5 分钟）
+## 🚀 自建服务部署指南
 
-### 第一步：在 GitHub 创建存储仓库
-1. 打开 GitHub，新建一个**公开仓库 (Public)**：`RBQ-Prompt-Market`（例如 `TTWParty/RBQ-Prompt-Market`）。
-2. 将 `docs/market-repo-template/index.json` 上传到仓库根目录，并建立两个空目录（或放一个 `.gitkeep`）：
-   * `presets/`（存放预设详细 JSON）
-   * `previews/`（存放 WebP 预览图）
+1. 准备目录与环境：将 `server/server.py` 与 `server/index.html` 放入服务目录（如 `/opt/rbq-prompt-market`），创建 `data/`、`uploads/` 并授权给专用低权限系统用户（如 `rbqmarket`）。
+2. 配置环境变量（例如 `/etc/rbq-market.env`，权限 `600`）：
+   * `PORT=3000`
+   * `MARKET_BIND_HOST=127.0.0.1`
+   * `MARKET_PUBLIC_ORIGIN=https://market.rbq.my`
+   * `MARKET_ADMIN_KEY=<强随机管理员密钥>`
+3. 配置 systemd 与 Caddy 反向代理：
+   * 由反向代理提供 HTTPS、安全响应头，并在访问日志中脱敏 `X-Creator-Key` / `Authorization` 等凭据请求头；若位于 Cloudflare 后方，可按 `X-Forwarded-Proto: http` 跳转到 HTTPS。
+   * 建议配置定时备份脚本打包 `data/presets.json` 与 `uploads/`。
+4. 在插件设置中确认服务器地址即可使用（默认指向 `https://market.rbq.my`）。
 
-### 第二步：申请 GitHub Token (PAT)
-1. 打开 GitHub ➔ Settings ➔ Developer Settings ➔ **Personal access tokens** ➔ **Tokens (classic)**。
-2. 点击 **Generate new token (classic)**：
-   * Note: `RBQ-Market-Worker`
-   * 勾选权限：**`repo`**（全部仓库读写权限）。
-3. 复制生成的 Token（形如 `ghp_xxxx`）。
+---
 
-### 第三步：部署免费 Cloudflare Worker
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) ➔ 点击左侧 **Workers & Pages** ➔ **Create application** ➔ **Create Worker**。
-2. 名字随便填（例如 `rbq-prompt-market`），点击 **Deploy**。
-3. 点击 **Edit code**，将本项目中的 [`docs/cloudflare-worker-market.js`](../cloudflare-worker-market.js) 内容完整复制粘贴进去，点击 **Deploy**。
-4. 返回该 Worker 的 **Settings** ➔ **Variables and Secrets** ➔ 添加环境变量：
-   * `GITHUB_TOKEN`: 刚才申请的 GitHub Token (建议设为 Secret 加密)
-   * `GITHUB_REPO`: 你的仓库全名，例如 `TTWParty/RBQ-Prompt-Market`
-   * `GITHUB_BRANCH`: `main`
-5. 复制该 Worker 的公网域名，例如：`https://rbq-prompt-market.xxxx.workers.dev`。
+## 📦 备选/旧版架构（Cloudflare Worker，历史方案）
 
-### 第四步：在插件中使用
-1. 打开酒馆中的 RBQ 提示词面板 ➔ 点击右上角的 **🏛️ 预设工坊**。
-2. 点击工坊顶部的 **⚙️ 设置** 按钮，把刚才的 Worker 地址粘贴进去并保存。
-3. 搞定！你现在可以随时浏览、一键安装、并且点击“发布我的预设”一键分享至云端了！
+早期版本曾支持「GitHub 公开仓库 + Cloudflare Worker (`docs/cloudflare-worker-market.js`)」无服务器方案；如仍需使用该方案，可按以下摘要配置：
+
+* **GitHub 仓库**：建立公开仓库，放入 `docs/market-repo-template/index.json` 以及 `presets/`、`previews/` 目录，并申请具备 `repo` 权限的 PAT。
+* **Cloudflare Worker**：部署 `docs/cloudflare-worker-market.js`，配置加密变量 `GITHUB_TOKEN` 与明文变量 `GITHUB_REPO`、`GITHUB_BRANCH`，并在插件设置中填入 Worker 域名。
 
 ---
 
 ## 📝 更新日志
+
+### v1.1.35（系统安全加固与前后端体验修复）
+
+* **后端稳定性与安全 (`server/server.py`)**：
+  * 修复环境变量同步与绑定地址控制（`MARKET_BIND_HOST` 默认 `127.0.0.1`，新增 `MARKET_PUBLIC_ORIGIN` 控制图片外链并附带 `?v=` 缓存刷新参数），配置 `daemon_threads`、`allow_reuse_address`、`30s` socket 超时与隐藏版 `Server` 响应头，支持完整 `HEAD` 请求与 `/robots.txt`。
+  * `save_presets()` 与图片保存改为临时文件 `flush + fsync + os.replace` 原子替换；`load_presets()` 遇到损坏 JSON 直接报错而不静默覆写为空；只读接口统一加 `DATA_LOCK` 并附带 `X-Content-Type-Options: nosniff` 与 `Referrer-Policy` 安全响应头。
+  * 增加请求体大小与 JSON 对象校验、`ensure_disk_space` 空间保护、真实图片魔数解码与 3MB 上限、全写接口及 `/api/my-presets` 限流；`/api/like` 强制校验 `clientId` 格式；禁止非管理员认领/修改/删除无主预设；删除作品（含 `__ALL__`）时清理关联图片。
+* **酒馆插件与导入 (`plugins/prompt-market.js` / `plugins/prompt-presets.js`)**：
+  * 每个酒馆安装生成独立随机 `t-<16hex>` 点赞标识替代共享 `'u-tavern'`，并增加防连点锁；补齐编辑与管理弹窗的 SillyTavern 防挤压样式；详情页安全渲染转义后的 `description`；修复现场实测弹窗回退时 `curBm` 未定义报错；修复插件卸载清理时的真实覆盖层与子弹窗 DOM ID；导入预设至 `prompt-presets` 时保留 `params` 生图参数。
+* **网页门户 (`server/index.html`)**：
+  * 补齐 `general` 通用模型筛选、`#img-lightbox` 大图灯箱、详情图切换并发竞态防护与画师说明展示、创作者中心一键换码迁移 (`/api/rotate-key`)、编辑弹窗补充模型/说明/NAI 参数与 Safari JPEG 回退、移动端卡片操作栏常驻与全局 `Escape` 关闭栈、点赞/下载局部 DOM 更新及安全日期解析。
 
 ### 服务器更新（2026-10-16，插件版本不变）：拦截 HTML 注入，保护旧客户端
 

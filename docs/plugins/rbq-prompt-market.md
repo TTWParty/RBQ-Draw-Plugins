@@ -46,6 +46,12 @@
 
 ## 📝 更新日志
 
+### v1.1.37（社区共享、署名与下架声明模块）
+
+* **网页门户 (`server/index.html`) 与酒馆插件 (`plugins/prompt-market.js`) 同步补全声明体系**：
+  * 新增顶栏「声明」入口、轻量单行非打扰公告条（网页端位于筛选栏下方、插件端位于弹窗底栏）以及「免责与版权/下架声明」弹窗，明确标注公益非商业性质、「整理」署名含义、创作者自助管理与通过 GitHub Issues 快速异议下架/更正署名的通道。
+  * 发布弹窗提交栏上方增加一行合规分享提示，支持 `Esc` 关闭与遮罩防误关隔离，并已补齐 SillyTavern 宿主样式与卸载清理 ID。
+
 ### v1.1.36（官方基准测试底模优化）
 
 * **低干扰默认基准 (`BENCHMARK_POSITIVE_PROMPT`)**：将默认官方基准从 45 词高密度复杂描述精简为 **11 词极简中性半身人像底模**（`1girl, solo, upper body, looking at viewer, long silver hair, blue eyes, gentle smile, white collared shirt, black ribbon, indoors, window`），避免复杂服饰细节、双动作与强风格偏置词（如 `intricate pupils`、`sunbeams`、`stained glass`）稀释或覆盖画师串本身的线条、瞳孔与光影特征。

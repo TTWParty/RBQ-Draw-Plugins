@@ -534,6 +534,7 @@
             #rbq-pm-detail-dialog .menu_button,
             #rbq-pm-edit-dialog .menu_button,
             #rbq-pm-manage-dialog .menu_button,
+            #rbq-pm-notice-dialog .menu_button,
             #rbq-pm-benchmark-dialog .menu_button,
             #rbq-pm-test-dialog .menu_button,
             #rbq-pm-test-edit-dialog .menu_button,
@@ -573,7 +574,8 @@
             #rbq-pm-benchmark-dialog,
             #rbq-pm-test-dialog,
             #rbq-pm-settings-dialog,
-            #rbq-pm-manage-dialog {
+            #rbq-pm-manage-dialog,
+            #rbq-pm-notice-dialog {
                 position: fixed !important;
                 inset: 0 !important;
                 width: 100vw !important;
@@ -701,6 +703,7 @@
             #rbq-pm-detail-dialog > div,
             #rbq-pm-edit-dialog > div,
             #rbq-pm-manage-dialog > div,
+            #rbq-pm-notice-dialog > div,
             #rbq-pm-benchmark-dialog > div,
             #rbq-pm-test-dialog > div,
             #rbq-pm-test-edit-dialog > div,
@@ -977,6 +980,7 @@
                 #rbq-pm-detail-dialog,
                 #rbq-pm-edit-dialog,
                 #rbq-pm-manage-dialog,
+                #rbq-pm-notice-dialog,
                 #rbq-pm-benchmark-dialog,
                 #rbq-pm-test-dialog,
                 #rbq-pm-test-edit-dialog,
@@ -996,6 +1000,7 @@
                 #rbq-pm-upload-dialog > div,
                 #rbq-pm-edit-dialog > div,
                 #rbq-pm-manage-dialog > div,
+                #rbq-pm-notice-dialog > div,
                 #rbq-pm-live-test-dialog > div,
                 #rbq-pm-test-dialog > div,
                 #rbq-pm-test-edit-dialog > div,
@@ -1193,7 +1198,7 @@
             '#rbq-pm-detail-dialog, #rbq-pm-upload-dialog, #rbq-pm-benchmark-dialog, ' +
             '#rbq-pm-test-dialog, #rbq-pm-test-edit-dialog, #rbq-pm-live-dialog, ' +
             '#rbq-pm-live-test-dialog, #rbq-pm-settings-dialog, #rbq-pm-edit-dialog, ' +
-            '#rbq-pm-manage-dialog, #rbq-pm-lightbox, #rbq-pm-zoom-overlay'
+            '#rbq-pm-manage-dialog, #rbq-pm-notice-dialog, #rbq-pm-lightbox, #rbq-pm-zoom-overlay'
         ));
     }
 
@@ -1306,6 +1311,10 @@
                             <i class="fa-solid fa-cloud-arrow-up"></i>
                             <span>发布<span class="rbq-pm-desktop-only">预设</span></span>
                         </button>
+                        <button id="rbq-pm-btn-notice" class="menu_button" title="工坊社区共享与版权/下架声明" style="padding: 5px 8px; font-size: 11.5px; font-weight: 600; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; white-space: nowrap !important;">
+                            <i class="fa-solid fa-scale-balanced"></i>
+                            <span class="rbq-pm-desktop-only">声明</span>
+                        </button>
                         <button id="rbq-pm-btn-settings" class="menu_button" title="工坊服务器设置" style="padding: 5px 8px; font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; white-space: nowrap !important;">
                             <i class="fa-solid fa-gear"></i>
                         </button>
@@ -1355,6 +1364,12 @@
                 <!-- Main Content (Cards Grid) -->
                 <div id="rbq-pm-card-grid">
                     <!-- Cards will be populated here -->
+                </div>
+
+                <!-- Slim Community Notice Strip -->
+                <div id="rbq-pm-footer-notice" style="font-size:10.5px; color:#64748b; padding:5px 14px; background:#0b1120; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; flex-shrink:0;">
+                    <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">公益交流 · 预设来自社区投稿与公开整理，非商业用途，标注「整理」非原作者本人</span>
+                    <button id="rbq-pm-footer-notice-btn" type="button" class="menu_button" style="background:none !important; border:none !important; color:#7dd3fc !important; font-size:10.5px !important; font-weight:600; padding:2px 6px !important; cursor:pointer; box-shadow:none !important;">声明与下架说明 →</button>
                 </div>
             </div>
         `;
@@ -1408,6 +1423,8 @@
 
         marketModal.querySelector('#rbq-pm-btn-test-prompts').onclick = () => openTestPromptsDialog();
         marketModal.querySelector('#rbq-pm-btn-upload').onclick = () => openUploadDialog();
+        marketModal.querySelector('#rbq-pm-btn-notice')?.addEventListener('click', () => openNoticeDialog());
+        marketModal.querySelector('#rbq-pm-footer-notice-btn')?.addEventListener('click', () => openNoticeDialog());
         marketModal.querySelector('#rbq-pm-btn-settings').onclick = () => openSettingsDialog();
 
         // 模型与专属分类 Filter 切换
@@ -3846,6 +3863,7 @@
                             </div>
                         </div>
                     </div>
+                    <div style="font-size:10.5px; color:#64748b; line-height:1.45; text-align:right; padding-top:2px;">发布即代表同意公开分享交流；如搬运整理他人作品请注明来源，原作者提出异议将配合下架。</div>
                 </div>
                 <div style="padding:14px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; gap:8px;">
                     <button id="rbq-pm-up-cancel" class="menu_button" style="font-size:12px; padding:6px 14px;">取消</button>
@@ -4260,6 +4278,50 @@
         };
     }
 
+    // ── 社区共享、署名与免责/下架声明弹窗 ──
+    function openNoticeDialog() {
+        document.getElementById('rbq-pm-notice-dialog')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'rbq-pm-notice-dialog';
+        overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483642; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px);';
+        overlay.innerHTML = `
+            <div style="width:92vw; max-width:560px; max-height:88dvh; background:#0f172a; border:1px solid rgba(255,255,255,0.16); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; color:#fff; box-shadow:0 25px 60px rgba(0,0,0,0.85);">
+                <div style="padding:14px 18px; background:#1e293b; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+                    <div style="font-size:14.5px; font-weight:700; display:flex; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-scale-balanced" style="color:#38bdf8;"></i>
+                        <span>社区共享、署名与下架声明</span>
+                    </div>
+                    <button id="rbq-pm-notice-close" class="rbq-pm-close-btn" title="关闭声明" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div style="padding:16px 18px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex:1; font-size:12px; color:#cbd5e1; line-height:1.6;">
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
+                        <div style="font-weight:700; color:#f1f5f9; margin-bottom:4px;"><i class="fa-solid fa-heart" style="color:#f43f5e;"></i> 1. 公益分享 · 非商业性质</div>
+                        <div>本工坊为 SillyTavern &amp; RBQ 生图社区公益交流平台，所有画师串、参数与基准封面均免费开放浏览与导入使用，不用于商业售卖，亦不对社区投稿内容主张版权。</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
+                        <div style="font-weight:700; color:#f1f5f9; margin-bottom:4px;"><i class="fa-solid fa-tags" style="color:#fbbf24;"></i> 2. 来源与署名说明</div>
+                        <div>预设来源于社区用户自主投稿及公开渠道整理归档；署名含「整理」者仅代表搜集归档与基准封面制作，并非原始调串作者或画师本人。保留原有命名与作者代号旨在尊重来源，不代表原作者背书。</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
+                        <div style="font-weight:700; color:#f1f5f9; margin-bottom:4px;"><i class="fa-solid fa-shield-halved" style="color:#34d399;"></i> 3. 原作者权益与快速下架通道</div>
+                        <div>• <strong>自助管理</strong>：创作者可在「设置」绑定个人码后，在「我的上传」中随时编辑或永久下架自己的作品。<br>• <strong>侵权 / 异议处理</strong>：如您是某预设的原始作者或整理者，不希望作品在本站展示或需更正署名，请通过 <a href="https://github.com/TTWParty/RBQ-Draw-Plugins/issues" target="_blank" style="color:#38bdf8;">GitHub Issues</a> 提交对应预设标题 / ID，管理员核实后将第一时间下架或修正。</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px 12px;">
+                        <div style="font-weight:700; color:#f1f5f9; margin-bottom:4px;"><i class="fa-solid fa-triangle-exclamation" style="color:#38bdf8;"></i> 4. AI 生成内容与使用责任</div>
+                        <div>所有预览封面均由 AI 模型依据公开提示词渲染，仅作风格与参数效果研究参考；使用与二次分发请遵守所在地法律法规及对应生图模型条款，切勿用于侵权、违法或商业倒卖用途。</div>
+                    </div>
+                </div>
+                <div style="padding:12px 18px; background:#1e293b; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; flex-shrink:0;">
+                    <button id="rbq-pm-notice-ok" class="menu_button" style="background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; font-size:12px; font-weight:700; padding:6px 18px; border-radius:6px; cursor:pointer;">我知道了</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        bindFastClose(overlay.querySelector('#rbq-pm-notice-close'), () => closeSubDialog(overlay));
+        bindFastClose(overlay.querySelector('#rbq-pm-notice-ok'), () => closeSubDialog(overlay));
+        bindDialogBackdropClose(overlay);
+    }
+
     // ── 设置弹窗 (集成创作者身份码与服主管理员密钥体系) ──
     function openSettingsDialog() {
         const cfg = getConfig();
@@ -4545,6 +4607,7 @@
                 document.getElementById('rbq-pm-lightbox'),
                 document.getElementById('rbq-pm-edit-dialog'),
                 document.getElementById('rbq-pm-test-edit-dialog'),
+                document.getElementById('rbq-pm-notice-dialog'),
                 document.getElementById('rbq-pm-settings-dialog'),
                 document.getElementById('rbq-pm-upload-dialog'),
                 document.getElementById('rbq-pm-test-dialog'),
@@ -4586,7 +4649,7 @@
                 'rbq-pm-benchmark-dialog', 'rbq-pm-test-dialog',
                 'rbq-pm-test-edit-dialog', 'rbq-pm-live-dialog',
                 'rbq-pm-live-test-dialog', 'rbq-pm-settings-dialog',
-                'rbq-pm-edit-dialog', 'rbq-pm-manage-dialog',
+                'rbq-pm-edit-dialog', 'rbq-pm-manage-dialog', 'rbq-pm-notice-dialog',
                 'rbq-pm-lightbox', 'rbq-pm-zoom-overlay',
                 'rbq-pm-modal', 'rbq-pm-header-entry-btn',
                 'rbq-pm-toolbar-entry-btn', 'rbq-pm-fallback-entry-btn', 'rbq-pm-styles'
@@ -4600,5 +4663,5 @@
         });
     }
 
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.36 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.37 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

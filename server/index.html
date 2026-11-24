@@ -808,6 +808,65 @@
       width: 44px;
       height: 44px;
     }
+
+    /* ── 公益社区声明条与弹窗样式 ── */
+    .market-notice-bar {
+      background: rgba(15, 23, 42, 0.72);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 7px 24px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .market-notice-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      line-height: 1.5;
+    }
+    .notice-inline-link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #7dd3fc;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .notice-inline-link:hover {
+      text-decoration: underline;
+      color: #bae6fd;
+    }
+    .notice-section {
+      background: rgba(15, 23, 42, 0.68);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 12.5px;
+      color: #cbd5e1;
+      line-height: 1.65;
+    }
+    .notice-section h4 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .notice-section a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+    .notice-section a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -840,6 +899,10 @@
         <button id="btn-refresh" class="btn">
           <i class="fa-solid fa-rotate-right"></i>
           <span>刷新</span>
+        </button>
+        <button id="btn-notice" class="btn" title="查看社区共享与版权/下架声明">
+          <i class="fa-solid fa-scale-balanced"></i>
+          <span>声明</span>
         </button>
         <a href="https://github.com/TTWParty/SillyTavern-RBQ-Draw" target="_blank" class="btn">
           <i class="fa-brands fa-github"></i>
@@ -881,6 +944,14 @@
       </div>
     </div>
   </section>
+
+  <!-- 公益共享与署名简明声明条 -->
+  <div class="market-notice-bar">
+    <div class="market-notice-inner">
+      <span><i class="fa-solid fa-circle-info" style="color: #38bdf8; margin-right: 5px;"></i>公益社区交流平台 · 预设由社区投稿与公开整理，非商业用途；标注「整理」仅代表搜集归档而非原作者。</span>
+      <button id="btn-notice-inline" type="button" class="notice-inline-link">查看完整声明与下架说明 →</button>
+    </div>
+  </div>
 
   <!-- 主体卡片展厅 -->
   <main>
@@ -1153,6 +1224,43 @@
     </div>
   </div>
 
+  <!-- 社区共享与免责声明弹窗 -->
+  <div class="modal-overlay" id="notice-modal">
+    <div class="modal-card" style="max-width: 580px; flex-direction: column; padding: 24px; max-height: 90dvh; overflow-y: auto;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+        <h3 style="font-size: 18px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-scale-balanced"></i> 社区共享、署名与下架声明
+        </h3>
+        <button class="modal-close-btn" id="notice-close-btn" style="position: static;" aria-label="关闭声明">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="notice-section">
+          <h4><i class="fa-solid fa-heart" style="color: #f43f5e;"></i> 1. 公益分享 · 非商业性质</h4>
+          <div>本工坊为 SillyTavern &amp; RBQ 生图社区公益交流平台，站内所有画师串、参数预设与基准预览图均免费开放浏览、参考与导入使用，不用于商业售卖，亦不对社区投稿内容主张版权。</div>
+        </div>
+        <div class="notice-section">
+          <h4><i class="fa-solid fa-tags" style="color: #fbbf24;"></i> 2. 来源与署名说明</h4>
+          <div>预设来源于社区用户自主投稿及公开渠道整理归档；署名含「整理」者仅代表搜集归档与基准封面制作，并非原始调串作者或画师本人。保留原有命名与作者代号旨在尊重来源，不代表原作者背书。</div>
+        </div>
+        <div class="notice-section">
+          <h4><i class="fa-solid fa-shield-halved" style="color: #34d399;"></i> 3. 原作者权益与快速下架通道</h4>
+          <div>• <strong>自助管理</strong>：创作者可凭个人码在「创作者中心 → 我的上传」随时在线编辑或永久下架自己的作品。<br>• <strong>侵权 / 异议处理</strong>：如您是某预设的原始作者或整理者，不希望作品在本站展示或需更正署名，请通过 <a href="https://github.com/TTWParty/RBQ-Draw-Plugins/issues" target="_blank">GitHub Issues</a> 提交对应预设标题 / ID，管理员核实后将第一时间下架或修正。</div>
+        </div>
+        <div class="notice-section">
+          <h4><i class="fa-solid fa-triangle-exclamation" style="color: #38bdf8;"></i> 4. AI 生成内容与使用责任</h4>
+          <div>本站预览封面均由 AI 模型依据公开提示词渲染生成，仅作风格与参数效果研究参考；使用与二次分发请遵守所在地法律法规及对应生图模型条款，切勿用于侵权、违法或商业倒卖用途。</div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <button id="notice-ok-btn" class="btn btn-primary">我知道了</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 大图查看灯箱 -->
   <div id="img-lightbox">
     <button class="modal-close-btn" id="lightbox-close-btn" aria-label="关闭大图">
@@ -1167,8 +1275,11 @@
   <!-- 页脚 -->
   <footer>
     <div style="max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 6px;">
-      <div>RBQ Prompt Market · 社区画师串与提示词预设共享中心</div>
-      <div>Designed for <a href="https://github.com/SillyTavern/SillyTavern" target="_blank">SillyTavern</a> &amp; <a href="https://github.com/TTWParty/SillyTavern-RBQ-Draw" target="_blank">RBQ 生图扩展生态</a></div>
+      <div>RBQ Prompt Market · 社区画师串与提示词预设共享中心 · 公益非商</div>
+      <div>
+        Designed for <a href="https://github.com/SillyTavern/SillyTavern" target="_blank">SillyTavern</a> &amp; <a href="https://github.com/TTWParty/SillyTavern-RBQ-Draw" target="_blank">RBQ 生图扩展生态</a>
+        · <button type="button" id="footer-notice-link" class="notice-inline-link">免责与版权/下架声明</button>
+      </div>
     </div>
   </footer>
 
@@ -2204,6 +2315,24 @@
         }
       };
 
+      // 社区共享与免责/下架声明弹窗
+      const noticeModal = document.getElementById('notice-modal');
+      const openNoticeModal = (e) => {
+        if (e) e.preventDefault();
+        noticeModal?.classList.add('open');
+      };
+      const closeNoticeModal = () => noticeModal?.classList.remove('open');
+      document.getElementById('btn-notice')?.addEventListener('click', openNoticeModal);
+      document.getElementById('btn-notice-inline')?.addEventListener('click', openNoticeModal);
+      document.getElementById('footer-notice-link')?.addEventListener('click', openNoticeModal);
+      document.getElementById('notice-close-btn')?.addEventListener('click', closeNoticeModal);
+      document.getElementById('notice-ok-btn')?.addEventListener('click', closeNoticeModal);
+      if (noticeModal) {
+        noticeModal.onclick = (e) => {
+          if (e.target.id === 'notice-modal') closeNoticeModal();
+        };
+      }
+
       // 大图灯箱与全局 Esc 关闭栈
       const imgLightbox = document.getElementById('img-lightbox');
       const lightboxCloseBtn = document.getElementById('lightbox-close-btn');
@@ -2228,6 +2357,10 @@
         }
         if (creatorModal.classList.contains('open')) {
           creatorModal.classList.remove('open');
+          return;
+        }
+        if (noticeModal && noticeModal.classList.contains('open')) {
+          closeNoticeModal();
           return;
         }
         const detailModal = document.getElementById('detail-modal');

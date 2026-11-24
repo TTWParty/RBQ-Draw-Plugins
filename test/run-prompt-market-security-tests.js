@@ -251,9 +251,11 @@ test('hygiene: no hardcoded RBQ-U-d31879f4 or shared u-tavern clientId', () => {
     assert.doesNotMatch(src, /RBQ-U-d31879f4/);
     assert.doesNotMatch(src, /clientId\s*:\s*['"]u-tavern['"]/);
     assert.match(src, /function getLikeClientId\b/);
+    assert.match(src, /function openNoticeDialog\b/);
     assert.match(src, /rbq-prompt-market-overlay/);
     assert.match(src, /rbq-prompt-market-styles/);
     assert.match(src, /rbq-pm-detail-dialog/);
+    assert.match(src, /rbq-pm-notice-dialog/);
 });
 
 test('buildDetailHtml safely renders and escapes description', () => {

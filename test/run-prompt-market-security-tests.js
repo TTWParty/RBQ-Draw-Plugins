@@ -266,6 +266,62 @@ test('buildDetailHtml safely renders and escapes description', () => {
     assert.ok(!noDesc.includes('画师说明 / 备注'));
 });
 
+test('benchmark prompt: concise neutral default and lossless v2 migration', () => {
+    const benchSrc = cut('    const BENCHMARK_POSITIVE_PROMPT =', '    // 生成专属创作者个人身份码');
+    const migrateSrc = cut('    function getTestPrompts() {', '    function saveTestPrompts(list) {');
+
+    const run = (initial) => {
+        let saves = 0;
+        const cfg = initial;
+        const bctx = vm.createContext({
+            console,
+            JSON,
+            Array,
+            getConfig: () => cfg,
+            saveConfig: () => { saves++; }
+        });
+        vm.runInContext(`${benchSrc}\n${migrateSrc}`, bctx);
+        const list = bctx.getTestPrompts();
+        return {
+            list,
+            cfg,
+            saves,
+            bmPos: vm.runInContext('BENCHMARK_POSITIVE_PROMPT', bctx),
+            defaults: vm.runInContext('DEFAULT_TEST_PROMPTS', bctx)
+        };
+    };
+
+    // Case 1: default benchmark tags & built-in set
+    let r = run({
+        testPrompts: [
+            { id: 'kami-greenhouse', isDefault: true, isBuiltin: true, positive: 'old' },
+            { id: 'custom-1', title: 'my', positive: 'p', isDefault: false }
+        ]
+    });
+    const tags = r.bmPos.split(',').map(s => s.trim()).filter(Boolean);
+    assert.ok(tags.length <= 15, `expected <= 15 benchmark tags, got ${tags.length}`);
+    for (const banned of ['intricate pupils', 'sunbeams', 'stained glass', 'antique greenhouse']) {
+        assert.ok(!r.bmPos.includes(banned), `unexpected biased tag: ${banned}`);
+    }
+    assert.deepEqual(Array.from(r.defaults, d => d.id), ['official-portrait', 'kami-greenhouse', 'night-mood-portrait']);
+    assert.equal(r.list.find(x => x.id === 'official-portrait')?.isDefault, true);
+    assert.equal(r.list.find(x => x.id === 'kami-greenhouse')?.isDefault, false);
+    assert.ok(r.list.some(x => x.id === 'night-mood-portrait'));
+    assert.equal(r.list.find(x => x.id === 'custom-1')?.positive, 'p');
+    assert.equal(r.cfg.benchmarkMigratedV2, true);
+    assert.equal(r.saves, 1);
+
+    // Case 2: preserves existing custom default
+    r = run({
+        testPrompts: [
+            { id: 'kami-greenhouse', isDefault: false, isBuiltin: true, positive: 'old' },
+            { id: 'custom-1', title: 'my', positive: 'p', isDefault: true }
+        ]
+    });
+    assert.equal(r.list.find(x => x.id === 'official-portrait')?.isDefault, false);
+    assert.equal(r.list.find(x => x.id === 'custom-1')?.isDefault, true);
+});
+
 (async () => {
     for (const [n, fn] of pending) {
         await fn();

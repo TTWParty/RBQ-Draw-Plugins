@@ -46,6 +46,11 @@
 
 ## 📝 更新日志
 
+### v1.1.36（官方基准测试底模优化）
+
+* **低干扰默认基准 (`BENCHMARK_POSITIVE_PROMPT`)**：将默认官方基准从 45 词高密度复杂描述精简为 **11 词极简中性半身人像底模**（`1girl, solo, upper body, looking at viewer, long silver hair, blue eyes, gentle smile, white collared shirt, black ribbon, indoors, window`），避免复杂服饰细节、双动作与强风格偏置词（如 `intricate pupils`、`sunbeams`、`stained glass`）稀释或覆盖画师串本身的线条、瞳孔与光影特征。
+* **多场景内置词库与无感迁移**：默认内置 3 套测串底模——**「官方基准 · 极简半身人像 (推荐)」**（默认）、**「卡密sama · 温室少女 (复杂场景压测)」**（保留原 45 词场景）、**「内置场景 · 夜色光影人像 (暗调测试)」**；存量安装升级时通过 `getTestPrompts()` 无感迁移，已自定义默认模板的用户会保留其默认选择。
+
 ### v1.1.35（系统安全加固与前后端体验修复）
 
 * **后端稳定性与安全 (`server/server.py`)**：

@@ -4,22 +4,41 @@
     const STORAGE_KEY = '_promptMarketSettings';
     const PRESETS_STORAGE_KEY = '_promptPresets';
 
-    // 默认基准测试底模提示词（卡密sama倾情提供）
-    const BENCHMARK_POSITIVE_PROMPT = '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, center-parted bangs, parted hair, purple eyes, intricate pupils, gentle smile, parted lips, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black thighhighs, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams';
+    // 默认基准测试底模提示词（官方极简半身基准：低干扰、突出画师串线条/瞳孔/光影风格）
+    const BENCHMARK_POSITIVE_PROMPT = '1girl, solo, upper body, looking at viewer, long silver hair, blue eyes, gentle smile, white collared shirt, black ribbon, indoors, window';
+
+    // 原版「卡密sama · 温室少女」保留为内置复杂场景压测模板
+    const LEGACY_KAMI_POSITIVE_PROMPT = '1girl, solo, cowboy shot, slightly low angle, leaning forward, looking at viewer, platinum blonde hair, pastel pink gradient hair, very long wavy hair, twin side braids, center-parted bangs, parted hair, purple eyes, intricate pupils, gentle smile, parted lips, mole under left eye, black beret, gold hairpin, red hair ribbon, pearl earrings, black ribbon choker, white ruffled blouse, long sleeves, flared cuffs, dark green corset vest, gold trim, lace-up front, high-waisted black pleated skirt, layered frills, leather belt, black thighhighs, one hand tucking hair behind ear, one hand holding open pocket watch, indoors, antique greenhouse, glass ceiling, arched stained glass windows, climbing ivy, potted ferns, blooming white roses, vintage wooden table, scattered parchment papers, hanging brass birdcage, sunbeams';
 
     const BENCHMARK_NEGATIVE_PROMPT = 'lowres, bad anatomy, bad hands, worst quality, blurry, text, watermark, deformed, ugly';
 
-    const BENCHMARK_CREDIT = '测试提示词由卡密sama提供';
+    const BENCHMARK_CREDIT = '官方极简半身基准 (低干扰高辨识度)';
     const KAMI_DEFAULT_PREVIEW = 'https://market.rbq.my/previews/kami-greenhouse-girl.webp';
 
-    // 默认测试底模提示词库 (卡密sama温室少女为官方基准)
+    // 默认测试底模提示词库 (极简半身人像为默认官方基准)
     const DEFAULT_TEST_PROMPTS = [
         {
-            id: 'kami-greenhouse',
-            title: '卡密sama · 温室少女 (官方基准)',
+            id: 'official-portrait',
+            title: '官方基准 · 极简半身人像 (推荐)',
             positive: BENCHMARK_POSITIVE_PROMPT,
             negative: BENCHMARK_NEGATIVE_PROMPT,
             isDefault: true,
+            isBuiltin: true
+        },
+        {
+            id: 'kami-greenhouse',
+            title: '卡密sama · 温室少女 (复杂场景压测)',
+            positive: LEGACY_KAMI_POSITIVE_PROMPT,
+            negative: BENCHMARK_NEGATIVE_PROMPT,
+            isDefault: false,
+            isBuiltin: true
+        },
+        {
+            id: 'night-mood-portrait',
+            title: '内置场景 · 夜色光影人像 (暗调测试)',
+            positive: '1girl, solo, upper body, looking at viewer, black hair, short hair, red eyes, white shirt, night, city lights, moody lighting',
+            negative: BENCHMARK_NEGATIVE_PROMPT,
+            isDefault: false,
             isBuiltin: true
         }
     ];
@@ -163,12 +182,38 @@
         const cfg = getConfig();
         if (!Array.isArray(cfg.testPrompts) || cfg.testPrompts.length === 0) {
             cfg.testPrompts = JSON.parse(JSON.stringify(DEFAULT_TEST_PROMPTS));
+            cfg.benchmarkMigratedV2 = true;
+            saveConfig();
+        } else if (!cfg.benchmarkMigratedV2) {
+            const hasCustomDefault = cfg.testPrompts.some(tp => tp.isDefault && tp.id !== 'kami-greenhouse' && tp.id !== 'official-portrait' && !tp.isBuiltin);
+            const kami = cfg.testPrompts.find(tp => tp.id === 'kami-greenhouse');
+            if (kami) {
+                kami.title = DEFAULT_TEST_PROMPTS[1].title;
+                kami.positive = LEGACY_KAMI_POSITIVE_PROMPT;
+                kami.isBuiltin = true;
+                if (!hasCustomDefault) kami.isDefault = false;
+            }
+            if (!cfg.testPrompts.some(tp => tp.id === 'official-portrait')) {
+                const officialItem = JSON.parse(JSON.stringify(DEFAULT_TEST_PROMPTS[0]));
+                officialItem.isDefault = !hasCustomDefault;
+                cfg.testPrompts.unshift(officialItem);
+            }
+            if (!cfg.testPrompts.some(tp => tp.id === 'night-mood-portrait')) {
+                const kIdx = cfg.testPrompts.findIndex(tp => tp.id === 'kami-greenhouse');
+                const oIdx = cfg.testPrompts.findIndex(tp => tp.id === 'official-portrait');
+                const insertAt = kIdx >= 0 ? kIdx + 1 : (oIdx >= 0 ? oIdx + 1 : cfg.testPrompts.length);
+                cfg.testPrompts.splice(insertAt, 0, JSON.parse(JSON.stringify(DEFAULT_TEST_PROMPTS[2])));
+            }
+            if (!cfg.testPrompts.some(tp => tp.isDefault) && cfg.testPrompts.length > 0) {
+                cfg.testPrompts[0].isDefault = true;
+            }
+            cfg.benchmarkMigratedV2 = true;
             saveConfig();
         } else {
             // 自动同步官方基准底模提示词最新更新
-            const builtin = cfg.testPrompts.find(tp => tp.id === 'kami-greenhouse' || tp.isBuiltin);
-            if (builtin && builtin.positive !== BENCHMARK_POSITIVE_PROMPT) {
-                builtin.positive = BENCHMARK_POSITIVE_PROMPT;
+            const official = cfg.testPrompts.find(tp => tp.id === 'official-portrait' && tp.isBuiltin);
+            if (official && official.positive !== BENCHMARK_POSITIVE_PROMPT) {
+                official.positive = BENCHMARK_POSITIVE_PROMPT;
                 saveConfig();
             }
         }
@@ -2798,7 +2843,7 @@
                             <button id="rbq-pm-test-add-btn" class="menu_button" style="background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; font-size:11.5px; font-weight:700; padding:5px 12px; border-radius:6px; cursor:pointer;">
                                 <i class="fa-solid fa-plus"></i> 新建测串底模
                             </button>
-                            <button id="rbq-pm-test-reset-btn" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:5px 10px; border-radius:6px; cursor:pointer;" title="若误删卡密sama温室少女基准词，可点击补回">
+                            <button id="rbq-pm-test-reset-btn" class="menu_button" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#cbd5e1; font-size:11px; padding:5px 10px; border-radius:6px; cursor:pointer;" title="补全缺失的官方内置测串底模（极简半身 / 温室少女 / 夜色光影）">
                                 <i class="fa-solid fa-rotate-left"></i> 补全官方基准
                             </button>
                         </div>
@@ -2898,16 +2943,27 @@
 
             // 补全官方基准
             overlay.querySelector('#rbq-pm-test-reset-btn').onclick = () => {
-                const hasKami = list.some(item => item.id === 'kami-greenhouse');
-                if (hasKami) {
-                    toastr.info('官方基准「卡密sama · 温室少女」已在词库中！');
+                const hasDefaultAlready = list.some(item => item.isDefault);
+                const missing = DEFAULT_TEST_PROMPTS.filter(tp => !list.some(item => item.id === tp.id));
+                if (missing.length === 0) {
+                    toastr.info('全部官方内置基准已在词库中！');
                     return;
                 }
-                list.unshift(JSON.parse(JSON.stringify(DEFAULT_TEST_PROMPTS[0])));
+                for (let i = DEFAULT_TEST_PROMPTS.length - 1; i >= 0; i--) {
+                    const tp = DEFAULT_TEST_PROMPTS[i];
+                    if (!list.some(item => item.id === tp.id)) {
+                        const clone = JSON.parse(JSON.stringify(tp));
+                        if (hasDefaultAlready) clone.isDefault = false;
+                        list.unshift(clone);
+                    }
+                }
+                if (!list.some(item => item.isDefault) && list.length > 0) {
+                    list[0].isDefault = true;
+                }
                 saveTestPrompts(list);
                 renderDialog();
                 options.onUpdate?.(list);
-                toastr.success('已重新补回官方基准底模！');
+                toastr.success(`已补全 ${missing.length} 个官方内置基准底模！`);
             };
 
             // 导出
@@ -3308,7 +3364,7 @@
         const refreshBenchmarkSelect = () => {
             testPrompts = getTestPrompts();
             if (!testPrompts.some(tp => tp.id === selectedBenchmarkId)) {
-                selectedBenchmarkId = testPrompts.find(tp => tp.isDefault)?.id || testPrompts[0]?.id || 'kami-greenhouse';
+                selectedBenchmarkId = testPrompts.find(tp => tp.isDefault)?.id || testPrompts[0]?.id || 'official-portrait';
             }
             bmSelect.innerHTML = testPrompts.map(tp => `
                 <option value="${escapeHtml(tp.id)}" ${tp.id === selectedBenchmarkId ? 'selected' : ''}>
@@ -3672,14 +3728,15 @@
                     <!-- 统一基准底模提示框 (说明与复制) -->
                     <div style="background:linear-gradient(135deg, rgba(217,70,239,0.1), rgba(56,189,248,0.1)); border:1px solid rgba(217,70,239,0.3); border-radius:8px; padding:10px 12px; font-size:11.5px;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:700; color:#f0abfc;"><i class="fa-solid fa-vial"></i> 官方基准测试底模 (由卡密sama提供)</span>
-                            <button id="rbq-pm-up-copy-bm" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(217,70,239,0.25); border:1px solid rgba(217,70,239,0.5); color:#f0abfc; font-size:11px; font-weight:600; padding:3px 9px; border-radius:5px; cursor:pointer;" title="点击复制卡密sama基准测试词">
+                            <span style="font-weight:700; color:#f0abfc;"><i class="fa-solid fa-vial"></i> 官方基准测试底模 (极简半身 · 低干扰)</span>
+                            <button id="rbq-pm-up-copy-bm" type="button" class="menu_button" style="display:inline-flex !important; flex-direction:row !important; align-items:center !important; justify-content:center !important; gap:4px !important; white-space:nowrap !important; background:rgba(217,70,239,0.25); border:1px solid rgba(217,70,239,0.5); color:#f0abfc; font-size:11px; font-weight:600; padding:3px 9px; border-radius:5px; cursor:pointer;" title="点击复制官方基准测试词">
                                 <i class="fa-solid fa-copy"></i> 复制基准词
                             </button>
                         </div>
                         <div style="color:#cbd5e1; margin-top:4px; font-size:11px; line-height:1.45;">
-                            工坊封面<strong>必须为官方基准测试图</strong>（保障全场预设横向客观对比）；你也可以<strong>额外上传一张自制参考图</strong>展示该预设的个性化画面。
+                            采用 11 词极简中性半身底模，最大程度保留画师串原本的线条、瞳孔、光影与上色风格；你也可以<strong>额外上传一张自制参考图</strong>展示个性化画面。
                         </div>
+                        <div style="font-size:10.5px; color:#94a3b8; font-family:monospace; background:rgba(0,0,0,0.25); padding:5px 8px; border-radius:5px; margin-top:6px; word-break:break-word;">${escapeHtml(BENCHMARK_POSITIVE_PROMPT)}</div>
                     </div>
 
                     <!-- 双舱展示台：槽位 1 官方基准图 (封面 · 必传 *) + 槽位 2 自制参考图 (可选 +) -->
@@ -3693,7 +3750,7 @@
                                 <span id="rbq-pm-bm-spec" style="font-size:10px; color:#94a3b8;">720px WebP 封面</span>
                             </div>
                             <div style="font-size:11px; color:#cbd5e1; line-height:1.35;">
-                                使用卡密sama底模渲染，作为工坊全场统一封面。
+                                使用官方极简半身底模渲染，作为工坊统一封面。
                             </div>
 
                             <!-- 槽位 1 未绑定态 -->
@@ -3804,7 +3861,7 @@
 
         overlay.querySelector('#rbq-pm-up-copy-bm').onclick = async () => {
             await copyToClipboard(BENCHMARK_POSITIVE_PROMPT);
-            toastr.success('已复制基准测试底模词！(由卡密sama提供)');
+            toastr.success('已复制官方基准测试底模词！');
         };
 
         const localSelect = overlay.querySelector('#rbq-pm-local-select');
@@ -4154,7 +4211,7 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 发布中...';
 
-            const descriptionText = refCompressedBase64 ? '包含官方基准测试封面与作者自制效果参考图' : '官方基准测试封面由「卡密sama」提示词渲染';
+            const descriptionText = refCompressedBase64 ? '包含官方基准测试封面与作者自制效果参考图' : '官方极简半身基准测试封面';
 
             try {
                 const res = await fetch(`${uploadEndpoint}/api/upload`, {
@@ -4543,5 +4600,5 @@
         });
     }
 
-    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.35 插件已加载');
+    console.info('🏛️ RBQ Prompt Market (提示词预设工坊) v1.1.36 插件已加载');
 })(window.RBQ, window.jQuery, window.toastr);

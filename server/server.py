@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import html
 import base64
 import binascii
 import hmac
@@ -8,7 +9,7 @@ import time
 import shutil
 import threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
 PORT = int(os.environ.get('PORT', 3000))
 BIND_HOST = os.environ.get('MARKET_BIND_HOST', '127.0.0.1')
@@ -179,6 +180,57 @@ def public_preset(p):
     out['referenceUrl'] = safe_http_url(out.get('referenceUrl', ''), '')
     out['hasOwner'] = bool(str(p.get('creatorKey', '') or '').strip())
     return out
+
+
+TITLE_RE = re.compile(r'<title>.*?</title>', re.S | re.I)
+OG_BLOCK_RE = re.compile(r'<!--OG_META_START-->.*?<!--OG_META_END-->', re.S)
+
+
+def render_portal_html(html_text, preset=None):
+    """当访问 /p/<id> 或 /?preset=<id> 时，动态注入转义后的页面标题与社交预览卡片元信息。"""
+    if not preset:
+        return html_text
+    pub = public_preset(preset)
+    title = str(pub.get('title') or '未命名预设').strip()
+    author = str(pub.get('author') or '匿名').strip()
+    model = str(pub.get('model') or 'v5').upper()
+    tags = [str(t).strip() for t in (pub.get('tags') or []) if str(t).strip()][:5]
+    raw_desc = str(pub.get('description') or '').strip()
+    if raw_desc:
+        desc = f"{raw_desc}（作者: {author} · {model}）"
+    else:
+        desc = f"作者: {author} · 模型: {model}" + (f" · 标签: {' / '.join(tags)}" if tags else '')
+    desc = desc[:180]
+    page_title = f"{title} - RBQ 提示词工坊"
+    og_image = str(pub.get('previewUrl') or DEFAULT_PREVIEW_URL).strip()
+    if og_image.startswith('/'):
+        og_image = PUBLIC_ORIGIN + og_image
+    og_url = f"{PUBLIC_ORIGIN}/p/{quote(str(pub.get('id') or ''), safe='')}"
+
+    e_title = html.escape(page_title, quote=True)
+    e_desc = html.escape(desc, quote=True)
+    e_url = html.escape(og_url, quote=True)
+    e_img = html.escape(og_image, quote=True)
+
+    meta_block = '\n'.join([
+        '<!--OG_META_START-->',
+        f'  <meta name="description" content="{e_desc}">',
+        '  <meta property="og:type" content="article">',
+        '  <meta property="og:site_name" content="RBQ 提示词工坊">',
+        f'  <meta property="og:title" content="{e_title}">',
+        f'  <meta property="og:description" content="{e_desc}">',
+        f'  <meta property="og:url" content="{e_url}">',
+        f'  <meta property="og:image" content="{e_img}">',
+        '  <meta name="twitter:card" content="summary_large_image">',
+        f'  <meta name="twitter:title" content="{e_title}">',
+        f'  <meta name="twitter:description" content="{e_desc}">',
+        f'  <meta name="twitter:image" content="{e_img}">',
+        '  <!--OG_META_END-->',
+    ])
+
+    rendered = TITLE_RE.sub(lambda _: f'<title>{e_title}</title>', html_text, count=1)
+    rendered = OG_BLOCK_RE.sub(lambda _: meta_block, rendered, count=1)
+    return rendered
 
 
 def clean_text(value, max_len):
@@ -469,6 +521,33 @@ class MarketHandler(BaseHTTPRequestHandler):
         mine = find_presets_by_creator(presets, creator_key)
         self.finish_json(200, {'success': True, 'ids': [p.get('id') for p in mine]})
 
+    def serve_portal(self, target_preset_id=''):
+        index_path = os.path.join(BASE_DIR, 'index.html')
+        if not os.path.exists(index_path):
+            self.finish_json(200, {'status': 'ok', 'service': 'RBQ Prompt Market Node'})
+            return
+        with open(index_path, 'r', encoding='utf-8') as f:
+            html_text = f.read()
+        target_preset = None
+        if target_preset_id:
+            try:
+                with DATA_LOCK:
+                    presets = load_presets()
+                target_preset = next((p for p in presets if str(p.get('id', '')) == target_preset_id), None)
+            except Exception:
+                target_preset = None
+        content = render_portal_html(html_text, target_preset).encode('utf-8')
+        try:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(content)))
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_cors()
+            self.end_headers()
+            self._write_body(content)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_cors()
@@ -497,22 +576,16 @@ class MarketHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/', '/index.html'):
-            index_path = os.path.join(BASE_DIR, 'index.html')
-            if os.path.exists(index_path):
-                with open(index_path, 'rb') as f:
-                    content = f.read()
-                try:
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'text/html; charset=utf-8')
-                    self.send_header('Content-Length', str(len(content)))
-                    self.send_cors()
-                    self.end_headers()
-                    self._write_body(content)
-                except (BrokenPipeError, ConnectionResetError):
-                    pass
-                return
-            else:
-                self.finish_json(200, {'status': 'ok', 'service': 'RBQ Prompt Market Node'})
+            qs = parse_qs(parsed.query)
+            target_id = (qs.get('preset', [''])[0] or qs.get('id', [''])[0] or '').strip()[:128]
+            self.serve_portal(target_id)
+            return
+
+        if path.startswith('/p/'):
+            raw_slug = path[3:].rstrip('/')
+            if raw_slug and '/' not in raw_slug:
+                target_id = unquote(raw_slug).strip()[:128]
+                self.serve_portal(target_id)
                 return
 
         if path == '/favicon.ico':

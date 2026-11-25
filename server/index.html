@@ -4,6 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>RBQ 提示词工坊 | Prompt Market</title>
+  <!--OG_META_START-->
+  <meta name="description" content="SillyTavern RBQ 生图扩展生态 · 社区画师串与提示词预设共享中心">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="RBQ 提示词工坊">
+  <meta property="og:title" content="RBQ 提示词工坊 | Prompt Market">
+  <meta property="og:description" content="SillyTavern RBQ 生图扩展生态 · 社区画师串与提示词预设共享中心">
+  <meta property="og:url" content="https://market.rbq.my/">
+  <meta property="og:image" content="https://market.rbq.my/previews/kami-greenhouse-girl.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="RBQ 提示词工坊 | Prompt Market">
+  <meta name="twitter:description" content="SillyTavern RBQ 生图扩展生态 · 社区画师串与提示词预设共享中心">
+  <meta name="twitter:image" content="https://market.rbq.my/previews/kami-greenhouse-girl.webp">
+  <!--OG_META_END-->
   <link rel="icon" href="/favicon.ico">
   <!-- Font Awesome 6 Icons (with CDN fallback) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" onerror="this.onerror=null;this.href='https://unpkg.com/@fortawesome/fontawesome-free@6.5.1/css/all.min.css'">
@@ -1066,6 +1079,10 @@
             <i class="fa-solid fa-file-arrow-down"></i>
             <span>导出酒馆预设 (.json)</span>
           </button>
+          <button id="modal-btn-share" class="btn" style="background: rgba(16, 185, 129, 0.16); border-color: rgba(16, 185, 129, 0.4); color: #34d399; justify-content: center;">
+            <i class="fa-solid fa-share-nodes"></i>
+            <span>分享链接</span>
+          </button>
           <button id="modal-btn-edit" class="btn" style="display: none; background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
             <i class="fa-solid fa-pen-to-square"></i>
             <span>编辑</span>
@@ -1294,6 +1311,51 @@
       let activePreset = null;
       // 我的作品 ID 集合：由 /api/my-presets 凭个人码查询（公开列表不再包含 creatorKey）
       let myPresetIds = new Set();
+      let initialDeepLinkHandled = false;
+      const DEFAULT_PAGE_TITLE = 'RBQ 提示词工坊 | Prompt Market';
+
+      function getShareUrl(p) {
+        if (!p || !p.id) return '';
+        const origin = (location.protocol === 'http:' || location.protocol === 'https:') ? location.origin : 'https://market.rbq.my';
+        return `${origin}/p/${encodeURIComponent(p.id)}`;
+      }
+
+      function getPresetIdFromUrl() {
+        try {
+          const mPath = location.pathname.match(/^\/p\/([^/?#]+)\/?$/);
+          if (mPath && mPath[1]) return decodeURIComponent(mPath[1]).trim();
+          const params = new URLSearchParams(location.search);
+          const qId = (params.get('preset') || params.get('id') || '').trim();
+          if (qId) return qId;
+          const mHash = location.hash.match(/^#(?:preset|p)=([^&]+)/);
+          if (mHash && mHash[1]) return decodeURIComponent(mHash[1]).trim();
+        } catch (_) {}
+        return '';
+      }
+
+      function syncPresetUrl(p, mode = 'push') {
+        if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+        const fn = mode === 'replace' ? 'replaceState' : 'pushState';
+        if (p && p.id) {
+          const target = `/p/${encodeURIComponent(p.id)}`;
+          document.title = `${p.title || '预设详情'} - RBQ 提示词工坊`;
+          if ((location.pathname + location.search + location.hash) !== target) {
+            history[fn]({ presetId: p.id }, '', target);
+          }
+          return;
+        }
+        document.title = DEFAULT_PAGE_TITLE;
+        const params = new URLSearchParams(location.search);
+        const hasDeepLink = /^\/p\/[^/]+/.test(location.pathname) || params.has('preset') || params.has('id') || /^#(?:preset|p)=/.test(location.hash);
+        if (hasDeepLink) {
+          history[fn]({}, '', '/');
+        }
+      }
+
+      function sharePreset(p) {
+        if (!p || !p.id) return;
+        copyText(getShareUrl(p), `已复制「${p.title}」分享链接！`);
+      }
 
       const CREATOR_KEY_STORAGE = 'rbq_creator_key';
       const LIKED_STORAGE = 'rbq_liked_ids';
@@ -1427,6 +1489,19 @@
           await refreshMyPresetIds();
           renderTagPills();
           renderCards();
+          if (!initialDeepLinkHandled) {
+            initialDeepLinkHandled = true;
+            const targetId = getPresetIdFromUrl();
+            if (targetId) {
+              const found = allPresets.find(x => x.id === targetId);
+              if (found) {
+                openDetailModal(found, { syncUrl: 'replace' });
+              } else {
+                toast('未找到该分享预设，可能已被作者删除或下架', 'error');
+                syncPresetUrl(null, 'replace');
+              }
+            }
+          }
         } catch (err) {
           toast(`加载工坊预设失败: ${err.message}`, 'error');
         }
@@ -1582,6 +1657,9 @@
                 ${safeImageUrl(p.referenceUrl) ? '<div class="media-badge-bottom-left" style="position: absolute; bottom: 8px; left: 8px; background: rgba(56, 189, 248, 0.85); backdrop-filter: blur(4px); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px; z-index: 2; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"><i class="fa-solid fa-image"></i> 附参考图</div>' : ''}
                 
                 <div class="card-hover-actions" onclick="event.stopPropagation()">
+                  <button class="action-icon-btn share-quick" title="复制分享链接" data-id="${escapeHtml(p.id)}">
+                    <i class="fa-solid fa-share-nodes"></i>
+                  </button>
                   <button class="action-icon-btn copy-pos-quick" title="复制正面提示词" data-id="${escapeHtml(p.id)}">
                     <i class="fa-regular fa-copy"></i>
                   </button>
@@ -1648,6 +1726,14 @@
           btn.onclick = async () => {
             const p = allPresets.find(x => x.id === btn.dataset.id);
             if (p) await handleLike(p);
+          };
+        });
+
+        // 快速分享链接
+        container.querySelectorAll('.share-quick').forEach(btn => {
+          btn.onclick = () => {
+            const p = allPresets.find(x => x.id === btn.dataset.id);
+            if (p) sharePreset(p);
           };
         });
       }
@@ -1780,7 +1866,7 @@
       let detailViewToken = 0;
 
       // 打开详情弹窗
-      function openDetailModal(p) {
+      function openDetailModal(p, opts = {}) {
         try {
           ++detailViewToken;
           activePreset = p;
@@ -1974,14 +2060,37 @@
           updateModalLikeButton(p, isLiked);
 
           modal.classList.add('open');
+          if (opts.syncUrl !== false) {
+            syncPresetUrl(p, opts.syncUrl === 'replace' ? 'replace' : 'push');
+          }
         } catch (err) {
           console.error('[Detail Modal] 打开弹窗异常:', err);
         }
       }
 
-      function closeDetailModal() {
+      function closeDetailModal(opts = {}) {
         document.getElementById('detail-modal').classList.remove('open');
+        if (opts.syncUrl !== false) {
+          syncPresetUrl(null, opts.syncUrl === 'replace' ? 'replace' : 'push');
+        }
       }
+
+      window.addEventListener('popstate', () => {
+        const pid = getPresetIdFromUrl();
+        if (pid) {
+          const found = allPresets.find(x => x.id === pid);
+          if (found) {
+            openDetailModal(found, { syncUrl: false });
+          } else {
+            closeDetailModal({ syncUrl: false });
+          }
+        } else {
+          const detailModal = document.getElementById('detail-modal');
+          if (detailModal && detailModal.classList.contains('open')) {
+            closeDetailModal({ syncUrl: false });
+          }
+        }
+      });
 
       // 事件监听绑定
       document.getElementById('modal-close-btn').onclick = closeDetailModal;
@@ -2000,6 +2109,9 @@
       };
       document.getElementById('modal-btn-download').onclick = async () => {
         if (activePreset) await handleDownload(activePreset);
+      };
+      document.getElementById('modal-btn-share').onclick = () => {
+        if (activePreset) sharePreset(activePreset);
       };
 
       // 搜索实时过滤

@@ -506,6 +506,65 @@ class MarketServerSecurityTests(unittest.TestCase):
         with self.assertRaises(Exception):
             server.load_presets()
 
+    def test_share_deep_link_og_meta_and_security(self):
+        import base64
+        webp_raw = b'RIFF\x18\x00\x00\x00WEBPVP8 \x0c\x00\x00\x00000000000000'
+        webp_b64 = 'data:image/webp;base64,' + base64.b64encode(webp_raw).decode('ascii')
+        item = self.upload(
+            title='测试 "双引号" <style>水彩</style>',
+            author='整理者A',
+            description='测试简介 & 更多',
+            tags=['水彩', '萝莉', 'NAI V5'],
+            previewBase64=webp_b64,
+        )
+        pid = item['id']
+
+        for url in (f'/p/{pid}', f'/?preset={pid}'):
+            with urllib.request.urlopen(self.base + url, timeout=5) as res:
+                self.assertEqual(res.status, 200)
+                self.assertIn('text/html', res.headers.get('Content-Type', ''))
+                body = res.read().decode('utf-8')
+            self.assertIn('<title>测试 &quot;双引号&quot; &lt;style&gt;水彩&lt;/style&gt; - RBQ 提示词工坊</title>', body)
+            self.assertIn('property="og:title" content="测试 &quot;双引号&quot; &lt;style&gt;水彩&lt;/style&gt; - RBQ 提示词工坊"', body)
+            self.assertIn(f'property="og:url" content="{server.PUBLIC_ORIGIN}/p/{pid}"', body)
+            self.assertIn(f'property="og:image" content="{item["previewUrl"]}"', body)
+            self.assertIn('测试简介 &amp; 更多', body)
+            head_part = body.split('</head>', 1)[0]
+            self.assertNotIn('creatorKey', head_part)
+            self.assertNotIn('liked_by', head_part)
+            self.assertNotIn(OWNER_KEY, body)
+
+        req_head = urllib.request.Request(self.base + f'/p/{pid}', method='HEAD')
+        with urllib.request.urlopen(req_head, timeout=5) as res:
+            self.assertEqual(res.status, 200)
+            self.assertEqual(res.read(), b'')
+
+        with urllib.request.urlopen(self.base + '/p/nonexistent-id-123', timeout=5) as res:
+            self.assertEqual(res.status, 200)
+            body = res.read().decode('utf-8')
+            self.assertIn('<title>RBQ 提示词工坊 | Prompt Market</title>', body)
+
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(self.base + '/p/a/b', timeout=5)
+        self.assertEqual(ctx.exception.code, 404)
+
+        # Stored dangerous HTML title must be both neutralized and HTML-escaped in OG tags
+        server.save_presets([{
+            'id': 'pm-xss-share',
+            'title': '<img src=x onerror=alert(1)>',
+            'author': '恶搞"作者',
+            'positive': '1girl',
+            'creatorKey': OWNER_KEY,
+        }])
+        with urllib.request.urlopen(self.base + '/p/pm-xss-share', timeout=5) as res:
+            self.assertEqual(res.status, 200)
+            body = res.read().decode('utf-8')
+        head_part = body.split('</head>', 1)[0]
+        self.assertNotIn('<img src=x', body)
+        self.assertNotIn('onerror=alert', body)
+        self.assertNotIn(OWNER_KEY, body)
+        self.assertNotIn('creatorKey', head_part)
+
 
 if __name__ == '__main__':
     import re

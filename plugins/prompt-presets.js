@@ -1,5 +1,18 @@
 (function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[Prompt Presets] RBQ Core API missing');
+    if (RBQ?.api && typeof window !== 'undefined' && window.RBQ?.api && RBQ.api !== window.RBQ.api && Object.getPrototypeOf(RBQ.api) === window.RBQ.api) {
+        const _scopedApi = RBQ.api;
+        const _bridgedApi = new Proxy(window.RBQ.api, {
+            get(t, prop) { return (prop === 'registerMode' && Object.prototype.hasOwnProperty.call(_scopedApi, 'registerMode')) ? _scopedApi.registerMode : Reflect.get(t, prop, t); },
+            set(t, prop, val) { return Reflect.set(t, prop, val, t); },
+            deleteProperty(t, prop) { return Reflect.deleteProperty(t, prop); },
+        });
+        RBQ = new Proxy(RBQ, {
+            get(t, prop) { return prop === 'api' ? _bridgedApi : Reflect.get(t, prop, t); },
+            set(t, prop, val) { return Reflect.set(t, prop, val, t); },
+            deleteProperty(t, prop) { return Reflect.deleteProperty(t, prop); },
+        });
+    }
 
     const STORAGE_KEY = '_promptPresets';
 

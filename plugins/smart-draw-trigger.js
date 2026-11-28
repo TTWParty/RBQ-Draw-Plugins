@@ -1,5 +1,18 @@
 (function (RBQ, $, toastr) {
     if (!RBQ) return console.error('[Smart Draw Trigger] RBQ Core API missing');
+    if (RBQ?.api && typeof window !== 'undefined' && window.RBQ?.api && RBQ.api !== window.RBQ.api && Object.getPrototypeOf(RBQ.api) === window.RBQ.api) {
+        const _scopedApi = RBQ.api;
+        const _bridgedApi = new Proxy(window.RBQ.api, {
+            get(t, prop) { return (prop === 'registerMode' && Object.prototype.hasOwnProperty.call(_scopedApi, 'registerMode')) ? _scopedApi.registerMode : Reflect.get(t, prop, t); },
+            set(t, prop, val) { return Reflect.set(t, prop, val, t); },
+            deleteProperty(t, prop) { return Reflect.deleteProperty(t, prop); },
+        });
+        RBQ = new Proxy(RBQ, {
+            get(t, prop) { return prop === 'api' ? _bridgedApi : Reflect.get(t, prop, t); },
+            set(t, prop, val) { return Reflect.set(t, prop, val, t); },
+            deleteProperty(t, prop) { return Reflect.deleteProperty(t, prop); },
+        });
+    }
 
     const PLUGIN_ID = 'rbq-smart-draw-trigger';
     if (typeof window.__rbqSdtCleanup === 'function') {
@@ -12,7 +25,7 @@
     const sdtPreviousApi = { ...RBQ.api };
 
     const PLUGIN_NAME = '智能生图触发器 (Smart Draw Trigger)';
-    const PLUGIN_VERSION = '6.5.54';
+    const PLUGIN_VERSION = '6.5.55';
     const STORAGE_KEY = '_smartDrawTrigger';
     const ALT_STORAGE_KEY = '_smartDrawTriggerSettings';
     const CARD_CLASS = 'rbq-sdt-card';

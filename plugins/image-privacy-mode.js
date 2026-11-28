@@ -1,12 +1,25 @@
 /**
  * RBQ-Draw-Plugins Sub-Plugin: 图片隐私模式 (Image Privacy Mode)
- * Version: 1.0.12
+ * Version: 1.0.13
  * Author: TTWP-09
  * Description: 支持纯净画廊（正文零插图）、折叠收起、剧透毛玻璃遮罩等多种展示形态，在阅读小说或公共场合优雅隐藏图片与视频，智能继承保留分镜描述并支持大图画廊与伴生一键重绘。安装后在通用设置中切换。
  */
 (function(RBQ, $, toastr) {
     'use strict';
     if (!RBQ) return console.error('[Image Privacy Mode] RBQ Core API missing');
+    if (RBQ?.api && typeof window !== 'undefined' && window.RBQ?.api && RBQ.api !== window.RBQ.api && Object.getPrototypeOf(RBQ.api) === window.RBQ.api) {
+        const _scopedApi = RBQ.api;
+        const _bridgedApi = new Proxy(window.RBQ.api, {
+            get(t, prop) { return (prop === 'registerMode' && Object.prototype.hasOwnProperty.call(_scopedApi, 'registerMode')) ? _scopedApi.registerMode : Reflect.get(t, prop, t); },
+            set(t, prop, val) { return Reflect.set(t, prop, val, t); },
+            deleteProperty(t, prop) { return Reflect.deleteProperty(t, prop); },
+        });
+        RBQ = new Proxy(RBQ, {
+            get(t, prop) { return prop === 'api' ? _bridgedApi : Reflect.get(t, prop, t); },
+            set(t, prop, val) { return Reflect.set(t, prop, val, t); },
+            deleteProperty(t, prop) { return Reflect.deleteProperty(t, prop); },
+        });
+    }
 
     const PLUGIN_ID = 'rbq-image-privacy';
     if (typeof window.__rbqPrivacyCleanup === 'function') {

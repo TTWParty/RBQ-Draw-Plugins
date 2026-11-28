@@ -39,9 +39,10 @@ async function asyncTest(name, fn) {
 
 (async () => {
     // 1. Version & Verbatim Prompt Hashes + Untouched Legacy Prompts
-    test('version synced to 6.5.54 and rbq_v23/rbq_v23_3p match official-rules.json SHA-256', () => {
+    test('version >= 6.5.54 synced with plugins.json and rbq_v23/rbq_v23_3p match official-rules.json SHA-256', () => {
         const version = source.match(/const PLUGIN_VERSION = '([\d.]+)'/)[1];
-        assert.equal(version, '6.5.54');
+        const parts = version.split('.').map(Number);
+        assert.ok(parts[0] > 6 || (parts[0] === 6 && (parts[1] > 5 || (parts[1] === 5 && parts[2] >= 54))), `Unexpected SDT version ${version}`);
         assert.ok(pluginsJson.includes(`"version": "${version}"`));
         assert.ok(pluginsJson.includes(`smart-draw-trigger.js?v=${version}`));
         assert.match(source, /const DEFAULT_SYSTEM_PROMPT_VERSION = 46;/);
